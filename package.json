@@ -1,0 +1,29 @@
+{
+  "name": "poli",
+  "version": "0.1.0",
+  "description": "Interactive programming environment on top of JavaScript",
+  "main": "poli.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/egnartsms/poli.git"
+  },
+  "keywords": [
+    "lisp",
+    "interactive",
+    "reactive",
+    "language-oriented",
+    "image-based"
+  ],
+  "author": "Serhii Mozghovyi",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/egnartsms/poli/issues"
+  },
+  "homepage": "https://github.com/egnartsms/poli#readme",
+  "dependencies": {
+    "better-sqlite3": "^7.0.1"
+  }
+}
