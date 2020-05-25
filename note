@@ -1,3 +1,6 @@
+=====
+Name mangling
+
 - M
 + P
 = E
@@ -11,3 +14,57 @@
 @ T
 ! X
 : O
+
+
+======
+module entries:
+
+{
+    type: "native",
+    value: <object>|<array>|<function>|<regexp>
+}
+
+where:
+
+<object> ::=
+{
+    type: "obj",
+    contents: [
+        {
+            name: "prop1",
+            value: <any>
+        },
+        ...
+    ]
+}
+
+
+<array> ::=
+{
+    type: "arr",
+    contents: [<any> ...]
+}
+
+
+<function> ::=
+{
+    type: "fun",
+    src: "..."
+}
+
+
+<regexp> ::=
+{
+    type: "regexp",
+    src: "...",
+    flags: "..."
+}
+
+
+
+Data flow:
+
+Load image: Image -> Memory
+Dump image: Image -> Files
+Make image: Files -> Image
+Normal work: Memory -> Image (modifications)

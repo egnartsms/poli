@@ -7,7 +7,13 @@ const SCHEMA_PATH = 'schema.sql';
 
 
 function makeEmptyImage() {
-   fs.unlinkSync(IMAGE_PATH);
+   try {
+      fs.unlinkSync(IMAGE_PATH);   
+   }
+   catch (e) {
+      if (e.code === 'ENOENT'); else throw e;
+   }
+
    let db = new Database(IMAGE_PATH, {
       verbose: console.log
    });

@@ -1,2 +1,2 @@
-/*.image
-/node_modules
+/backend/*.image
+/backend/node_modules
