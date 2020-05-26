@@ -26,19 +26,19 @@ function makeEmptyImage() {
 
 function main() {
    let db = makeEmptyImage();
-   let poli = require('./poli');
+   let poli = require('./poli/main');
 
    let {lastInsertRowid: moduleId} = db
       .prepare(`insert into module(name) values (?)`)
-      .run('poli');
+      .run('main');
 
    let stmt = db.prepare(`insert into entry(module_id, name, def) values (?, ?, ?)`);
 
    db.transaction(() => {
-      for (let [key, val] of Object.entries(poli)) {
+      for (let [key, src] of Object.entries(poli)) {
          let def = {
-            "type": "fn/js",
-            "src": val.toString()
+            type: 'native',
+            src: src
          };
          stmt.run(moduleId, key, JSON.stringify(def));
       }
