@@ -2,6 +2,7 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
+from poli.listener import *
 
 
 def plugin_loaded():

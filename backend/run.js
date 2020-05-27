@@ -25,9 +25,8 @@ function main() {
 
 
 function moduleEval(code, $) {
-   let fun = new Function('$, require', `return (${code})`);
-   
-   return fun.call(null, $, require);
+   let fun = new Function('$, $g', `return (${code})`);
+   return fun.call(null, $, {require});
 }
 
 

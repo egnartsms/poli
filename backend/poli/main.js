@@ -1,5 +1,5 @@
 module.exports = {
-   WebSocket: `require('ws')`,
+   WebSocket: `$g.require('ws')`,
    port: `8080`,
    server: `null`,
    ws: `null`,
@@ -43,5 +43,5 @@ module.exports = {
             }))
          );
       },
-   }`
+   }`,
 };
