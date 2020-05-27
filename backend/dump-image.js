@@ -31,7 +31,7 @@ function dumpModule(db, mdl) {
          yield name;
          yield ': ';
          yield '`';
-         yield src.replace(/(`|\$\{})/g, '\\$&');
+         yield src.replace(/(`|\$\{)/g, '\\$&');
          yield '`';
          yield ',\n';
       }
