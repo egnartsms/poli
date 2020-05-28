@@ -9,7 +9,19 @@ function main() {
    let db = new Database(IMAGE_PATH, {});
    let entries = db.prepare(`select name, def from entry`).all();
 
-   let $ = new Object();
+   let $_ = {
+      require,
+      keys: Symbol('keys'),
+      moduleEval: function (code) {
+         return moduleEval($_, $d, $, code);
+      }
+   };
+
+   let $d = {
+      [$_.keys]: []
+   };
+
+   let $ = {};
 
    for (let {name, def} of entries) {
       def = JSON.parse(def);
@@ -17,20 +29,24 @@ function main() {
          throw new Error(`Unrecognized entry type: ${def.type}`);
       }
 
-      $[name] = moduleEval(def.src, $);
+      $d[$_.keys].push(name);
+      $d[name] = def;
+
+      $[name] = moduleEval($_, $d, $, def.src);
    }
 
-   return $;
+   console.log("_init(db)");
+   $._init(db);
+   console.log("done");
 }
 
 
-function moduleEval(code, $) {
-   let fun = new Function('$, $g', `return (${code})`);
-   return fun.call(null, $, {require});
+function moduleEval($_, $d, $, code) {
+   let fun = new Function('$_, $d, $', `return (${code})`);
+   return fun.call(null, $_, $d, $);
 }
 
 
 if (require.main === module) {
-   let $ = main();
-   $._init();
+   main();
 }

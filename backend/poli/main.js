@@ -1,9 +1,11 @@
 module.exports = {
-   WebSocket: `$g.require('ws')`,
+   WebSocket: `$_.require('ws')`,
    port: `8080`,
-   server: `null`,
+   server: `[1,2,3]`,
    ws: `null`,
-   _init: `function () {
+   db: `null`,
+   _init: `function (db) {
+      $.db = db;
       $.server = new $.WebSocket.Server({port: $.port});
       $.server
          .on('error', function (error) {
@@ -19,7 +21,7 @@ module.exports = {
             $.ws = ws;
             $.ws
                .on('message', function (data) {
-                  $.handleOperation(data);
+                  $.handleOperation(JSON.parse(data));
                })
                .on('close', function (code, reason) {
                   $.ws = null;
@@ -30,18 +32,53 @@ module.exports = {
                });
          });
    }`,
-   handleOperation: `function (data) {
-      console.log("Attempted operation: ", data);
+   handleOperation: `function (op) {
+      console.log("Got this operation:", op);
+
+      try {
+         $.opHandlers[op['op']].call(null, op['args']);
+      }
+      catch (e) {
+         $.opExc('generic', e.stack);
+      }
    }`,
    opHandlers: `{
-      getProjects: function () {
-         $.opReturn(
-            Object.values($.projects).map(proj => ({
-               id: proj.id,
-               name: proj.name,
-               path: proj.path
-            }))
-         );
+      edit: function ({key, newSrc}) {
+         newSrc = eval(newSrc);
+         $[key] = $_.moduleEval(newSrc);
+         let newDef = {
+            type: 'native',
+            src: newSrc
+         };
+         $.db
+            .prepare('update entry set def = :def where name = :key')
+            .run({
+               key: key,
+               def: JSON.stringify(newDef)
+            });
+         $d[key] = newDef;
+
+         console.log("newDef", newDef);
+
+         $.opReturn();
       },
+   }`,
+   send: `function (msg) {
+      $.ws.send(JSON.stringify(msg));
+   }`,
+   opExc: `function (error, info) {
+      $.send({
+         type: 'result',
+         success: false,
+         error: error,
+         info: info
+      });
+   }`,
+   opReturn: `function (value=null) {
+      $.send({
+         type: 'result',
+         success: true,
+         value: value
+      });
    }`,
 };

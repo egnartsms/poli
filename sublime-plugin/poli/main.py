@@ -2,7 +2,8 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.listener import *
+from poli.view import *
+from poli.sublime import *
 
 
 def plugin_loaded():
@@ -11,5 +12,5 @@ def plugin_loaded():
 
 
 def plugin_unloaded():
-    comm.disconnect_if_connected()
+    comm.ensure_disconnected()
     print("Unloaded Poli")

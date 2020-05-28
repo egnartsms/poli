@@ -1,0 +1,18 @@
+[
+    {
+        "keys": ["e"],
+        "command": "poli_edit",
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["ctrl+enter"],
+        "command": "poli_commit_edit",
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": true}
+        ]
+    }
+]

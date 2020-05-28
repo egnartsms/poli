@@ -1,4 +1,4 @@
-import threading
+import json
 import websocket
 
 
@@ -15,16 +15,23 @@ class Communicator:
 
     def connect(self):
         assert not self.is_connected
-        self.ws = websocket.create_connection('ws://localhost:{port}/'.format(port=config.port))
 
-    def disconnect(self):
-        assert self.is_connected
-        self.ws.close()
-        self.ws = None
+        self.ws = websocket.create_connection(
+            'ws://localhost:{port}/'.format(port=config.port)
+        )
 
-    def disconnect_if_connected(self):
-        if self.is_connected:
-            self.disconnect()
+    def ensure_disconnected(self):
+        if self.ws is not None:
+            self.ws.close()
+            self.ws = None
+
+    def send_op(self, op, args):
+        self.ws.send(json.dumps({
+            'op': op,
+            'args': args
+        }))
+        res = self.ws.recv()
+        print("Got this:", res)
 
 
 comm = Communicator()
