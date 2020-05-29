@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+name: Poli Native (JS)
+file_extensions: ["poli.js"]
+scope: source.poli.js
+hidden: false
+
+contexts:
+  main:
+    - match: ^(\S+)\s+(::=)
+      captures:
+        1: entity.name.key.poli
+        2: punctuation.separator.poli
+      push: Packages/JavaScript/JavaScript.sublime-syntax
+      with_prototype:
+        - match: ^(?=\S+\s+::=)
+          pop: true
+    - match: ^\s*((//).*)$
+      captures:
+        1: comment.line
+        2: punctuation.definition.comment
+

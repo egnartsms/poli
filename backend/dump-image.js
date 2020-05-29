@@ -6,14 +6,12 @@ const Database = require('better-sqlite3');
 const IMAGE_PATH = "poli.image";
 const SRC_FOLDER = "poli";
 
-const INDENT = '   ';
-
 
 /**
  *  @param mdl: {id, name}
  */
 function dumpModule(db, mdl) {
-   let moduleStream = fs.createWriteStream(`${SRC_FOLDER}/${mdl['name']}.js`, {
+   let moduleStream = fs.createWriteStream(`${SRC_FOLDER}/${mdl['name']}.poli.js`, {
       mode: '664'
    });
 
@@ -22,21 +20,14 @@ function dumpModule(db, mdl) {
       .bind(mdl['id']);
 
    writingToStream(moduleStream, function* () {
-      yield `module.exports = {\n`;
-
       for (let {key, def} of stmt.iterate()) {
          let src = JSON.parse(def).src;
 
-         yield INDENT;
          yield key;
-         yield ': ';
-         yield '`';
-         yield src.replace(/(`|\$\{)/g, '\\$&');
-         yield '`';
-         yield ',\n';
+         yield ' ::= ';
+         yield src;
+         yield '\n';
       }
-
-      yield `};\n`;
    });
 }
 

@@ -5,6 +5,7 @@ const Database = require('better-sqlite3');
 
 const IMAGE_PATH = 'poli.image';
 const SCHEMA_PATH = 'schema.sql';
+const SRC_FOLDER = 'poli';
 
 
 function makeEmptyImage() {
@@ -25,9 +26,19 @@ function makeEmptyImage() {
 }
 
 
+function* poliModuleKeyVals(moduleName) {
+   const re = /^(?<key>[^\n]+?)\s*::=\s*(?<val>.+?)\s*(?=^[^\n]+?::=)/gms;
+
+   let str = fs.readFileSync(`./${SRC_FOLDER}/${moduleName}.poli.js`, 'utf8');
+
+   for (let {groups: {key, val}} of str.matchAll(re)) {
+      yield [key, val];
+   }
+}
+
+
 function main() {
    let db = makeEmptyImage();
-   let poli = require('./poli/main');
 
    let {lastInsertRowid: moduleId} = db
       .prepare(`insert into module(name) values (?)`)
@@ -36,10 +47,10 @@ function main() {
    let stmt = db.prepare(`insert into entry(module_id, key, def) values (?, ?, ?)`);
 
    db.transaction(() => {
-      for (let [key, src] of Object.entries(poli)) {
+      for (let [key, val] of poliModuleKeyVals('main')) {
          let def = {
             type: 'native',
-            src: src
+            src: val
          };
          stmt.run(moduleId, key, JSON.stringify(def));
       }
