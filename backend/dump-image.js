@@ -18,17 +18,17 @@ function dumpModule(db, mdl) {
    });
 
    let stmt = db
-      .prepare('select name, def from entry where module_id = ? order by ord asc')
+      .prepare('select key, def from entry where module_id = ? order by ord asc')
       .bind(mdl['id']);
 
    writingToStream(moduleStream, function* () {
       yield `module.exports = {\n`;
 
-      for (let {name, def} of stmt.iterate()) {
+      for (let {key, def} of stmt.iterate()) {
          let src = JSON.parse(def).src;
 
          yield INDENT;
-         yield name;
+         yield key;
          yield ': ';
          yield '`';
          yield src.replace(/(`|\$\{)/g, '\\$&');

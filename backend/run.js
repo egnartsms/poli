@@ -7,7 +7,7 @@ const IMAGE_PATH = 'poli.image';
 
 function main() {
    let db = new Database(IMAGE_PATH, {});
-   let entries = db.prepare(`select name, def from entry`).all();
+   let entries = db.prepare(`select key, def from entry`).all();
 
    let $_ = {
       require,
@@ -23,16 +23,16 @@ function main() {
 
    let $ = {};
 
-   for (let {name, def} of entries) {
+   for (let {key, def} of entries) {
       def = JSON.parse(def);
       if (def.type !== 'native') {
          throw new Error(`Unrecognized entry type: ${def.type}`);
       }
 
-      $d[$_.keys].push(name);
-      $d[name] = def;
+      $d[$_.keys].push(key);
+      $d[key] = def;
 
-      $[name] = moduleEval($_, $d, $, def.src);
+      $[key] = moduleEval($_, $d, $, def.src);
    }
 
    console.log("_init(db)");

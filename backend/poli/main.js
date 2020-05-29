@@ -1,7 +1,7 @@
 module.exports = {
    WebSocket: `$_.require('ws')`,
    port: `8080`,
-   server: `[1,2,3]`,
+   server: `null`,
    ws: `null`,
    db: `null`,
    _init: `function (db) {

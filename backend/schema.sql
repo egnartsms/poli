@@ -6,7 +6,7 @@ create table module(
 create table entry(
     ord integer primary key,
     module_id integer not null references module(id),
-    name text not null,
+    key not null,
     def json not null,
-    unique (module_id, name)
+    unique (module_id, key)
 );

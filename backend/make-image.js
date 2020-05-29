@@ -33,7 +33,7 @@ function main() {
       .prepare(`insert into module(name) values (?)`)
       .run('main');
 
-   let stmt = db.prepare(`insert into entry(module_id, name, def) values (?, ?, ?)`);
+   let stmt = db.prepare(`insert into entry(module_id, key, def) values (?, ?, ?)`);
 
    db.transaction(() => {
       for (let [key, src] of Object.entries(poli)) {
