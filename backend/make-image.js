@@ -27,12 +27,21 @@ function makeEmptyImage() {
 
 
 function* poliModuleKeyVals(moduleName) {
-   const re = /^(?<key>[^\n]+?)\s*::=\s*(?<val>.+?)\s*(?=^[^\n]+?::=)/gms;
+   const re = /^(.+?)\s*::=/gm;
 
    let str = fs.readFileSync(`./${SRC_FOLDER}/${moduleName}.poli.js`, 'utf8');
+   let prev_i = null, prev_key = null;
 
-   for (let {groups: {key, val}} of str.matchAll(re)) {
-      yield [key, val];
+   for (let {0: whole, 1: key, index} of str.matchAll(re)) {
+      if (prev_key !== null) {
+         yield [prev_key, str.slice(prev_i, index).trim()];
+      }
+      prev_i = index + whole.length;
+      prev_key = key;
+   }
+
+   if (prev_key !== null) {
+      yield [prev_key, str.slice(prev_i).trim()];
    }
 }
 
