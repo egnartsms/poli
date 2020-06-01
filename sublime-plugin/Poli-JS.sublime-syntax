@@ -7,13 +7,13 @@ hidden: false
 
 contexts:
   main:
-    - match: ^(\S+)\s+(::=)
+    - match: ^(\S+)\s*(::=)\s*
       captures:
         1: entity.name.key.poli
         2: punctuation.separator.poli
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
-        - match: ^(?=\S+\s+::=)
+        - match: ^(?=\S+\s*::=)
           pop: true
     - match: ^\s*((//).*)$
       captures:

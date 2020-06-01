@@ -12,7 +12,7 @@ __all__ = ['PoliViewListener']
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        return False
+        # return False
         return is_view_poli(view_by_settings(settings))
 
     def on_load(self):

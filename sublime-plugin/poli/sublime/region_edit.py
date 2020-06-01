@@ -16,10 +16,11 @@ CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
 
 class RegEdit:
-    def __init__(self, view, get_edit_region, set_edit_region):
+    def __init__(self, view, get_edit_region, set_edit_region, del_edit_region):
         self.view = view
         self.get_edit_region = partial(get_edit_region, view)
         self.set_edit_region = partial(set_edit_region, view)
+        self.del_edit_region = partial(del_edit_region, view)
         
         self.reset()
 
@@ -155,12 +156,12 @@ class RegEdit:
 regedit_for = ViewKeyed()
 
 
-def start_region_editing(view, region, get_edit_region, set_edit_region):
+def start_region_editing(view, region, get_edit_region, set_edit_region, del_edit_region):
     assert not is_region_editing(view)
 
     set_edit_region(view, region)
 
-    regedit_for[view] = RegEdit(view, get_edit_region, set_edit_region)
+    regedit_for[view] = RegEdit(view, get_edit_region, set_edit_region, del_edit_region)
     regedit_for[view].set_read_only()
 
 
@@ -170,7 +171,9 @@ def is_region_editing(view):
 
 def stop_region_editing(view, read_only):
     if is_region_editing(view):
+        regedit = regedit_for[view]
         del regedit_for[view]
+        regedit.del_edit_region()
         view.set_read_only(read_only)
 
 

@@ -16,14 +16,16 @@ function dumpModule(db, mdl) {
    });
 
    let stmt = db
-      .prepare('select key, def from entry where module_id = ? order by ord asc')
+      .prepare('select name, def from entry where module_id = ? order by ord asc')
       .bind(mdl['id']);
 
    writingToStream(moduleStream, function* () {
-      for (let {key, def} of stmt.iterate()) {
+      for (let {name, def} of stmt.iterate()) {
          let src = JSON.parse(def).src;
 
-         yield key;
+         // console.log(typeof src, src);
+
+         yield name;
          yield ' ::= ';
          yield src;
          yield '\n';

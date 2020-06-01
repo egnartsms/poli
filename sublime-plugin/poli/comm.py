@@ -1,8 +1,8 @@
 import json
+import poli.config as config
 import websocket
 
-
-import poli.config as config
+from poli.exc import make_backend_error
 
 
 class Communicator:
@@ -13,11 +13,11 @@ class Communicator:
     def is_connected(self):
         return self.ws is not None
 
-    def connect(self):
-        assert not self.is_connected
-
+    def reconnect(self):
+        self.ensure_disconnected()
         self.ws = websocket.create_connection(
-            'ws://localhost:{port}/'.format(port=config.port)
+            'ws://localhost:{port}/'.format(port=config.port),
+            timeout=config.socket_timeout
         )
 
     def ensure_disconnected(self):
@@ -30,8 +30,24 @@ class Communicator:
             'op': op,
             'args': args
         }))
-        res = self.ws.recv()
-        print("Got this:", res)
+
+        res = json.loads(self.ws.recv())
+
+        if res['success']:
+            return res['result']
+        else:
+            raise make_backend_error(res['error'], res['info'])
+
+    def get_defn(self, name):
+        return self.send_op('getDefinition', {
+            'name': name
+        })
+
+    def edit(self, name, new_defn):
+        return self.send_op('edit', {
+            'name': name,
+            'newDefn': new_defn
+        })
 
 
 comm = Communicator()

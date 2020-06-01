@@ -1,10 +1,26 @@
 [
     {
+        "keys": ["s"],
+        "command": "poli_select",
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
         "keys": ["e"],
         "command": "poli_edit",
         "context": [
             {"key": "poli_view"},
             {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["escape"],
+        "command": "poli_cancel_edit",
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": true}
         ]
     },
     {

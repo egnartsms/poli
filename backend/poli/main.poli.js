@@ -1,4 +1,5 @@
 WebSocket ::= $_.require('ws')
+irrelevant ::= null
 port ::= 8080
 server ::= null
 ws ::= null
@@ -32,44 +33,53 @@ _init ::= function (db) {
       });
 }
 handleOperation ::= function (op) {
-   console.log("Got this operation:", op);
-
    try {
       $.opHandlers[op['op']].call(null, op['args']);
    }
    catch (e) {
-      $.opExc('generic', e.stack);
+      console.error(e);
+      $.opExc('generic', {'stack': e.stack});
    }
 }
-opHandlers ::= {
-   edit: function ({key, newSrc}) {
-      newSrc = eval(newSrc);
-      $[key] = $_.moduleEval(newSrc);
+opHandlers ::= ({
+   edit: function ({name, newDefn}) {
+      $[name] = $_.moduleEval(newDefn);
+
       let newDef = {
          type: 'native',
-         src: newSrc
+         src: newDefn
       };
+
       $.db
-         .prepare('update entry set def = :def where name = :key')
+         .prepare('update entry set def = :def where name = :name')
          .run({
-            key: key,
+            name: name,
             def: JSON.stringify(newDef)
          });
-      $d[key] = newDef;
 
-      console.log("newDef", newDef);
+      $d[name] = newDef;
 
       $.opReturn();
    },
-}
+
+   getDefinition: function ({name}) {
+      $.opReturn($d[name].src);
+   }
+
+})
 send ::= function (msg) {
    $.ws.send(JSON.stringify(msg));
 }
 opExc ::= function (error, info) {
    $.send({
-      type: 'result',
       success: false,
       error: error,
       info: info
+   });
+}
+opReturn ::= function (result=null) {
+   $.send({
+      success: true,
+      result: result
    });
 }

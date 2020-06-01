@@ -1,0 +1,6 @@
+[
+    {
+        "caption": "Poli: reconnect to server",
+        "command": "poli_reconnect"
+    }
+]

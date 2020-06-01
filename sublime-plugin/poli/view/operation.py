@@ -9,24 +9,34 @@ def is_view_poli(view):
     return filename and filename.startswith(backend_root)
 
 
-def object_location(view, reg_or_pt):
-    keys = view.find_by_selector('meta.object-literal.key')
-    values = view.find_by_selector('string.template')
+def module_entry_at(view, reg_or_pt):
+    names = view.find_by_selector('entity.name.key.poli')
+    defs = view.find_by_selector('source.js')
 
-    if len(keys) != len(values):
-        sublime.error_message("Object keys and values don't match")
+    if len(names) != len(defs):
+        sublime.error_message("Module names and definitions don't match")
         raise RuntimeError
 
-    for key, val in zip(keys, values):
-        entry = key.cover(val)
-        if entry.contains(reg_or_pt):
+    if isinstance(reg_or_pt, sublime.Region):
+        x_a, x_b = reg_or_pt.begin(), reg_or_pt.end()
+    else:
+        x_a = x_b = reg_or_pt
+
+    for name, defn in zip(names, defs):
+        if name.begin() <= x_a and x_b < defn.end():
+            defn = adjust_defn_region(defn)
             return FreeObj(
-                key=key,
-                val=val,
-                entry=entry,
+                name=name,
+                defn=defn,
+                entry=name.cover(defn)
             )
     else:
         return None
+
+
+def adjust_defn_region(defn):
+    """Exclude the trailing \n from defn region as it does not count"""
+    return sublime.Region(defn.begin(), defn.end() - 1)
 
 
 def set_edit_region(view, reg):
@@ -37,3 +47,7 @@ def set_edit_region(view, reg):
 def get_edit_region(view):
     [reg] = view.get_regions('edit')
     return reg
+
+
+def del_edit_region(view):
+    view.erase_regions('edit')
