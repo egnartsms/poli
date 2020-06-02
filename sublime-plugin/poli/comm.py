@@ -61,5 +61,11 @@ class Communicator:
             'newDefn': new_defn
         })
 
+    def rename(self, old_name, new_name):
+        return self._send_op('rename', {
+            'oldName': old_name,
+            'newName': new_name
+        })
+
 
 comm = Communicator()

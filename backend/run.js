@@ -17,11 +17,10 @@ function main() {
       }
    };
 
-   let $d = {
-      [$_.names]: []
-   };
+   let $d = Object.create(null);
+   $d[$_.names] = [];
 
-   let $ = {};
+   let $ = Object.create(null);
 
    for (let {name, def} of entries) {
       def = JSON.parse(def);

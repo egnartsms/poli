@@ -1,5 +1,5 @@
 WebSocket ::= $_.require('ws')
-irrelevant ::= null
+Franchesca ::= 200
 port ::= 8080
 server ::= null
 ws ::= null
@@ -64,6 +64,37 @@ opHandlers ::= ({
 
    getDefinition: function ({name}) {
       $.opReturn($d[name].src);
+   },
+
+   rename: function ({oldName, newName}) {
+      if (!(oldName in $d)) {
+         throw new Error(`Did not find an entry named "${oldName}"`);
+      }
+      if (newName in $d) {
+         throw new Error(`Cannot rename to "${newName}" because such an entry already exists`);
+      }
+
+      let {changes} = $.db
+         .prepare('update entry set name = :new_name where name = :old_name')
+         .run({
+            new_name: newName,
+            old_name: oldName
+         });
+
+      if (changes !== 1) {
+         throw new Error(`Internal error: entry named "${oldName}" is not in the DB`);
+      }
+
+      let idx = $d[$_.names].indexOf(oldName);
+      $d[$_.names][idx] = newName;
+
+      $d[newName] = $d[oldName];
+      delete $d[oldName];
+
+      $[newName] = $[oldName];
+      delete $[oldName];
+
+      $.opReturn();
    }
 
 })

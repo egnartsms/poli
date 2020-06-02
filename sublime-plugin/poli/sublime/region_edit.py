@@ -7,6 +7,7 @@ from functools import partial
 from poli.sublime.misc import ViewKeyed
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import read_only_set_to
+from poli.sublime.view_assoc import make_view_assoc
 
 
 __all__ = ['RegEditListener']
@@ -16,11 +17,16 @@ CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
 
 class RegEdit:
-    def __init__(self, view, get_edit_region, set_edit_region, del_edit_region):
+    """Region edit context.
+
+    :param edit_region: an object that's used like this:
+       reg = edit_region[view]
+       edit_region[view] = reg
+       del edit_region[view]
+    """
+    def __init__(self, view, edit_region):
         self.view = view
-        self.get_edit_region = partial(get_edit_region, view)
-        self.set_edit_region = partial(set_edit_region, view)
-        self.del_edit_region = partial(del_edit_region, view)
+        self.edit_region = edit_region
         
         self.reset()
 
@@ -33,7 +39,7 @@ class RegEdit:
         self.pre, self.post, self.rowcol = self._get_state()
 
     def _get_state(self):
-        reg = self.get_edit_region()
+        reg = self.edit_region[self.view]
         return reg.a, self.view.size() - reg.b, self.view.rowcol(reg.a)
 
     def _is_after_insertion_at_reg_begin(self, delta):
@@ -61,7 +67,7 @@ class RegEdit:
             return False
 
         pt = sel.a
-        reg = self.get_edit_region()
+        reg = self.edit_region[self.view]
         
         if pt == reg.a:
             return True
@@ -97,7 +103,7 @@ class RegEdit:
             return False
 
         pt = sel.a
-        reg = self.get_edit_region()
+        reg = self.edit_region[self.view]
 
         if pt == reg.b + delta:
             return True
@@ -125,14 +131,14 @@ class RegEdit:
             elif pre > self.pre and post == self.post and \
                     self._is_after_insertion_at_reg_begin(pre - self.pre):
                 delta = pre - self.pre
-                reg = self.get_edit_region()
-                self.set_edit_region(sublime.Region(reg.a - delta, reg.b))
+                reg = self.edit_region[self.view]
+                self.edit_region[self.view] = sublime.Region(reg.a - delta, reg.b)
                 break
             elif post > self.post and pre == self.pre and \
                     self._is_after_insertion_at_reg_end(post - self.post):
                 delta = post - self.post
-                reg = self.get_edit_region()
-                self.set_edit_region(sublime.Region(reg.a, reg.b + delta))
+                reg = self.edit_region[self.view]
+                self.edit_region[self.view] = sublime.Region(reg.a, reg.b + delta)
                 break
 
             with read_only_set_to(self.view, False):
@@ -141,7 +147,7 @@ class RegEdit:
             sublime.status_message("Cannot edit outside the editing region")
 
     def is_selection_within(self):
-        ereg = self.get_edit_region()
+        ereg = self.edit_region[self.view]
         return all(ereg.contains(r) for r in self.view.sel())
     
     def set_read_only(self):
@@ -153,34 +159,33 @@ class RegEdit:
         self.view.set_read_only(not self.is_selection_within())
 
 
-regedit_for = ViewKeyed()
-
-
-def start_region_editing(view, region, get_edit_region, set_edit_region, del_edit_region):
-    assert not is_region_editing(view)
-
-    set_edit_region(view, region)
-
-    regedit_for[view] = RegEdit(view, get_edit_region, set_edit_region, del_edit_region)
-    regedit_for[view].set_read_only()
+regedit_for = make_view_assoc()
 
 
 def is_region_editing(view):
     return view in regedit_for
 
 
+def start_region_editing(view, region, edit_region):
+    assert not is_region_editing(view)
+
+    edit_region[view] = region
+    regedit = RegEdit(view, edit_region)
+    regedit.set_read_only()
+    regedit_for[view] = regedit
+
+
 def stop_region_editing(view, read_only):
     if is_region_editing(view):
-        regedit = regedit_for[view]
+        del regedit_for[view].edit_region[view]
         del regedit_for[view]
-        regedit.del_edit_region()
         view.set_read_only(read_only)
 
 
 class RegEditListener(sublime_plugin.EventListener):
     """Enforce region editing to any view that has been assigned a RegEdit
 
-    Note: how much dies this dict lookup for every view impact performance?
+    Note: how much does this impact performance?  Dict lookup happens for every view.
     """
     def on_modified(self, view):
         if is_region_editing(view):
@@ -189,10 +194,6 @@ class RegEditListener(sublime_plugin.EventListener):
     def on_selection_modified(self, view):
         if is_region_editing(view):
             regedit_for[view].set_read_only()
-
-    def on_close(self, view):
-        if is_region_editing(view):
-            del regedit_for[view]
 
     def on_query_context(self, view, key, operator, operand, match_all):
         if key == 'poli_regedit':

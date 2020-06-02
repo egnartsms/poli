@@ -14,8 +14,8 @@ __all__ = ['PoliViewListener']
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        # return False
-        return is_view_poli(view_by_settings(settings))
+        view = view_by_settings(settings)
+        return view is not None and is_view_poli(view)
 
     def on_load(self):
         self.view.set_scratch(True)
