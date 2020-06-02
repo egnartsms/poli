@@ -1,9 +1,11 @@
 import sublime
 import sublime_plugin
 
+from poli.comm import comm
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import view_by_settings
 from poli.view.operation import is_view_poli
+from poli.view.operation import set_connected_status
 
 
 __all__ = ['PoliViewListener']
@@ -24,3 +26,6 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
             return query_context_matches(True, operator, operand)
 
         return False
+
+    def on_activated(self):
+        set_connected_status(self.view, comm.is_connected)

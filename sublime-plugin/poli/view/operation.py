@@ -51,3 +51,16 @@ def get_edit_region(view):
 
 def del_edit_region(view):
     view.erase_regions('edit')
+
+
+def maybe_set_connected_status_in_active_view(is_connected):
+    view = sublime.active_window().active_view()
+    if is_view_poli(view):
+        set_connected_status(view, is_connected)
+
+
+def set_connected_status(view, is_connected):
+    view.set_status(
+        'is_connected',
+        "Connected" if is_connected else "Disconnected"
+    )

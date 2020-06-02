@@ -6,32 +6,44 @@ from poli.exc import make_backend_error
 
 
 class Communicator:
+    """An entity that knows how to talk to NodeJS server
+
+    NOTE: on_status_changed can fire when actual status is not actuall changed.
+    Be prepared.
+    """
     def __init__(self):
-        self.ws = None
+        self.ws = websocket.WebSocket()
+        self.ws.timeout = config.ws_timeout
+        self.on_status_changed = None
+
+    def _fire_status_changed(self):
+        if self.on_status_changed is not None:
+            self.on_status_changed(self.is_connected)
 
     @property
     def is_connected(self):
-        return self.ws is not None
+        return self.ws.connected
 
     def reconnect(self):
-        self.ensure_disconnected()
-        self.ws = websocket.create_connection(
-            'ws://localhost:{port}/'.format(port=config.port),
-            timeout=config.socket_timeout
-        )
+        self.disconnect()
+        self.ws.connect('ws://localhost:{port}/'.format(port=config.port))
+        self._fire_status_changed()
 
-    def ensure_disconnected(self):
-        if self.ws is not None:
-            self.ws.close()
-            self.ws = None
+    def disconnect(self):
+        self.ws.close()
+        self._fire_status_changed()
 
-    def send_op(self, op, args):
-        self.ws.send(json.dumps({
-            'op': op,
-            'args': args
-        }))
-
-        res = json.loads(self.ws.recv())
+    def _send_op(self, op, args):
+        try:
+            self.ws.send(json.dumps({
+                'op': op,
+                'args': args
+            }))
+            res = json.loads(self.ws.recv())
+        except Exception as exc:
+            self.ws.shutdown()
+            self._fire_status_changed()
+            raise
 
         if res['success']:
             return res['result']
@@ -39,12 +51,12 @@ class Communicator:
             raise make_backend_error(res['error'], res['info'])
 
     def get_defn(self, name):
-        return self.send_op('getDefinition', {
+        return self._send_op('getDefinition', {
             'name': name
         })
 
     def edit(self, name, new_defn):
-        return self.send_op('edit', {
+        return self._send_op('edit', {
             'name': name,
             'newDefn': new_defn
         })
