@@ -2,6 +2,7 @@ import sublime
 
 from poli.config import backend_root
 from poli.sublime.view_assoc import make_view_assoc
+from poli.sublime.regedit import EditRegion as BaseEditRegion
 
 
 def is_view_poli(view):
@@ -65,17 +66,10 @@ def reg_plus_trailing_nl(reg):
     return sublime.Region(reg.begin(), reg.end() + 1)
 
 
-class EditRegion:
-    def __getitem__(self, view):
-        [reg] = view.get_regions('edit')
-        return reg
-
+class EditRegion(BaseEditRegion):
     def __setitem__(self, view, reg):
-        view.add_regions('edit', [reg], 'region.bluish poli.edit', '',
+        view.add_regions(self.KEY, [reg], 'region.bluish poli.edit', '',
                          sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
-
-    def __delitem__(self, view):
-        view.erase_regions('edit')
 
 
 edit_region = EditRegion()

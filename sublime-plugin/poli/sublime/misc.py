@@ -31,3 +31,27 @@ def read_only_set_to(view, new_status):
     view.set_read_only(new_status)
     yield
     view.set_read_only(old_status)
+
+
+class RegionType:
+    @property
+    def KEY(self):
+        raise NotImplementedError
+
+    def __getitem__(self, view):
+        [reg] = view.get_regions(self.KEY)
+        return reg
+
+    def __setitem__(self, view, reg):
+        view.add_regions(self.KEY, [reg], '', '', sublime.HIDDEN)
+
+    def __delitem__(self, view):
+        view.erase_regions(self.KEY)
+
+
+def end_strip_region(view, reg):
+    pt = reg.end() - 1
+    while pt >= reg.begin() and view.substr(pt).isspace():
+        pt -= 1
+
+    return sublime.Region(reg.begin(), pt + 1)

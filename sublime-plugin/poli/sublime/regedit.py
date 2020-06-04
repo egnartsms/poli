@@ -4,6 +4,7 @@ import weakref
 
 from functools import partial
 
+from poli.sublime.misc import RegionType
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.view_assoc import make_view_assoc
@@ -26,18 +27,11 @@ class RegEdit:
     def __init__(self, view, edit_region):
         self.view = view
         self.edit_region = edit_region
-        
-        self.reset()
-
-    def reset(self):
-        """Remember current state of editing region.
-
-        This can be called to re-establish a helper after some outside changes to the
-        view.        
-        """
         self.pre, self.post, self.rowcol = self._get_state()
 
     def _get_state(self):
+        """Get current state of editing region"""
+
         reg = self.edit_region[self.view]
         return reg.a, self.view.size() - reg.b, self.view.rowcol(reg.a)
 
@@ -160,25 +154,32 @@ class RegEdit:
 
 regedit_for = make_view_assoc()
 
+    
+class EditRegion(RegionType):
+    KEY = 'edit'
 
-def is_region_editing(view):
+
+def is_active_in(view):
     return view in regedit_for
 
 
-def start_region_editing(view, region, edit_region):
-    assert not is_region_editing(view)
-
+def establish(view, region, edit_region=EditRegion()):
     edit_region[view] = region
     regedit = RegEdit(view, edit_region)
     regedit.set_read_only()
     regedit_for[view] = regedit
 
 
-def stop_region_editing(view, read_only):
-    if is_region_editing(view):
-        del regedit_for[view].edit_region[view]
-        del regedit_for[view]
-        view.set_read_only(read_only)
+def discard(view, read_only):
+    assert is_active_in(view)
+
+    del regedit_for[view].edit_region[view]
+    del regedit_for[view]
+    view.set_read_only(read_only)
+
+
+def editing_region(view):
+    return regedit_for[view].edit_region[view]
 
 
 class RegEditListener(sublime_plugin.EventListener):
@@ -187,15 +188,15 @@ class RegEditListener(sublime_plugin.EventListener):
     Note: how much does this impact performance?  Dict lookup happens for every view.
     """
     def on_modified(self, view):
-        if is_region_editing(view):
+        if is_active_in(view):
             regedit_for[view].undo_modifications_outside_edit_region()
 
     def on_selection_modified(self, view):
-        if is_region_editing(view):
+        if is_active_in(view):
             regedit_for[view].set_read_only()
 
     def on_query_context(self, view, key, operator, operand, match_all):
         if key == 'poli_regedit':
-            return query_context_matches(is_region_editing(view), operator, operand)
+            return query_context_matches(is_active_in(view), operator, operand)
 
         return False

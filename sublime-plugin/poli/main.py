@@ -1,5 +1,6 @@
 from poli.sublime import *
 from poli.view import *
+from poli.repl import *
 
 import sublime
 import sublime_plugin

@@ -1,8 +1,8 @@
 %YAML 1.2
 ---
-name: Poli Native (JS)
+name: Poli Native
 file_extensions: ["poli.js"]
-scope: source.poli.js
+scope: source.poli
 hidden: false
 
 contexts:

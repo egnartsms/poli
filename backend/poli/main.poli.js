@@ -169,6 +169,11 @@ opHandlers ::= ({
       $m.name2id[name] = id;
 
       $.opRet();
+   },
+
+   eval: function ({code}) {
+      let res = $_.moduleEval($m, $, code);
+      $.opRet($.serialize(res));
    }
 
 })
@@ -187,4 +192,72 @@ opRet ::= function (result=null) {
       success: true,
       result: result
    });
+}
+serialize ::= function (obj) {
+   const inds = '   ';
+
+   function* serializeObject(object, indent) {
+      let entries = Object.entries(object);
+
+      if (entries.length === 0) {
+         yield '{}';
+         return;
+      }
+
+      yield '{\n';
+      for (let [key, val] of entries) {
+         yield inds.repeat(indent + 1);
+         yield key;
+         yield ': ';
+         yield* serialize(val, indent + 1);
+         yield ',\n';
+      }
+      yield inds.repeat(indent);
+      yield '}';
+   }
+
+   function* serializeArray(array, indent) {
+      if (array.length === 0) {
+         yield '[]';
+         return;
+      }
+
+      yield '[\n';
+      for (let obj of array) {
+         yield inds.repeat(indent + 1);
+         yield* serialize(obj, indent + 1);
+         yield ',\n'
+      }
+      yield inds.repeat(indent);
+      yield ']';
+   }
+
+   function* serializeFunc(func, indent) {
+      yield 'func () {}';
+   }
+
+   function* serialize(obj, indent) {
+      if (typeof obj === 'object') {
+         if (obj === null) {
+            yield String(obj);
+         }
+         else if (obj instanceof Array) {
+            yield* serializeArray(obj, indent);
+         }
+         else {
+            yield* serializeObject(obj, indent);
+         }
+      }
+      else if (typeof obj === 'function') {
+         yield* serializeFunc(obj, indent);
+      }
+      else if (typeof obj === 'string') {
+         yield JSON.stringify(obj);
+      }
+      else {
+         yield String(obj);
+      }
+   }
+
+   return Array.from(serialize(obj, 0)).join('');
 }

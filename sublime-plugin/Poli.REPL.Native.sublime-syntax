@@ -1,0 +1,27 @@
+%YAML 1.2
+---
+name: Poli REPL Native
+hidden: true
+scope: source.poli
+
+contexts:
+  main:
+    - match: "^[[:alnum:]]+?> "
+      scope: punctuation.separator.poli.repl.prompt
+      push: Packages/JavaScript/JavaScript.sublime-syntax
+      with_prototype:
+        - match: ^(?=[<!] )
+          pop: true
+    - match: "^< "
+      scope: punctuation.separator.poli.repl.result.value
+      push: Packages/JavaScript/JavaScript.sublime-syntax
+      with_prototype:
+        - match: ^(?=[[:alnum:]]+?> )
+          pop: true
+    - match: "^! "
+      scope: punctuation.separator.poli.repl.result.exc
+      push: skip
+
+  skip:
+    - match: ^(?=[[:alnum:]]+?> )
+      pop: true

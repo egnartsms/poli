@@ -3,9 +3,7 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.sublime.region_edit import is_region_editing
-from poli.sublime.region_edit import start_region_editing
-from poli.sublime.region_edit import stop_region_editing
+from poli.sublime import regedit
 from poli.sublime.selection import set_selection
 from poli.view.operation import EditContext
 from poli.view.operation import edit_cxt_for
@@ -19,7 +17,7 @@ __all__ = ['PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'Pol
 
 class PoliSelect(sublime_plugin.TextCommand):
     def run(self, edit):
-        if is_region_editing(self.view):
+        if regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         if len(self.view.sel()) != 1:
@@ -36,7 +34,7 @@ class PoliSelect(sublime_plugin.TextCommand):
 
 class PoliEdit(sublime_plugin.TextCommand):
     def run(self, edit):
-        if is_region_editing(self.view):
+        if regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         if len(self.view.sel()) != 1:
@@ -50,7 +48,7 @@ class PoliEdit(sublime_plugin.TextCommand):
             sublime.status_message("Cannot determine what to edit")
             return
 
-        start_region_editing(self.view, loc.reg_defn, edit_region)
+        regedit.establish(self.view, loc.reg_defn, edit_region)
         edit_cxt_for[self.view] = EditContext(
             name=self.view.substr(loc.reg_name),
             target='defn'
@@ -62,7 +60,7 @@ class PoliEdit(sublime_plugin.TextCommand):
 
 class PoliRename(sublime_plugin.TextCommand):
     def run(self, edit):
-        if is_region_editing(self.view):
+        if regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         if len(self.view.sel()) != 1:
@@ -75,7 +73,7 @@ class PoliRename(sublime_plugin.TextCommand):
             sublime.status_message("Cannot determine what to rename")
             return
 
-        start_region_editing(self.view, loc.reg_name, edit_region)
+        regedit.establish(self.view, loc.reg_name, edit_region)
         edit_cxt_for[self.view] = EditContext(
             name=self.view.substr(loc.reg_name),
             target='name'
@@ -90,7 +88,7 @@ class PoliAdd(sublime_plugin.TextCommand):
         if before_after not in ('before', 'after'):
             raise RuntimeError
 
-        if is_region_editing(self.view):
+        if regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         if len(self.view.sel()) != 1:
@@ -115,8 +113,8 @@ class PoliAdd(sublime_plugin.TextCommand):
         reg_stub = sublime.Region(insert_pos, insert_pos + len(stub) - 1)
         set_selection(self.view, to=reg_stub)
 
-        start_region_editing(self.view, reg_stub, edit_region)
-
+        regedit.establish(self.view, reg_stub, edit_region)
+        
         edit_cxt_for[self.view] = EditContext(
             name=name,
             target='entry',
@@ -126,7 +124,7 @@ class PoliAdd(sublime_plugin.TextCommand):
 
 class PoliCancel(sublime_plugin.TextCommand):
     def run(self, edit):
-        if not is_region_editing(self.view):
+        if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         cxt = edit_cxt_for[self.view]
@@ -142,12 +140,12 @@ class PoliCancel(sublime_plugin.TextCommand):
             self.view.erase(edit, reg)
 
         del edit_cxt_for[self.view]
-        stop_region_editing(self.view, read_only=True)
+        regedit.discard(self.view, read_only=True)
 
 
 class PoliCommit(sublime_plugin.TextCommand):
     def run(self, edit):
-        if not is_region_editing(self.view):
+        if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
 
         cxt = edit_cxt_for[self.view]
@@ -183,6 +181,6 @@ class PoliCommit(sublime_plugin.TextCommand):
                 comm.add(name=mtch.group(1), defn=mtch.group(2), after=cxt.name)
 
         del edit_cxt_for[self.view]
-        stop_region_editing(self.view, read_only=True)
+        regedit.discard(self.view, read_only=True)
 
         self.view.run_command('save')

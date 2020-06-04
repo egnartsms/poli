@@ -8,7 +8,7 @@ from poli.exc import make_backend_error
 class Communicator:
     """An entity that knows how to talk to NodeJS server
 
-    NOTE: on_status_changed can fire when actual status is not actuall changed.
+    NOTE: on_status_changed can fire when actual status is not actually changed.
     Be prepared.
     """
     def __init__(self):
@@ -73,6 +73,11 @@ class Communicator:
             'defn': defn,
             'after': after,
             'before': before
+        })
+
+    def eval(self, code):
+        return self._send_op('eval', {
+            'code': code
         })
 
 
