@@ -68,5 +68,25 @@
                 "operand": "repl/js"
             }
         ]
+    },
+    {
+        "keys": ["ctrl+up"],
+        "command": "poli_repl_prev",
+        "context": [
+            {
+                "key": "poli_kind",
+                "operand": "repl/js"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+down"],
+        "command": "poli_repl_next",
+        "context": [
+            {
+                "key": "poli_kind",
+                "operand": "repl/js"
+            }
+        ]
     }
 ]
