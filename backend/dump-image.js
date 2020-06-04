@@ -1,6 +1,7 @@
 /// SQLite --> ./poli/**/*.js 
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const {orderByPrecedence} = require('./common');
 
 
 const IMAGE_PATH = "poli.image";
@@ -15,12 +16,15 @@ function dumpModule(db, mdl) {
       mode: '664'
    });
 
-   let stmt = db
-      .prepare('select name, def from entry where module_id = ? order by ord asc')
-      .bind(mdl['id']);
+   let data = orderByPrecedence(
+      db
+        .prepare(`select id, prev_id, name, def from entry where module_id = ?`)
+        .all(mdl['id']),
+      'id', 'prev_id'
+   );
 
    writingToStream(moduleStream, function* () {
-      for (let {name, def} of stmt.iterate()) {
+      for (let {name, def} of data) {
          let src = JSON.parse(def).src;
 
          // console.log(typeof src, src);

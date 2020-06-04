@@ -1,11 +1,8 @@
 WebSocket ::= $_.require('ws')
-irrelevant ::= null
 port ::= 8080
 server ::= null
 ws ::= null
-db ::= null
-_init ::= function (db) {
-   $.db = db;
+_init ::= function () {
    $.server = new $.WebSocket.Server({port: $.port});
    $.server
       .on('error', function (error) {
@@ -42,28 +39,136 @@ handleOperation ::= function (op) {
    }
 }
 opHandlers ::= ({
+   getDefinition: function ({name}) {
+      $.opRet($m.defs[name].src);
+   },
+
    edit: function ({name, newDefn}) {
-      $[name] = $_.moduleEval(newDefn);
+      $[name] = $_.moduleEval($m, $, newDefn);
 
       let newDef = {
          type: 'native',
          src: newDefn
       };
 
-      $.db
+      $_.db
          .prepare('update entry set def = :def where name = :name')
          .run({
             name: name,
             def: JSON.stringify(newDef)
          });
 
-      $d[name] = newDef;
+      $m.defs[name] = newDef;
 
-      $.opReturn();
+      $.opRet();
    },
 
-   getDefinition: function ({name}) {
-      $.opReturn($d[name].src);
+   rename: function ({oldName, newName}) {
+      if (!(oldName in $m.defs)) {
+         throw new Error(`Did not find an entry named "${oldName}"`);
+      }
+      if (newName in $m.defs) {
+         throw new Error(`Cannot rename to "${newName}" because such an entry already exists`);
+      }
+
+      let {changes} = $_.db
+         .prepare('update entry set name = :new_name where name = :old_name')
+         .run({
+            new_name: newName,
+            old_name: oldName
+         });
+
+      if (changes !== 1) {
+         throw new Error(`Internal error: entry named "${oldName}" is not in the DB`);
+      }
+
+      $m.names[$m.names.indexOf(oldName)] = newName;
+
+      $m.defs[newName] = $m.defs[oldName];
+      delete $m.defs[oldName];
+
+      $m.name2id[newName] = $m.name2id[oldName];
+      delete $m.name2id[oldName];
+
+      $[newName] = $[oldName];
+      delete $[oldName];
+
+      $.opRet();
+   },
+
+   add: function ({after, before, name, defn}) {
+      function notFound(name) {
+         throw new Error(`Not found an entry "${name}"`);
+      }
+
+      if (name in $m.defs) {
+         throw new Error(`An entry named "${name}" already exists`);
+      }
+
+      let idx, prevId, nextId;
+
+      if (after) {
+         idx = $m.names.indexOf(after);
+         if (idx === -1) {
+            notFound(after);
+         }
+         idx += 1;
+         prevId = $m.name2id[after];
+         if (idx < $m.names.length) {
+            nextId = $m.name2id[$m.names[idx]]
+         }
+         else {
+            nextId = null;
+         }
+      }
+      else if (before) {
+         idx = $m.names.indexOf(before);
+         if (idx === -1) {
+            notFound(before);
+         }
+         nextId = $m.name2id[before];
+         if (idx === 0) {
+            prevId = null;
+         }
+         else {
+            prevId = $m.name2id[$m.names[idx - 1]]
+         }
+      }
+      else {
+         throw new Error(`Misuse: neither "after" nor "before" specified`);
+      }
+
+      $[name] = $_.moduleEval($m, $, defn);
+
+      let def = {
+         type: 'native',
+         src: defn
+      };
+
+      let {lastInsertRowid: id} = $_.db
+         .prepare(`insert into entry(module_id, name, def, prev_id)
+                   values (:module_id, :name, :def, :prev_id)`)
+         .run({
+            module_id: 1,
+            name,
+            def: JSON.stringify(def),
+            prev_id: prevId
+         });
+
+      if (nextId !== null) {
+         $_.db
+            .prepare(`update entry set prev_id = :prev_id where id = :id`)
+            .run({
+               id: nextId,
+               prev_id: id
+            });         
+      }
+
+      $m.defs[name] = def;
+      $m.names.splice(idx, 0, name);
+      $m.name2id[name] = id;
+
+      $.opRet();
    }
 
 })
@@ -77,7 +182,7 @@ opExc ::= function (error, info) {
       info: info
    });
 }
-opReturn ::= function (result=null) {
+opRet ::= function (result=null) {
    $.send({
       success: true,
       result: result

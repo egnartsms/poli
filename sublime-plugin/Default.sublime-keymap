@@ -8,6 +8,14 @@
         ]
     },
     {
+        "keys": ["r"],
+        "command": "poli_rename",
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
         "keys": ["e"],
         "command": "poli_edit",
         "context": [
@@ -16,8 +24,26 @@
         ]
     },
     {
+        "keys": ["a"],
+        "command": "poli_add",
+        "args": {"before_after": "after"},
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["p"],
+        "command": "poli_add",
+        "args": {"before_after": "before"},
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
         "keys": ["escape"],
-        "command": "poli_cancel_edit",
+        "command": "poli_cancel",
         "context": [
             {"key": "poli_view"},
             {"key": "poli_regedit", "operand": true}
@@ -25,7 +51,7 @@
     },
     {
         "keys": ["ctrl+enter"],
-        "command": "poli_commit_edit",
+        "command": "poli_commit",
         "context": [
             {"key": "poli_view"},
             {"key": "poli_regedit", "operand": true}

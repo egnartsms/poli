@@ -1,11 +1,11 @@
 import contextlib
 import sublime
 
-from poli.common.misc import missing
+from poli.common.misc import first_or_none
 
 
 def view_by_settings(settings):
-    return next(
+    return first_or_none(
         view for view in all_views()
         if view.settings().settings_id == settings.settings_id
     )
@@ -31,29 +31,3 @@ def read_only_set_to(view, new_status):
     view.set_read_only(new_status)
     yield
     view.set_read_only(old_status)
-
-
-class ViewKeyed:
-    def __init__(self):
-        self._dict = {}
-
-    def __contains__(self, view):
-        return view.id() in self._dict
-
-    def __getitem__(self, view):
-        return self._dict[view.id()]
-
-    def __setitem__(self, view, value):
-        self._dict[view.id()] = value
-
-    def __delitem__(self, view):
-        del self._dict[view.id()]
-
-    def get(self, view):
-        return self._dict.get(view.id())
-
-    def pop(self, view, default=missing):
-        if default is missing:
-            return self._dict.pop(view.id())
-        else:
-            return self._dict.pop(view.id(), default)

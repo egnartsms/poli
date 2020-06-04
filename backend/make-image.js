@@ -53,15 +53,26 @@ function main() {
       .prepare(`insert into module(name) values (?)`)
       .run('main');
 
-   let stmt = db.prepare(`insert into entry(module_id, name, def) values (?, ?, ?)`);
+   let stmt = db.prepare(
+      `insert into entry(module_id, name, def, prev_id)
+       values (:module_id, :name, :def, :prev_id)`
+   );
 
    db.transaction(() => {
-      for (let [name, def] of poliModuleNamesDefs('main')) {
-         let defobj = {
+      let prevId = null;
+
+      for (let [name, src] of poliModuleNamesDefs('main')) {
+         let def = {
             type: 'native',
-            src: def
+            src: src
          };
-         stmt.run(moduleId, name, JSON.stringify(defobj));
+
+         ({lastInsertRowid: prevId} = stmt.run({
+            module_id: moduleId,
+            name: name,
+            def: JSON.stringify(def),
+            prev_id: prevId
+         }));
       }
    })();
 

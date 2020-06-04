@@ -4,9 +4,10 @@ create table module(
 );
 
 create table entry(
-    ord integer primary key,
+    id integer primary key,
     module_id integer not null references module(id),
     name not null,
     def json not null,
+    prev_id integer references entry(id),
     unique (module_id, name)
 );
