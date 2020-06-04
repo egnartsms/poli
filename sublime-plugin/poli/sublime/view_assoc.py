@@ -1,7 +1,5 @@
 import sublime_plugin
 
-from poli.sublime.misc import ViewKeyed
-
 
 __all__ = ['ViewAssocListener']
 

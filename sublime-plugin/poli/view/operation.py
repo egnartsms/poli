@@ -41,7 +41,7 @@ def entry_location_at(view, reg):
 
     for name, defn in zip(names, defs):
         if name.begin() <= reg.begin() and reg.end() < defn.end():
-            defn = adjust_defn_region(defn)
+            defn = reg_no_trailing_nl(defn)
             entry = name.cover(defn)
             return EntryLocation(
                 reg_name=name,
@@ -55,9 +55,14 @@ def entry_location_at(view, reg):
         return None
 
 
-def adjust_defn_region(defn):
-    """Exclude the trailing \n from defn region as it does not count"""
-    return sublime.Region(defn.begin(), defn.end() - 1)
+def reg_no_trailing_nl(reg):
+    """Exclude the trailing \n from region (don't check whether it's actually \n char)"""
+    return sublime.Region(reg.begin(), reg.end() - 1)
+
+
+def reg_plus_trailing_nl(reg):
+    """Include 1 more char (assumingly \n) in the end of the region"""
+    return sublime.Region(reg.begin(), reg.end() + 1)
 
 
 class EditRegion:
@@ -80,11 +85,20 @@ edit_cxt_for = make_view_assoc()
 
 
 class EditContext:
-    """What is being edited in a Poli view"""
+    """What is being edited in a Poli view
 
-    def __init__(self, name, is_editing_defn):
+    :attr name: 
+        if target == 'name', the old name;
+        if target == 'defn', the name of the definition being edited;
+        if target == 'entry', the name before or after which we want to add
+    :attr target: one of 'name', 'defn', 'entry'
+    :attr before_after: None, 'before' or 'after'
+    """
+
+    def __init__(self, name, target, before_after=None):
         self.name = name
-        self.is_editing_defn = is_editing_defn
+        self.target = target
+        self.before_after = before_after
 
 
 def maybe_set_connected_status_in_active_view(is_connected):

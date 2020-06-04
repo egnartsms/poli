@@ -67,5 +67,13 @@ class Communicator:
             'newName': new_name
         })
 
+    def add(self, name, defn, after=None, before=None):
+        return self._send_op('add', {
+            'name': name,
+            'defn': defn,
+            'after': after,
+            'before': before
+        })
+
 
 comm = Communicator()

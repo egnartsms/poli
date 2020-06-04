@@ -4,7 +4,6 @@ import weakref
 
 from functools import partial
 
-from poli.sublime.misc import ViewKeyed
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.view_assoc import make_view_assoc

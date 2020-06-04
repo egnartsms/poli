@@ -24,6 +24,24 @@
         ]
     },
     {
+        "keys": ["a"],
+        "command": "poli_add",
+        "args": {"before_after": "after"},
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["p"],
+        "command": "poli_add",
+        "args": {"before_after": "before"},
+        "context": [
+            {"key": "poli_view"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
         "keys": ["escape"],
         "command": "poli_cancel",
         "context": [
