@@ -2,6 +2,7 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
+from poli.exc import ReplEvalError
 from poli.repl.operation import insert_prompt
 from poli.repl.operation import make_repl_view
 from poli.sublime import regedit
@@ -9,7 +10,7 @@ from poli.sublime.misc import end_strip_region
 from poli.sublime.selection import set_selection
 
 
-__all__ = ['PoliReplOpen', 'PoliReplSend']
+__all__ = ['PoliReplOpen', 'PoliReplSend', 'PoliReplClear']
 
 
 class PoliReplOpen(sublime_plugin.WindowCommand):
@@ -35,12 +36,26 @@ class PoliReplSend(sublime_plugin.TextCommand):
             reg = reg_stripped
 
         code = self.view.substr(reg)
-        res = comm.eval(code=code)
-        
-        self.view.insert(edit, self.view.size(), '\n< ')
-        self.view.insert(edit, self.view.size(), res)
+        try:
+            text = comm.eval(code=code)
+            success = True
+        except ReplEvalError as e:
+            text = e.stack
+            success = False
+
+        if success:
+            self.view.insert(edit, self.view.size(), '\n< ')
+        else:
+            self.view.insert(edit, self.view.size(), '\n! ')
+
+        self.view.insert(edit, self.view.size(), text)
         self.view.insert(edit, self.view.size(), '\n')
 
         insert_prompt(self.view)
 
-        regedit.establish(self.view, sublime.Region(self.view.size()))
+
+class PoliReplClear(sublime_plugin.TextCommand):
+    def run(self, edit):
+        self.view.set_read_only(False)
+        self.view.erase(edit, sublime.Region(0, self.view.size()))
+        insert_prompt(self.view)

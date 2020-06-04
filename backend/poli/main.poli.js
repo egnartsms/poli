@@ -172,7 +172,16 @@ opHandlers ::= ({
    },
 
    eval: function ({code}) {
-      let res = $_.moduleEval($m, $, code);
+      let res;
+
+      try {
+         res = $_.moduleEval($m, $, code);
+      }
+      catch (e) {
+         $.opExc('replEval', {stack: e.stack});
+         return;
+      }
+
       $.opRet($.serialize(res));
    }
 

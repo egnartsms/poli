@@ -56,5 +56,17 @@
             {"key": "poli_view"},
             {"key": "poli_regedit", "operand": true}
         ]
+    },
+
+    // REPL
+    {
+        "keys": ["ctrl+enter"],
+        "command": "poli_repl_send",
+        "context": [
+            {
+                "key": "poli_kind",
+                "operand": "repl/js"
+            }
+        ]
     }
 ]

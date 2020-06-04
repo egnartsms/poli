@@ -16,6 +16,16 @@ class BackendError(Exception):
 class GenericError(BackendError):
     name = 'generic'
 
+    def __init__(self, stack):
+        self.stack = stack
+
+
+class ReplEvalError(BackendError):
+    name = 'replEval'
+
+    def __init__(self, stack):
+        self.stack = stack
+
 
 backend_errors = {sub.name: sub for sub in BackendError.__subclasses__()}
 

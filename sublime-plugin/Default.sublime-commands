@@ -1,14 +1,18 @@
 [
     {
-        "caption": "Poli: reconnect to server",
+        "caption": "Poli: Reconnect to server",
         "command": "poli_reconnect"
     },
     {
-        "caption": "Poli: open native REPL",
+        "caption": "Poli: Open REPL JS",
         "command": "poli_repl_open"
     },
     {
-        "caption": "Poli: REPL send",
+        "caption": "Poli REPL: Send",
         "command": "poli_repl_send"
+    },
+    {
+        "caption": "Poli REPL: Clear",
+        "command": "poli_repl_clear"
     }
 ]
