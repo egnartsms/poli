@@ -18,14 +18,6 @@ function main() {
       names: [],
       name2id: Object.create(null),
       defs: Object.create(null),
-
-      // ID of the last name (in the sense of module entry ordering)
-      get lastId() {
-         if (this.names.length === 0) {
-            return null;
-         }
-         return this.name2id[this.names[this.names.length - 1]];
-      },
    };
 
    for (let {id, name, def} of data) {

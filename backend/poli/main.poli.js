@@ -43,6 +43,20 @@ opHandlers ::= ({
       $.opRet($m.defs[name].src);
    },
 
+   eval: function ({code}) {
+      let res;
+
+      try {
+         res = $_.moduleEval($m, $, code);
+      }
+      catch (e) {
+         $.opExc('replEval', {stack: e.stack});
+         return;
+      }
+
+      $.opRet($.serialize(res));
+   },
+
    edit: function ({name, newDefn}) {
       $[name] = $_.moduleEval($m, $, newDefn);
 
@@ -112,27 +126,17 @@ opHandlers ::= ({
          if (idx === -1) {
             notFound(after);
          }
+         prevId = $.idAt($m, idx);
+         nextId = $.idAt($m, idx + 1);
          idx += 1;
-         prevId = $m.name2id[after];
-         if (idx < $m.names.length) {
-            nextId = $m.name2id[$m.names[idx]]
-         }
-         else {
-            nextId = null;
-         }
       }
       else if (before) {
          idx = $m.names.indexOf(before);
          if (idx === -1) {
             notFound(before);
          }
-         nextId = $m.name2id[before];
-         if (idx === 0) {
-            prevId = null;
-         }
-         else {
-            prevId = $m.name2id[$m.names[idx - 1]]
-         }
+         prevId = $.idAt($m, idx - 1);
+         nextId = $.idAt($m, idx);
       }
       else {
          throw new Error(`Misuse: neither "after" nor "before" specified`);
@@ -171,34 +175,19 @@ opHandlers ::= ({
       $.opRet();
    },
 
-   eval: function ({code}) {
-      let res;
-
-      try {
-         res = $_.moduleEval($m, $, code);
-      }
-      catch (e) {
-         $.opExc('replEval', {stack: e.stack});
-         return;
-      }
-
-      $.opRet($.serialize(res));
-   },
-
    delete: function ({name}) {
       if (!(name in $m.defs)) {
          throw new Error(`Entry named "${name}" does not exist`);
       }
 
       let idx = $m.names.indexOf(name);
-      if (idx < $m.names.length - 1) {
-         $_.db
-            .prepare(`update entry set prev_id = :new where prev_id = :old`)
-            .run({
-               old: $m.name2id[name],
-               new: idx > 0 ? $m.name2id[$m.names[idx - 1]] : null
-            });
-      }
+      $_.db
+         .prepare(`update entry set prev_id = :new where prev_id = :old`)
+         .run({
+            old: $m.name2id[name],
+            new: $.idAt($m, idx - 1)
+         });
+
       $_.db.prepare(`delete from entry where id = ?`).run($m.name2id[name]);
 
       delete $m.defs[name];
@@ -207,9 +196,43 @@ opHandlers ::= ({
       delete $[name];
 
       $.opRet();
+   },
+
+   moveBy1: function ({name, direction}) {
+      if (!(name in $m.defs)) {
+         throw new Error(`Entry named "${name}" does not exist`);
+      }
+
+      if (direction !== 'up' && direction !== 'down') {
+         throw new Error(`Invalid direction name: "${direction}"`);
+      }
+
+      let i = $m.names.indexOf(name);
+      let j = direction === 'up' ?
+               (i === 0 ? $m.names.length - 1 : i - 1) :
+               (i === $m.names.length - 1 ? 0 : i + 1);
+
+      $m.names.splice(i, 1);
+      $m.names.splice(j, 0, name);
+
+      let stmt = $_.db.prepare(`update entry set prev_id = :prev_id where id = :id`);
+
+      stmt.run({id: $.idAt($m, i + 1), prev_id: $.idAt($m, i)});
+      stmt.run({id: $.idAt($m, i), prev_id: $.idAt($m, i - 1)});
+      stmt.run({id: $.idAt($m, j + 1), prev_id: $.idAt($m, j)});
+      stmt.run({id: $.idAt($m, j), prev_id: $.idAt($m, j - 1)});
+
+      $.opRet();
    }
 
 })
+idAt ::= function ($m, i) {
+   if (i < 0 || i >= $m.names.length) {
+      return null;
+   }
+   
+   return $m.name2id[$m.names[i]];
+}
 send ::= function (msg) {
    $.ws.send(JSON.stringify(msg));
 }

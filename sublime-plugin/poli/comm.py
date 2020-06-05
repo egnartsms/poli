@@ -85,4 +85,11 @@ class Communicator:
             'name': name
         })
 
+    def move_by_1(self, name, direction):
+        return self._send_op('moveBy1', {
+            'name': name,
+            'direction': direction
+        })
+
+
 comm = Communicator()

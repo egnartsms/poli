@@ -3,10 +3,12 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
+from poli.common.misc import index_where
 from poli.module.operation import EditContext
 from poli.module.operation import edit_cxt_for
 from poli.module.operation import edit_region
 from poli.module.operation import entry_location_at
+from poli.module.operation import entry_regions_full
 from poli.module.operation import reg_plus_trailing_nl
 from poli.sublime import regedit
 from poli.sublime.misc import read_only_set_to
@@ -15,7 +17,7 @@ from poli.sublime.selection import set_selection
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete'
+    'PoliDelete', 'PoliMoveBy1'
 ]
 
 
@@ -208,5 +210,49 @@ class PoliDelete(sublime_plugin.TextCommand):
         comm.delete(self.view.substr(loc.reg_name))
         with read_only_set_to(self.view, False):
             self.view.erase(edit, reg_plus_trailing_nl(loc.reg_entry))
+
+        self.view.run_command('save')
+
+
+class PoliMoveBy1(sublime_plugin.TextCommand):
+    def run(self, edit, direction):
+        if regedit.is_active_in(self.view):
+            return  # Protected by keymap context
+
+        if len(self.view.sel()) != 1:
+            sublime.status_message("Cannot determine what to move (multiple cursors)")
+            return
+
+        [reg] = self.view.sel()
+        loc = entry_location_at(self.view, reg)
+        if loc is None or not loc.is_fully_selected:
+            sublime.status_message("Cannot determine what to move")
+            return
+
+        comm.move_by_1(self.view.substr(loc.reg_name), direction)
+
+        # OK, now synchronize the view itself
+        regs = entry_regions_full(self.view)
+        i = index_where(regs, lambda reg: reg.contains(loc.reg_entry))
+        
+        if direction == 'up':
+            if i == 0:
+                pt = regs[-1].end()
+            else:
+                pt = regs[i - 1].begin()
+        else:
+            if i + 1 == len(regs):
+                pt = 0
+            else:
+                pt = regs[i + 1].end()
+
+        set_selection(self.view, to=pt)
+
+        with read_only_set_to(self.view, False):
+            text_i = self.view.substr(regs[i])
+            self.view.erase(edit, regs[i])
+            pt = self.view.sel()[0].a
+            self.view.insert(edit, pt, text_i)
+            set_selection(self.view, to=sublime.Region(pt, pt + len(text_i) - 1))
 
         self.view.run_command('save')

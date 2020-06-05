@@ -65,6 +65,29 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
+    {
+        "keys": ["ctrl+shift+up"],
+        "command": "poli_move_by1",
+        "args": {
+            "direction": "up"
+        },
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["ctrl+shift+down"],
+        "command": "poli_move_by1",
+        "args": {
+            "direction": "down"
+        },
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+
 
     // REPL
     {

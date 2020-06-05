@@ -56,6 +56,13 @@ def entry_location_at(view, reg):
         return None
 
 
+def entry_regions_full(view):
+    names = view.find_by_selector('entity.name.key.poli')
+    defs = view.find_by_selector('source.js')
+
+    return [name.cover(defn) for name, defn in zip(names, defs)]
+
+
 def reg_no_trailing_nl(reg):
     """Exclude the trailing \n from region (don't check whether it's actually \n char)"""
     return sublime.Region(reg.begin(), reg.end() - 1)
