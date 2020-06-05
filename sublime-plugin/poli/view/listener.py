@@ -20,12 +20,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
     def on_load(self):
         self.view.set_scratch(True)
         self.view.set_read_only(True)
-
-    def on_query_context(self, key, operator, operand, match_all):
-        if key == 'poli_view':
-            return query_context_matches(True, operator, operand)
-
-        return False
+        self.view.settings().set('poli_kind', 'module/js')
 
     def on_activated(self):
         set_connected_status(self.view, comm.is_connected)

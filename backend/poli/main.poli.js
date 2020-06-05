@@ -205,7 +205,7 @@ opRet ::= function (result=null) {
 serialize ::= function (obj) {
    const inds = '   ';
 
-   function* serializeObject(object, indent) {
+   function* serializeObject(object) {
       let entries = Object.entries(object);
 
       if (entries.length === 0) {
@@ -215,17 +215,17 @@ serialize ::= function (obj) {
 
       yield '{\n';
       for (let [key, val] of entries) {
-         yield inds.repeat(indent + 1);
+         yield inds.repeat(1);
          yield key;
          yield ': ';
-         yield* serialize(val, indent + 1);
+         yield* serialize(val, false);
          yield ',\n';
       }
-      yield inds.repeat(indent);
+      yield inds.repeat(0);
       yield '}';
    }
 
-   function* serializeArray(array, indent) {
+   function* serializeArray(array) {
       if (array.length === 0) {
          yield '[]';
          return;
@@ -233,32 +233,43 @@ serialize ::= function (obj) {
 
       yield '[\n';
       for (let obj of array) {
-         yield inds.repeat(indent + 1);
-         yield* serialize(obj, indent + 1);
+         yield inds.repeat(1);
+         yield* serialize(obj, false);
          yield ',\n'
       }
-      yield inds.repeat(indent);
+      yield inds.repeat(0);
       yield ']';
    }
 
-   function* serializeFunc(func, indent) {
-      yield 'func () {}';
-   }
-
-   function* serialize(obj, indent) {
+   function* serialize(obj, expand) {
       if (typeof obj === 'object') {
          if (obj === null) {
             yield String(obj);
          }
          else if (obj instanceof Array) {
-            yield* serializeArray(obj, indent);
+            if (expand) {
+               yield* serializeArray(obj);
+            }
+            else {
+               yield '[...]';
+            }
          }
          else {
-            yield* serializeObject(obj, indent);
+            if (expand) {
+               yield* serializeObject(obj);
+            }
+            else {
+               yield '{...}';
+            }
          }
       }
       else if (typeof obj === 'function') {
-         yield* serializeFunc(obj, indent);
+         if (expand) {
+            yield obj.toString();
+         }
+         else {
+            yield 'func {...}'
+         }
       }
       else if (typeof obj === 'string') {
          yield JSON.stringify(obj);
@@ -268,5 +279,5 @@ serialize ::= function (obj) {
       }
    }
 
-   return Array.from(serialize(obj, 0)).join('');
+   return Array.from(serialize(obj, true)).join('');
 }
