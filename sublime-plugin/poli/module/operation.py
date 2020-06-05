@@ -1,8 +1,8 @@
 import sublime
 
 from poli.config import backend_root
-from poli.sublime.view_assoc import make_view_assoc
 from poli.sublime.regedit import EditRegion as BaseEditRegion
+from poli.sublime.view_assoc import make_view_assoc
 
 
 def is_view_poli(view):

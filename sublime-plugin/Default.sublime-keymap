@@ -42,7 +42,7 @@
         ]
     },
     {
-        "keys": ["escape"],
+        "keys": ["alt+escape"],
         "command": "poli_cancel",
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
@@ -55,6 +55,14 @@
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": true}
+        ]
+    },
+    {
+        "keys": ["delete"],
+        "command": "poli_delete",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
         ]
     },
 

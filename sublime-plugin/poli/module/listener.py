@@ -2,10 +2,10 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
+from poli.module.operation import is_view_poli
+from poli.module.operation import set_connected_status
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import view_by_settings
-from poli.view.operation import is_view_poli
-from poli.view.operation import set_connected_status
 
 
 __all__ = ['PoliViewListener']

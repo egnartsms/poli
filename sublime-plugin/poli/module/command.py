@@ -3,16 +3,20 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
+from poli.module.operation import EditContext
+from poli.module.operation import edit_cxt_for
+from poli.module.operation import edit_region
+from poli.module.operation import entry_location_at
+from poli.module.operation import reg_plus_trailing_nl
 from poli.sublime import regedit
+from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
-from poli.view.operation import EditContext
-from poli.view.operation import edit_cxt_for
-from poli.view.operation import edit_region
-from poli.view.operation import entry_location_at
-from poli.view.operation import reg_plus_trailing_nl
 
 
-__all__ = ['PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit']
+__all__ = [
+    'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
+    'PoliDelete'
+]
 
 
 class PoliSelect(sublime_plugin.TextCommand):
@@ -111,7 +115,7 @@ class PoliAdd(sublime_plugin.TextCommand):
         self.view.insert(edit, insert_pos, stub)
         # not counting trailing \n
         reg_stub = sublime.Region(insert_pos, insert_pos + len(stub) - 1)
-        set_selection(self.view, to=reg_stub)
+        set_selection(self.view, to=reg_stub, show=True)
 
         regedit.establish(self.view, reg_stub, edit_region)
         
@@ -182,5 +186,27 @@ class PoliCommit(sublime_plugin.TextCommand):
 
         del edit_cxt_for[self.view]
         regedit.discard(self.view, read_only=True)
+
+        self.view.run_command('save')
+
+
+class PoliDelete(sublime_plugin.TextCommand):
+    def run(self, edit):
+        if regedit.is_active_in(self.view):
+            return  # Protected by keymap context
+
+        if len(self.view.sel()) != 1:
+            sublime.status_message("Cannot determine what to delete (multiple cursors)")
+            return
+
+        [reg] = self.view.sel()
+        loc = entry_location_at(self.view, reg)
+        if loc is None or not loc.is_fully_selected:
+            sublime.status_message("Cannot determine what to delete")
+            return
+
+        comm.delete(self.view.substr(loc.reg_name))
+        with read_only_set_to(self.view, False):
+            self.view.erase(edit, reg_plus_trailing_nl(loc.reg_entry))
 
         self.view.run_command('save')

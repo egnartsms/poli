@@ -80,5 +80,9 @@ class Communicator:
             'code': code
         })
 
+    def delete(self, name):
+        return self._send_op('delete', {
+            'name': name
+        })
 
 comm = Communicator()

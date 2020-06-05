@@ -1,14 +1,14 @@
 from poli.sublime import *
-from poli.view import *
+from poli.module import *
 from poli.repl import *
 
 import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.view.operation import maybe_set_connected_status_in_active_view
+from poli.module.operation import maybe_set_connected_status_in_active_view
 from poli.sublime.misc import query_context_matches
-from poli.view.operation import is_view_poli
+from poli.module.operation import is_view_poli
 
 
 def plugin_loaded():

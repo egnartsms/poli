@@ -183,6 +183,30 @@ opHandlers ::= ({
       }
 
       $.opRet($.serialize(res));
+   },
+
+   delete: function ({name}) {
+      if (!(name in $m.defs)) {
+         throw new Error(`Entry named "${name}" does not exist`);
+      }
+
+      let idx = $m.names.indexOf(name);
+      if (idx < $m.names.length - 1) {
+         $_.db
+            .prepare(`update entry set prev_id = :new where prev_id = :old`)
+            .run({
+               old: $m.name2id[name],
+               new: idx > 0 ? $m.name2id[$m.names[idx - 1]] : null
+            });
+      }
+      $_.db.prepare(`delete from entry where id = ?`).run($m.name2id[name]);
+
+      delete $m.defs[name];
+      delete $m.name2id[name];
+      $m.names.splice(idx, 0);
+      delete $[name];
+
+      $.opRet();
    }
 
 })
@@ -213,7 +237,7 @@ serialize ::= function (obj) {
          return;
       }
 
-      yield '{\n';
+      yield '({\n';
       for (let [key, val] of entries) {
          yield inds.repeat(1);
          yield key;
@@ -222,7 +246,7 @@ serialize ::= function (obj) {
          yield ',\n';
       }
       yield inds.repeat(0);
-      yield '}';
+      yield '})';
    }
 
    function* serializeArray(array) {
