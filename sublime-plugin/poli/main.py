@@ -24,7 +24,13 @@ def plugin_unloaded():
 
 class PoliReconnect(sublime_plugin.ApplicationCommand):
     def run(self):
-        comm.reconnect()
+        try:
+            comm.reconnect()
+        except:
+            sublime.status_message("Failed to connect to Poli server")
+            raise
+        else:
+            sublime.status_message("Successfully connected to Poli server!")
 
 
 class PoliViewContext(sublime_plugin.EventListener):
@@ -35,3 +41,6 @@ class PoliViewContext(sublime_plugin.EventListener):
             )
 
         return False
+
+
+from poli.common.wrapping_method import A

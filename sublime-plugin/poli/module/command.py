@@ -7,10 +7,11 @@ from poli.common.misc import index_where
 from poli.module.operation import EditContext
 from poli.module.operation import edit_cxt_for
 from poli.module.operation import edit_region
-from poli.module.operation import entry_location_at
 from poli.module.operation import entry_regions_full
+from poli.module.operation import entry_under_cursor
 from poli.module.operation import reg_plus_trailing_nl
 from poli.sublime import regedit
+from poli.sublime.command import TextCommand
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
 
@@ -21,37 +22,17 @@ __all__ = [
 ]
 
 
-class PoliSelect(sublime_plugin.TextCommand):
+class PoliSelect(TextCommand):
     def run(self, edit):
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine what to select (multiple cursors)")
-            return
-
-        loc = entry_location_at(self.view, self.view.sel()[0])
-        if loc is None:
-            sublime.status_message("Nothing to select")
-            return
-
+        loc = entry_under_cursor(self.view)
         set_selection(self.view, to=loc.reg_entry)
 
 
-class PoliEdit(sublime_plugin.TextCommand):
+class PoliEdit(TextCommand):
     def run(self, edit):
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine what to edit (multiple cursors)")
-            return
-
-        [reg] = self.view.sel()
-        loc = entry_location_at(self.view, reg)
-        
-        if loc is None or not loc.is_defn_targeted:
-            sublime.status_message("Cannot determine what to edit")
+        loc = entry_under_cursor(self.view)
+        if not loc.is_defn_targeted:
+            sublime.status_message("Cursor is not placed over definition")
             return
 
         regedit.establish(self.view, loc.reg_defn, edit_region)
@@ -64,19 +45,11 @@ class PoliEdit(sublime_plugin.TextCommand):
             set_selection(self.view, to=loc.reg_defn)
 
 
-class PoliRename(sublime_plugin.TextCommand):
+class PoliRename(TextCommand):
     def run(self, edit):
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine what to rename (multiple cursors)")
-            return
-
-        [reg] = self.view.sel()
-        loc = entry_location_at(self.view, reg)
-        if loc is None or not loc.is_name_targeted:
-            sublime.status_message("Cannot determine what to rename")
+        loc = entry_under_cursor(self.view)
+        if not loc.is_name_targeted:
+            sublime.status_message("Cursor is not placed over entry name")
             return
 
         regedit.establish(self.view, loc.reg_name, edit_region)
@@ -89,24 +62,12 @@ class PoliRename(sublime_plugin.TextCommand):
             set_selection(self.view, to=loc.reg_name)
 
 
-class PoliAdd(sublime_plugin.TextCommand):
+class PoliAdd(TextCommand):
     def run(self, edit, before_after):
         if before_after not in ('before', 'after'):
             raise RuntimeError
 
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine where to add (multiple cursors)")
-            return
-
-        [reg] = self.view.sel()
-        loc = entry_location_at(self.view, reg)
-        if loc is None:
-            sublime.status_message("Cannot determine where to add")
-            return
-
+        loc = entry_under_cursor(self.view)
         name = self.view.substr(loc.reg_name)
         self.view.set_read_only(False)
         if before_after == 'before':
@@ -128,7 +89,7 @@ class PoliAdd(sublime_plugin.TextCommand):
         )
 
 
-class PoliCancel(sublime_plugin.TextCommand):
+class PoliCancel(TextCommand):
     def run(self, edit):
         if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
@@ -149,7 +110,7 @@ class PoliCancel(sublime_plugin.TextCommand):
         regedit.discard(self.view, read_only=True)
 
 
-class PoliCommit(sublime_plugin.TextCommand):
+class PoliCommit(TextCommand):
     def run(self, edit):
         if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
@@ -192,18 +153,10 @@ class PoliCommit(sublime_plugin.TextCommand):
         self.view.run_command('save')
 
 
-class PoliDelete(sublime_plugin.TextCommand):
+class PoliDelete(TextCommand):
     def run(self, edit):
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine what to delete (multiple cursors)")
-            return
-
-        [reg] = self.view.sel()
-        loc = entry_location_at(self.view, reg)
-        if loc is None or not loc.is_fully_selected:
+        loc = entry_under_cursor(self.view)
+        if not loc.is_fully_selected:
             sublime.status_message("Cannot determine what to delete")
             return
 
@@ -214,18 +167,10 @@ class PoliDelete(sublime_plugin.TextCommand):
         self.view.run_command('save')
 
 
-class PoliMoveBy1(sublime_plugin.TextCommand):
+class PoliMoveBy1(TextCommand):
     def run(self, edit, direction):
-        if regedit.is_active_in(self.view):
-            return  # Protected by keymap context
-
-        if len(self.view.sel()) != 1:
-            sublime.status_message("Cannot determine what to move (multiple cursors)")
-            return
-
-        [reg] = self.view.sel()
-        loc = entry_location_at(self.view, reg)
-        if loc is None or not loc.is_fully_selected:
+        loc = entry_under_cursor(self.view)
+        if not loc.is_fully_selected:
             sublime.status_message("Cannot determine what to move")
             return
 
@@ -253,6 +198,7 @@ class PoliMoveBy1(sublime_plugin.TextCommand):
             self.view.erase(edit, regs[i])
             pt = self.view.sel()[0].a
             self.view.insert(edit, pt, text_i)
-            set_selection(self.view, to=sublime.Region(pt, pt + len(text_i) - 1))
+            set_selection(self.view, to=sublime.Region(pt, pt + len(text_i) - 1),
+                          show=True)
 
         self.view.run_command('save')

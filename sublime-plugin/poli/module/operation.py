@@ -1,6 +1,8 @@
 import sublime
 
 from poli.config import backend_root
+from poli.sublime import regedit
+from poli.sublime.command import StopCommand
 from poli.sublime.regedit import EditRegion as BaseEditRegion
 from poli.sublime.view_assoc import make_view_assoc
 
@@ -56,13 +58,6 @@ def entry_location_at(view, reg):
         return None
 
 
-def entry_regions_full(view):
-    names = view.find_by_selector('entity.name.key.poli')
-    defs = view.find_by_selector('source.js')
-
-    return [name.cover(defn) for name, defn in zip(names, defs)]
-
-
 def reg_no_trailing_nl(reg):
     """Exclude the trailing \n from region (don't check whether it's actually \n char)"""
     return sublime.Region(reg.begin(), reg.end() - 1)
@@ -71,6 +66,30 @@ def reg_no_trailing_nl(reg):
 def reg_plus_trailing_nl(reg):
     """Include 1 more char (assumingly \n) in the end of the region"""
     return sublime.Region(reg.begin(), reg.end() + 1)
+
+
+def entry_regions_full(view):
+    names = view.find_by_selector('entity.name.key.poli')
+    defs = view.find_by_selector('source.js')
+
+    return [name.cover(defn) for name, defn in zip(names, defs)]
+
+
+def entry_under_cursor(view):
+    if regedit.is_active_in(view):
+        raise StopCommand  # Typically protected by keymap context but still let's check
+
+    if len(view.sel()) != 1:
+        sublime.status_message("No entry under cursor (multiple cursors)")
+        raise StopCommand
+
+    [reg] = view.sel()
+    loc = entry_location_at(view, reg)
+    if loc is None:
+        sublime.status_message("No entry under cursor")
+        raise StopCommand
+
+    return loc
 
 
 class EditRegion(BaseEditRegion):
