@@ -24,3 +24,20 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
 
     def on_activated(self):
         set_connected_status(self.view, comm.is_connected)
+
+    def on_query_completions(self, prefix, locations):
+        if len(locations) != 1:
+            return None
+
+        [pt] = locations
+        dollar_dot = self.view.substr(
+            sublime.Region(pt - len(prefix) - 2, pt - len(prefix))
+        )
+        if dollar_dot != "$.":
+            return None
+
+        entry_names = comm.get_entry_names()
+        return (
+            [(x, x) for x in entry_names if x.startswith(prefix)],
+            sublime.INHIBIT_WORD_COMPLETIONS
+        )

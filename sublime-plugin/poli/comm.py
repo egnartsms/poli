@@ -55,6 +55,9 @@ class Communicator:
             'name': name
         })
 
+    def get_entry_names(self):
+        return self._send_op('getEntryNames', {})
+
     def edit(self, name, new_defn):
         return self._send_op('edit', {
             'name': name,

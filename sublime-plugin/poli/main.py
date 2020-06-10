@@ -41,6 +41,3 @@ class PoliViewContext(sublime_plugin.EventListener):
             )
 
         return False
-
-
-from poli.common.wrapping_method import A

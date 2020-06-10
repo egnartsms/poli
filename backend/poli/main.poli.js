@@ -43,6 +43,10 @@ opHandlers ::= ({
       $.opRet($m.defs[name].src);
    },
 
+   getEntryNames: function () {
+      $.opRet($m.names);
+   },
+
    eval: function ({code}) {
       let res;
 

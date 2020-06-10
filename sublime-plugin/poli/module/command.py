@@ -133,8 +133,6 @@ class PoliCommit(TextCommand):
         else:
             assert cxt.target == 'entry'
             
-            print(cxt.name, cxt.before_after)
-
             mtch = re.search('^([a-zA-Z_$][0-9a-zA-Z_$]*) ::= (.+)$',
                              self.view.substr(reg),
                              re.DOTALL)
