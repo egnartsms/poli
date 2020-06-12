@@ -11,6 +11,7 @@ from poli.module.operation import entry_regions_full
 from poli.module.operation import entry_under_cursor
 from poli.module.operation import reg_plus_trailing_nl
 from poli.sublime import regedit
+from poli.sublime.command import InterruptibleTextCommand
 from poli.sublime.command import TextCommand
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
@@ -18,7 +19,7 @@ from poli.sublime.selection import set_selection
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete', 'PoliMoveBy1'
+    'PoliDelete', 'PoliMoveBy1', 'PoliMoveHere'
 ]
 
 
@@ -63,17 +64,11 @@ class PoliRename(TextCommand):
 
 
 class PoliAdd(TextCommand):
-    def run(self, edit, before_after):
-        if before_after not in ('before', 'after'):
-            raise RuntimeError
-
+    def run(self, edit, before):
         loc = entry_under_cursor(self.view)
         name = self.view.substr(loc.reg_name)
         self.view.set_read_only(False)
-        if before_after == 'before':
-            insert_pos = loc.reg_name.begin()
-        else:
-            insert_pos = loc.reg_defn.end() + 1
+        insert_pos = loc.reg_name.begin() if before else loc.reg_defn.end() + 1
         stub = "name ::= definition\n"
         self.view.insert(edit, insert_pos, stub)
         # not counting trailing \n
@@ -85,7 +80,7 @@ class PoliAdd(TextCommand):
         edit_cxt_for[self.view] = EditContext(
             name=name,
             target='entry',
-            before_after=before_after
+            is_before=before
         )
 
 
@@ -140,10 +135,12 @@ class PoliCommit(TextCommand):
                 sublime.status_message("Invalid entry definition")
                 return
 
-            if cxt.before_after == 'before':
-                comm.add(name=mtch.group(1), defn=mtch.group(2), before=cxt.name)
-            else:
-                comm.add(name=mtch.group(1), defn=mtch.group(2), after=cxt.name)
+            comm.add(
+                name=mtch.group(1),
+                defn=mtch.group(2),
+                anchor=cxt.name,
+                before=cxt.is_before
+            )
 
         del edit_cxt_for[self.view]
         regedit.discard(self.view, read_only=True)
@@ -200,3 +197,25 @@ class PoliMoveBy1(TextCommand):
                           show=True)
 
         self.view.run_command('save')
+
+
+class PoliMoveHere(InterruptibleTextCommand):
+    def run(self, edit, callback, before):
+        loc = entry_under_cursor(self.view)
+        current_entry_name = self.view.substr(loc.reg_name)
+        entry_names = comm.get_entry_names()
+        entry_names.remove(current_entry_name)
+
+        self.view.window().show_quick_panel(entry_names, callback)
+        (idx,) = yield
+
+        if idx == -1:
+            return
+
+        comm.move(
+            src=entry_names[idx],
+            dest=current_entry_name,
+            before=before
+        )
+        # TODO: implement re-arrangement in the view
+        sublime.status_message("Done!")

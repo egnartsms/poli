@@ -1,7 +1,9 @@
+import sublime
 import sublime_plugin
 
 from poli.common.wrapping_method import WrappingMethodClass
 from poli.common.wrapping_method import aroundmethod
+from poli.sublime.edit import call_with_edit_token
 
 
 class StopCommand(Exception):
@@ -32,4 +34,27 @@ class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMe
         try:
             yield
         except StopCommand:
+            pass
+
+
+class InterruptibleTextCommand(sublime_plugin.TextCommand):
+    def run_(self, edit_token, args):
+        def callback(*args):
+            def resume(edit_token):
+                edit.edit_token = edit_token
+                try:
+                    gen.send(args)
+                except (StopIteration, StopCommand):
+                    pass
+                finally:
+                    edit.edit_token = 0
+
+            call_with_edit_token(self.view, resume)
+
+        edit = sublime.Edit(edit_token)
+        gen = self.run(edit, callback, **args)
+
+        try:
+            gen.send(None)
+        except (StopIteration, StopCommand):
             pass

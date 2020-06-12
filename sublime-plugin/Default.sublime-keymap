@@ -24,18 +24,18 @@
         ]
     },
     {
-        "keys": ["a"],
+        "keys": ["a", "b"],
         "command": "poli_add",
-        "args": {"before_after": "after"},
+        "args": {"before": true},
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
     {
-        "keys": ["p"],
+        "keys": ["a", "a"],
         "command": "poli_add",
-        "args": {"before_after": "before"},
+        "args": {"before": false},
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": false}
@@ -87,7 +87,24 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
-
+    {
+        "keys": ["M", "b"],
+        "command": "poli_move_here",
+        "args": {"before": true},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["M", "a"],
+        "command": "poli_move_here",
+        "args": {"before": false},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
 
     // REPL
     {

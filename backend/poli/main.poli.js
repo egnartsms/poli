@@ -38,6 +38,22 @@ handleOperation ::= function (op) {
       $.opExc('generic', {'stack': e.stack});
    }
 }
+send ::= function (msg) {
+   $.ws.send(JSON.stringify(msg));
+}
+opExc ::= function (error, info) {
+   $.send({
+      success: false,
+      error: error,
+      info: info
+   });
+}
+opRet ::= function (result=null) {
+   $.send({
+      success: true,
+      result: result
+   });
+}
 opHandlers ::= ({
    getDefinition: function ({name}) {
       $.opRet($m.defs[name].src);
@@ -114,36 +130,26 @@ opHandlers ::= ({
       $.opRet();
    },
 
-   add: function ({after, before, name, defn}) {
-      function notFound(name) {
-         throw new Error(`Not found an entry "${name}"`);
-      }
-
+   add: function ({name, defn, anchor, before}) {
       if (name in $m.defs) {
          throw new Error(`An entry named "${name}" already exists`);
       }
 
-      let idx, prevId, nextId;
-
-      if (after) {
-         idx = $m.names.indexOf(after);
-         if (idx === -1) {
-            notFound(after);
-         }
-         prevId = $.idAt($m, idx);
-         nextId = $.idAt($m, idx + 1);
-         idx += 1;
+      let idx = $m.names.indexOf(anchor);
+      if (idx === -1) {
+         throw new Error(`Not found an entry "${anchor}"`);
       }
-      else if (before) {
-         idx = $m.names.indexOf(before);
-         if (idx === -1) {
-            notFound(before);
-         }
+
+      let prevId, nextId;
+
+      if (before) {
          prevId = $.idAt($m, idx - 1);
          nextId = $.idAt($m, idx);
       }
       else {
-         throw new Error(`Misuse: neither "after" nor "before" specified`);
+         prevId = $.idAt($m, idx);
+         nextId = $.idAt($m, idx + 1);
+         idx += 1;
       }
 
       $[name] = $_.moduleEval($m, $, defn);
@@ -185,18 +191,11 @@ opHandlers ::= ({
       }
 
       let idx = $m.names.indexOf(name);
-      $_.db
-         .prepare(`update entry set prev_id = :new where prev_id = :old`)
-         .run({
-            old: $m.name2id[name],
-            new: $.idAt($m, idx - 1)
-         });
 
+      $.unlinkEntry($m, idx);     
       $_.db.prepare(`delete from entry where id = ?`).run($m.name2id[name]);
-
       delete $m.defs[name];
       delete $m.name2id[name];
-      $m.names.splice(idx, 0);
       delete $[name];
 
       $.opRet();
@@ -216,15 +215,27 @@ opHandlers ::= ({
                (i === 0 ? $m.names.length - 1 : i - 1) :
                (i === $m.names.length - 1 ? 0 : i + 1);
 
-      $m.names.splice(i, 1);
-      $m.names.splice(j, 0, name);
+      $.unlinkEntry($m, i);
+      $.linkEntry($m, j, name);
 
-      let stmt = $_.db.prepare(`update entry set prev_id = :prev_id where id = :id`);
+      $.opRet();
+   },
 
-      stmt.run({id: $.idAt($m, i + 1), prev_id: $.idAt($m, i)});
-      stmt.run({id: $.idAt($m, i), prev_id: $.idAt($m, i - 1)});
-      stmt.run({id: $.idAt($m, j + 1), prev_id: $.idAt($m, j)});
-      stmt.run({id: $.idAt($m, j), prev_id: $.idAt($m, j - 1)});
+   move: function ({src, dest, before}) {
+      if (!(src in $m.defs)) {
+         throw new Error(`Entry named "${src}" does not exist`);
+      }
+      if (!(dest in $m.defs)) {
+         throw new Error(`Entry named "${dest}" does not exist`);
+      }
+
+      let i = $m.names.indexOf(src);
+      let j = $m.names.indexOf(dest);
+      j = before ? j : j + 1;
+      j = i < j ? j - 1 : j;
+
+      $.unlinkEntry($m, i);
+      $.linkEntry($m, j, src);
 
       $.opRet();
    }
@@ -237,21 +248,43 @@ idAt ::= function ($m, i) {
    
    return $m.name2id[$m.names[i]];
 }
-send ::= function (msg) {
-   $.ws.send(JSON.stringify(msg));
+unlinkEntry ::= function ($m, i) {
+   let prevId = $.idAt($m, i - 1);
+   let nextId = $.idAt($m, i + 1);
+   
+   if (nextId !== null) {
+      let stmt = $_.db
+         .prepare(`update entry set prev_id = :prev_id where id = :next_id`)
+         .run({
+            next_id: nextId,
+            prev_id: prevId
+         });
+   }
+
+   $m.names.splice(i, 1);
 }
-opExc ::= function (error, info) {
-   $.send({
-      success: false,
-      error: error,
-      info: info
+linkEntry ::= function ($m, i, name) {
+   let prevId = $.idAt($m, i - 1);
+   let nextId = $.idAt($m, i);
+   
+   let stmt = $_.db
+      .prepare(`update entry set prev_id = :prev_id where id = :next_id`);
+
+   if (nextId !== null) {
+      let stmt = $_.db
+         .prepare(`update entry set prev_id = :prev_id where id = :next_id`)
+         .run({
+            next_id: nextId,
+            prev_id: $m.name2id[name]
+         });
+   }
+
+   stmt.run({
+      next_id: $m.name2id[name],
+      prev_id: prevId
    });
-}
-opRet ::= function (result=null) {
-   $.send({
-      success: true,
-      result: result
-   });
+
+   $m.names.splice(i, 0, name);
 }
 serialize ::= function (obj) {
    const inds = '   ';

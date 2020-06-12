@@ -6,10 +6,10 @@ from poli.repl.operation import History
 from poli.sublime import regedit
 
 
-__all__ = ['ReplEventListener']
+__all__ = ['ReplListener']
 
 
-class ReplEventListener(sublime_plugin.ViewEventListener):
+class ReplListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
         return settings.get('poli_kind') == 'repl/js'

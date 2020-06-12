@@ -70,11 +70,11 @@ class Communicator:
             'newName': new_name
         })
 
-    def add(self, name, defn, after=None, before=None):
+    def add(self, name, defn, anchor, before):
         return self._send_op('add', {
             'name': name,
             'defn': defn,
-            'after': after,
+            'anchor': anchor,
             'before': before
         })
 
@@ -92,6 +92,13 @@ class Communicator:
         return self._send_op('moveBy1', {
             'name': name,
             'direction': direction
+        })
+
+    def move(self, src, dest, before):
+        return self._send_op('move', {
+            'src': src,
+            'dest': dest,
+            'before': before
         })
 
 

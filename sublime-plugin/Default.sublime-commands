@@ -14,5 +14,15 @@
     {
         "caption": "Poli REPL: Clear",
         "command": "poli_repl_clear"
+    },
+    {
+        "caption": "Poli: Move here (before)",
+        "command": "poli_move_here",
+        "args": {"before": true}
+    },
+    {
+        "caption": "Poli: Move here (after)",
+        "command": "poli_move_here",
+        "args": {"before": false}
     }
 ]

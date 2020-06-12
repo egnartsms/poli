@@ -112,13 +112,13 @@ class EditContext:
         if target == 'defn', the name of the definition being edited;
         if target == 'entry', the name before or after which we want to add
     :attr target: one of 'name', 'defn', 'entry'
-    :attr before_after: None, 'before' or 'after'
+    :attr is_before: whether addition is performed before
     """
 
-    def __init__(self, name, target, before_after=None):
+    def __init__(self, name, target, is_before=None):
         self.name = name
         self.target = target
-        self.before_after = before_after
+        self.is_before = is_before
 
 
 def maybe_set_connected_status_in_active_view(is_connected):
