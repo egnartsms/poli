@@ -14,3 +14,11 @@ def index_where(iterable, pred=lambda x: x):
 class FreeObj:
     def __init__(self, **attrs):
         self.__dict__.update(attrs)
+
+
+class SubscriptableProxy:
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __getitem__(self, i):
+        return self.fn(i)

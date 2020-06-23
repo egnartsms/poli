@@ -12,29 +12,41 @@ def is_view_poli(view):
     return filename and filename.startswith(backend_root)
 
 
-class EntryLocation:
-    def __init__(self, reg_name, reg_defn, reg_entry, is_inside_name, is_inside_defn,
-                 is_fully_selected):
-        self.reg_name = reg_name
-        self.reg_defn = reg_defn
-        self.reg_entry = reg_entry
-        self.is_inside_name = is_inside_name
-        self.is_inside_defn = is_inside_defn
-        self.is_fully_selected = is_fully_selected
+class ModuleContents:
+    def __init__(self, view, reg_names, reg_defs_nl):
+        self.view = view
+        self.entries = [
+            Entry(self, reg_name=reg_name, reg_def_nl=reg_def_nl)
+            for reg_name, reg_def_nl in zip(reg_names, reg_defs_nl)
+        ]
 
-    @property
-    def is_name_targeted(self):
-        return self.is_inside_name or self.is_fully_selected
+    def cursor_location_at(self, reg):
+        """Return either CursorLocation instance or None"""
+        if not isinstance(reg, sublime.Region):
+            reg = sublime.Region(reg)
 
-    @property
-    def is_defn_targeted(self):
-        return self.is_inside_defn or self.is_fully_selected
+        for entry in self.entries:
+            # reg must end strictly before reg_def because the trailing \n is included into
+            # reg_def, and we don't want to count that as part of reg_def
+            if entry.reg_name.begin() <= reg.begin() and reg.end() < entry.reg_def_nl.end():
+                return CursorLocation(
+                    entry=entry,
+                    is_inside_name=entry.reg_name.contains(reg),
+                    is_inside_def=entry.reg_def_nl.contains(reg),
+                    is_fully_selected=(entry.reg_entry == reg)
+                )
+        else:
+            return None
+
+    def entry_by_name(self, name):
+        for entry in self.entries:
+            if entry.name() == name:
+                return entry
+        else:
+            return None
 
 
-def entry_location_at(view, reg):
-    if not isinstance(reg, sublime.Region):
-        reg = sublime.Region(reg)
-
+def module_contents(view):
     names = view.find_by_selector('entity.name.key.poli')
     defs = view.find_by_selector('source.js')
 
@@ -42,20 +54,58 @@ def entry_location_at(view, reg):
         sublime.error_message("Module names and definitions don't match")
         raise RuntimeError
 
-    for name, defn in zip(names, defs):
-        if name.begin() <= reg.begin() and reg.end() < defn.end():
-            defn = reg_no_trailing_nl(defn)
-            entry = name.cover(defn)
-            return EntryLocation(
-                reg_name=name,
-                reg_defn=defn,
-                reg_entry=entry,
-                is_inside_name=name.contains(reg),
-                is_inside_defn=defn.contains(reg),
-                is_fully_selected=(entry == reg)
-            )
-    else:
-        return None
+    return ModuleContents(view, names, defs)
+
+
+class Entry:
+    def __init__(self, mcont, reg_name, reg_def_nl):
+        self.mcont = mcont
+        self.reg_name = reg_name
+        self.reg_def_nl = reg_def_nl
+
+    @property
+    def reg_def(self):
+        return reg_no_trailing_nl(self.reg_def_nl)
+
+    @property
+    def reg_entry_nl(self):
+        return self.reg_name.cover(self.reg_def_nl)
+
+    @property
+    def reg_entry(self):
+        return self.reg_name.cover(reg_no_trailing_nl(self.reg_def_nl))
+
+    def name(self):
+        return self.mcont.view.substr(self.reg_name)
+
+    def contents_nl(self):
+        return self.mcont.view.substr(self.reg_entry_nl)
+
+    @property
+    def myindex(self):
+        return self.mcont.entries.index(self)
+
+
+class CursorLocation:
+    def __init__(
+            self, entry, is_inside_name, is_inside_def, is_fully_selected
+    ):
+        self.entry = entry
+        self.is_inside_name = is_inside_name
+        self.is_inside_def = is_inside_def
+        self.is_fully_selected = is_fully_selected
+
+    @property
+    def is_name_targeted(self):
+        return self.is_inside_name or self.is_fully_selected
+
+    @property
+    def is_def_targeted(self):
+        return self.is_inside_def or self.is_fully_selected
+
+
+def cursor_location_at(view, reg):
+    return module_contents(view).cursor_location_at(reg)
 
 
 def reg_no_trailing_nl(reg):
@@ -68,14 +118,11 @@ def reg_plus_trailing_nl(reg):
     return sublime.Region(reg.begin(), reg.end() + 1)
 
 
-def entry_regions_full(view):
-    names = view.find_by_selector('entity.name.key.poli')
-    defs = view.find_by_selector('source.js')
-
-    return [name.cover(defn) for name, defn in zip(names, defs)]
-
-
-def entry_under_cursor(view):
+def selected_region(view):
+    """Return a single selection region, or raise StopCommand in other cases.
+    
+    :raises StopCommand: if multiple or 0 regions selected.
+    """
     if regedit.is_active_in(view):
         raise StopCommand  # Typically protected by keymap context but still let's check
 
@@ -84,7 +131,12 @@ def entry_under_cursor(view):
         raise StopCommand
 
     [reg] = view.sel()
-    loc = entry_location_at(view, reg)
+    return reg    
+
+
+def cursor_location_at_sel(view):
+    reg = selected_region(view)
+    loc = cursor_location_at(view, reg)
     if loc is None:
         sublime.status_message("No entry under cursor")
         raise StopCommand
@@ -98,7 +150,7 @@ class EditRegion(BaseEditRegion):
                          sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
 
 
-edit_region = EditRegion()
+edit_region_for = EditRegion()
 
 
 edit_cxt_for = make_view_assoc()

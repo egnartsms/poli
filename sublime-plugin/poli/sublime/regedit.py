@@ -1,8 +1,5 @@
 import sublime
 import sublime_plugin
-import weakref
-
-from functools import partial
 
 from poli.sublime.misc import RegionType
 from poli.sublime.misc import query_context_matches

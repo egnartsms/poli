@@ -37,7 +37,6 @@ def wrap_around(around, nested):
             except StopIteration as stop:
                 return stop.value
 
-
             try:
                 if down is None:
                     res = nested(*args, **kwargs)

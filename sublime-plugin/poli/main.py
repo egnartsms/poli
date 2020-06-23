@@ -8,7 +8,6 @@ import sublime_plugin
 from poli.comm import comm
 from poli.module.operation import maybe_set_connected_status_in_active_view
 from poli.sublime.misc import query_context_matches
-from poli.module.operation import is_view_poli
 
 
 def plugin_loaded():

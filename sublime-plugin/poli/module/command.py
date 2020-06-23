@@ -1,18 +1,20 @@
 import re
 import sublime
-import sublime_plugin
 
 from poli.comm import comm
-from poli.common.misc import index_where
 from poli.module.operation import EditContext
+from poli.module.operation import cursor_location_at_sel
 from poli.module.operation import edit_cxt_for
-from poli.module.operation import edit_region
-from poli.module.operation import entry_regions_full
-from poli.module.operation import entry_under_cursor
+from poli.module.operation import edit_region_for
+from poli.module.operation import module_contents
+from poli.module.operation import reg_no_trailing_nl
 from poli.module.operation import reg_plus_trailing_nl
+from poli.module.operation import selected_region
 from poli.sublime import regedit
 from poli.sublime.command import InterruptibleTextCommand
 from poli.sublime.command import TextCommand
+from poli.sublime.misc import Marker
+from poli.sublime.misc import insert
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
 
@@ -25,57 +27,56 @@ __all__ = [
 
 class PoliSelect(TextCommand):
     def run(self, edit):
-        loc = entry_under_cursor(self.view)
-        set_selection(self.view, to=loc.reg_entry)
+        loc = cursor_location_at_sel(self.view)
+        set_selection(self.view, to=loc.entry.reg_entry)
 
 
 class PoliEdit(TextCommand):
     def run(self, edit):
-        loc = entry_under_cursor(self.view)
-        if not loc.is_defn_targeted:
+        loc = cursor_location_at_sel(self.view)
+        if not loc.is_def_targeted:
             sublime.status_message("Cursor is not placed over definition")
             return
 
-        regedit.establish(self.view, loc.reg_defn, edit_region)
+        regedit.establish(self.view, loc.entry.reg_def, edit_region_for)
         edit_cxt_for[self.view] = EditContext(
-            name=self.view.substr(loc.reg_name),
+            name=loc.entry.name(),
             target='defn'
         )
 
         if loc.is_fully_selected:
-            set_selection(self.view, to=loc.reg_defn)
+            set_selection(self.view, to=loc.entry.reg_def)
 
 
 class PoliRename(TextCommand):
     def run(self, edit):
-        loc = entry_under_cursor(self.view)
+        loc = cursor_location_at_sel(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
             return
 
-        regedit.establish(self.view, loc.reg_name, edit_region)
+        regedit.establish(self.view, loc.entry.reg_name, edit_region_for)
         edit_cxt_for[self.view] = EditContext(
-            name=self.view.substr(loc.reg_name),
+            name=loc.entry.name(),
             target='name'
         )
 
         if loc.is_fully_selected:
-            set_selection(self.view, to=loc.reg_name)
+            set_selection(self.view, to=loc.entry.reg_name)
 
 
 class PoliAdd(TextCommand):
     def run(self, edit, before):
-        loc = entry_under_cursor(self.view)
-        name = self.view.substr(loc.reg_name)
+        loc = cursor_location_at_sel(self.view)
+        entry = loc.entry
+        name = entry.name()
         self.view.set_read_only(False)
-        insert_pos = loc.reg_name.begin() if before else loc.reg_defn.end() + 1
-        stub = "name ::= definition\n"
-        self.view.insert(edit, insert_pos, stub)
-        # not counting trailing \n
-        reg_stub = sublime.Region(insert_pos, insert_pos + len(stub) - 1)
-        set_selection(self.view, to=reg_stub, show=True)
+        insert_pos = entry.reg_name.begin() if before else entry.reg_def_nl.end()
+        reg_new = insert(self.view, edit, insert_pos, "name ::= definition\n")
+        reg_new = reg_no_trailing_nl(reg_new)
+        set_selection(self.view, to=reg_new, show=True)
 
-        regedit.establish(self.view, reg_stub, edit_region)
+        regedit.establish(self.view, reg_new, edit_region_for)
         
         edit_cxt_for[self.view] = EditContext(
             name=name,
@@ -92,12 +93,12 @@ class PoliCancel(TextCommand):
         cxt = edit_cxt_for[self.view]
         if cxt.target == 'defn':
             defn = comm.get_defn(cxt.name)
-            self.view.replace(edit, edit_region[self.view], defn)
+            self.view.replace(edit, edit_region_for[self.view], defn)
         elif cxt.target == 'name':
-            self.view.replace(edit, edit_region[self.view], cxt.name)
+            self.view.replace(edit, edit_region_for[self.view], cxt.name)
         else:
             assert cxt.target == 'entry'
-            reg = reg_plus_trailing_nl(edit_region[self.view])
+            reg = reg_plus_trailing_nl(edit_region_for[self.view])
             self.view.set_read_only(False)
             self.view.erase(edit, reg)
 
@@ -111,7 +112,7 @@ class PoliCommit(TextCommand):
             return  # Protected by keymap context
 
         cxt = edit_cxt_for[self.view]
-        reg = edit_region[self.view]
+        reg = edit_region_for[self.view]
 
         if cxt.target == 'defn':
             if reg.empty():
@@ -150,61 +151,59 @@ class PoliCommit(TextCommand):
 
 class PoliDelete(TextCommand):
     def run(self, edit):
-        loc = entry_under_cursor(self.view)
+        loc = cursor_location_at_sel(self.view)
         if not loc.is_fully_selected:
             sublime.status_message("Cannot determine what to delete")
             return
 
-        comm.delete(self.view.substr(loc.reg_name))
+        comm.delete(loc.entry.name())
         with read_only_set_to(self.view, False):
-            self.view.erase(edit, reg_plus_trailing_nl(loc.reg_entry))
+            self.view.erase(edit, loc.entry.reg_entry_nl)
 
         self.view.run_command('save')
 
 
 class PoliMoveBy1(TextCommand):
     def run(self, edit, direction):
-        loc = entry_under_cursor(self.view)
+        mcont = module_contents(self.view)
+        loc = mcont.cursor_location_at(selected_region(self.view))
         if not loc.is_fully_selected:
             sublime.status_message("Cannot determine what to move")
             return
 
-        comm.move_by_1(self.view.substr(loc.reg_name), direction)
+        comm.move_by_1(loc.entry.name(), direction)
 
-        # OK, now synchronize the view itself
-        regs = entry_regions_full(self.view)
-        i = index_where(regs, lambda reg: reg.contains(loc.reg_entry))
-        
+        # OK, now synchronize the view itself       
+        i = loc.entry.myindex
+
         if direction == 'up':
             if i == 0:
-                pt = regs[-1].end()
+                insert_at = mcont.entries[-1].reg_entry_nl.end()
             else:
-                pt = regs[i - 1].begin()
+                insert_at = mcont.entries[i - 1].reg_entry_nl.begin()
         else:
-            if i + 1 == len(regs):
-                pt = 0
+            if i + 1 == len(mcont.entries):
+                insert_at = 0
             else:
-                pt = regs[i + 1].end()
+                insert_at = mcont.entries[i + 1].reg_entry_nl.end()
 
-        set_selection(self.view, to=pt)
-
-        with read_only_set_to(self.view, False):
-            text_i = self.view.substr(regs[i])
-            self.view.erase(edit, regs[i])
-            pt = self.view.sel()[0].a
-            self.view.insert(edit, pt, text_i)
-            set_selection(self.view, to=sublime.Region(pt, pt + len(text_i) - 1),
-                          show=True)
+        with read_only_set_to(self.view, False), \
+                Marker(self.view, insert_at) as insert_marker:
+            text = loc.entry.contents_nl()
+            self.view.erase(edit, loc.entry.reg_entry_nl)
+            reg_new = insert(self.view, edit, insert_marker.pos, text)
+            set_selection(self.view, to=reg_no_trailing_nl(reg_new), show=True)
 
         self.view.run_command('save')
 
 
 class PoliMoveHere(InterruptibleTextCommand):
     def run(self, edit, callback, before):
-        loc = entry_under_cursor(self.view)
-        current_entry_name = self.view.substr(loc.reg_name)
+        mcont = module_contents(self.view)
+        loc = mcont.cursor_location_at(selected_region(self.view))
+        dest_entry_name = loc.entry.name()
         entry_names = comm.get_entry_names()
-        entry_names.remove(current_entry_name)
+        entry_names.remove(dest_entry_name)
 
         self.view.window().show_quick_panel(entry_names, callback)
         (idx,) = yield
@@ -212,10 +211,25 @@ class PoliMoveHere(InterruptibleTextCommand):
         if idx == -1:
             return
 
+        src_entry_name = entry_names[idx]
         comm.move(
-            src=entry_names[idx],
-            dest=current_entry_name,
+            src=src_entry_name,
+            dest=dest_entry_name,
             before=before
         )
-        # TODO: implement re-arrangement in the view
-        sublime.status_message("Done!")
+
+        # Synchronize the view
+        if before:
+            insert_at = loc.entry.reg_entry_nl.begin()
+        else:
+            insert_at = loc.entry.reg_entry_nl.end()
+
+        with read_only_set_to(self.view, False), \
+                Marker(self.view, insert_at) as insert_marker:
+            src_entry = mcont.entry_by_name(src_entry_name)
+            text = src_entry.contents_nl()
+            self.view.erase(edit, src_entry.reg_entry_nl)
+            reg_new = insert(self.view, edit, insert_marker.pos, text)
+            set_selection(self.view, to=reg_no_trailing_nl(reg_new), show=True)
+
+        self.view.run_command('save')

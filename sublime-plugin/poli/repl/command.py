@@ -8,7 +8,6 @@ from poli.repl.operation import insert_prompt
 from poli.repl.operation import make_repl_view
 from poli.sublime import regedit
 from poli.sublime.misc import end_strip_region
-from poli.sublime.selection import set_selection
 from poli.sublime.view_assoc import make_view_assoc
 
 
