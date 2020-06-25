@@ -1,3 +1,6 @@
+const assert = require('assert').strict;
+
+
 /**
  Return an ordered array.
  :param items: array of items
@@ -41,4 +44,26 @@ function orderByPrecedence(items, propId, propPrevId) {
 }
 
 
-exports.orderByPrecedence = orderByPrecedence;
+function* matchAllHeaderBodyPairs(str, reHeader) {
+   assert(reHeader.global);
+
+   let prev_i = null, prev_mtch = null;
+
+   for (let mtch of str.matchAll(reHeader)) {
+      if (prev_mtch !== null) {
+         yield [prev_mtch, str.slice(prev_i, mtch.index)];
+      }
+      prev_i = mtch.index + mtch[0].length;
+      prev_mtch = mtch;
+   }
+
+   if (prev_mtch !== null) {
+      yield [prev_mtch, str.slice(prev_i)];
+   }
+}
+
+
+Object.assign(exports, {
+   orderByPrecedence,
+   matchAllHeaderBodyPairs
+});

@@ -104,10 +104,6 @@ class CursorLocation:
         return self.is_inside_def or self.is_fully_selected
 
 
-def cursor_location_at(view, reg):
-    return module_contents(view).cursor_location_at(reg)
-
-
 def reg_no_trailing_nl(reg):
     """Exclude the trailing \n from region (don't check whether it's actually \n char)"""
     return sublime.Region(reg.begin(), reg.end() - 1)
@@ -136,7 +132,7 @@ def selected_region(view):
 
 def cursor_location_at_sel(view):
     reg = selected_region(view)
-    loc = cursor_location_at(view, reg)
+    loc = module_contents(view).cursor_location_at(reg)
     if loc is None:
         sublime.status_message("No entry under cursor")
         raise StopCommand

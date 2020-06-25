@@ -6,7 +6,34 @@ scope: source.poli
 hidden: false
 
 contexts:
+  prototype:
+    - match: ^\s*((//).*)$
+      captures:
+        1: comment.line
+        2: punctuation.definition.comment
+
   main:
+    - match: ^-+$
+      set: contents
+    - match: ^.*$
+      scope: meta.import.poli.module
+      push: import-entries
+
+  import-entries:
+    - match: ^(?=\S)
+      pop: true
+    - match: ^\s+(\*)\s+(as)\s+(.+)$
+      captures:
+        1: meta.import.poli.asterisk
+        2: keyword.control.import-export.poli
+        3: meta.import.poli.alias variable.other.readwrite.poli
+    - match: ^\s+(.*?)(?:\s+(as)\s+(.+))?$
+      captures:
+        1: meta.import.poli.entry variable.other.readwrite.poli
+        2: keyword.control.import-export.poli
+        3: meta.import.poli.alias variable.other.readwrite.poli
+
+  contents:
     - match: ^(\S+)\s*(::=)\s*
       captures:
         1: entity.name.key.poli
@@ -15,8 +42,3 @@ contexts:
       with_prototype:
         - match: ^(?=\S+\s*::=)
           pop: true
-    - match: ^\s*((//).*)$
-      captures:
-        1: comment.line
-        2: punctuation.definition.comment
-
