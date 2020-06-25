@@ -6,28 +6,30 @@ const {orderByPrecedence} = require('./common');
 const IMAGE_PATH = 'poli.image';
 
 
-function main() {
-   $_.db = new Database(IMAGE_PATH, {});
-
-   let data = orderByPrecedence(
-      $_.db.prepare(`select id, prev_id, name, def from entry`).all(),
-      'id', 'prev_id'
-   );
-
+function loadModule(moduleId) {
    let $m = {
+      id: moduleId,
+      imports: Object.create(null),
       names: [],
-      name2id: Object.create(null),
       defs: Object.create(null),
    };
 
-   for (let {id, name, def} of data) {
+   let body = orderByPrecedence(
+      $_.db.prepare(
+         `SELECT id, prev_id, name, def
+          FROM entry
+          WHERE module_id = ?`
+      ).all(moduleId),
+      'id', 'prev_id'
+   );
+
+   for (let {name, def} of body) {
       def = JSON.parse(def);
       if (def.type !== 'native') {
          throw new Error(`Unrecognized entry type: ${def.type}`);
       }
 
       $m.names.push(name);
-      $m.name2id[name] = id;
       $m.defs[name] = def;
    }
 
@@ -35,7 +37,27 @@ function main() {
 
    for (let name of $m.names) {
       $[name] = moduleEval($m, $, $m.defs[name].src);
-   }   
+   }
+
+   return {$, $m};
+}
+
+
+function resolveImports(modules) {
+   let imports = $_.db.prepare(
+      `SELECT *
+       FROM import
+         INNER JOIN 
+       WHERE recp_module_id = ?`
+   ).all(moduleId);
+
+}
+
+
+function main() {
+   $_.db = new Database(IMAGE_PATH, {verbose: console.log});
+
+   let {$, $m} = loadModule(2);
 
    $._init();
 
@@ -46,7 +68,9 @@ function main() {
 const $_ = {
    require,
    moduleEval,
-   db: null,  // initialized separately
+   // the following are filled elsewhere
+   db: null,
+   modules: Object.create(null)
 };
 
 

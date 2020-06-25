@@ -145,18 +145,6 @@ opHandlers ::= ({
          throw new Error(`Not found an entry "${anchor}"`);
       }
 
-      let prevId, nextId;
-
-      if (before) {
-         prevId = $.idAt($m, idx - 1);
-         nextId = $.idAt($m, idx);
-      }
-      else {
-         prevId = $.idAt($m, idx);
-         nextId = $.idAt($m, idx + 1);
-         idx += 1;
-      }
-
       $[name] = $_.moduleEval($m, $, defn);
 
       let def = {
@@ -164,28 +152,19 @@ opHandlers ::= ({
          src: defn
       };
 
-      let {lastInsertRowid: id} = $_.db
-         .prepare(`insert into entry(module_id, name, def, prev_id)
-                   values (:module_id, :name, :def, :prev_id)`)
+      $_.db
+         .prepare(
+            `INSERT INTO entry(module_id, name, def, prev_id)
+             VALUES (:module_id, :name, :def, NULL)`
+         )
          .run({
-            module_id: 1,
+            module_id: 2,
             name,
-            def: JSON.stringify(def),
-            prev_id: prevId
+            def: JSON.stringify(def)
          });
 
-      if (nextId !== null) {
-         $_.db
-            .prepare(`update entry set prev_id = :prev_id where id = :id`)
-            .run({
-               id: nextId,
-               prev_id: id
-            });         
-      }
-
-      $m.defs[name] = def;
-      $m.names.splice(idx, 0, name);
-      $m.name2id[name] = id;
+      $.plugEntry($m, before ? idx : idx + 1, name);
+      $m.defs[name] = def;      
 
       $.opRet();
    },
@@ -197,10 +176,17 @@ opHandlers ::= ({
 
       let idx = $m.names.indexOf(name);
 
-      $.unlinkEntry($m, idx);     
-      $_.db.prepare(`delete from entry where id = ?`).run($m.name2id[name]);
+      $.unplugEntry($m, idx);
+      $_.db
+         .prepare(
+            `DELETE FROM entry WHERE module_id = :module_id AND name = :name`
+         )
+         .run({
+            module_id: 2,
+            name: name
+         });
+
       delete $m.defs[name];
-      delete $m.name2id[name];
       delete $[name];
 
       $.opRet();
@@ -220,8 +206,8 @@ opHandlers ::= ({
                (i === 0 ? $m.names.length - 1 : i - 1) :
                (i === $m.names.length - 1 ? 0 : i + 1);
 
-      $.unlinkEntry($m, i);
-      $.linkEntry($m, j, name);
+      $.unplugEntry($m, i);
+      $.plugEntry($m, j, name);
 
       $.opRet();
    },
@@ -239,56 +225,50 @@ opHandlers ::= ({
       j = before ? j : j + 1;
       j = i < j ? j - 1 : j;
 
-      $.unlinkEntry($m, i);
-      $.linkEntry($m, j, src);
+      $.unplugEntry($m, i);
+      $.plugEntry($m, j, src);
 
       $.opRet();
    }
 
 })
-idAt ::= function ($m, i) {
-   if (i < 0 || i >= $m.names.length) {
-      return null;
-   }
-   
-   return $m.name2id[$m.names[i]];
-}
-unlinkEntry ::= function ($m, i) {
-   let prevId = $.idAt($m, i - 1);
-   let nextId = $.idAt($m, i + 1);
-   
-   if (nextId !== null) {
-      let stmt = $_.db
-         .prepare(`update entry set prev_id = :prev_id where id = :next_id`)
+dbConnectEntries ::= function (moduleId, next, prev) {
+   if (next == null) return;
+
+   if (prev == null) {
+      $_.db
+         .prepare(
+            `UPDATE entry SET prev_id = NULL
+             WHERE module_id = :module_id AND name = :next`
+         )
          .run({
-            next_id: nextId,
-            prev_id: prevId
+            next,
+            module_id: moduleId
          });
    }
-
+   else {
+      $_.db
+         .prepare(
+            `UPDATE entry SET prev_id = (
+                SELECT e.id
+                FROM entry e
+                WHERE e.module_id = module_id AND e.name = :prev
+             )
+             WHERE module_id = :module_id AND name = :next`
+         )
+         .run({
+            prev, next,
+            module_id: moduleId
+         });
+   }
+}
+unplugEntry ::= function ($m, i) {
+   $.dbConnectEntries($m.id, $m.names[i + 1], $m.names[i - 1]);
    $m.names.splice(i, 1);
 }
-linkEntry ::= function ($m, i, name) {
-   let prevId = $.idAt($m, i - 1);
-   let nextId = $.idAt($m, i);
-   
-   let stmt = $_.db
-      .prepare(`update entry set prev_id = :prev_id where id = :next_id`);
-
-   if (nextId !== null) {
-      let stmt = $_.db
-         .prepare(`update entry set prev_id = :prev_id where id = :next_id`)
-         .run({
-            next_id: nextId,
-            prev_id: $m.name2id[name]
-         });
-   }
-
-   stmt.run({
-      next_id: $m.name2id[name],
-      prev_id: prevId
-   });
-
+plugEntry ::= function ($m, i, name) {
+   $.dbConnectEntries($m.id, name, $m.names[i - 1]);
+   $.dbConnectEntries($m.id, $m.names[i], name);
    $m.names.splice(i, 0, name);
 }
 serialize ::= function (obj) {
