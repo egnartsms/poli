@@ -17,5 +17,6 @@ create table entry(
 create table import(
     recp_module_id integer not null references module(id),
     alias text,
+    donor_module_id integer not null references module(id),
     donor_entry_id integer references entry(id)
 );

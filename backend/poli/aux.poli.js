@@ -1,3 +1,6 @@
+main
+   opHandlers as handlers
+   serialize
 -----
 add ::= function (x, y) {
    return x + y;
@@ -5,4 +8,3 @@ add ::= function (x, y) {
 multiply ::= function (x, y) {
    return x * y;
 }
-

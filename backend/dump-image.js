@@ -8,26 +8,64 @@ const IMAGE_PATH = "poli.image";
 const SRC_FOLDER = "poli";
 
 
-/**
- *  @param mdl: {id, name}
- */
-function dumpModule(db, mdl) {
-   let moduleStream = fs.createWriteStream(`${SRC_FOLDER}/${mdl['name']}.poli.js`, {
-      mode: '664'
-   });
+function dumpModule(db, moduleId, moduleName) {
+   let imports = db.prepare(
+      `SELECT
+         donor_module.name AS donor_module_name,
+         entry.name AS entry,
+         import.alias AS alias
+       FROM import
+         LEFT JOIN entry ON entry.id = import.donor_entry_id
+         INNER JOIN module AS donor_module ON donor_module.id = import.donor_module_id
+       WHERE import.recp_module_id = ?
+       ORDER BY donor_module.name ASC, entry.name ASC`
+   )
+      .all(moduleId);
 
-   let data = orderByPrecedence(
+   let body = orderByPrecedence(
       db
-        .prepare(`select id, prev_id, name, def from entry where module_id = ?`)
-        .all(mdl['id']),
+        .prepare(`SELECT id, prev_id, name, def FROM entry WHERE module_id = ?`)
+        .all(moduleId),
       'id', 'prev_id'
    );
 
-   writingToStream(moduleStream, function* () {
-      for (let {name, def} of data) {
-         let src = JSON.parse(def).src;
+   let moduleStream = fs.createWriteStream(`${SRC_FOLDER}/${moduleName}.poli.js`, {
+      mode: '664'
+   });
 
-         // console.log(typeof src, src);
+   writingToStream(moduleStream, function* () {
+      const ind = '   ';
+
+      // Imports
+      let curModuleName = null;
+
+      for (let {donor_module_name: moduleName, entry, alias} of imports) {
+         if (moduleName !== curModuleName) {
+            curModuleName = moduleName;
+            yield moduleName;
+            yield '\n';
+         }
+
+         yield ind;
+
+         if (entry !== null) {
+            yield entry;   
+         }
+         else {
+            yield '*';
+         }
+         
+         if (alias) {
+            yield ` as ${alias}`;
+         }
+         yield '\n';
+      }
+
+      yield '-----\n';
+
+      // Body
+      for (let {name, def} of body) {
+         let src = JSON.parse(def).src;
 
          yield name;
          yield ' ::= ';
@@ -54,9 +92,8 @@ function main() {
    let db = new Database(IMAGE_PATH, {verbose: console.log});
    let modules = db.prepare("select id, name from module").all();
 
-   for (let mdl of modules) {
-      console.log("Dumping", mdl);
-      dumpModule(db, mdl);
+   for (let {id: moduleId, name: moduleName} of modules) {
+      dumpModule(db, moduleId, moduleName);
    }
 }
 

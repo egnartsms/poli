@@ -1,8 +1,8 @@
 aux
    * as auxiliary
-   add
+   add as plus
    multiply as mult
---------
+-----
 WebSocket ::= $_.require('ws')
 port ::= 8080
 server ::= null

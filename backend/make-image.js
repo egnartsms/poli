@@ -82,6 +82,11 @@ function moduleNameByFile(moduleFile) {
 }
 
 
+function allModuleFiles() {
+   return fs.readdirSync(SRC_FOLDER).sort();
+}
+
+
 function makeImage(db) {
    let modules = Object.create(null);
 
@@ -89,7 +94,7 @@ function makeImage(db) {
       `insert into module(name) values (:name)`
    );
   
-   for (let moduleFile of fs.readdirSync(SRC_FOLDER)) {
+   for (let moduleFile of allModuleFiles()) {
       let moduleName = moduleNameByFile(moduleFile);
       if (moduleName === null) {
          console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
@@ -138,8 +143,8 @@ function makeImage(db) {
 
    // Insert imports
    let stmtInsertImport = db.prepare(
-      `insert into import(recp_module_id, alias, donor_entry_id) values
-       (:recp_module_id, :alias, :donor_entry_id)`
+      `insert into import(recp_module_id, alias, donor_module_id, donor_entry_id) values
+       (:recp_module_id, :alias, :donor_module_id, :donor_entry_id)`
    );
 
    for (let recpModule of Object.values(modules)) {
@@ -153,6 +158,7 @@ function makeImage(db) {
             stmtInsertImport.run({
                recp_module_id: recpModule.id,
                alias: asterisk,
+               donor_module_id: donorModule.id,
                donor_entry_id: null
             });
          }
@@ -168,6 +174,7 @@ function makeImage(db) {
             stmtInsertImport.run({
                recp_module_id: recpModule.id,
                alias: alias,
+               donor_module_id: donorModule.id,
                donor_entry_id: donorEntryId
             });
          }
