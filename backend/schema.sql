@@ -16,7 +16,13 @@ create table entry(
 
 create table import(
     recp_module_id integer not null references module(id),
-    alias text,
+    donor_entry_id integer not null references entry(id),
+    alias text
+);
+
+
+create table star_import(
+    recp_module_id integer not null references module(id),
     donor_module_id integer not null references module(id),
-    donor_entry_id integer references entry(id)
+    alias text not null
 );

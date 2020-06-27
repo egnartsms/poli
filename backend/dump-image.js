@@ -11,16 +11,27 @@ const SRC_FOLDER = "poli";
 function dumpModule(db, moduleId, moduleName) {
    let imports = db.prepare(
       `SELECT
-         donor_module.name AS donor_module_name,
+         module.name AS module,
          entry.name AS entry,
          import.alias AS alias
-       FROM import
-         LEFT JOIN entry ON entry.id = import.donor_entry_id
-         INNER JOIN module AS donor_module ON donor_module.id = import.donor_module_id
-       WHERE import.recp_module_id = ?
-       ORDER BY donor_module.name ASC, entry.name ASC`
+       FROM import 
+         JOIN entry ON entry.id = import.donor_entry_id
+         JOIN module ON module.id = entry.module_id
+       WHERE import.recp_module_id = :recp_module_id
+
+         UNION ALL
+
+       SELECT
+         module.name,
+         '*',
+         star_import.alias AS alias
+       FROM star_import
+         JOIN module ON module.id = star_import.donor_module_id
+       WHERE star_import.recp_module_id = :recp_module_id
+
+       ORDER BY 1, 2`
    )
-      .all(moduleId);
+      .all({recp_module_id: moduleId});
 
    let body = orderByPrecedence(
       db
@@ -39,7 +50,7 @@ function dumpModule(db, moduleId, moduleName) {
       // Imports
       let curModuleName = null;
 
-      for (let {donor_module_name: moduleName, entry, alias} of imports) {
+      for (let {module: moduleName, entry, alias} of imports) {
          if (moduleName !== curModuleName) {
             curModuleName = moduleName;
             yield moduleName;
@@ -47,13 +58,7 @@ function dumpModule(db, moduleId, moduleName) {
          }
 
          yield ind;
-
-         if (entry !== null) {
-            yield entry;   
-         }
-         else {
-            yield '*';
-         }
+         yield entry;
          
          if (alias) {
             yield ` as ${alias}`;

@@ -143,8 +143,12 @@ function makeImage(db) {
 
    // Insert imports
    let stmtInsertImport = db.prepare(
-      `insert into import(recp_module_id, alias, donor_module_id, donor_entry_id) values
-       (:recp_module_id, :alias, :donor_module_id, :donor_entry_id)`
+      `INSERT INTO import(recp_module_id, donor_entry_id, alias) VALUES
+       (:recp_module_id, :donor_entry_id, :alias)`
+   );
+   let stmtInsertStarImport = db.prepare(
+      `INSERT INTO star_import(recp_module_id, donor_module_id, alias) VALUES
+       (:recp_module_id, :donor_module_id, :alias)`
    );
 
    for (let recpModule of Object.values(modules)) {
@@ -155,11 +159,10 @@ function makeImage(db) {
          }
 
          if (asterisk) {
-            stmtInsertImport.run({
+            stmtInsertStarImport.run({
                recp_module_id: recpModule.id,
-               alias: asterisk,
                donor_module_id: donorModule.id,
-               donor_entry_id: null
+               alias: asterisk,
             });
          }
 
@@ -173,9 +176,8 @@ function makeImage(db) {
 
             stmtInsertImport.run({
                recp_module_id: recpModule.id,
+               donor_entry_id: donorEntryId,
                alias: alias,
-               donor_module_id: donorModule.id,
-               donor_entry_id: donorEntryId
             });
          }
       }
