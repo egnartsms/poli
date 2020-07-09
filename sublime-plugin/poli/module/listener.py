@@ -1,3 +1,4 @@
+import re
 import sublime
 import sublime_plugin
 

@@ -50,28 +50,34 @@ class Communicator:
         else:
             raise make_backend_error(res['error'], res['info'])
 
-    def get_defn(self, name):
+    def get_defn(self, module, name):
         return self._send_op('getDefinition', {
+            'module': module,
             'name': name
         })
 
-    def get_entry_names(self):
-        return self._send_op('getEntryNames', {})
+    def get_entries(self, module):
+        return self._send_op('getEntries', {
+            'module': module
+        })
 
-    def edit(self, name, new_defn):
+    def edit(self, module, name, new_defn):
         return self._send_op('edit', {
+            'module': module,
             'name': name,
             'newDefn': new_defn
         })
 
-    def rename(self, old_name, new_name):
+    def rename(self, module, old_name, new_name):
         return self._send_op('rename', {
+            'module': module,
             'oldName': old_name,
             'newName': new_name
         })
 
-    def add(self, name, defn, anchor, before):
+    def add(self, module, name, defn, anchor, before):
         return self._send_op('add', {
+            'module': module,
             'name': name,
             'defn': defn,
             'anchor': anchor,
@@ -79,23 +85,27 @@ class Communicator:
         })
 
     def eval(self, code):
+        raise NotImplementedError
         return self._send_op('eval', {
             'code': code
         })
 
-    def delete(self, name):
+    def delete(self, module, name):
         return self._send_op('delete', {
+            'module': module,
             'name': name
         })
 
-    def move_by_1(self, name, direction):
+    def move_by_1(self, module, name, direction):
         return self._send_op('moveBy1', {
+            'module': module,
             'name': name,
             'direction': direction
         })
 
-    def move(self, src, dest, before):
+    def move(self, module, src, dest, before):
         return self._send_op('move', {
+            'module': module,
             'src': src,
             'dest': dest,
             'before': before

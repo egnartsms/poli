@@ -2,6 +2,9 @@ aux
    * as auxiliary
    add as plus
    multiply as mult
+bootloader
+   moduleEval
+   modules
 -----
 WebSocket ::= $_.require('ws')
 port ::= 8080
@@ -37,6 +40,7 @@ _init ::= function () {
 handleOperation ::= function (op) {
    try {
       $.opHandlers[op['op']].call(null, op['args']);
+      console.log(op['op']);
    }
    catch (e) {
       console.error(e);
@@ -60,15 +64,25 @@ opRet ::= function (result=null) {
    });
 }
 opHandlers ::= ({
-   getDefinition: function ({name}) {
-      $.opRet($m.defs[name].src);
+   getDefinition: function ({module: moduleName, name}) {
+      let module = $.moduleByName(moduleName);
+      let def = module.defs[name];
+
+      if (!def) {
+         throw new Error(`Member "${name}" not found in module "${moduleName}"`);
+      }
+
+      $.opRet(def.src);
    },
 
-   getEntryNames: function () {
-      $.opRet($m.names);
+   getEntries: function ({module: moduleName}) {
+      let module = $.moduleByName(moduleName);
+
+      $.opRet(module.entries);
    },
 
    eval: function ({code}) {
+      // TODO: edit
       let res;
 
       try {
@@ -82,8 +96,14 @@ opHandlers ::= ({
       $.opRet($.serialize(res));
    },
 
-   edit: function ({name, newDefn}) {
-      $[name] = $_.moduleEval($m, $, newDefn);
+   edit: function ({module: moduleName, name, newDefn}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!module.defs[name]) {
+         throw new Error(`Not found entry "${name}" in module "${moduleName}"`);
+      }
+
+      module.rtobj[name] = $.moduleEval(module, newDefn);
 
       let newDef = {
          type: 'native',
@@ -91,61 +111,68 @@ opHandlers ::= ({
       };
 
       $_.db
-         .prepare('update entry set def = :def where name = :name')
+         .prepare(`
+            UPDATE entry
+            SET def = :def
+            WHERE module_id = :module_id AND name = :name`
+         )
          .run({
+            module_id: module.id,
             name: name,
             def: JSON.stringify(newDef)
          });
 
-      $m.defs[name] = newDef;
+      module.defs[name] = newDef;
 
       $.opRet();
    },
 
-   rename: function ({oldName, newName}) {
-      if (!(oldName in $m.defs)) {
+   rename: function ({module: moduleName, oldName, newName}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!(oldName in module.defs)) {
          throw new Error(`Did not find an entry named "${oldName}"`);
       }
-      if (newName in $m.defs) {
+      if (newName in module.defs) {
          throw new Error(`Cannot rename to "${newName}" because such an entry already exists`);
       }
 
-      let {changes} = $_.db
-         .prepare('update entry set name = :new_name where name = :old_name')
+      $_.db
+         .prepare(
+            `UPDATE entry
+             SET name = :new_name
+             WHERE module_id = :module_id AND name = :old_name`
+         )
          .run({
+            module_id: module.id,
             new_name: newName,
             old_name: oldName
          });
 
-      if (changes !== 1) {
-         throw new Error(`Internal error: entry named "${oldName}" is not in the DB`);
-      }
+      module.entries[module.entries.indexOf(oldName)] = newName;
 
-      $m.names[$m.names.indexOf(oldName)] = newName;
+      module.defs[newName] = module.defs[oldName];
+      delete module.defs[oldName];
 
-      $m.defs[newName] = $m.defs[oldName];
-      delete $m.defs[oldName];
-
-      $m.name2id[newName] = $m.name2id[oldName];
-      delete $m.name2id[oldName];
-
-      $[newName] = $[oldName];
-      delete $[oldName];
+      module.rtobj[newName] = module.rtobj[oldName];
+      delete module.rtobj[oldName];
 
       $.opRet();
    },
 
-   add: function ({name, defn, anchor, before}) {
-      if (name in $m.defs) {
+   add: function ({module: moduleName, name, defn, anchor, before}) {
+      let module = $.moduleByName(moduleName);
+
+      if (name in module.defs) {
          throw new Error(`An entry named "${name}" already exists`);
       }
 
-      let idx = $m.names.indexOf(anchor);
+      let idx = module.entries.indexOf(anchor);
       if (idx === -1) {
          throw new Error(`Not found an entry "${anchor}"`);
       }
 
-      $[name] = $_.moduleEval($m, $, defn);
+      module.rtobj[name] = $.moduleEval(module, defn);
 
       let def = {
          type: 'native',
@@ -158,42 +185,47 @@ opHandlers ::= ({
              VALUES (:module_id, :name, :def, NULL)`
          )
          .run({
-            module_id: 2,
+            module_id: module.id,
             name,
             def: JSON.stringify(def)
          });
 
-      $.plugEntry($m, before ? idx : idx + 1, name);
-      $m.defs[name] = def;      
+      $.plugEntry(module, before ? idx : idx + 1, name);
+      module.defs[name] = def;
 
       $.opRet();
    },
 
-   delete: function ({name}) {
-      if (!(name in $m.defs)) {
+   delete: function ({module: moduleName, name}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!module.defs[name]) {
          throw new Error(`Entry named "${name}" does not exist`);
       }
 
-      let idx = $m.names.indexOf(name);
+      let idx = module.entries.indexOf(name);
 
-      $.unplugEntry($m, idx);
+      $.unplugEntry(module, idx);
+
       $_.db
          .prepare(
             `DELETE FROM entry WHERE module_id = :module_id AND name = :name`
          )
          .run({
-            module_id: 2,
+            module_id: module.id,
             name: name
          });
 
-      delete $m.defs[name];
-      delete $[name];
+      delete module.defs[name];
+      delete module.rtobj[name];
 
       $.opRet();
    },
 
-   moveBy1: function ({name, direction}) {
-      if (!(name in $m.defs)) {
+   moveBy1: function ({module: moduleName, name, direction}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!module.defs[name]) {
          throw new Error(`Entry named "${name}" does not exist`);
       }
 
@@ -201,45 +233,54 @@ opHandlers ::= ({
          throw new Error(`Invalid direction name: "${direction}"`);
       }
 
-      let i = $m.names.indexOf(name);
+      let i = module.entries.indexOf(name);
       let j = direction === 'up' ?
-               (i === 0 ? $m.names.length - 1 : i - 1) :
-               (i === $m.names.length - 1 ? 0 : i + 1);
+               (i === 0 ? module.entries.length - 1 : i - 1) :
+               (i === module.entries.length - 1 ? 0 : i + 1);
 
-      $.unplugEntry($m, i);
-      $.plugEntry($m, j, name);
+      $.unplugEntry(module, i);
+      $.plugEntry(module, j, name);
 
       $.opRet();
    },
 
-   move: function ({src, dest, before}) {
-      if (!(src in $m.defs)) {
+   move: function ({module: moduleName, src, dest, before}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!module.defs[src]) {
          throw new Error(`Entry named "${src}" does not exist`);
       }
-      if (!(dest in $m.defs)) {
+      if (!module.defs[dest]) {
          throw new Error(`Entry named "${dest}" does not exist`);
       }
 
-      let i = $m.names.indexOf(src);
-      let j = $m.names.indexOf(dest);
+      let i = module.entries.indexOf(src);
+      let j = module.entries.indexOf(dest);
       j = before ? j : j + 1;
       j = i < j ? j - 1 : j;
 
-      $.unplugEntry($m, i);
-      $.plugEntry($m, j, src);
+      $.unplugEntry(module, i);
+      $.plugEntry(module, j, src);
 
       $.opRet();
    }
 
 })
-dbConnectEntries ::= function (moduleId, next, prev) {
+moduleByName ::= function (name) {
+   let module = $.modules.find(m => m.name === name);
+   if (!module) {
+      throw new Error(`Unknown module name: ${name}`);
+   }
+   return module;
+}
+dbConnectEntries ::= function (moduleId, prev, next) {
    if (next == null) return;
 
    if (prev == null) {
       $_.db
-         .prepare(
-            `UPDATE entry SET prev_id = NULL
-             WHERE module_id = :module_id AND name = :next`
+         .prepare(`
+            UPDATE entry SET prev_id = NULL
+            WHERE module_id = :module_id AND name = :next`
          )
          .run({
             next,
@@ -248,13 +289,13 @@ dbConnectEntries ::= function (moduleId, next, prev) {
    }
    else {
       $_.db
-         .prepare(
-            `UPDATE entry SET prev_id = (
-                SELECT e.id
-                FROM entry e
-                WHERE e.module_id = module_id AND e.name = :prev
-             )
-             WHERE module_id = :module_id AND name = :next`
+         .prepare(`
+            UPDATE entry SET prev_id = (
+               SELECT e.id
+               FROM entry e
+               WHERE e.module_id = module_id AND e.name = :prev
+            )
+            WHERE module_id = :module_id AND name = :next`
          )
          .run({
             prev, next,
@@ -262,14 +303,14 @@ dbConnectEntries ::= function (moduleId, next, prev) {
          });
    }
 }
-unplugEntry ::= function ($m, i) {
-   $.dbConnectEntries($m.id, $m.names[i + 1], $m.names[i - 1]);
-   $m.names.splice(i, 1);
+unplugEntry ::= function (module, i) {
+   $.dbConnectEntries(module.id, module.entries[i - 1], module.entries[i + 1]);
+   module.entries.splice(i, 1);
 }
-plugEntry ::= function ($m, i, name) {
-   $.dbConnectEntries($m.id, name, $m.names[i - 1]);
-   $.dbConnectEntries($m.id, $m.names[i], name);
-   $m.names.splice(i, 0, name);
+plugEntry ::= function (module, i, name) {
+   $.dbConnectEntries(module.id, module.entries[i - 1], name);
+   $.dbConnectEntries(module.id, name, module.entries[i]);
+   module.entries.splice(i, 0, name);
 }
 serialize ::= function (obj) {
    const inds = '   ';

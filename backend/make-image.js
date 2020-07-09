@@ -83,7 +83,12 @@ function moduleNameByFile(moduleFile) {
 
 
 function allModuleFiles() {
-   return fs.readdirSync(SRC_FOLDER).sort();
+   // bootloader.poli.js should always go first
+   let files = fs.readdirSync(SRC_FOLDER);
+
+   files.splice(files.indexOf('bootloader.poli.js'), 1);
+   files.unshift('bootloader.poli.js');
+   return files;
 }
 
 
@@ -91,7 +96,7 @@ function makeImage(db) {
    let modules = Object.create(null);
 
    let stmtInsertModule = db.prepare(
-      `insert into module(name) values (:name)`
+      `INSERT INTO module(name) VALUES (:name)`
    );
   
    for (let moduleFile of allModuleFiles()) {
@@ -117,7 +122,7 @@ function makeImage(db) {
 
    // Insert module bodies
    let stmtInsertEntry = db.prepare(
-      `insert into entry(module_id, name, def, prev_id) values
+      `INSERT INTO entry(module_id, name, def, prev_id) VALUES
        (:module_id, :name, :def, :prev_id)`
    );
 
@@ -167,8 +172,8 @@ function makeImage(db) {
          }
 
          for (let {entry, alias} of imports) {
-            let donorEntryId = donorModule.entry2id[entry];
-            if (donorEntryId == null) {
+            let entryId = donorModule.entry2id[entry];
+            if (entryId == null) {
                throw new Error(
                   `Module ${recpModule.name}: cannot import ${entry} from module ${donor}`
                );
@@ -176,7 +181,7 @@ function makeImage(db) {
 
             stmtInsertImport.run({
                recp_module_id: recpModule.id,
-               donor_entry_id: donorEntryId,
+               donor_entry_id: entryId,
                alias: alias,
             });
          }

@@ -1,7 +1,7 @@
 /// SQLite --> ./poli/**/*.js 
 const fs = require('fs');
 const Database = require('better-sqlite3');
-const {orderByPrecedence} = require('./common');
+const {orderModuleEntries} = require('./common');
 
 
 const IMAGE_PATH = "poli.image";
@@ -33,7 +33,7 @@ function dumpModule(db, moduleId, moduleName) {
    )
       .all({recp_module_id: moduleId});
 
-   let body = orderByPrecedence(
+   let body = orderModuleEntries(
       db
         .prepare(`SELECT id, prev_id, name, def FROM entry WHERE module_id = ?`)
         .all(moduleId),

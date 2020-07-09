@@ -2,15 +2,21 @@ const assert = require('assert').strict;
 
 
 /**
- Return an ordered array.
- :param items: array of items
+ Return an ordered array of module entries.
+
+ Entries may be any objects for which the following must hold:
+
+   entry[propId]: returns ID of an etry
+   entry[propPrevId]: returns ID of the immediately preceding entry
+
+ :param entries: array of items
  :param propId, propPrevId: property names to access respective IDs.
 */
-function orderByPrecedence(items, propId, propPrevId) {
+function orderModuleEntries(entries, propId, propPrevId) {
    let id2prev = new Map;
 
-   for (let item of items) {
-      id2prev.set(item[propId], item[propPrevId]);
+   for (let entry of entries) {
+      id2prev.set(entry[propId], entry[propPrevId]);
    }
 
    let ids = [];
@@ -36,8 +42,8 @@ function orderByPrecedence(items, propId, propPrevId) {
    }
 
    let id2item = new Map;
-   for (let item of items) {
-      id2item.set(item[propId], item);
+   for (let entry of entries) {
+      id2item.set(entry[propId], entry);
    }
 
    return Array.from(ids, id => id2item.get(id));
@@ -64,6 +70,8 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 
 
 Object.assign(exports, {
-   orderByPrecedence,
-   matchAllHeaderBodyPairs
+   orderModuleEntries,
+   matchAllHeaderBodyPairs,
+
+   BOOTLOADER_MODULE_ID: 1,
 });

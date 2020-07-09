@@ -1,4 +1,5 @@
 import sublime
+import re
 
 from poli.config import backend_root
 from poli.sublime import regedit
@@ -12,38 +13,8 @@ def is_view_poli(view):
     return filename and filename.startswith(backend_root)
 
 
-class ModuleContents:
-    def __init__(self, view, reg_names, reg_defs_nl):
-        self.view = view
-        self.entries = [
-            Entry(self, reg_name=reg_name, reg_def_nl=reg_def_nl)
-            for reg_name, reg_def_nl in zip(reg_names, reg_defs_nl)
-        ]
-
-    def cursor_location_at(self, reg):
-        """Return either CursorLocation instance or None"""
-        if not isinstance(reg, sublime.Region):
-            reg = sublime.Region(reg)
-
-        for entry in self.entries:
-            # reg must end strictly before reg_def because the trailing \n is included into
-            # reg_def, and we don't want to count that as part of reg_def
-            if entry.reg_name.begin() <= reg.begin() and reg.end() < entry.reg_def_nl.end():
-                return CursorLocation(
-                    entry=entry,
-                    is_inside_name=entry.reg_name.contains(reg),
-                    is_inside_def=entry.reg_def_nl.contains(reg),
-                    is_fully_selected=(entry.reg_entry == reg)
-                )
-        else:
-            return None
-
-    def entry_by_name(self, name):
-        for entry in self.entries:
-            if entry.name() == name:
-                return entry
-        else:
-            return None
+def poli_module_name(view):
+    return re.search(r'/([^/]+)\.poli\.js$', view.file_name()).group(1)
 
 
 def module_contents(view):
@@ -54,32 +25,82 @@ def module_contents(view):
         sublime.error_message("Module names and definitions don't match")
         raise RuntimeError
 
-    return ModuleContents(view, names, defs)
+    [term] = view.find_by_selector('punctuation.terminator.poli.end-of-imports')
+
+    return ModuleContents(view, names, defs, term.end() + 1)
+
+
+class ModuleContents:
+    def __init__(self, view, reg_names, reg_defs_nl, body_start):
+        self.view = view
+        self.body_start = body_start
+        self.entries = [
+            Entry(self, reg_name=reg_name, reg_def=reg_no_trailing_nl(reg_def_nl))
+            for reg_name, reg_def_nl in zip(reg_names, reg_defs_nl)
+        ]
+
+    def cursor_location(self, reg):
+        """Return either CursorLocation instance or None
+
+        :param reg: either Region or position
+        """
+        if not isinstance(reg, sublime.Region):
+            reg = sublime.Region(reg)
+
+        if reg.end() < self.body_start:
+            return None
+
+        for entry in self.entries:
+            if entry.reg_entry.contains(reg):
+                return CursorLocation(
+                    entry=entry,
+                    is_inside_name=entry.reg_name.contains(reg),
+                    is_inside_def=entry.reg_def.contains(reg),
+                    is_fully_selected=(entry.reg_entry == reg)
+                )
+        else:
+            return None
+
+    def cursor_location_or_stop(self, reg):
+        """Return CursorLocation corresponding to reg or raise StopCommand"""
+        loc = self.cursor_location(reg)
+        if loc is None:
+            sublime.status_message("No entry under cursor")
+            raise StopCommand
+
+        return loc
+
+    def entry_by_name(self, name):
+        for entry in self.entries:
+            if entry.name() == name:
+                return entry
+        else:
+            return None
 
 
 class Entry:
-    def __init__(self, mcont, reg_name, reg_def_nl):
+    def __init__(self, mcont, reg_name, reg_def):
         self.mcont = mcont
         self.reg_name = reg_name
-        self.reg_def_nl = reg_def_nl
+        self.reg_def = reg_def
 
     @property
-    def reg_def(self):
-        return reg_no_trailing_nl(self.reg_def_nl)
+    def reg_def_nl(self):
+        return reg_plus_trailing_nl(self.reg_def)
+
+    @property
+    def reg_entry(self):
+        return self.reg_name.cover(self.reg_def)
 
     @property
     def reg_entry_nl(self):
         return self.reg_name.cover(self.reg_def_nl)
 
-    @property
-    def reg_entry(self):
-        return self.reg_name.cover(reg_no_trailing_nl(self.reg_def_nl))
-
     def name(self):
         return self.mcont.view.substr(self.reg_name)
 
-    def contents_nl(self):
-        return self.mcont.view.substr(self.reg_entry_nl)
+    def contents(self):
+        return self.mcont.view.substr(self.reg_entry)
 
     @property
     def myindex(self):
@@ -132,12 +153,7 @@ def selected_region(view):
 
 def cursor_location_at_sel(view):
     reg = selected_region(view)
-    loc = module_contents(view).cursor_location_at(reg)
-    if loc is None:
-        sublime.status_message("No entry under cursor")
-        raise StopCommand
-
-    return loc
+    return module_contents(view).cursor_location_or_stop(reg)
 
 
 class EditRegion(BaseEditRegion):

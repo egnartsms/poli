@@ -14,6 +14,7 @@ contexts:
 
   main:
     - match: ^-+$
+      scope: punctuation.terminator.poli.end-of-imports
       set: contents
     - match: ^.*$
       scope: meta.import.poli.module
