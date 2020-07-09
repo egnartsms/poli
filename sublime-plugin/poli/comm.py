@@ -50,6 +50,9 @@ class Communicator:
         else:
             raise make_backend_error(res['error'], res['info'])
 
+    def module_names(self):
+        return self._send_op('getModuleNames', {})
+
     def get_defn(self, module, name):
         return self._send_op('getDefinition', {
             'module': module,
@@ -84,9 +87,9 @@ class Communicator:
             'before': before
         })
 
-    def eval(self, code):
-        raise NotImplementedError
+    def eval(self, module, code):
         return self._send_op('eval', {
+            'module': module,
             'code': code
         })
 

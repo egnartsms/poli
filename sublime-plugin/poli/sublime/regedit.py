@@ -1,5 +1,6 @@
 import sublime
 import sublime_plugin
+import contextlib
 
 from poli.sublime.misc import RegionType
 from poli.sublime.misc import query_context_matches
@@ -162,9 +163,8 @@ def is_active_in(view):
 
 def establish(view, region, edit_region=EditRegion()):
     edit_region[view] = region
-    regedit = RegEdit(view, edit_region)
-    regedit.set_read_only()
-    regedit_for[view] = regedit
+    regedit_for[view] = RegEdit(view, edit_region)
+    regedit_for[view].set_read_only()
 
 
 def discard(view, read_only):
@@ -177,6 +177,23 @@ def discard(view, read_only):
 
 def editing_region(view):
     return regedit_for[view].edit_region[view]
+
+
+@contextlib.contextmanager
+def region_editing_suppressed(view):
+    """Temporarily suppress region editing in the view.
+
+    The editing region is left untouched and restored on exit from context manager.
+    """
+    edit_region = regedit_for[view].edit_region
+    del regedit_for[view]
+    view.set_read_only(False)
+
+    try:
+        yield
+    finally:
+        regedit_for[view] = RegEdit(view, edit_region)
+        regedit_for[view].set_read_only()
 
 
 class RegEditListener(sublime_plugin.EventListener):

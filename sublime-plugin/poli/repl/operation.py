@@ -1,7 +1,11 @@
 import sublime
 
 from poli.sublime import regedit
-from poli.sublime.selection import set_selection
+from poli.sublime.edit import call_with_edit
+from poli.sublime.misc import Setting
+
+
+poli_cur_module = Setting('poli_cur_module')
 
 
 def make_repl_view(window):
@@ -9,17 +13,25 @@ def make_repl_view(window):
     view.set_name('Poli: REPL JS')
     view.set_scratch(True)
     view.settings().set('poli_kind', 'repl/js')
+    poli_cur_module[view] = 'main'
     view.assign_syntax('Packages/Poli/Poli.REPL.JS.sublime-syntax')
 
-    insert_prompt(view)
+    call_with_edit(view, lambda edit: insert_prompt_at_end(view, edit))
     
     return view
 
 
-def insert_prompt(view):
-    set_selection(view, to=view.size())
-    view.run_command('insert', {'characters': 'main> '})
+def current_prompt(view):
+    return '{}> '.format(poli_cur_module[view])
+
+
+def insert_prompt_at_end(view, edit):
+    view.insert(edit, view.size(), current_prompt(view))
     regedit.establish(view, sublime.Region(view.size()))
+
+
+def active_prompt_reg(view):
+    return view.find_by_selector('punctuation.separator.poli.repl.prompt')[-1]
 
 
 class History:

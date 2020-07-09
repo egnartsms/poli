@@ -24,5 +24,9 @@
         "caption": "Poli: Move here (after)",
         "command": "poli_move_here",
         "args": {"before": false}
+    },
+    {
+        "caption": "Poli REPL: Set current module",
+        "command": "poli_repl_set_current_module"
     }
 ]

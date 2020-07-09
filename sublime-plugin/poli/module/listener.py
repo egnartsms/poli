@@ -1,4 +1,3 @@
-import re
 import sublime
 import sublime_plugin
 
@@ -37,7 +36,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         if dollar_dot != "$.":
             return None
 
-        entry_names = comm.get_entry_names()
+        entry_names = comm.get_entries()
         return (
             [(x, x) for x in entry_names if x.startswith(prefix)],
             sublime.INHIBIT_WORD_COMPLETIONS

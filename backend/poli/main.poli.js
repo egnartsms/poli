@@ -64,6 +64,10 @@ opRet ::= function (result=null) {
    });
 }
 opHandlers ::= ({
+   getModuleNames: function () {
+      $.opRet(Array.from($.modules, m => m.name));
+   },
+
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       let def = module.defs[name];
@@ -81,12 +85,13 @@ opHandlers ::= ({
       $.opRet(module.entries);
    },
 
-   eval: function ({code}) {
-      // TODO: edit
+   eval: function ({module: moduleName, code}) {
+      let module = $.moduleByName(moduleName);
+
       let res;
 
       try {
-         res = $_.moduleEval($m, $, code);
+         res = $.moduleEval(module, code);
       }
       catch (e) {
          $.opExc('replEval', {stack: e.stack});
