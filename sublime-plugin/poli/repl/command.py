@@ -4,13 +4,17 @@ import sublime_plugin
 from poli.comm import comm
 from poli.exc import ReplEvalError
 from poli.repl.operation import History
+from poli.repl.operation import REPL_KIND
 from poli.repl.operation import active_prompt_reg
 from poli.repl.operation import current_prompt
 from poli.repl.operation import insert_prompt_at_end
 from poli.repl.operation import make_repl_view
 from poli.repl.operation import poli_cur_module
+from poli.shared.command import KindSpecificTextCommand
+from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 from poli.sublime.command import InterruptibleTextCommand
+from poli.sublime.command import TextCommand
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert
 from poli.sublime.view_assoc import make_view_assoc
@@ -22,13 +26,21 @@ __all__ = [
 ]
 
 
+class ReplTextCommand(KindSpecificTextCommand, TextCommand):
+    POLI_KIND = REPL_KIND
+
+
+class ReplInterruptibleTextCommand(KindSpecificTextCommand, InterruptibleTextCommand):
+    POLI_KIND = REPL_KIND
+
+
 class PoliReplOpen(sublime_plugin.WindowCommand):
     def run(self):
         view = make_repl_view(self.window)
         self.window.focus_view(view)
 
 
-class PoliReplSend(sublime_plugin.TextCommand):
+class PoliReplSend(ReplTextCommand):
     def run(self, edit):
         if not regedit.is_active_in(self.view):
             return   # Protected by keymap binding
@@ -65,7 +77,7 @@ class PoliReplSend(sublime_plugin.TextCommand):
         hns_for.pop(self.view)
 
 
-class PoliReplClear(sublime_plugin.TextCommand):
+class PoliReplClear(ReplTextCommand):
     def run(self, edit):
         self.view.set_read_only(False)
         self.view.erase(edit, sublime.Region(0, self.view.size()))
@@ -73,7 +85,7 @@ class PoliReplClear(sublime_plugin.TextCommand):
         hns_for.pop(self.view)
 
 
-class PoliReplSetCurrentModule(InterruptibleTextCommand):
+class PoliReplSetCurrentModule(ReplInterruptibleTextCommand):
     def run(self, edit, callback):
         module_names = comm.module_names()
         self.view.window().show_quick_panel(module_names, callback)
@@ -98,7 +110,7 @@ class HistoryNavigationState:
         self.pending_input = ''
 
 
-class PoliReplPrev(sublime_plugin.TextCommand):
+class PoliReplPrev(ReplTextCommand):
     def run(self, edit):
         if self.view in hns_for:
             hns = hns_for[self.view]
@@ -120,7 +132,7 @@ class PoliReplPrev(sublime_plugin.TextCommand):
         regedit.establish(self.view, reg)
 
 
-class PoliReplNext(sublime_plugin.TextCommand):
+class PoliReplNext(ReplTextCommand):
     def run(self, edit):
         if self.view in hns_for:
             hns = hns_for[self.view]

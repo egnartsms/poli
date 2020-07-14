@@ -3,14 +3,16 @@ import sublime
 
 from poli.comm import comm
 from poli.module.operation import EditContext
+from poli.module.operation import KIND_MODULE
 from poli.module.operation import cursor_location_at_sel
 from poli.module.operation import edit_cxt_for
 from poli.module.operation import edit_region_for
 from poli.module.operation import module_contents
+from poli.module.operation import poli_module_name
 from poli.module.operation import reg_no_trailing_nl
 from poli.module.operation import reg_plus_trailing_nl
 from poli.module.operation import selected_region
-from poli.module.operation import poli_module_name
+from poli.shared.command import KindSpecificTextCommand
 from poli.sublime import regedit
 from poli.sublime.command import InterruptibleTextCommand
 from poli.sublime.command import TextCommand
@@ -26,13 +28,21 @@ __all__ = [
 ]
 
 
-class PoliSelect(TextCommand):
+class ModuleTextCommand(KindSpecificTextCommand, TextCommand):
+    POLI_KIND = KIND_MODULE
+
+
+class ModuleInterruptibleTextCommand(KindSpecificTextCommand, InterruptibleTextCommand):
+    POLI_KIND = KIND_MODULE
+
+
+class PoliSelect(ModuleTextCommand):
     def run(self, edit):
         loc = cursor_location_at_sel(self.view)
         set_selection(self.view, to=loc.entry.reg_entry)
 
 
-class PoliEdit(TextCommand):
+class PoliEdit(ModuleTextCommand):
     def run(self, edit):
         loc = cursor_location_at_sel(self.view)
         if not loc.is_def_targeted:
@@ -49,7 +59,7 @@ class PoliEdit(TextCommand):
             set_selection(self.view, to=loc.entry.reg_def)
 
 
-class PoliRename(TextCommand):
+class PoliRename(ModuleTextCommand):
     def run(self, edit):
         loc = cursor_location_at_sel(self.view)
         if not loc.is_name_targeted:
@@ -66,7 +76,7 @@ class PoliRename(TextCommand):
             set_selection(self.view, to=loc.entry.reg_name)
 
 
-class PoliAdd(TextCommand):
+class PoliAdd(ModuleTextCommand):
     def run(self, edit, before):
         loc = cursor_location_at_sel(self.view)
         entry = loc.entry
@@ -86,7 +96,7 @@ class PoliAdd(TextCommand):
         )
 
 
-class PoliCancel(TextCommand):
+class PoliCancel(ModuleTextCommand):
     def run(self, edit):
         if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
@@ -108,7 +118,7 @@ class PoliCancel(TextCommand):
         regedit.discard(self.view, read_only=True)
 
 
-class PoliCommit(TextCommand):
+class PoliCommit(ModuleTextCommand):
     def run(self, edit):
         if not regedit.is_active_in(self.view):
             return  # Protected by keymap context
@@ -152,7 +162,7 @@ class PoliCommit(TextCommand):
         self.view.run_command('save')
 
 
-class PoliDelete(TextCommand):
+class PoliDelete(ModuleTextCommand):
     def run(self, edit):
         loc = cursor_location_at_sel(self.view)
         if not loc.is_fully_selected:
@@ -166,7 +176,7 @@ class PoliDelete(TextCommand):
         self.view.run_command('save')
 
 
-class PoliMoveBy1(TextCommand):
+class PoliMoveBy1(ModuleTextCommand):
     def run(self, edit, direction):
         mcont = module_contents(self.view)
         loc = mcont.cursor_location_or_stop(selected_region(self.view))
@@ -201,7 +211,7 @@ class PoliMoveBy1(TextCommand):
         self.view.run_command('save')
 
 
-class PoliMoveHere(InterruptibleTextCommand):
+class PoliMoveHere(ModuleInterruptibleTextCommand):
     def run(self, edit, callback, before):
         mcont = module_contents(self.view)
         loc = mcont.cursor_location_or_stop(selected_region(self.view))

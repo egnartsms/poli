@@ -3,6 +3,8 @@ import sublime_plugin
 
 from poli.comm import comm
 from poli.repl.operation import History
+from poli.repl.operation import REPL_KIND
+from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 
 
@@ -12,7 +14,7 @@ __all__ = ['ReplListener']
 class ReplListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        return settings.get('poli_kind') == 'repl/js'
+        return poli_kind[settings] == REPL_KIND
 
     def on_activated(self):
         if not regedit.is_active_in(self.view):

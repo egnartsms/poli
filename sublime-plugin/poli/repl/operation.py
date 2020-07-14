@@ -1,9 +1,12 @@
 import sublime
 
+from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
-from poli.sublime.misc import Setting
+from poli.sublime.setting import Setting
 
+
+REPL_KIND = 'repl/js'
 
 poli_cur_module = Setting('poli_cur_module')
 
@@ -12,7 +15,7 @@ def make_repl_view(window):
     view = window.new_file()
     view.set_name('Poli: REPL JS')
     view.set_scratch(True)
-    view.settings().set('poli_kind', 'repl/js')
+    poli_kind[view] = REPL_KIND
     poli_cur_module[view] = 'main'
     view.assign_syntax('Packages/Poli/Poli.REPL.JS.sublime-syntax')
 

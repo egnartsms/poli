@@ -8,6 +8,9 @@ from poli.sublime.regedit import EditRegion as BaseEditRegion
 from poli.sublime.view_assoc import make_view_assoc
 
 
+KIND_MODULE = 'module/js'
+
+
 def is_view_poli(view):
     filename = view.file_name()
     return filename and filename.startswith(backend_root)
