@@ -1,27 +1,38 @@
-const fs = require('fs');
 const Database = require('better-sqlite3');
+
 const {
-   orderModuleEntries, BOOTLOADER_MODULE_ID
+   IMAGE_PATH,
+   BOOTSTRAP_MODULE,
+   RUN_MODULE,
+   SRC_FOLDER,
 } = require('./common');
 
 
-const IMAGE_PATH = 'poli.image';
-
-
-function main() {
+function loadImage() {
    function moduleEval(code) {
       let fun = new Function('$_, $', `return (${code})`);
       return fun.call(null, $_, $);
    }
 
-   let db = new Database(IMAGE_PATH, {verbose: console.log});
-   let $_ = makeBuiltinsObject(db);
+   let db = new Database(IMAGE_PATH, {
+      verbose: console.log
+   });
+   let $_ = {
+      BOOTSTRAP_MODULE,
+      SRC_FOLDER,
+      require,
+      db,
+   };
    let $ = Object.create(null);
 
    let entries = db
-      .prepare(`SELECT name, def FROM entry WHERE module_id = :bootloader_module_id`)
+      .prepare(`
+         SELECT name, def
+         FROM entry
+         WHERE module_id = (SELECT id FROM module WHERE name = :bootstrap_module)
+      `)
       .all({
-         'bootloader_module_id': BOOTLOADER_MODULE_ID
+         bootstrap_module: BOOTSTRAP_MODULE
       });
 
    for (let {name, def} of entries) {
@@ -33,20 +44,20 @@ function main() {
       $[name] = moduleEval(def.src);
    }
 
-   $._init();
+   return $['main']();
 }
 
 
-function makeBuiltinsObject(db) {
-   return Object.assign(Object.create(null), {
-      BOOTLOADER_MODULE_ID,
-      require,
-      db,
-      orderModuleEntries
-   });
+function main() {
+   let modules = loadImage();
+   let run = modules.find(m => m.name === RUN_MODULE);
+   run.rtobj['main']();
 }
 
 
 if (require.main === module) {
    main();
 }
+
+
+exports.loadImage = loadImage;

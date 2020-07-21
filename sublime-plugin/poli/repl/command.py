@@ -87,7 +87,7 @@ class PoliReplClear(ReplTextCommand):
 
 class PoliReplSetCurrentModule(ReplInterruptibleTextCommand):
     def run(self, edit, callback):
-        module_names = comm.module_names()
+        module_names = comm.get_module_names()
         self.view.window().show_quick_panel(module_names, callback)
         (idx, ) = yield
 

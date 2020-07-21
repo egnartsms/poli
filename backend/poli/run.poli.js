@@ -2,7 +2,8 @@ aux
    * as auxiliary
    add as plus
    multiply as mult
-bootloader
+bootstrap
+   importEntry
    moduleEval
    modules
 -----
@@ -10,7 +11,7 @@ WebSocket ::= $_.require('ws')
 port ::= 8080
 server ::= null
 ws ::= null
-_init ::= function () {
+main ::= function () {
    $.server = new $.WebSocket.Server({port: $.port});
    $.server
       .on('error', function (error) {
@@ -83,6 +84,21 @@ opHandlers ::= ({
       let module = $.moduleByName(moduleName);
 
       $.opRet(module.entries);
+   },
+
+   getImportableEntries: function ({recp: recpModuleName, donor: donorModuleName}) {
+      let recp = $.moduleByName(recpModuleName);
+      let donor = $.moduleByName(donorModuleName);
+
+      let importable = new Set(Object.keys(donor.defs));
+      for (let name in recp.defs) {
+         importable.delete(name);
+      }
+      for (let name of recp.importedNames) {
+         importable.delete(name);
+      }
+
+      $.opRet(Array.from(importable));
    },
 
    eval: function ({module: moduleName, code}) {
@@ -268,6 +284,24 @@ opHandlers ::= ({
       $.plugEntry(module, j, src);
 
       $.opRet();
+   },
+
+   import: function ({recp: recpModuleName, donor: donorModuleName, name}) {
+      let recp = $.moduleByName(recpModuleName);
+      let donor = $.moduleByName(donorModuleName);
+
+      $.importEntry(recp, donor, name, null);
+
+      $.opRet();
+   },
+
+   addModule: function ({module: moduleName}) {
+      let {lastInsertRowid: moduleId} = $_.db
+         .prepare(`INSERT INTO module(name) VALUES (:name)`)
+         .run({name: moduleName});
+
+
+
    }
 
 })

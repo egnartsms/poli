@@ -6,5 +6,8 @@ class KindSpecificTextCommand:
 
     def __init__(self, view):
         super().__init__(view)
-        if poli_kind[view] != self.__class__.POLI_KIND:
+        if poli_kind[view] is not None and poli_kind[view] != self.POLI_KIND:
             self.is_enabled = lambda: False
+
+    def is_enabled(self):
+        return poli_kind[self.view] == self.POLI_KIND

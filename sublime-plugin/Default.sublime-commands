@@ -28,5 +28,17 @@
     {
         "caption": "Poli REPL: Set current module",
         "command": "poli_repl_set_current_module"
+    },
+
+    // Imports
+    {
+        "caption": "Poli: Import from module",
+        "command": "poli_import_from"
+    },
+
+    // Modules
+    {
+        "caption": "Poli: Add new module",
+        "command": "poli_add_new_module"
     }
 ]

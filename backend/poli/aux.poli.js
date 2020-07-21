@@ -1,4 +1,4 @@
-main
+run
    opHandlers as handlers
    serialize
 -----

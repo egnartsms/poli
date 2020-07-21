@@ -21,7 +21,7 @@ class TextCommand(sublime_plugin.TextCommand, metaclass=WrappingMethodClass):
 
 class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass):
     @aroundmethod
-    def run(self):
+    def run(self, **kwargs):
         try:
             yield
         except StopCommand:
@@ -30,7 +30,7 @@ class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass)
 
 class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMethodClass):
     @aroundmethod
-    def run(self):
+    def run(self, **kwargs):
         try:
             yield
         except StopCommand:

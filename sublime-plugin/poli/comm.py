@@ -50,7 +50,7 @@ class Communicator:
         else:
             raise make_backend_error(res['error'], res['info'])
 
-    def module_names(self):
+    def get_module_names(self):
         return self._send_op('getModuleNames', {})
 
     def get_defn(self, module, name):
@@ -62,6 +62,12 @@ class Communicator:
     def get_entries(self, module):
         return self._send_op('getEntries', {
             'module': module
+        })
+
+    def get_importable_entries(self, recp_module, donor_module):
+        return self._send_op('getImportableEntries', {
+            'recp': recp_module,
+            'donor': donor_module
         })
 
     def edit(self, module, name, new_defn):
@@ -114,5 +120,11 @@ class Communicator:
             'before': before
         })
 
+    def import_(self, recp_module, donor_module, entry_name):
+        return self._send_op('import', {
+            'recp': recp_module,
+            'donor': donor_module,
+            'name': entry_name
+        })
 
 comm = Communicator()
