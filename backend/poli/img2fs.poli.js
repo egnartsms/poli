@@ -71,10 +71,6 @@ dumpModule ::= function (module) {
 }
 writingToStream ::= function (stream, generatorFunc) {
    for (let piece of generatorFunc()) {
-      console.log(piece);
-      if (piece === null) {
-         throw new Error("Null to stream!");
-      }
       stream.write(piece);
    }
 
