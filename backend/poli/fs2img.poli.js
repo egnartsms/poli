@@ -1,6 +1,12 @@
 -----
 fs ::= $_.require('fs')
 main ::= function () {
+   let modules = $.insertModules();
+
+   $.insertEntries(modules);
+   $.insertImports(modules);
+}
+insertModules ::= function () {
    let stmtInsertModule = $_.db.prepare(
       `INSERT INTO module(name) VALUES (:module_name)`
    );
@@ -25,7 +31,9 @@ main ::= function () {
       });
    }
 
-   // Insert module bodies
+   return modules;
+}
+insertEntries ::= function (modules) {
    let stmtInsertEntry = $_.db.prepare(
       `INSERT INTO entry(module_id, name, def, prev_id) VALUES (
          (SELECT id FROM module WHERE name = :module_name),
@@ -60,8 +68,8 @@ main ::= function () {
          prevName = name;
       }
    }
-
-   // Insert imports
+}
+insertImports ::= function (modules) {
    let stmtInsertImport = $_.db.prepare(
       `INSERT INTO import(recp_module_id, donor_entry_id, alias) VALUES (
          (SELECT id FROM module WHERE name = :recp_module),
