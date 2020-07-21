@@ -30,28 +30,35 @@ dumpModule ::= function (module) {
             return z;
          }
 
+         if (i1.name === null) {
+            return -1;
+         }
+         if (i2.name === null) {
+            return 1;
+         }
+
          return compare(i1.name, i2.name);
       });
 
       // Imports
-      let curDonor = null;
+      let curDonorName = null;
 
       for (let {recp, donor, name, alias} of imports) {
-         if (donor.name !== curDonor) {
-            curDonor = donor.name;
-            yield curDonor;
+         if (donor.name !== curDonorName) {
+            curDonorName = donor.name;
+            yield curDonorName;
             yield '\n';
          }
 
          yield ind;
-         yield name;
+         yield name === null ? '*' : name;
          if (alias) {
             yield ` as ${alias}`;
          }
          yield '\n';
       }
 
-      yield '-----\\n';
+      yield '-----\n';
 
       // Body
       for (let [name, {src}] of Object.entries(module.defs)) {
@@ -64,6 +71,10 @@ dumpModule ::= function (module) {
 }
 writingToStream ::= function (stream, generatorFunc) {
    for (let piece of generatorFunc()) {
+      console.log(piece);
+      if (piece === null) {
+         throw new Error("Null to stream!");
+      }
       stream.write(piece);
    }
 
