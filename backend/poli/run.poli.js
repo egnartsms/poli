@@ -6,6 +6,8 @@ bootstrap
    importEntry
    moduleEval
    modules
+img2fs
+   genModuleImportsSection
 -----
 WebSocket ::= $_.require('ws')
 port ::= 8080
@@ -286,13 +288,29 @@ opHandlers ::= ({
       $.opRet();
    },
 
-   import: function ({recp: recpModuleName, donor: donorModuleName, name}) {
+   import: function ({recp: recpModuleName, donor: donorModuleName, entryName}) {
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
 
-      $.importEntry(recp, donor, name, null);
+      $.importEntry(recp, donor, entryName, null);
 
-      $.opRet();
+      $_.db
+         .prepare(`
+            INSERT INTO import(recp_module_id, donor_entry_id, alias) VALUES (
+               :recp_module_id,
+               (SELECT id
+                FROM entry
+                WHERE module_id = :donor_module_id AND name = :entry_name),
+               NULL
+            )`
+         )
+         .run({
+            recp_module_id: recp.id,
+            donor_module_id: donor.id,
+            entry_name: entryName
+         });
+
+      $.opRet($.dumpModuleImportsSection(recp));
    },
 
    addModule: function ({module: moduleName}) {
@@ -429,4 +447,12 @@ serialize ::= function (obj) {
    }
 
    return Array.from(serialize(obj, true)).join('');
+}
+dumpModuleImportsSection ::= function (module) {
+   let pieces = [];
+   for (let piece of $.genModuleImportsSection(module)) {
+      pieces.push(piece);
+   }
+
+   return pieces.join('');
 }

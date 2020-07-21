@@ -3,68 +3,28 @@ bootstrap
    modules
 -----
 fs ::= $_.require('fs')
+ind ::= '   '
 main ::= function () {
    for (let module of $.modules) {
       $.dumpModule(module);
    }
 }
 dumpModule ::= function (module) {
-   function compare(x, y) {
-      return (x < y) ? -1 : (x > y) ? 1 : 0;
-   }
+   let moduleStream = $.fs.createWriteStream(
+      `${$_.SRC_FOLDER}/${module.name}.poli.js`, {
+         mode: '664'
+      }
+   );
 
-   let moduleStream = $.fs.createWriteStream(`${$_.SRC_FOLDER}/${module.name}.poli.js`, {
-      mode: '664'
-   });
    $.writingToStream(moduleStream, function* () {
-      const ind = '   ';
-      let imports = [];
-      for (let imp of $.imports) {
-         if (imp.recp === module) {
-            imports.push(imp);
-         }
-      }
-      imports.sort((i1, i2) => {
-         let z = compare(i1.donor.name, i2.donor.name);
-         if (z !== 0) {
-            return z;
-         }
-
-         if (i1.name === null) {
-            return -1;
-         }
-         if (i2.name === null) {
-            return 1;
-         }
-
-         return compare(i1.name, i2.name);
-      });
-
-      // Imports
-      let curDonorName = null;
-
-      for (let {recp, donor, name, alias} of imports) {
-         if (donor.name !== curDonorName) {
-            curDonorName = donor.name;
-            yield curDonorName;
-            yield '\n';
-         }
-
-         yield ind;
-         yield name === null ? '*' : name;
-         if (alias) {
-            yield ` as ${alias}`;
-         }
-         yield '\n';
-      }
-
+      yield* $.genModuleImportsSection(module);
       yield '-----\n';
 
       // Body
-      for (let [name, {src}] of Object.entries(module.defs)) {
-         yield name;
+      for (let entry of module.entries) {
+         yield entry;
          yield ' ::= ';
-         yield src;
+         yield module.defs[entry].src;
          yield '\n';
       }
    });
@@ -75,4 +35,49 @@ writingToStream ::= function (stream, generatorFunc) {
    }
 
    stream.end();
+}
+importsTo ::= function (recp) {
+   let imports = [];
+   for (let imp of $.imports) {
+      if (imp.recp === recp) {
+         imports.push(imp);
+      }
+   }
+
+   imports.sort($.compareImports);
+
+   return imports;
+}
+compareImports ::= function (i1, i2) {
+   if (i1.donor.name !== i2.donor.name) {
+      return (i1.donor.name < i2.donor.name) ? -1 : 1;
+   }
+
+   if (i1.name === null) {
+      return -1;
+   }
+   if (i2.name === null) {
+      return 1;
+   }
+
+   return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
+}
+genModuleImportsSection ::= function* (module) {
+   let imports = $.importsTo(module);
+   let curDonorName = null;
+
+   for (let {recp, donor, name, alias} of imports) {
+      if (donor.name !== curDonorName) {
+         curDonorName = donor.name;
+         yield curDonorName;
+         yield '\n';
+      }
+
+      yield $.ind;
+      yield name === null ? '*' : name;
+      if (alias) {
+         yield ` as ${alias}`;
+      }
+      yield '\n';
+   }
 }

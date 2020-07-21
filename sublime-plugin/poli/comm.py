@@ -124,7 +124,7 @@ class Communicator:
         return self._send_op('import', {
             'recp': recp_module,
             'donor': donor_module,
-            'name': entry_name
+            'entryName': entry_name
         })
 
 comm = Communicator()

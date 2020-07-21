@@ -1,5 +1,8 @@
+bootstrap
+   indexBy
 run
-   opHandlers as handlers
+   dumpModuleImportsSection
+   handleOperation
    serialize
 -----
 sayhello ::= function () {

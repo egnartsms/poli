@@ -10,7 +10,10 @@ __all__ = ['PoliImportFrom']
 
 class PoliImportFrom(ModuleTextCommand):
     def run(self, edit, module_name, entry_name):
-        comm.import_(poli_module_name(self.view), module_name, entry_name)
+        new_import_section = comm.import_(
+            poli_module_name(self.view), module_name, entry_name
+        )
+        print(new_import_section)
 
     def input(self, args):
         return ModuleNameInputHandler(poli_module_name(self.view))
