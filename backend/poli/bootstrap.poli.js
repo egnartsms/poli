@@ -1,100 +1,46 @@
 -----
-modules ::= []
+modules ::= Object.create(null)
 imports ::= new Set()
 main ::= function () {
-   let moduleData = $.indexBy(
-      $_.db.prepare(`SELECT id, name FROM module`).all(), 
-      'id'
-   );
+   let moduleNames = $_.db.prepare(`SELECT name FROM module`).pluck().all();
+   let stmtEntries = $_.db.prepare(`
+      SELECT name, def, prev
+      FROM entry
+      WHERE module_name = :module_name
+   `);
 
-   let moduleById = $.buildObjectMap(function *() {
-      let rawEntries = $_.db.prepare(`
-         SELECT module_id, id, prev_id, name, def
-         FROM entry
-         ORDER BY module_id ASC`
-      ).all();
+   for (let moduleName of moduleNames) {
+      let entries = stmtEntries.all({module_name: moduleName});
+      entries = $.orderModuleEntries(entries, 'name', 'prev');
+      $.modules[moduleName] = $.makeModuleObject(moduleName, entries);
+   }
 
-      for (let [id, entries] of $.groupSortedBy(rawEntries, 'module_id')) {
-         entries = $.orderModuleEntries(entries, 'id', 'prev_id');
-         yield [id, $.makeModuleObject(moduleData[id], entries)];
+   let imports = $_.db.prepare(`SELECT * FROM any_import`).all();
+
+   for (let {
+            recp_module_name,
+            donor_module_name,
+            name,
+            alias
+         } of imports) {
+      let recp = $.modules[recp_module_name];
+      let donor = $.modules[donor_module_name];
+
+      if (name === null) {
+         $.importModule(recp, donor, alias);
       }
-   }); 
-
-   let rawImports = $_.db.prepare(`
-      SELECT
-         import.recp_module_id,
-         entry.module_id AS donor_module_id,
-         entry.name AS name,
-         import.alias AS alias
-      FROM import
-         INNER JOIN entry ON entry.id = import.donor_entry_id
-
-      UNION ALL
-      
-      SELECT
-         recp_module_id,
-         donor_module_id,
-         NULL AS name,
-         alias
-      FROM star_import`
-   ).all();
-
-   for (let ri of rawImports) {
-      let recp = moduleById[ri['recp_module_id']];
-      let donor = moduleById[ri['donor_module_id']];
-
-      $.importEntry(recp, donor, ri['name'], ri['alias']);
-   }
-
-   // Fill in $.modules (preserving identity of this array)
-   for (let module of Object.values(moduleById)) {
-      $.modules.push(module);
-   }
-
-   return Array.from($.modules);
-}
-groupSortedBy ::= function* (items, prop) {
-   let fakePropval = Object.create(null);
-   let propval = fakePropval;
-   let group = [];
-
-   for (let item of items) {
-      if (item[prop] !== propval) {
-         if (propval !== fakePropval) {
-            yield [propval, group];
-         }
-         propval = item[prop];
-         group = [];
+      else {
+         $.importEntry(recp, donor, name, alias);
       }
-
-      group.push(item);
    }
 
-   if (propval !== fakePropval) {
-      yield [propval, group];
-   }
-}
-indexBy ::= function (items, prop) {
-   let res = Object.create(null);
-
-   for (let item of items) {
-      res[item[prop]] = item;
-   }
-
-   return res;
-}
-buildObjectMap ::= function (gen) {
-   let objmap = Object.create(null);
-   for (let [key, val] of gen()) {
-      objmap[key] = val;
-   }
-   return objmap;
+   return Object.values($.modules);
 }
 orderModuleEntries ::= function (entries, propId, propPrevId) {
    /**
     Return an ordered array of module entries.
 
-    Entries may be any objects for which the following must hold:
+    Entries may be any objects for which the following holds:
 
       entry[propId]: returns ID of an etry
       entry[propPrevId]: returns ID of the immediately preceding entry
@@ -102,42 +48,30 @@ orderModuleEntries ::= function (entries, propId, propPrevId) {
     :param entries: array of items
     :param propId, propPrevId: property names to access respective IDs.
    */
-   let id2prev = new Map;
+   let prev2entry = new Map;
 
    for (let entry of entries) {
-      id2prev.set(entry[propId], entry[propPrevId]);
+      prev2entry.set(entry[propPrevId], entry);
    }
 
-   let ids = [];
-
-   while (id2prev.size > 0) {
-      let i = ids.length;
-      let [id] = id2prev.keys();
-
-      while (id2prev.has(id)) {
-         ids.push(id);
-         let prev = id2prev.get(id);
-         id2prev.delete(id);
-         id = prev;
-      }
-
-      // reverse part of array
-      let j = ids.length - 1;
-      while (i < j) {
-         [ids[i], ids[j]] = [ids[j], ids[i]];
-         i += 1;
-         j -= 1;
-      }
+   let entry = prev2entry.get(null);
+   if (entry == null) {
+      return [];
    }
 
-   let id2item = new Map;
-   for (let entry of entries) {
-      id2item.set(entry[propId], entry);
+   let ordered = [];
+
+   while (entry != null) {
+      ordered.push(entry);
+      entry = prev2entry.get(entry[propId]);
    }
 
-   return Array.from(ids, id => id2item.get(id));
+   return ordered;
 }
-makeModuleObject ::= function (moduleData, entries) {
+makeModuleObject ::= function (moduleName, entries) {
+   /**
+    * entries - DB records (module entries) already in the right order
+   */
    let defs = Object.create(null);
 
    for (let {name, def} of entries) {
@@ -150,12 +84,11 @@ makeModuleObject ::= function (moduleData, entries) {
    }
 
    let module = {
-      id: moduleData['id'],
-      name: moduleData['name'],
+      name: moduleName,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(entries, e => e['name']),
       defs: defs,
-      rtobj: (moduleData['name'] === $_.BOOTSTRAP_MODULE) ? $ : Object.create(null)
+      rtobj: (moduleName === $_.BOOTSTRAP_MODULE) ? $ : Object.create(null)
    };
 
    if (module.rtobj === $) {
@@ -171,35 +104,27 @@ makeModuleObject ::= function (moduleData, entries) {
 importEntry ::= function (recp, donor, name, alias) {
    let importedAs = alias || name;
 
-   if (name !== null && !(name in donor.defs)) {
+   if (!(name in donor.defs)) {
       throw new Error(
-         `Module "${recp.name}": cannot import "${name}" from "${donor.name}": no such `
-         `definition`
+         `Module "${recp.name}": cannot import "${name}" from "${donor.name}": ` +
+         `no such definition`
       );
    }
    if (importedAs in recp.defs) {
       throw new Error(
-         `Module "${recp.name}": cannot import "${importedAs}" from the module `
+         `Module "${recp.name}": cannot import "${importedAs}" from the module ` +
          `"${donor.name}": the name collides with own definition`
       );
    }
    if (recp.importedNames.has(importedAs)) {
       throw new Error(
-         `Module "${recp.name}": the name "${importedAs}" imported from multiple `
+         `Module "${recp.name}": the name "${importedAs}" imported from multiple ` +
          `modules`
       );         
    }
 
    recp.importedNames.add(importedAs);
-
-   if (name === null) {
-      // star import
-      recp.rtobj[importedAs] = donor.rtobj;
-   }
-   else {
-      // member import
-      recp.rtobj[importedAs] = donor.rtobj[name];
-   }
+   recp.rtobj[importedAs] = donor.rtobj[name];
 
    $.imports.add({
       recp,
@@ -210,6 +135,32 @@ importEntry ::= function (recp, donor, name, alias) {
          return this.alias || this.name
       }
    });
+}
+importModule ::= function (recp, donor, alias) {
+   if (alias in recp.defs) {
+      throw new Error(
+         `Module "${recp.name}": cannot import "${donor.name}" as "${alias}": ` +
+         `the name collides with own definition`
+      );
+   }
+   if (recp.importedNames.has(alias)) {
+      throw new Error(
+         `Module "${recp.name}": the name "${alias}" imported from multiple modules`
+      );
+   }
+
+   recp.importedNames.add(alias);
+   recp.rtobj[alias] = donor.rtobj;
+
+   $.imports.add({
+      recp,
+      donor,
+      name: null,
+      alias,
+      get importedAs() {
+         return this.alias;
+      }
+   })
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);

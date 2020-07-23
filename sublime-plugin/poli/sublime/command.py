@@ -1,5 +1,6 @@
 import sublime
 import sublime_plugin
+import inspect
 
 from poli.common.wrapping_method import WrappingMethodClass
 from poli.common.wrapping_method import aroundmethod
@@ -40,6 +41,9 @@ class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMe
 class InterruptibleTextCommand(sublime_plugin.TextCommand):
     def run_(self, edit_token, args):
         def callback(*args):
+            if inspect.getgeneratorstate(gen) != 'GEN_SUSPENDED':
+                raise RuntimeError("Generator not in suspended state")
+
             def resume(edit_token):
                 edit.edit_token = edit_token
                 try:

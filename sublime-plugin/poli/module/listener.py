@@ -4,6 +4,7 @@ import sublime_plugin
 from poli.comm import comm
 from poli.module.operation import KIND_MODULE
 from poli.module.operation import is_view_poli
+from poli.module.operation import poli_module_name
 from poli.module.operation import set_connected_status
 from poli.shared.setting import poli_kind
 from poli.sublime.misc import view_by_settings
@@ -15,7 +16,7 @@ __all__ = ['PoliViewListener']
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        return False
+        # return False
         view = view_by_settings(settings)
         return view is not None and is_view_poli(view)
 
@@ -38,8 +39,8 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         if dollar_dot != "$.":
             return None
 
-        entry_names = comm.get_entries()
+        entries = comm.get_entries(poli_module_name(self.view))
         return (
-            [(x, x) for x in entry_names if x.startswith(prefix)],
+            [(x, x) for x in entries if x.startswith(prefix)],
             sublime.INHIBIT_WORD_COMPLETIONS
         )

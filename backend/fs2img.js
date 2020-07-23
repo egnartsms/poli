@@ -74,17 +74,12 @@ function makeImage(db) {
       $[name] = moduleEval(code);
    }
 
-   $['main']();
+   $['main']();  
 }
 
 
 function makeEmptyImage() {
-   try {
-      fs.unlinkSync(IMAGE_PATH);   
-   }
-   catch (e) {
-      if (e.code === 'ENOENT'); else throw e;
-   }
+   ensureImageFileUnlinked();
 
    let db = new Database(IMAGE_PATH, {
       verbose: console.log
@@ -96,10 +91,28 @@ function makeEmptyImage() {
 }
 
 
+function ensureImageFileUnlinked() {
+   try {
+      fs.unlinkSync(IMAGE_PATH);   
+   }
+   catch (e) {
+      if (e.code === 'ENOENT'); else throw e;
+   }   
+}
+
+
 function main() {
    let db = makeEmptyImage();
-   db.transaction(makeImage)(db);
-   db.close();
+
+   try {
+      db.transaction(makeImage)(db);
+      db.close();
+   }
+   catch (e) {
+      db.close();
+      ensureImageFileUnlinked();
+      throw e;
+   }
 }
 
 

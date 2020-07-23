@@ -1,28 +1,55 @@
 create table module(
-   id integer primary key,
-   name text not null unique
+   name text primary key
 );
 
 
 create table entry(
-   id integer primary key,
-   module_id integer not null references module(id),
+   module_name text not null,
    name not null,
    def json not null,
-   prev_id integer references entry(id),
-   unique (module_id, name)
+   prev text,
+   primary key (module_name, name),
+   foreign key (module_name) references module on update cascade,
+   foreign key (module_name, prev) references entry on update cascade
 );
 
 
 create table import(
-   recp_module_id integer not null references module(id),
-   donor_entry_id integer not null references entry(id),
-   alias text
+   recp_module_name text not null,
+   donor_module_name text not null,
+   name text not null,
+   alias text,
+   foreign key (recp_module_name) references module on update cascade,
+   foreign key (donor_module_name) references module on update cascade,
+   foreign key (donor_module_name, name) references entry on update cascade
 );
 
 
 create table star_import(
-   recp_module_id integer not null references module(id),
-   donor_module_id integer not null references module(id),
-   alias text not null
+   recp_module_name text not null,
+   donor_module_name text not null,
+   alias text not null,
+   foreign key (recp_module_name) references module on update cascade,
+   foreign key (donor_module_name) references module on update cascade
 );
+
+
+create view any_import as
+   select
+      recp_module_name,
+      donor_module_name,
+      name,
+      alias
+   from import
+
+   union all
+   
+   select
+      recp_module_name,
+      donor_module_name,
+      null as name,
+      alias
+   from star_import
+
+   order by 1, 2, 3
+;

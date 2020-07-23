@@ -4,6 +4,7 @@ aux
    multiply as mult
 bootstrap
    importEntry
+   imports
    moduleEval
    modules
 img2fs
@@ -68,7 +69,7 @@ opRet ::= function (result=null) {
 }
 opHandlers ::= ({
    getModuleNames: function () {
-      $.opRet(Array.from($.modules, m => m.name));
+      $.opRet(Object.keys($.modules));
    },
 
    getDefinition: function ({module: moduleName, name}) {
@@ -92,15 +93,25 @@ opHandlers ::= ({
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
 
-      let importable = new Set(Object.keys(donor.defs));
-      for (let name in recp.defs) {
-         importable.delete(name);
-      }
-      for (let name of recp.importedNames) {
-         importable.delete(name);
+      let importables = new Set(donor.entries);
+
+      // Exclude those already imported
+      for (let imp of $.imports) {
+         if (imp.recp === recp && imp.donor === donor) {
+            importables.delete(imp.name);
+         }
       }
 
-      $.opRet(Array.from(importable));
+      // Those not imported but which are impossible to import due to name collisions
+      // should be included with "possible: false" flag.
+      let result = [];
+
+      for (let entry of importables) {
+         let impossible = (entry in recp.defs) || recp.importedNames.has(entry);
+         result.push([entry, !impossible]);
+      }
+
+      $.opRet(result);
    },
 
    eval: function ({module: moduleName, code}) {
@@ -137,10 +148,10 @@ opHandlers ::= ({
          .prepare(`
             UPDATE entry
             SET def = :def
-            WHERE module_id = :module_id AND name = :name`
+            WHERE module_name = :module_name AND name = :name`
          )
          .run({
-            module_id: module.id,
+            module_name: module.name,
             name: name,
             def: JSON.stringify(newDef)
          });
@@ -164,10 +175,10 @@ opHandlers ::= ({
          .prepare(
             `UPDATE entry
              SET name = :new_name
-             WHERE module_id = :module_id AND name = :old_name`
+             WHERE module_name = :module_name AND name = :old_name`
          )
          .run({
-            module_id: module.id,
+            module_name: module.name,
             new_name: newName,
             old_name: oldName
          });
@@ -204,11 +215,11 @@ opHandlers ::= ({
 
       $_.db
          .prepare(
-            `INSERT INTO entry(module_id, name, def, prev_id)
-             VALUES (:module_id, :name, :def, NULL)`
+            `INSERT INTO entry(module_name, name, def, prev)
+             VALUES (:module_name, :name, :def, NULL)`
          )
          .run({
-            module_id: module.id,
+            module_name: module.name,
             name,
             def: JSON.stringify(def)
          });
@@ -232,10 +243,10 @@ opHandlers ::= ({
 
       $_.db
          .prepare(
-            `DELETE FROM entry WHERE module_id = :module_id AND name = :name`
+            `DELETE FROM entry WHERE module_name = :module_name AND name = :name`
          )
          .run({
-            module_id: module.id,
+            module_name: module.name,
             name: name
          });
 
@@ -296,18 +307,17 @@ opHandlers ::= ({
 
       $_.db
          .prepare(`
-            INSERT INTO import(recp_module_id, donor_entry_id, alias) VALUES (
-               :recp_module_id,
-               (SELECT id
-                FROM entry
-                WHERE module_id = :donor_module_id AND name = :entry_name),
+            INSERT INTO import(recp_module_name, donor_module_name, name, alias) VALUES (
+               :recp_module_name,
+               :donor_module_name,
+               :name,
                NULL
             )`
          )
          .run({
-            recp_module_id: recp.id,
-            donor_module_id: donor.id,
-            entry_name: entryName
+            recp_module_name: recp.name,
+            donor_module_name: donor.name,
+            name: entryName
          });
 
       $.opRet($.dumpModuleImportsSection(recp));
@@ -317,56 +327,34 @@ opHandlers ::= ({
       let {lastInsertRowid: moduleId} = $_.db
          .prepare(`INSERT INTO module(name) VALUES (:name)`)
          .run({name: moduleName});
-
-
-
    }
 
 })
 moduleByName ::= function (name) {
-   let module = $.modules.find(m => m.name === name);
+   let module = $.modules[name];
    if (!module) {
       throw new Error(`Unknown module name: ${name}`);
    }
    return module;
 }
-dbConnectEntries ::= function (moduleId, prev, next) {
+dbUpdatePrev ::= function (moduleName, prev, next) {
    if (next == null) return;
 
-   if (prev == null) {
-      $_.db
-         .prepare(`
-            UPDATE entry SET prev_id = NULL
-            WHERE module_id = :module_id AND name = :next`
-         )
-         .run({
-            next,
-            module_id: moduleId
-         });
-   }
-   else {
-      $_.db
-         .prepare(`
-            UPDATE entry SET prev_id = (
-               SELECT e.id
-               FROM entry e
-               WHERE e.module_id = module_id AND e.name = :prev
-            )
-            WHERE module_id = :module_id AND name = :next`
-         )
-         .run({
-            prev, next,
-            module_id: moduleId
-         });
-   }
+   $_.db
+      .prepare(`
+         UPDATE entry
+         SET prev = :prev
+         WHERE module_name = :module_name AND name = :next`
+      )
+      .run({prev, next, module_name: moduleName});
 }
 unplugEntry ::= function (module, i) {
-   $.dbConnectEntries(module.id, module.entries[i - 1], module.entries[i + 1]);
+   $.dbUpdatePrev(module.name, module.entries[i - 1], module.entries[i + 1]);
    module.entries.splice(i, 1);
 }
 plugEntry ::= function (module, i, name) {
-   $.dbConnectEntries(module.id, module.entries[i - 1], name);
-   $.dbConnectEntries(module.id, name, module.entries[i]);
+   $.dbUpdatePrev(module.name, module.entries[i - 1], name);
+   $.dbUpdatePrev(module.name, name, module.entries[i]);
    module.entries.splice(i, 0, name);
 }
 serialize ::= function (obj) {

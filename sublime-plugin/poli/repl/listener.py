@@ -4,6 +4,7 @@ import sublime_plugin
 from poli.comm import comm
 from poli.repl.operation import History
 from poli.repl.operation import REPL_KIND
+from poli.repl.operation import poli_cur_module
 from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 
@@ -35,8 +36,8 @@ class ReplListener(sublime_plugin.ViewEventListener):
         if dollar_dot != "$.":
             return None
 
-        entry_names = comm.get_entry_names()
+        entries = comm.get_entries(poli_cur_module[self.view])
         return (
-            [(x, x) for x in entry_names if x.startswith(prefix)],
+            [(x, x) for x in entries if x.startswith(prefix)],
             sublime.INHIBIT_WORD_COMPLETIONS
         )

@@ -29,7 +29,7 @@ function loadImage() {
       .prepare(`
          SELECT name, def
          FROM entry
-         WHERE module_id = (SELECT id FROM module WHERE name = :bootstrap_module)
+         WHERE module_name = :bootstrap_module
       `)
       .all({
          bootstrap_module: BOOTSTRAP_MODULE

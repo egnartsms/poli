@@ -35,10 +35,24 @@ class EntryNameInputHandler(sublime_plugin.ListInputHandler):
         self.recp_module_name = recp_module_name
         self.donor_module_name = donor_module_name
 
-    def list_items(self):
-        importable_entries = comm.get_importable_entries(
-            recp_module=self.recp_module_name,
-            donor_module=self.donor_module_name
+        self.importable_entries = comm.get_importable_entries(
+            recp_module=recp_module_name,
+            donor_module=donor_module_name
         )
 
-        return importable_entries
+    def list_items(self):
+        return [entry for entry, possible in self.importable_entries]
+
+    def validate(self, value):
+        return self._is_possible(value)
+
+    def preview(self, value):
+        if self._is_possible(value):
+            return None
+        else:
+            return "Cannot import (name collision)"
+
+    def _is_possible(self, value):
+        return next(
+            possible for entry, possible in self.importable_entries if entry == value
+        )

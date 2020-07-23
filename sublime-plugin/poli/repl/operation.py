@@ -16,7 +16,7 @@ def make_repl_view(window):
     view.set_name('Poli: REPL JS')
     view.set_scratch(True)
     poli_kind[view] = REPL_KIND
-    poli_cur_module[view] = 'main'
+    poli_cur_module[view] = 'run'
     view.assign_syntax('Packages/Poli/Poli.REPL.JS.sublime-syntax')
 
     call_with_edit(view, lambda edit: insert_prompt_at_end(view, edit))

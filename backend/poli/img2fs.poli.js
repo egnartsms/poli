@@ -5,8 +5,8 @@ bootstrap
 fs ::= $_.require('fs')
 ind ::= '   '
 main ::= function () {
-   for (let module of $.modules) {
-      $.dumpModule(module);
+   for (let moduleName in $.modules) {
+      $.dumpModule($.modules[moduleName]);
    }
 }
 dumpModule ::= function (module) {
@@ -36,7 +36,7 @@ writingToStream ::= function (stream, generatorFunc) {
 
    stream.end();
 }
-importsTo ::= function (recp) {
+sortedImportsInto ::= function (recp) {
    let imports = [];
    for (let imp of $.imports) {
       if (imp.recp === recp) {
@@ -63,7 +63,7 @@ compareImports ::= function (i1, i2) {
    return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
 }
 genModuleImportsSection ::= function* (module) {
-   let imports = $.importsTo(module);
+   let imports = $.sortedImportsInto(module);
    let curDonorName = null;
 
    for (let {recp, donor, name, alias} of imports) {

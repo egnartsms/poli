@@ -1,5 +1,5 @@
-bootstrap
-   indexBy
+img2fs
+   genModuleImportsSection
 run
    dumpModuleImportsSection
    handleOperation
@@ -14,3 +14,4 @@ add ::= function (x, y) {
 multiply ::= function (x, y) {
    return x * y;
 }
+compareImports ::= 0

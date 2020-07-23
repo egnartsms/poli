@@ -5,6 +5,8 @@ main ::= function () {
 
    $.insertEntries(modules);
    $.insertImports(modules);
+
+   $.validate(modules);
 }
 insertModules ::= function () {
    let stmtInsertModule = $_.db.prepare(
@@ -34,23 +36,13 @@ insertModules ::= function () {
    return modules;
 }
 insertEntries ::= function (modules) {
-   let stmtInsertEntry = $_.db.prepare(
-      `INSERT INTO entry(module_id, name, def, prev_id) VALUES (
-         (SELECT id FROM module WHERE name = :module_name),
-         :name,
-         :def,
-         (
-            SELECT e.id
-            FROM entry e INNER JOIN module m ON e.module_id = m.id
-            WHERE m.name = :module_name AND e.name = :prev_name
-         )
-      )`
-   );
-
-   let prevName = null;
+   let stmtInsertEntry = $_.db.prepare(`
+      INSERT INTO entry(module_name, name, def, prev)
+      VALUES (:module_name, :name, :def, :prev)
+   `);
 
    for (let module of modules) {
-      let prevId = null;
+      let prevName = null;
 
       for (let [name, src] of module.body) {
          let def = {
@@ -62,7 +54,7 @@ insertEntries ::= function (modules) {
             module_name: module.name,
             name: name,
             def: JSON.stringify(def),
-            prev_name: prevName
+            prev: prevName
          });
 
          prevName = name;
@@ -70,38 +62,30 @@ insertEntries ::= function (modules) {
    }
 }
 insertImports ::= function (modules) {
-   let stmtInsertImport = $_.db.prepare(
-      `INSERT INTO import(recp_module_id, donor_entry_id, alias) VALUES (
-         (SELECT id FROM module WHERE name = :recp_module),
-         (SELECT e.id
-          FROM entry e INNER JOIN module m on e.module_id = m.id
-          WHERE e.name = :entry_name AND m.name = :donor_module),
-         :alias
-      )`
+   let stmtInsertImport = $_.db.prepare(`
+      INSERT INTO import(recp_module_name, donor_module_name, name, alias)
+      VALUES (:recp_module_name, :donor_module_name, :name, :alias)`
    );
-   let stmtInsertStarImport = $_.db.prepare(
-      `INSERT INTO star_import(recp_module_id, donor_module_id, alias) VALUES (
-         (SELECT id FROM module WHERE name = :recp_module),
-         (SELECT id FROM module WHERE name = :donor_module),
-         :alias
-      )`
+   let stmtInsertStarImport = $_.db.prepare(`
+      INSERT INTO star_import(recp_module_name, donor_module_name, alias)
+      VALUES (:recp_module_name, :donor_module_name, :alias)`
    );
 
-   for (let recpModule of modules) {
-      for (let {donor, asterisk, imports} of recpModule.imports) {
-         if (asterisk) {
+   for (let module of modules) {
+      for (let {donor, asterisk, imports} of module.imports) {
+         if (asterisk !== null) {
             stmtInsertStarImport.run({
-               recp_module: recpModule.name,
-               donor_module: donor,
+               recp_module_name: module.name,
+               donor_module_name: donor,
                alias: asterisk,
             });
          }
 
          for (let {entry, alias} of imports) {
             stmtInsertImport.run({
-               recp_module: recpModule.name,
-               donor_module: donor,
-               entry_name: entry,
+               recp_module_name: module.name,
+               donor_module_name: donor,
+               name: entry,
                alias: alias,
             });
          }
@@ -161,4 +145,37 @@ moduleNameByFile ::= function (moduleFile) {
    }
 
    return mtch.groups.module_name;
+}
+validate ::= function (modules) {
+   // Check high-level constraints of the image (correctness)
+   for (let module of modules) {
+      $.validateModule(module);
+   }
+}
+validateModule ::= function (module) {
+   let entries = new Set(module.body.map(([name]) => name));
+
+   for (let {donor, asterisk, imports} of module.imports) {
+      if (asterisk !== null) {
+         if (entries.has(asterisk)) {
+            throw new Error(
+               `Corrupted image: module "${module.name}" imports "${donor}" as ` +
+               `"${asterisk}" which collides with another module member or import`
+            );
+         }
+         entries.add(asterisk);
+      }
+
+      for (let {entry, alias} of imports) {
+         let importedAs = alias || entry;
+         if (entries.has(importedAs)) {
+            console.log("Here!!", entry, alias, module);
+            throw new Error(
+               `Corrupted image: module "${module.name}" imports "${importedAs}" from ` +
+               `"${donor}" which collides with another module member or import`
+            );
+         }
+         entries.add(importedAs);
+      }
+   }
 }
