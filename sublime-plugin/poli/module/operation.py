@@ -28,9 +28,12 @@ def module_contents(view):
         sublime.error_message("Module names and definitions don't match")
         raise RuntimeError
 
-    [term] = view.find_by_selector('punctuation.terminator.poli.end-of-imports')
+    return ModuleContents(view, names, defs, module_body_start(view))
 
-    return ModuleContents(view, names, defs, term.end() + 1)
+
+def module_body_start(view):
+    [term] = view.find_by_selector('punctuation.terminator.poli.end-of-imports')
+    return term.end() + 1
 
 
 class ModuleContents:

@@ -1,5 +1,9 @@
 img2fs
+   dumpModule
    genModuleImportsSection
+   ind
+   sortedImportsInto
+   writingToStream
 run
    dumpModuleImportsSection
    handleOperation

@@ -183,8 +183,15 @@ def editing_region(view):
 def region_editing_suppressed(view):
     """Temporarily suppress region editing in the view.
 
-    The editing region is left untouched and restored on exit from context manager.
+    The editing region is left untouched and restored on exit from context manager. If
+    region editing was not active in the view, then set the view as non-read-only for the
+    extent of the context manager, and restore its previous read-onlyness state.
     """
+    if view not in regedit_for:
+        with read_only_set_to(view, False):
+            yield
+            return
+
     edit_region = regedit_for[view].edit_region
     del regedit_for[view]
     view.set_read_only(False)

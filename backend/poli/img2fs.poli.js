@@ -18,7 +18,6 @@ dumpModule ::= function (module) {
 
    $.writingToStream(moduleStream, function* () {
       yield* $.genModuleImportsSection(module);
-      yield '-----\n';
 
       // Body
       for (let entry of module.entries) {

@@ -442,5 +442,7 @@ dumpModuleImportsSection ::= function (module) {
       pieces.push(piece);
    }
 
+   pieces.push('-----\n');
+
    return pieces.join('');
 }

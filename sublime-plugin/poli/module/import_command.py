@@ -1,8 +1,11 @@
+import sublime
 import sublime_plugin
 
 from poli.comm import comm
 from poli.module.command import ModuleTextCommand
+from poli.module.operation import module_body_start
 from poli.module.operation import poli_module_name
+from poli.sublime.regedit import region_editing_suppressed
 
 
 __all__ = ['PoliImportFrom']
@@ -13,7 +16,13 @@ class PoliImportFrom(ModuleTextCommand):
         new_import_section = comm.import_(
             poli_module_name(self.view), module_name, entry_name
         )
-        print(new_import_section)
+        print("new_import_section:", new_import_section)
+        with region_editing_suppressed(self.view):
+            self.view.replace(
+                edit,
+                sublime.Region(0, module_body_start(self.view)),
+                new_import_section
+            )
 
     def input(self, args):
         return ModuleNameInputHandler(poli_module_name(self.view))
@@ -24,7 +33,9 @@ class ModuleNameInputHandler(sublime_plugin.ListInputHandler):
         self.recp_module_name = recp_module_name
 
     def list_items(self):
-        return comm.get_module_names()
+        module_names = comm.get_module_names()
+        module_names.remove(self.recp_module_name)
+        return module_names
 
     def next_input(self, args):
         return EntryNameInputHandler(self.recp_module_name, args['module_name'])
