@@ -3,20 +3,26 @@ import sublime_plugin
 
 from poli.comm import comm
 from poli.module.command import ModuleTextCommand
+from poli.module.operation import is_entry_name_valid
 from poli.module.operation import module_body_start
 from poli.module.operation import poli_module_name
 from poli.sublime.regedit import region_editing_suppressed
 
 
-__all__ = ['PoliImportFrom']
+__all__ = ['PoliImport', 'PoliRemoveUnusedImports']
 
 
-class PoliImportFrom(ModuleTextCommand):
-    def run(self, edit, module_name, entry_name):
+class PoliImport(ModuleTextCommand):
+    def run(self, edit, entry, alias):
+        module_name, entry_name = entry
+
         new_import_section = comm.import_(
-            poli_module_name(self.view), module_name, entry_name
+            recp_module=poli_module_name(self.view),
+            donor_module=module_name,
+            name=entry_name,
+            alias=alias,
         )
-        print("new_import_section:", new_import_section)
+
         with region_editing_suppressed(self.view):
             self.view.replace(
                 edit,
@@ -25,45 +31,63 @@ class PoliImportFrom(ModuleTextCommand):
             )
 
     def input(self, args):
-        return ModuleNameInputHandler(poli_module_name(self.view))
+        return EntryInputHandler(poli_module_name(self.view))
 
 
-class ModuleNameInputHandler(sublime_plugin.ListInputHandler):
+class EntryInputHandler(sublime_plugin.ListInputHandler):
     def __init__(self, recp_module_name):
-        self.recp_module_name = recp_module_name
+        res = comm.get_importables(recp_module_name)
+        self.items = [
+            ("{} ({})".format(entry, module), [module, entry])
+            for module, entry in res['importables']
+        ]
+        self.disallowed_names = res['disallowedNames']
 
     def list_items(self):
-        module_names = comm.get_module_names()
-        module_names.remove(self.recp_module_name)
-        return module_names
+        return self.items
 
     def next_input(self, args):
-        return EntryNameInputHandler(self.recp_module_name, args['module_name'])
+        module_name, entry_name = args['entry']
+        return AliasInputHandler(entry_name, self.disallowed_names)
 
 
-class EntryNameInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, recp_module_name, donor_module_name):
-        self.recp_module_name = recp_module_name
-        self.donor_module_name = donor_module_name
+class AliasInputHandler(sublime_plugin.TextInputHandler):
+    def __init__(self, entry_name, disallowed_names):
+        self.entry_name = entry_name
+        self.disallowed_names = disallowed_names
 
-        self.importable_entries = comm.get_importable_entries(
-            recp_module=recp_module_name,
-            donor_module=donor_module_name
-        )
-
-    def list_items(self):
-        return [entry for entry, possible in self.importable_entries]
+    def placeholder(self):
+        return "Alias"
 
     def validate(self, value):
-        return self._is_possible(value)
+        if value and not is_entry_name_valid(value):
+            return False
+
+        imported_as = value or self.entry_name
+        return imported_as not in self.disallowed_names
 
     def preview(self, value):
-        if self._is_possible(value):
-            return None
+        if not self.validate(value):
+            return "Name collision"
         else:
-            return "Cannot import (name collision)"
+            return None
 
-    def _is_possible(self, value):
-        return next(
-            possible for entry, possible in self.importable_entries if entry == value
-        )
+
+class PoliRemoveUnusedImports(ModuleTextCommand):
+    def run(self, edit):
+        res = comm.remove_unused_imports(poli_module_name(self.view))
+
+        new_import_section = res['importSection']
+        removed_count = res['removedCount']
+
+        if removed_count > 0:
+            with region_editing_suppressed(self.view):
+                self.view.replace(
+                    edit,
+                    sublime.Region(0, module_body_start(self.view)),
+                    new_import_section
+                )
+
+            sublime.status_message("Removed {} unused imports".format(removed_count))
+        else:
+            sublime.status_message("There are no unused imports in this module")

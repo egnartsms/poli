@@ -79,4 +79,6 @@ genModuleImportsSection ::= function* (module) {
       }
       yield '\n';
    }
+
+   yield '-----\n';
 }

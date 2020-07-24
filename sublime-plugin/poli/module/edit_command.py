@@ -6,9 +6,11 @@ from poli.comm import comm
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
 from poli.module.operation import EditContext
+from poli.module.operation import RE_DEFN
 from poli.module.operation import cursor_location_at_sel
 from poli.module.operation import edit_cxt_for
 from poli.module.operation import edit_region_for
+from poli.module.operation import is_entry_name_valid
 from poli.module.operation import module_contents
 from poli.module.operation import poli_module_name
 from poli.module.operation import reg_no_trailing_nl
@@ -126,24 +128,22 @@ class PoliCommit(ModuleTextCommand):
             comm.edit(poli_module_name(self.view), cxt.name, defn)
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
-            if not re.search('^[a-zA-Z_$][0-9a-zA-Z_$]*$', new_name):
+            if not is_entry_name_valid(new_name):
                 sublime.status_message("Not a valid name")
                 return
             comm.rename(poli_module_name(self.view), cxt.name, new_name)
         else:
             assert cxt.target == 'entry'
             
-            mtch = re.search('^([a-zA-Z_$][0-9a-zA-Z_$]*) ::= (.+)$',
-                             self.view.substr(reg),
-                             re.DOTALL)
+            mtch = re.search(RE_DEFN, self.view.substr(reg), re.DOTALL)
             if mtch is None:
                 sublime.status_message("Invalid entry definition")
                 return
 
             comm.add(
                 module=poli_module_name(self.view),
-                name=mtch.group(1),
-                defn=mtch.group(2),
+                name=mtch.group('name'),
+                defn=mtch.group('defn'),
                 anchor=cxt.name,
                 before=cxt.is_before
             )

@@ -1,13 +1,3 @@
-img2fs
-   dumpModule
-   genModuleImportsSection
-   ind
-   sortedImportsInto
-   writingToStream
-run
-   dumpModuleImportsSection
-   handleOperation
-   serialize
 -----
 sayhello ::= function () {
    console.log('Hello!');

@@ -64,10 +64,9 @@ class Communicator:
             'module': module
         })
 
-    def get_importable_entries(self, recp_module, donor_module):
-        return self._send_op('getImportableEntries', {
+    def get_importables(self, recp_module):
+        return self._send_op('getImportables', {
             'recp': recp_module,
-            'donor': donor_module
         })
 
     def edit(self, module, name, new_defn):
@@ -120,11 +119,18 @@ class Communicator:
             'before': before
         })
 
-    def import_(self, recp_module, donor_module, entry_name):
+    def import_(self, recp_module, donor_module, name, alias):
         return self._send_op('import', {
             'recp': recp_module,
             'donor': donor_module,
-            'entryName': entry_name
+            'name': name,
+            'alias': alias or None
         })
+
+    def remove_unused_imports(self, module):
+        return self._send_op('removeUnusedImports', {
+            'module': module
+        })
+
 
 comm = Communicator()

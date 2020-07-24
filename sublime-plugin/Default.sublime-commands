@@ -32,8 +32,12 @@
 
     // Imports
     {
-        "caption": "Poli: Import from module",
-        "command": "poli_import_from"
+        "caption": "Poli: Import",
+        "command": "poli_import"
+    },
+    {
+        "caption": "Poli: Remove unused imports",
+        "command": "poli_remove_unused_imports"
     },
 
     // Modules

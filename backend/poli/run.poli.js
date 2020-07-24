@@ -39,16 +39,27 @@ main ::= function () {
             .on('error', function (error) {
                console.error("WebSocket client connection error:", error);
             });
+
+         console.log("Front-end connected");
       });
 }
 handleOperation ::= function (op) {
-   try {
-      $.opHandlers[op['op']].call(null, op['args']);
-      console.log(op['op']);
+   let stopwatch = (() => {
+      let start = process.hrtime();
+      return () => {
+         let [sec, nano] = process.hrtime(start);
+         return `${sec}.${String(Math.round(nano / 1e6)).padStart(3, '0')}`;
+      };
+   })();
+
+   try {      
+      $_.db.transaction(() => $.opHandlers[op['op']].call(null, op['args']))();
+      console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
       console.error(e);
       $.opExc('generic', {'stack': e.stack});
+      console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
 send ::= function (msg) {
@@ -87,31 +98,6 @@ opHandlers ::= ({
       let module = $.moduleByName(moduleName);
 
       $.opRet(module.entries);
-   },
-
-   getImportableEntries: function ({recp: recpModuleName, donor: donorModuleName}) {
-      let recp = $.moduleByName(recpModuleName);
-      let donor = $.moduleByName(donorModuleName);
-
-      let importables = new Set(donor.entries);
-
-      // Exclude those already imported
-      for (let imp of $.imports) {
-         if (imp.recp === recp && imp.donor === donor) {
-            importables.delete(imp.name);
-         }
-      }
-
-      // Those not imported but which are impossible to import due to name collisions
-      // should be included with "possible: false" flag.
-      let result = [];
-
-      for (let entry of importables) {
-         let impossible = (entry in recp.defs) || recp.importedNames.has(entry);
-         result.push([entry, !impossible]);
-      }
-
-      $.opRet(result);
    },
 
    eval: function ({module: moduleName, code}) {
@@ -299,11 +285,44 @@ opHandlers ::= ({
       $.opRet();
    },
 
-   import: function ({recp: recpModuleName, donor: donorModuleName, entryName}) {
+   getImportables: function ({recp: recpModuleName}) {
+      function encodeEntry(module, entry) {
+         return `${module.name}\0${entry}`;
+      }
+
+      function decodeEntry(encoded) {
+         return encoded.split('\0');
+      }
+
+      let recp = $.moduleByName(recpModuleName);
+      
+      let importables = new Set;
+
+      for (let moduleName in $.modules) {
+         let module = $.modules[moduleName];
+         if (module !== recp) {
+            module.entries.forEach(e => importables.add(encodeEntry(module, e)));
+         }
+      }
+
+      // Exclude those already imported
+      for (let imp of $.imports) {
+         if (imp.recp === recp) {
+            importables.delete(encodeEntry(imp.donor, imp.name));
+         }
+      }
+
+      $.opRet({
+         importables: Array.from(importables, decodeEntry),
+         disallowedNames: [...recp.entries, ...recp.importedNames]
+      });
+   },
+
+   import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
 
-      $.importEntry(recp, donor, entryName, null);
+      $.importEntry(recp, donor, name, alias);
 
       $_.db
          .prepare(`
@@ -311,16 +330,50 @@ opHandlers ::= ({
                :recp_module_name,
                :donor_module_name,
                :name,
-               NULL
+               :alias
             )`
          )
          .run({
             recp_module_name: recp.name,
             donor_module_name: donor.name,
-            name: entryName
+            name,
+            alias
          });
 
       $.opRet($.dumpModuleImportsSection(recp));
+   },
+
+   removeUnusedImports: function ({module: moduleName}) {
+      function isUsed(name) {
+         name = '$.' + name;
+
+         for (let {src} of Object.values(module.defs)) {
+            if (src.includes(name)) {
+               return true;
+            }
+         }
+
+         return false;
+      }
+
+      let module = $.moduleByName(moduleName);
+
+      let unused = [];
+
+      for (let rec of $.imports) {
+         if (rec.recp === module && !isUsed(rec.importedAs)) {
+            unused.push(rec);
+         }
+      }
+
+      for (let rec of unused) {
+         $.unimportRecord(rec);
+      }
+
+      $.opRet({
+         importSection: unused.length > 0 ? $.dumpModuleImportsSection(module) : null,
+         removedCount: unused.length
+      });
    },
 
    addModule: function ({module: moduleName}) {
@@ -442,7 +495,22 @@ dumpModuleImportsSection ::= function (module) {
       pieces.push(piece);
    }
 
-   pieces.push('-----\n');
-
    return pieces.join('');
 }
+unimportRecord ::= function (imp) {
+   delete imp.recp.rtobj[imp.importedAs];
+   imp.recp.importedNames.delete(imp.importedAs);
+   $.imports.delete(imp);
+   $_.db
+      .prepare(`
+         DELETE FROM import
+         WHERE recp_module_name = :recp_module_name
+           AND donor_module_name = :donor_module_name
+           AND name = :name`)
+      .run({
+         recp_module_name: imp.recp.name,
+         donor_module_name: imp.donor.name,
+         name: imp.name
+      });
+}
+

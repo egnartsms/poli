@@ -20,6 +20,14 @@ def poli_module_name(view):
     return re.search(r'/([^/]+)\.poli\.js$', view.file_name()).group(1)
 
 
+RE_ENTRY_NAME = r'^[a-zA-Z_][0-9a-zA-Z_]*$'
+RE_DEFN = r'^(?P<name>[a-zA-Z_][0-9a-zA-Z_]*) ::= (?P<defn>.+)$'
+
+
+def is_entry_name_valid(name):
+    return bool(re.search(RE_ENTRY_NAME, name))
+
+
 def module_contents(view):
     names = view.find_by_selector('entity.name.key.poli')
     defs = view.find_by_selector('source.js')
