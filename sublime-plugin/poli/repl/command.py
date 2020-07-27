@@ -17,7 +17,7 @@ from poli.sublime.command import InterruptibleTextCommand
 from poli.sublime.command import TextCommand
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert
-from poli.sublime.view_assoc import make_view_assoc
+from poli.sublime.view_dict import make_view_dict
 
 
 __all__ = [
@@ -101,7 +101,7 @@ class PoliReplSetCurrentModule(ReplInterruptibleTextCommand):
             self.view.replace(edit, reg, current_prompt(self.view))
 
 
-hns_for = make_view_assoc()
+hns_for = make_view_dict()
 
 
 class HistoryNavigationState:

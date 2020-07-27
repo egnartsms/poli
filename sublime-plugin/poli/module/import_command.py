@@ -6,6 +6,7 @@ from poli.module.command import ModuleTextCommand
 from poli.module.operation import is_entry_name_valid
 from poli.module.operation import module_body_start
 from poli.module.operation import poli_module_name
+from poli.module.operation import save_module
 from poli.sublime.regedit import region_editing_suppressed
 
 
@@ -29,6 +30,7 @@ class PoliImport(ModuleTextCommand):
                 sublime.Region(0, module_body_start(self.view)),
                 new_import_section
             )
+            save_module(self.view)
 
     def input(self, args):
         return EntryInputHandler(poli_module_name(self.view))
@@ -87,6 +89,7 @@ class PoliRemoveUnusedImports(ModuleTextCommand):
                     sublime.Region(0, module_body_start(self.view)),
                     new_import_section
                 )
+                save_module(self.view)
 
             sublime.status_message("Removed {} unused imports".format(removed_count))
         else:

@@ -39,8 +39,8 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         if dollar_dot != "$.":
             return None
 
-        entries = comm.get_entries(poli_module_name(self.view))
+        entries = comm.get_completions(poli_module_name(self.view), prefix)
         return (
-            [(x, x) for x in entries if x.startswith(prefix)],
+            [(x, x) for x in entries],
             sublime.INHIBIT_WORD_COMPLETIONS
         )

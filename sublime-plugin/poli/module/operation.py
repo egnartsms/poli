@@ -1,11 +1,10 @@
-import sublime
 import re
+import sublime
 
 from poli.config import backend_root
 from poli.sublime import regedit
 from poli.sublime.command import StopCommand
-from poli.sublime.regedit import EditRegion as BaseEditRegion
-from poli.sublime.view_assoc import make_view_assoc
+from poli.sublime.view_dict import make_view_dict
 
 
 KIND_MODULE = 'module/js'
@@ -72,8 +71,17 @@ class ModuleContents:
                     is_inside_def=entry.reg_def.contains(reg),
                     is_fully_selected=(entry.reg_entry == reg)
                 )
-        else:
-            return None
+
+        # Special case: past the last entry is considered the last entry        
+        if self.entries and reg.begin() == reg.end() == self.view.size():
+            return CursorLocation(
+                entry=self.entries[-1],
+                is_inside_name=False,
+                is_inside_def=False,
+                is_fully_selected=False
+            )
+        
+        return None
 
     def cursor_location_or_stop(self, reg):
         """Return CursorLocation corresponding to reg or raise StopCommand"""
@@ -165,21 +173,21 @@ def selected_region(view):
     return reg    
 
 
-def cursor_location_at_sel(view):
+def sel_cursor_location(view):
     reg = selected_region(view)
     return module_contents(view).cursor_location_or_stop(reg)
-
-
-class EditRegion(BaseEditRegion):
-    def __setitem__(self, view, reg):
-        view.add_regions(self.KEY, [reg], 'region.bluish poli.edit', '',
-                         sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
 
 
 edit_region_for = EditRegion()
 
 
-edit_cxt_for = make_view_assoc()
+class EditRegion(regedit.EditRegion):
+    def __setitem__(self, view, reg):
+        view.add_regions(self.KEY, [reg], 'region.bluish poli.edit', '',
+                         sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
+
+
+edit_cxt_for = make_view_dict()
 
 
 class EditContext:
@@ -197,6 +205,7 @@ class EditContext:
         self.name = name
         self.target = target
         self.is_before = is_before
+        self.needs_save = False
 
 
 def maybe_set_connected_status_in_active_view(is_connected):
@@ -210,3 +219,27 @@ def set_connected_status(view, is_connected):
         'is_connected',
         "Connected" if is_connected else "Disconnected"
     )
+
+
+def enter_edit_mode(view, reg, **edit_cxt_kws):
+    assert view not in edit_cxt_for
+
+    regedit.establish(view, reg, edit_region_for)
+    edit_cxt_for[view] = EditContext(**edit_cxt_kws)
+
+
+def leave_edit_mode(view):
+    assert view in edit_cxt_for
+
+    cxt = edit_cxt_for.pop(view)
+    regedit.discard(view, read_only=True)
+
+    if cxt.needs_save:
+        view.run_command('save')
+
+
+def save_module(view):
+    if view in edit_cxt_for:
+        edit_cxt_for[view].needs_save = True
+    else:
+        view.run_command('save')

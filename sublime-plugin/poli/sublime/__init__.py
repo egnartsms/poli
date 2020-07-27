@@ -1,3 +1,3 @@
 from .edit import *
 from .regedit import *
-from .view_assoc import *
+from .view_dict import *

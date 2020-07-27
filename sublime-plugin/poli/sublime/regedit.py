@@ -1,11 +1,11 @@
+import contextlib
 import sublime
 import sublime_plugin
-import contextlib
 
 from poli.sublime.misc import RegionType
 from poli.sublime.misc import query_context_matches
 from poli.sublime.misc import read_only_set_to
-from poli.sublime.view_assoc import make_view_assoc
+from poli.sublime.view_dict import make_view_dict
 
 
 __all__ = ['RegEditListener']
@@ -150,7 +150,7 @@ class RegEdit:
         self.view.set_read_only(not self.is_selection_within())
 
 
-regedit_for = make_view_assoc()
+regedit_for = make_view_dict()
 
     
 class EditRegion(RegionType):

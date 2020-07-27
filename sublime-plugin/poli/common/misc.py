@@ -1,6 +1,3 @@
-missing = object()
-
-
 def first_or_none(gen):
     return next(gen, None)
 

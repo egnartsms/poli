@@ -19,6 +19,7 @@ create table import(
    donor_module_name text not null,
    name text not null,
    alias text,
+   primary key (recp_module_name, donor_module_name, name),
    foreign key (recp_module_name) references module on update cascade,
    foreign key (donor_module_name) references module on update cascade,
    foreign key (donor_module_name, name) references entry on update cascade

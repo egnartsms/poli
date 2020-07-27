@@ -132,5 +132,11 @@ class Communicator:
             'module': module
         })
 
+    def get_completions(self, module, prefix):
+        return self._send_op('getCompletions', {
+            'module': module,
+            'prefix': prefix,
+        })
+
 
 comm = Communicator()

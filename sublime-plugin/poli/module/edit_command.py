@@ -1,24 +1,25 @@
 import re
 import sublime
-import sublime_plugin
 
 from poli.comm import comm
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
-from poli.module.operation import EditContext
 from poli.module.operation import RE_DEFN
-from poli.module.operation import cursor_location_at_sel
 from poli.module.operation import edit_cxt_for
 from poli.module.operation import edit_region_for
+from poli.module.operation import enter_edit_mode
 from poli.module.operation import is_entry_name_valid
+from poli.module.operation import leave_edit_mode
 from poli.module.operation import module_contents
 from poli.module.operation import poli_module_name
 from poli.module.operation import reg_no_trailing_nl
 from poli.module.operation import reg_plus_trailing_nl
+from poli.module.operation import sel_cursor_location
 from poli.module.operation import selected_region
+from poli.module.operation import save_module
 from poli.sublime import regedit
-from poli.sublime.command import ApplicationCommand
 from poli.sublime.misc import Marker
+from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
@@ -32,21 +33,19 @@ __all__ = [
 
 class PoliSelect(ModuleTextCommand):
     def run(self, edit):
-        loc = cursor_location_at_sel(self.view)
+        loc = sel_cursor_location(self.view)
         set_selection(self.view, to=loc.entry.reg_entry)
 
 
 class PoliEdit(ModuleTextCommand):
     def run(self, edit):
-        loc = cursor_location_at_sel(self.view)
+        loc = sel_cursor_location(self.view)
         if not loc.is_def_targeted:
             sublime.status_message("Cursor is not placed over definition")
             return
 
-        regedit.establish(self.view, loc.entry.reg_def, edit_region_for)
-        edit_cxt_for[self.view] = EditContext(
-            name=loc.entry.name(),
-            target='defn'
+        enter_edit_mode(
+            self.view, loc.entry.reg_def, target='defn', name=loc.entry.name()
         )
 
         if loc.is_fully_selected:
@@ -55,15 +54,13 @@ class PoliEdit(ModuleTextCommand):
 
 class PoliRename(ModuleTextCommand):
     def run(self, edit):
-        loc = cursor_location_at_sel(self.view)
+        loc = sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
             return
 
-        regedit.establish(self.view, loc.entry.reg_name, edit_region_for)
-        edit_cxt_for[self.view] = EditContext(
-            name=loc.entry.name(),
-            target='name'
+        enter_edit_mode(
+            self.view, loc.entry.reg_name, target='name', name=loc.entry.name()
         )
 
         if loc.is_fully_selected:
@@ -72,7 +69,7 @@ class PoliRename(ModuleTextCommand):
 
 class PoliAdd(ModuleTextCommand):
     def run(self, edit, before):
-        loc = cursor_location_at_sel(self.view)
+        loc = sel_cursor_location(self.view)
         entry = loc.entry
         name = entry.name()
         self.view.set_read_only(False)
@@ -81,13 +78,7 @@ class PoliAdd(ModuleTextCommand):
         reg_new = reg_no_trailing_nl(reg_new)
         set_selection(self.view, to=reg_new, show=True)
 
-        regedit.establish(self.view, reg_new, edit_region_for)
-        
-        edit_cxt_for[self.view] = EditContext(
-            name=name,
-            target='entry',
-            is_before=before
-        )
+        enter_edit_mode(self.view, reg_new, target='entry', name=name, is_before=before)
 
 
 class PoliCancel(ModuleTextCommand):
@@ -108,8 +99,7 @@ class PoliCancel(ModuleTextCommand):
             reg = reg_plus_trailing_nl(edit_region_for[self.view])            
             self.view.erase(edit, reg)
 
-        del edit_cxt_for[self.view]
-        regedit.discard(self.view, read_only=True)
+        leave_edit_mode(self.view)
 
 
 class PoliCommit(ModuleTextCommand):
@@ -118,9 +108,10 @@ class PoliCommit(ModuleTextCommand):
             return  # Protected by keymap context
 
         cxt = edit_cxt_for[self.view]
-        reg = edit_region_for[self.view]
+        original_reg = reg = edit_region_for[self.view]
 
         if cxt.target == 'defn':
+            reg = end_strip_region(self.view, reg)
             if reg.empty():
                 sublime.status_message("Empty definition not allowed")
                 return
@@ -135,6 +126,7 @@ class PoliCommit(ModuleTextCommand):
         else:
             assert cxt.target == 'entry'
             
+            reg = end_strip_region(self.view, reg)
             mtch = re.search(RE_DEFN, self.view.substr(reg), re.DOTALL)
             if mtch is None:
                 sublime.status_message("Invalid entry definition")
@@ -148,15 +140,18 @@ class PoliCommit(ModuleTextCommand):
                 before=cxt.is_before
             )
 
-        del edit_cxt_for[self.view]
-        regedit.discard(self.view, read_only=True)
+        whitespace_reg = sublime.Region(reg.end(), original_reg.end())
+        if not whitespace_reg.empty():
+            self.view.set_read_only(False)
+            self.view.erase(edit, whitespace_reg)
 
-        self.view.run_command('save')
+        save_module(self.view)
+        leave_edit_mode(self.view)
 
 
 class PoliDelete(ModuleTextCommand):
     def run(self, edit):
-        loc = cursor_location_at_sel(self.view)
+        loc = sel_cursor_location(self.view)
         if not loc.is_fully_selected:
             sublime.status_message("Cannot determine what to delete")
             return
@@ -165,7 +160,7 @@ class PoliDelete(ModuleTextCommand):
         with read_only_set_to(self.view, False):
             self.view.erase(edit, loc.entry.reg_entry_nl)
 
-        self.view.run_command('save')
+        save_module(self.view)
 
 
 class PoliMoveBy1(ModuleTextCommand):
@@ -200,7 +195,7 @@ class PoliMoveBy1(ModuleTextCommand):
             self.view.insert(edit, reg_new.end(), '\n')
             set_selection(self.view, to=reg_new, show=True)
 
-        self.view.run_command('save')
+        save_module(self.view)
 
 
 class PoliMoveHere(ModuleInterruptibleTextCommand):
@@ -240,4 +235,4 @@ class PoliMoveHere(ModuleInterruptibleTextCommand):
             self.view.insert(edit, reg_new.end(), '\n')
             set_selection(self.view, to=reg_new, show=True)
 
-        self.view.run_command('save')
+        save_module(self.view)

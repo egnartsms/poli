@@ -376,6 +376,20 @@ opHandlers ::= ({
       });
    },
 
+   getCompletions: function ({module: moduleName, prefix}) {
+      let module = $.moduleByName(moduleName);
+
+      let res = [];
+
+      for (let name of [...module.entries, ...module.importedNames]) {
+         if (name.startsWith(prefix)) {
+            res.push(name);
+         }
+      }
+
+      $.opRet(res);
+   },
+
    addModule: function ({module: moduleName}) {
       let {lastInsertRowid: moduleId} = $_.db
          .prepare(`INSERT INTO module(name) VALUES (:name)`)
@@ -513,4 +527,3 @@ unimportRecord ::= function (imp) {
          name: imp.name
       });
 }
-
