@@ -8,6 +8,20 @@ def index_where(iterable, pred=lambda x: x):
             return i
 
 
+def range_where(iterable, pred):
+    start = None
+
+    for i, x in enumerate(iterable):
+        if pred(x):
+            if start is None:
+                start = i
+        else:
+            if start is not None:
+                break
+
+    return (None, None) if start is None else (start, i)
+
+
 class FreeObj:
     def __init__(self, **attrs):
         self.__dict__.update(attrs)

@@ -1,10 +1,16 @@
+import collections
+import contextlib
+import os.path
 import re
 import sublime
+import sublime_api
 
+from poli.common.misc import range_where
 from poli.config import backend_root
 from poli.sublime import regedit
 from poli.sublime.command import StopCommand
 from poli.sublime.view_dict import make_view_dict
+from poli.sublime.view_dict import on_view_load
 
 
 KIND_MODULE = 'module/js'
@@ -19,12 +25,25 @@ def poli_module_name(view):
     return re.search(r'/([^/]+)\.poli\.js$', view.file_name()).group(1)
 
 
+def poli_file_name(module_name):
+    return os.path.join(backend_root, "{}.poli.js".format(module_name))
+
+
 RE_ENTRY_NAME = r'^[a-zA-Z_][0-9a-zA-Z_]*$'
-RE_DEFN = r'^(?P<name>[a-zA-Z_][0-9a-zA-Z_]*) ::= (?P<defn>.+)$'
 
 
 def is_entry_name_valid(name):
     return bool(re.search(RE_ENTRY_NAME, name))
+
+
+def maybe_set_connected_status_in_active_view(is_connected):
+    view = sublime.active_window().active_view()
+    if is_view_poli(view):
+        set_connected_status(view, is_connected)
+
+
+def set_connected_status(view, is_connected):
+    view.set_status('is_connected', "Connected" if is_connected else "Disconnected")
 
 
 def module_contents(view):
@@ -83,11 +102,14 @@ class ModuleContents:
         
         return None
 
-    def cursor_location_or_stop(self, reg):
+    def cursor_location_or_stop(self, reg, require_fully_selected=False):
         """Return CursorLocation corresponding to reg or raise StopCommand"""
         loc = self.cursor_location(reg)
         if loc is None:
             sublime.status_message("No entry under cursor")
+            raise StopCommand
+        if require_fully_selected and not loc.is_fully_selected:
+            sublime.status_message("No entry is selected (select with 's' first)")
             raise StopCommand
 
         return loc
@@ -162,23 +184,19 @@ def selected_region(view):
     
     :raises StopCommand: if multiple or 0 regions selected.
     """
-    if regedit.is_active_in(view):
-        raise StopCommand  # Typically protected by keymap context but still let's check
-
     if len(view.sel()) != 1:
         sublime.status_message("No entry under cursor (multiple cursors)")
         raise StopCommand
 
     [reg] = view.sel()
-    return reg    
+    return reg
 
 
-def sel_cursor_location(view):
+def sel_cursor_location(view, require_fully_selected=False):
     reg = selected_region(view)
-    return module_contents(view).cursor_location_or_stop(reg)
-
-
-edit_region_for = EditRegion()
+    return module_contents(view).cursor_location_or_stop(
+        reg, require_fully_selected=require_fully_selected
+    )
 
 
 class EditRegion(regedit.EditRegion):
@@ -187,7 +205,7 @@ class EditRegion(regedit.EditRegion):
                          sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
 
 
-edit_cxt_for = make_view_dict()
+edit_region_for = EditRegion()
 
 
 class EditContext:
@@ -208,34 +226,26 @@ class EditContext:
         self.needs_save = False
 
 
-def maybe_set_connected_status_in_active_view(is_connected):
-    view = sublime.active_window().active_view()
-    if is_view_poli(view):
-        set_connected_status(view, is_connected)
-
-
-def set_connected_status(view, is_connected):
-    view.set_status(
-        'is_connected',
-        "Connected" if is_connected else "Disconnected"
-    )
+edit_cxt_for = make_view_dict()
 
 
 def enter_edit_mode(view, reg, **edit_cxt_kws):
-    assert view not in edit_cxt_for
+    assert not regedit.is_active_in(view)
 
     regedit.establish(view, reg, edit_region_for)
     edit_cxt_for[view] = EditContext(**edit_cxt_kws)
 
 
-def leave_edit_mode(view):
-    assert view in edit_cxt_for
+def exit_edit_mode(view):
+    assert regedit.is_active_in(view)
 
     cxt = edit_cxt_for.pop(view)
-    regedit.discard(view, read_only=True)
+    regedit.discard(view, read_only=False)
 
     if cxt.needs_save:
         view.run_command('save')
+
+    highlight_unknown_names(view)
 
 
 def save_module(view):
@@ -243,3 +253,62 @@ def save_module(view):
         edit_cxt_for[view].needs_save = True
     else:
         view.run_command('save')
+
+    highlight_unknown_names(view)
+
+
+def known_names(view):
+    """Compute all the names accessible as $.NAME for this module"""
+    return known_entries(view) | known_imports(view)
+
+
+def known_entries(view):
+    entries = view.find_by_selector('entity.name.key.poli')
+    return {view.substr(reg) for reg in entries}
+
+
+def known_imports(view):
+    def region_row(reg):
+        row, col = view.rowcol(reg.begin())
+        return row
+
+    aliases = view.find_by_selector('meta.import.poli.alias')
+    entries = view.find_by_selector('meta.import.poli.entry')
+
+    alias_rows = {region_row(reg) for reg in aliases}
+    result = {view.substr(reg) for reg in aliases}
+
+    for reg in entries:
+        if region_row(reg) not in alias_rows:
+            result.add(view.substr(reg))
+
+    return result
+
+
+def highlight_unknown_names(view):
+    k_names = known_names(view)
+    result = sublime_api.view_find_all_with_contents(
+        view.view_id, r'\$\.([a-zA-Z0-9]+)', 0, '\\1'
+    )
+    warning_regs = [reg for reg, name in result if name not in k_names]
+    add_warnings(view, warning_regs)
+
+
+def replace_import_section(view, edit, new_import_section):
+    with regedit.region_editing_suppressed(view):
+        view.replace(
+            edit,
+            sublime.Region(0, module_body_start(view)),
+            new_import_section
+        )
+
+
+def add_warnings(view, regs):
+    view.add_regions(
+        'warnings', regs, 'invalid', '',
+        sublime.DRAW_NO_FILL | sublime.DRAW_NO_OUTLINE | sublime.DRAW_STIPPLED_UNDERLINE
+    )
+
+
+def get_warnings(view):
+    return view.get_regions('warnings')

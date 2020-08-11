@@ -104,6 +104,12 @@ class Communicator:
             'name': name
         })
 
+    def delete_cascade(self, module, name):
+        return self._send_op('deleteCascade', {
+            'module': module,
+            'name': name
+        })
+
     def move_by_1(self, module, name, direction):
         return self._send_op('moveBy1', {
             'module': module,

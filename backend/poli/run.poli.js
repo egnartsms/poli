@@ -123,12 +123,18 @@ opHandlers ::= ({
          throw new Error(`Not found entry "${name}" in module "${moduleName}"`);
       }
 
-      module.rtobj[name] = $.moduleEval(module, newDefn);
-
+      let newVal = $.moduleEval(module, newDefn);
       let newDef = {
          type: 'native',
          src: newDefn
       };
+      
+      module.rtobj[name] = newVal;
+      module.defs[name] = newDef;
+
+      for (let imp of $.importsOf(module, name)) {
+         imp.recp.rtobj[imp.importedAs] = newVal;
+      }
 
       $_.db
          .prepare(`
@@ -141,8 +147,6 @@ opHandlers ::= ({
             name: name,
             def: JSON.stringify(newDef)
          });
-
-      module.defs[name] = newDef;
 
       $.opRet();
    },
@@ -219,27 +223,38 @@ opHandlers ::= ({
    delete: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
 
-      if (!module.defs[name]) {
-         throw new Error(`Entry named "${name}" does not exist`);
+      if ($.isNameImported(module, name)) {
+         $.opRet(false);
+      }
+      else {
+         $.deleteEntry(module, name);
+         $.opRet(true);
+      }
+   },
+
+   deleteCascade: function ({module: moduleName, name}) {
+      let module = $.moduleByName(moduleName);
+
+      let imports = Array.from($.importsOf(module, name));
+      
+      for (let imp of imports) {
+         $.unimportRecord(imp);
       }
 
-      let idx = module.entries.indexOf(name);
+      $.deleteEntry(module, name);
 
-      $.unplugEntry(module, idx);
+      // Return import sections for affected modules
+      let recipients = new Set();
+      for (let imp of imports) {
+         recipients.add(imp.recp);
+      }
 
-      $_.db
-         .prepare(
-            `DELETE FROM entry WHERE module_name = :module_name AND name = :name`
-         )
-         .run({
-            module_name: module.name,
-            name: name
-         });
+      let result = Object.create(null);
+      for (let recp of recipients) {
+         result[recp.name] = $.dumpModuleImportSection(recp);
+      }
 
-      delete module.defs[name];
-      delete module.rtobj[name];
-
-      $.opRet();
+      $.opRet(result);
    },
 
    moveBy1: function ({module: moduleName, name, direction}) {
@@ -340,7 +355,7 @@ opHandlers ::= ({
             alias
          });
 
-      $.opRet($.dumpModuleImportsSection(recp));
+      $.opRet($.dumpModuleImportSection(recp));
    },
 
    removeUnusedImports: function ({module: moduleName}) {
@@ -371,7 +386,7 @@ opHandlers ::= ({
       }
 
       $.opRet({
-         importSection: unused.length > 0 ? $.dumpModuleImportsSection(module) : null,
+         importSection: unused.length > 0 ? $.dumpModuleImportSection(module) : null,
          removedCount: unused.length
       });
    },
@@ -503,7 +518,7 @@ serialize ::= function (obj) {
 
    return Array.from(serialize(obj, true)).join('');
 }
-dumpModuleImportsSection ::= function (module) {
+dumpModuleImportSection ::= function (module) {
    let pieces = [];
    for (let piece of $.genModuleImportsSection(module)) {
       pieces.push(piece);
@@ -512,8 +527,10 @@ dumpModuleImportsSection ::= function (module) {
    return pieces.join('');
 }
 unimportRecord ::= function (imp) {
-   delete imp.recp.rtobj[imp.importedAs];
-   imp.recp.importedNames.delete(imp.importedAs);
+   let {donor, recp} = imp;
+
+   delete recp.rtobj[imp.importedAs];
+   recp.importedNames.delete(imp.importedAs);
    $.imports.delete(imp);
    $_.db
       .prepare(`
@@ -522,8 +539,40 @@ unimportRecord ::= function (imp) {
            AND donor_module_name = :donor_module_name
            AND name = :name`)
       .run({
-         recp_module_name: imp.recp.name,
-         donor_module_name: imp.donor.name,
+         recp_module_name: recp.name,
+         donor_module_name: donor.name,
          name: imp.name
       });
+}
+deleteEntry ::= function (module, name) {
+   if (!module.defs[name]) {
+      throw new Error(`Entry named "${name}" does not exist`);
+   }
+
+   let idx = module.entries.indexOf(name);
+
+   $.unplugEntry(module, idx);
+
+   $_.db
+      .prepare(
+         `DELETE FROM entry WHERE module_name = :module_name AND name = :name`
+      )
+      .run({
+         module_name: module.name,
+         name: name
+      });
+
+   delete module.defs[name];
+   delete module.rtobj[name];
+}
+importsOf ::= function* (module, name) {
+   for (let imp of $.imports) {
+      if (imp.donor === module && imp.name === name) {
+         yield imp;
+      }
+   }
+}
+isNameImported ::= function (module, name) {
+   let {done} = $.importsOf(module, name).next();
+   return !done;
 }

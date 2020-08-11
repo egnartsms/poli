@@ -10,13 +10,12 @@ from poli.repl.operation import current_prompt
 from poli.repl.operation import insert_prompt_at_end
 from poli.repl.operation import make_repl_view
 from poli.repl.operation import poli_cur_module
-from poli.shared.command import KindSpecificTextCommand
 from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 from poli.sublime.command import InterruptibleTextCommand
 from poli.sublime.command import TextCommand
 from poli.sublime.misc import end_strip_region
-from poli.sublime.misc import insert
+from poli.sublime.misc import insert_in
 from poli.sublime.view_dict import make_view_dict
 
 
@@ -26,12 +25,14 @@ __all__ = [
 ]
 
 
-class ReplTextCommand(KindSpecificTextCommand, TextCommand):
-    POLI_KIND = REPL_KIND
+class ReplTextCommand(TextCommand):
+    def is_enabled(self):
+        return poli_kind[self.view] == REPL_KIND
 
 
-class ReplInterruptibleTextCommand(KindSpecificTextCommand, InterruptibleTextCommand):
-    POLI_KIND = REPL_KIND
+class ReplInterruptibleTextCommand(InterruptibleTextCommand):
+    def is_enabled(self):
+        return poli_kind[self.view] == REPL_KIND
 
 
 class PoliReplOpen(sublime_plugin.WindowCommand):
@@ -128,7 +129,7 @@ class PoliReplPrev(ReplTextCommand):
         hns.n_inputs_back += 1
         s = history.input(hns.n_inputs_back)
         self.view.erase(edit, reg)
-        reg = insert(self.view, edit, reg.begin(), s)
+        reg = insert_in(self.view, edit, reg.begin(), s)
         regedit.establish(self.view, reg)
 
 
@@ -153,5 +154,5 @@ class PoliReplNext(ReplTextCommand):
 
         self.view.erase(edit, reg)
         self.view.insert(edit, reg.begin(), s)
-        reg = insert(self.view, edit, reg.begin(), s)
+        reg = insert_in(self.view, edit, reg.begin(), s)
         regedit.establish(self.view, reg)

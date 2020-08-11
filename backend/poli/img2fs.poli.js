@@ -34,6 +34,7 @@ writingToStream ::= function (stream, generatorFunc) {
    }
 
    stream.end();
+   console.log([$.testee])
 }
 sortedImportsInto ::= function (recp) {
    let imports = [];

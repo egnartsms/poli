@@ -8,6 +8,7 @@ class aroundmethod:
 
 class WrappingMethodClass(type):
     def __init__(cls, name, bases, members):
+        super().__init__(name, bases, members)
         arounds = {}
         for base in cls.__mro__[1:]:
             for k, v in base.__dict__.items():

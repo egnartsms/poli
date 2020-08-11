@@ -6,6 +6,7 @@ from poli.module.operation import KIND_MODULE
 from poli.module.operation import is_view_poli
 from poli.module.operation import poli_module_name
 from poli.module.operation import set_connected_status
+from poli.module.operation import highlight_unknown_names
 from poli.shared.setting import poli_kind
 from poli.sublime.misc import view_by_settings
 
@@ -24,6 +25,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         self.view.set_scratch(True)
         self.view.set_read_only(True)
         poli_kind[self.view] = KIND_MODULE
+        highlight_unknown_names(self.view)
 
     def on_activated(self):
         set_connected_status(self.view, comm.is_connected)

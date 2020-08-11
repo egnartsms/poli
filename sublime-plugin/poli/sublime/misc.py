@@ -33,6 +33,17 @@ def read_only_set_to(view, new_status):
     view.set_read_only(old_status)
 
 
+@contextlib.contextmanager
+def read_only_as_transaction(view, new_status):
+    old_status = view.is_read_only()
+    view.set_read_only(new_status)
+    try:
+        yield
+    except:
+        view.set_read_only(old_status)
+        raise
+
+
 class RegionType:
     @property
     def KEY(self):
@@ -58,9 +69,14 @@ def end_strip_region(view, reg):
     return sublime.Region(reg.begin(), pt + 1)
 
 
-def insert(view, edit, pos, s):
+def insert_in(view, edit, pos, s):
     n = view.insert(edit, pos, s)
     return sublime.Region(pos, pos + n)
+
+
+def replace_in(view, edit, reg, s):
+    view.replace(edit, reg, s)
+    return sublime.Region(reg.begin(), reg.begin() + len(s))
 
 
 class Marker:

@@ -183,7 +183,7 @@ def editing_region(view):
 def region_editing_suppressed(view):
     """Temporarily suppress region editing in the view.
 
-    The editing region is left untouched and restored on exit from context manager. If
+    The editing region is not touched (i.e. modifications to view can change it). If
     region editing was not active in the view, then set the view as non-read-only for the
     extent of the context manager, and restore its previous read-onlyness state.
     """

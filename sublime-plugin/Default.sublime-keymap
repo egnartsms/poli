@@ -66,6 +66,14 @@
         ]
     },
     {
+        "keys": ["shift+delete"],
+        "command": "poli_delete_cascade",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
         "keys": ["ctrl+shift+up"],
         "command": "poli_move_by1",
         "args": {
