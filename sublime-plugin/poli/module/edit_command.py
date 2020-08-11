@@ -4,13 +4,10 @@ import sublime
 from poli.comm import comm
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
-from poli.module.operation import add_warnings
 from poli.module.operation import edit_cxt_for
-from poli.module.operation import edit_mode_info
 from poli.module.operation import edit_region_for
 from poli.module.operation import enter_edit_mode
 from poli.module.operation import exit_edit_mode
-from poli.module.operation import highlight_unknown_names
 from poli.module.operation import is_entry_name_valid
 from poli.module.operation import module_contents
 from poli.module.operation import poli_file_name
@@ -21,14 +18,13 @@ from poli.module.operation import replace_import_section
 from poli.module.operation import save_module
 from poli.module.operation import sel_cursor_location
 from poli.module.operation import selected_region
-from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Marker
+from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
-from poli.sublime.misc import replace_in
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import on_any_view_load
@@ -41,6 +37,8 @@ __all__ = [
 
 
 class PoliSelect(ModuleTextCommand):
+    only_in_mode = 'browse'
+
     def run(self, edit):
         loc = sel_cursor_location(self.view)
         set_selection(self.view, to=loc.entry.reg_entry)
@@ -75,9 +73,6 @@ class PoliRename(ModuleTextCommand):
         enter_edit_mode(
             self.view, loc.entry.reg_name, target='name', name=loc.entry.name()
         )
-
-        # if loc.is_fully_selected:
-        #     set_selection(self.view, to=loc.entry.reg_name)
 
 
 class PoliAdd(ModuleTextCommand):
@@ -169,6 +164,8 @@ class PoliCommit(ModuleTextCommand):
 
 
 class PoliDelete(ModuleTextCommand):
+    only_in_mode = 'browse'
+
     def run(self, edit):
         loc = sel_cursor_location(self.view, require_fully_selected=True)
         ok = comm.delete(poli_module_name(self.view), loc.entry.name())
@@ -187,6 +184,8 @@ class PoliDelete(ModuleTextCommand):
 
 
 class PoliDeleteCascade(ModuleTextCommand):
+    only_in_mode = 'browse'
+
     def run(self, edit):
         loc = sel_cursor_location(self.view, require_fully_selected=True)
         res = comm.delete_cascade(poli_module_name(self.view), loc.entry.name())
@@ -197,15 +196,22 @@ class PoliDeleteCascade(ModuleTextCommand):
         save_module(self.view)
 
         window = self.view.window()
-        views = [
-            window.open_file(poli_file_name(module_name))
-            for module_name in res
-        ]
+        with active_view_preserved(window):
+            views = [
+                window.open_file(poli_file_name(module_name))
+                for module_name in res
+            ]
+
         view_data = ViewDict(zip(views, res.values()))
 
         def process_view(view, edit):
             replace_import_section(view, edit, view_data[view])
             save_module(view)
+            del view_data[view]
+            if not view_data:
+                sublime.status_message(
+                    "Delete cascade done ({} modules touched)".format(len(views))
+                )
 
         on_any_view_load(
             views,
@@ -214,6 +220,8 @@ class PoliDeleteCascade(ModuleTextCommand):
 
 
 class PoliMoveBy1(ModuleTextCommand):
+    only_in_mode = 'browse'
+
     def run(self, edit, direction):
         mcont = module_contents(self.view)
         loc = mcont.cursor_location_or_stop(
@@ -247,6 +255,8 @@ class PoliMoveBy1(ModuleTextCommand):
 
 
 class PoliMoveHere(ModuleInterruptibleTextCommand):
+    only_in_mode = 'browse'
+
     def run(self, edit, callback, before):
         mcont = module_contents(self.view)
         loc = mcont.cursor_location_or_stop(selected_region(self.view))

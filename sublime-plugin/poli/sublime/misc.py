@@ -44,6 +44,13 @@ def read_only_as_transaction(view, new_status):
         raise
 
 
+@contextlib.contextmanager
+def active_view_preserved(window):
+    view = window.active_view()
+    yield
+    window.focus_view(view)
+
+
 class RegionType:
     @property
     def KEY(self):

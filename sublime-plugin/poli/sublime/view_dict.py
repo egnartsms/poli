@@ -1,8 +1,6 @@
 import functools
 import sublime_plugin
 
-from collections import defaultdict
-
 
 __all__ = ['ViewDictListener']
 

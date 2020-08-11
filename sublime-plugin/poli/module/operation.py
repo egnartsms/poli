@@ -1,16 +1,12 @@
-import collections
-import contextlib
 import os.path
 import re
 import sublime
 import sublime_api
 
-from poli.common.misc import range_where
 from poli.config import backend_root
 from poli.sublime import regedit
 from poli.sublime.command import StopCommand
 from poli.sublime.view_dict import make_view_dict
-from poli.sublime.view_dict import on_view_load
 
 
 KIND_MODULE = 'module/js'
