@@ -4,11 +4,9 @@ import sublime_plugin
 from poli.comm import comm
 from poli.module.command import ModuleTextCommand
 from poli.module.operation import is_entry_name_valid
-from poli.module.operation import module_body_start
 from poli.module.operation import poli_module_name
 from poli.module.operation import replace_import_section
 from poli.module.operation import save_module
-from poli.sublime.regedit import region_editing_suppressed
 
 
 __all__ = ['PoliImport', 'PoliRemoveUnusedImports']

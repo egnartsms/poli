@@ -4,9 +4,13 @@ import sublime
 import sublime_api
 
 from poli.config import backend_root
+from poli.shared.command import StopCommand
 from poli.sublime import regedit
-from poli.sublime.command import StopCommand
+from poli.sublime.edit import call_with_edit
+from poli.sublime.misc import active_view_preserved
+from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
+from poli.sublime.view_dict import on_any_view_load
 
 
 KIND_MODULE = 'module/js'
@@ -236,7 +240,7 @@ def exit_edit_mode(view):
     assert regedit.is_active_in(view)
 
     cxt = edit_cxt_for.pop(view)
-    regedit.discard(view, read_only=False)
+    regedit.discard(view, read_only=True)
 
     if cxt.needs_save:
         view.run_command('save')
@@ -290,15 +294,6 @@ def highlight_unknown_names(view):
     add_warnings(view, warning_regs)
 
 
-def replace_import_section(view, edit, new_import_section):
-    with regedit.region_editing_suppressed(view):
-        view.replace(
-            edit,
-            sublime.Region(0, module_body_start(view)),
-            new_import_section
-        )
-
-
 def add_warnings(view, regs):
     view.add_regions(
         'warnings', regs, 'invalid', '',
@@ -308,3 +303,35 @@ def add_warnings(view, regs):
 
 def get_warnings(view):
     return view.get_regions('warnings')
+
+
+def replace_import_section(view, edit, new_import_section):
+    with regedit.region_editing_suppressed(view):
+        view.replace(
+            edit,
+            sublime.Region(0, module_body_start(view)),
+            new_import_section
+        )
+
+
+def replace_import_sections(window, data):
+    """data = {module_name: section_text}"""
+    with active_view_preserved(window):
+        views = [
+            window.open_file(poli_file_name(module_name))
+            for module_name in data
+        ]
+
+    view_data = ViewDict(zip(views, data.values()))
+
+    def process_view(view, edit):
+        replace_import_section(view, edit, view_data[view])
+        save_module(view)
+        del view_data[view]
+        if not view_data:
+            sublime.status_message("{} modules' imports updated".format(len(views)))
+
+    on_any_view_load(
+        views,
+        lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
+    )

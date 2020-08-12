@@ -12,8 +12,8 @@ from poli.repl.operation import make_repl_view
 from poli.repl.operation import poli_cur_module
 from poli.shared.setting import poli_kind
 from poli.sublime import regedit
-from poli.sublime.command import InterruptibleTextCommand
-from poli.sublime.command import TextCommand
+from poli.shared.command import InterruptibleTextCommand
+from poli.shared.command import TextCommand
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.view_dict import make_view_dict

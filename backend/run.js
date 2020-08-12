@@ -21,7 +21,7 @@ function loadImage() {
       BOOTSTRAP_MODULE,
       SRC_FOLDER,
       require,
-      db,
+      db
    };
    let $ = Object.create(null);
 

@@ -2,9 +2,9 @@ from poli.common.wrapping_method import aroundmethod
 from poli.module.operation import KIND_MODULE
 from poli.shared.setting import poli_kind
 from poli.sublime import regedit
-from poli.sublime.command import InterruptibleTextCommand
-from poli.sublime.command import StopCommand
-from poli.sublime.command import TextCommand
+from poli.shared.command import InterruptibleTextCommand
+from poli.shared.command import StopCommand
+from poli.shared.command import TextCommand
 
 
 class ModuleCommandMixin:

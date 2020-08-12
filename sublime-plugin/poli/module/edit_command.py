@@ -10,24 +10,19 @@ from poli.module.operation import enter_edit_mode
 from poli.module.operation import exit_edit_mode
 from poli.module.operation import is_entry_name_valid
 from poli.module.operation import module_contents
-from poli.module.operation import poli_file_name
 from poli.module.operation import poli_module_name
 from poli.module.operation import reg_no_trailing_nl
 from poli.module.operation import reg_plus_trailing_nl
-from poli.module.operation import replace_import_section
+from poli.module.operation import replace_import_sections
 from poli.module.operation import save_module
 from poli.module.operation import sel_cursor_location
 from poli.module.operation import selected_region
-from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Marker
-from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
-from poli.sublime.view_dict import ViewDict
-from poli.sublime.view_dict import on_any_view_load
 
 
 __all__ = [
@@ -73,6 +68,7 @@ class PoliRename(ModuleTextCommand):
         enter_edit_mode(
             self.view, loc.entry.reg_name, target='name', name=loc.entry.name()
         )
+        set_selection(self.view, to=loc.entry.reg_name)
 
 
 class PoliAdd(ModuleTextCommand):
@@ -135,7 +131,8 @@ class PoliCommit(ModuleTextCommand):
             if not is_entry_name_valid(new_name):
                 sublime.status_message("Not a valid name")
                 return
-            comm.rename(poli_module_name(self.view), cxt.name, new_name)
+            res = comm.rename(poli_module_name(self.view), cxt.name, new_name)
+            replace_import_sections(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             
@@ -195,28 +192,7 @@ class PoliDeleteCascade(ModuleTextCommand):
 
         save_module(self.view)
 
-        window = self.view.window()
-        with active_view_preserved(window):
-            views = [
-                window.open_file(poli_file_name(module_name))
-                for module_name in res
-            ]
-
-        view_data = ViewDict(zip(views, res.values()))
-
-        def process_view(view, edit):
-            replace_import_section(view, edit, view_data[view])
-            save_module(view)
-            del view_data[view]
-            if not view_data:
-                sublime.status_message(
-                    "Delete cascade done ({} modules touched)".format(len(views))
-                )
-
-        on_any_view_load(
-            views,
-            lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
-        )
+        replace_import_sections(self.view.window(), res)
 
 
 class PoliMoveBy1(ModuleTextCommand):

@@ -58,7 +58,7 @@ handleOperation ::= function (op) {
    }
    catch (e) {
       console.error(e);
-      $.opExc('generic', {'stack': e.stack});
+      $.opExc('generic', {stack: e.stack, message: e.message});
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
@@ -109,7 +109,7 @@ opHandlers ::= ({
          res = $.moduleEval(module, code);
       }
       catch (e) {
-         $.opExc('replEval', {stack: e.stack});
+         $.opExc('replEval', {stack: e.stack, message: e.message});
          return;
       }
 
@@ -157,8 +157,21 @@ opHandlers ::= ({
       if (!(oldName in module.defs)) {
          throw new Error(`Did not find an entry named "${oldName}"`);
       }
-      if (newName in module.defs) {
-         throw new Error(`Cannot rename to "${newName}" because such an entry already exists`);
+      if (!$.isNameFree(module, newName)) {
+         throw new Error(`Cannot rename to "${newName}": such an entry already ` +
+                         `exists or imported`);
+      }
+      let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
+      if (offendingModules.length > 0) {
+         throw new Error(`Cannot rename to "${newName}": cannot rename imports in ` +
+                         `modules: ${offendingModules.map(m => m.name).join(',')}`);
+      }
+
+      let recipients = $.recipientsOf(module, oldName);
+
+      // Renaming in DB is done by cascade, so we need to only do it in memory
+      for (let imp of $.importsOf(module, oldName)) {
+         $.renameImport(imp, newName);
       }
 
       $_.db
@@ -173,6 +186,7 @@ opHandlers ::= ({
             old_name: oldName
          });
 
+
       module.entries[module.entries.indexOf(oldName)] = newName;
 
       module.defs[newName] = module.defs[oldName];
@@ -181,7 +195,7 @@ opHandlers ::= ({
       module.rtobj[newName] = module.rtobj[oldName];
       delete module.rtobj[oldName];
 
-      $.opRet();
+      $.opRet($.importSectionForModules(recipients));
    },
 
    add: function ({module: moduleName, name, defn, anchor, before}) {
@@ -227,34 +241,18 @@ opHandlers ::= ({
          $.opRet(false);
       }
       else {
-         $.deleteEntry(module, name);
+         $.deleteEntryCascade(module, name);
          $.opRet(true);
       }
    },
 
    deleteCascade: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
+      let recipients = $.recipientsOf(module, name);
 
-      let imports = Array.from($.importsOf(module, name));
-      
-      for (let imp of imports) {
-         $.unimportRecord(imp);
-      }
+      $.deleteEntryCascade(module, name);
 
-      $.deleteEntry(module, name);
-
-      // Return import sections for affected modules
-      let recipients = new Set();
-      for (let imp of imports) {
-         recipients.add(imp.recp);
-      }
-
-      let result = Object.create(null);
-      for (let recp of recipients) {
-         result[recp.name] = $.dumpModuleImportSection(recp);
-      }
-
-      $.opRet(result);
+      $.opRet($.importSectionForModules(recipients));
    },
 
    moveBy1: function ({module: moduleName, name, direction}) {
@@ -382,7 +380,7 @@ opHandlers ::= ({
       }
 
       for (let rec of unused) {
-         $.unimportRecord(rec);
+         $.deleteImportDb(rec);
       }
 
       $.opRet({
@@ -526,31 +524,66 @@ dumpModuleImportSection ::= function (module) {
 
    return pieces.join('');
 }
-unimportRecord ::= function (imp) {
+importSectionForModules ::= function (modules) {
+   let result = {};
+   for (let module of modules) {
+      result[module.name] = $.dumpModuleImportSection(module);
+   }
+   return result;
+}
+deleteImport ::= function (imp) {
    let {donor, recp} = imp;
 
    delete recp.rtobj[imp.importedAs];
    recp.importedNames.delete(imp.importedAs);
    $.imports.delete(imp);
+}
+deleteImportDb ::= function (imp) {
+   $.deleteImport(imp);
    $_.db
       .prepare(`
          DELETE FROM import
          WHERE recp_module_name = :recp_module_name
            AND donor_module_name = :donor_module_name
-           AND name = :name`)
+           AND name = :name`
+      )
       .run({
-         recp_module_name: recp.name,
-         donor_module_name: donor.name,
+         recp_module_name: imp.recp.name,
+         donor_module_name: imp.donor.name,
          name: imp.name
       });
 }
-deleteEntry ::= function (module, name) {
+offendingModulesOnRename ::= function (module, oldName, newName) {
+   let offendingModules = [];
+
+   for (let imp of $.importsOf(module, oldName)) {
+      if (imp.alias === null && !$.isNameFree(imp.recp, newName)) {
+         offendingModules.push(imp.recp);
+      }
+   }
+
+   return offendingModules;
+}
+renameImport ::= function (imp, newName) {
+   if (imp.alias === null) {
+      let {recp, name: oldName} = imp;
+
+      recp.rtobj[newName] = recp.rtobj[oldName];
+      delete recp.rtobj[oldName];
+      recp.importedNames.delete(oldName);
+      recp.importedNames.add(newName);
+   }
+   imp.name = newName;
+}
+deleteEntryCascade ::= function (module, name) {
    if (!module.defs[name]) {
       throw new Error(`Entry named "${name}" does not exist`);
    }
 
-   let idx = module.entries.indexOf(name);
+   // Imports will be deleted from DB by cascade. We need only delete them from memory
+   Array.from($.importsOf(module, name)).forEach($.deleteImport);
 
+   let idx = module.entries.indexOf(name);
    $.unplugEntry(module, idx);
 
    $_.db
@@ -575,4 +608,14 @@ importsOf ::= function* (module, name) {
 isNameImported ::= function (module, name) {
    let {done} = $.importsOf(module, name).next();
    return !done;
+}
+isNameFree ::= function (module, name) {
+   return !(name in module.defs) && !module.importedNames.has(name);
+}
+recipientsOf ::= function (module, name) {
+   let recps = new Set;
+   for (let imp of $.importsOf(module, name)) {
+      recps.add(imp.recp);
+   }
+   return Array.from(recps);
 }

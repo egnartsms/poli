@@ -22,7 +22,8 @@ create table import(
    primary key (recp_module_name, donor_module_name, name),
    foreign key (recp_module_name) references module on update cascade,
    foreign key (donor_module_name) references module on update cascade,
-   foreign key (donor_module_name, name) references entry on update cascade
+   foreign key (donor_module_name, name) references entry
+      on update cascade on delete cascade
 );
 
 

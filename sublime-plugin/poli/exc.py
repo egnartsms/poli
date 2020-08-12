@@ -2,9 +2,6 @@ import re
 
 
 class BackendError(Exception):
-    def __init__(self, **attrs):
-        self.__dict__.update(attrs)
-
     @classmethod
     def make(cls, info):
         def camel_to_underscore(s):
@@ -16,18 +13,30 @@ class BackendError(Exception):
 class GenericError(BackendError):
     name = 'generic'
 
-    def __init__(self, stack):
+    def __init__(self, stack, message):
+        super().__init__()
         self.stack = stack
+        self.message = message
 
 
-class ReplEvalError(BackendError):
+class ReplEvalError(GenericError):
     name = 'replEval'
 
-    def __init__(self, stack):
-        self.stack = stack
+
+def descendant_classes_of(cls):
+    wave = list(cls.__subclasses__())
+    res = set(wave)
+
+    while wave:
+        c = wave.pop()
+        c_subs = set(c.__subclasses__()) - res
+        res |= c_subs
+        wave.extend(c_subs)
+
+    return res
 
 
-backend_errors = {sub.name: sub for sub in BackendError.__subclasses__()}
+backend_errors = {sub.name: sub for sub in descendant_classes_of(BackendError)}
 
 
 def make_backend_error(error, info):

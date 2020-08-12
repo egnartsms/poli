@@ -1,6 +1,7 @@
 import functools
 import sublime_plugin
 
+import collections.abc
 
 __all__ = ['ViewDictListener']
 
@@ -8,36 +9,27 @@ __all__ = ['ViewDictListener']
 _missing = object()
 
 
-class ViewDict(dict):
-    def __init__(self, seq=_missing):
-        if seq is _missing:
-            super().__init__()
+class ViewDict(collections.abc.MutableMapping):
+    def __init__(self, seq=None):
+        if seq is None:
+            self.data = {}
         else:
-            super().__init__((view.id(), val) for view, val in seq)
-
-    def __contains__(self, view):
-        return super().__contains__(view.id())
+            self.data = dict((view.id(), val) for view, val in seq)
 
     def __getitem__(self, view):
-        return super().__getitem__(view.id())
+        return self.data[view.id()]
 
     def __setitem__(self, view, value):
-        super().__setitem__(view.id(), value)
+        self.data[view.id()] = value
 
     def __delitem__(self, view):
-        super().__delitem__(view.id())
+        del self.data[view.id()]
 
-    def get(self, view, default=None):
-        return super().get(view.id(), default)
+    def __len__(self):
+        return len(self.data)
 
-    def pop(self, view, default=_missing):
-        if default is _missing:
-            return super().pop(view.id())
-        else:
-            return super().pop(view.id(), default)
-
-    def setdefault(self, view, default):
-        return super().setdefault(view.id(), default)
+    def __iter__(self):
+        return iter(self.data)
 
 
 view_dicts = []

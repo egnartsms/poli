@@ -2,7 +2,7 @@ import re
 import sublime_plugin
 
 from poli.comm import comm
-from poli.sublime.command import ApplicationCommand
+from poli.shared.command import ApplicationCommand
 
 
 __all__ = ['PoliAddNewModule']
