@@ -4,19 +4,23 @@ import sublime_api
 from Default.symbol import navigate_to_symbol
 from poli import config
 from poli.comm import comm
+from poli.common.misc import index_where
+from poli.common.misc import last_index_where
 from poli.module import operation as op
+from poli.shared.command import TextCommand
 from poli.shared.command import WindowCommand
 from poli.sublime.edit import call_with_edit_token
+from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import openfile_spec
 from poli.sublime.misc import push_to_jump_history
-from poli.sublime.misc import region_to_openfile_spec, active_view_preserved
+from poli.sublime.misc import region_to_openfile_spec
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import on_any_view_load
 from poli.sublime.view_dict import on_view_load
 
 
-__all__ = ['PoliGotoDefinition', 'PoliFindReferences']
+__all__ = ['PoliGotoDefinition', 'PoliFindReferences', 'PoliGotoWarning']
 
 
 class PoliGotoDefinition(WindowCommand):
@@ -104,3 +108,18 @@ class PoliFindReferences(WindowCommand):
             )
 
         on_any_view_load(all_views, view_loaded)
+
+
+class PoliGotoWarning(TextCommand):
+    def run(self, edit, forward):
+        reg = op.selected_region(self.view)
+        warnings = op.get_warnings(self.view)
+        if forward:
+            idx = index_where(warnings, lambda w: w.begin() > reg.end())
+        else:
+            idx = last_index_where(warnings, lambda w: w.end() < reg.begin())
+
+        if idx is None:
+            sublime.status_message("No warning found")
+        else:
+            jump(self.view, warnings[idx].begin())
