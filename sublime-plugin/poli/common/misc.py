@@ -7,6 +7,17 @@ def index_where(iterable, pred=lambda x: x):
         if pred(x):
             return i
 
+    return None
+
+
+def last_index_where(iterable, pred=lambda x: x):
+    idx = None
+    for i, x in enumerate(iterable):
+        if pred(x):
+            idx = i
+        else:
+            return idx
+
 
 def range_where(iterable, pred):
     start = None

@@ -113,6 +113,7 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
+    // Navigation in JS modules
     {
         "keys": ["f12"],
         "command": "poli_goto_definition",
@@ -125,6 +126,24 @@
         "command": "poli_find_references",
         "context": [
             {"key": "poli_kind", "operand": "module/js"}
+        ]
+    },
+    {
+        "keys": ["`"],
+        "command": "poli_goto_warning",
+        "args": {"forward": true},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["~"],
+        "command": "poli_goto_warning",
+        "args": {"forward": false},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
         ]
     },
 
