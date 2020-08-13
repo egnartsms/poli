@@ -145,8 +145,13 @@ def region_to_openfile_spec(view, reg):
     return openfile_spec(view, row, col)
 
 
-def openfile_spec(view, row, col):
-    return "{}:{}:{}".format(view.file_name(), row + 1, col + 1)
+def openfile_spec(what, row, col):
+    if isinstance(what, sublime.View):
+        fname = what.file_name()
+    else:
+        fname = what
+
+    return "{}:{}:{}".format(fname, row + 1, col + 1)
 
 
 def push_to_jump_history(view):

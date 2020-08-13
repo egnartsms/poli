@@ -369,11 +369,12 @@ def parse_import_section(view):
             )
         )
 
-    return ImportSection(result)
+    return ImportSection(view, result)
 
 
 class ImportSection:
-    def __init__(self, records):
+    def __init__(self, view, records):
+        self.view = view
         self.recs = records
 
     def imported_names(self):
@@ -382,6 +383,18 @@ class ImportSection:
     def record_for_imported_name(self, name):
         for rec in self.recs:
             if (rec.alias or rec.entry) == name:
+                return rec
+
+        return None
+
+    def record_under_cursor(self, reg):
+        row, col = self.view.rowcol(reg.begin())
+        row_end, col_end = self.view.rowcol(reg.end())
+        if row != row_end:
+            return None
+
+        for rec in self.recs:
+            if rec.row == row:
                 return rec
 
         return None
