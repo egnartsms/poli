@@ -357,7 +357,7 @@ opHandlers ::= ({
    },
 
    removeUnusedImports: function ({module: moduleName}) {
-      function isUsed(name) {
+      function isUsed(module, name) {
          name = '$.' + name;
 
          for (let {src} of Object.values(module.defs)) {
@@ -374,7 +374,7 @@ opHandlers ::= ({
       let unused = [];
 
       for (let rec of $.imports) {
-         if (rec.recp === module && !isUsed(rec.importedAs)) {
+         if (rec.recp === module && !isUsed(module, rec.importedAs)) {
             unused.push(rec);
          }
       }

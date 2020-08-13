@@ -1,6 +1,7 @@
 import contextlib
 import sublime
 
+from Default.history_list import get_jump_history_for_view
 from poli.common.misc import first_or_none
 
 
@@ -137,3 +138,16 @@ class Marker:
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
         return False
+
+
+def region_to_openfile_spec(view, reg):
+    row, col = view.rowcol(reg.begin())
+    return openfile_spec(view, row, col)
+
+
+def openfile_spec(view, row, col):
+    return "{}:{}:{}".format(view.file_name(), row + 1, col + 1)
+
+
+def push_to_jump_history(view):
+    get_jump_history_for_view(view).push_selection(view)

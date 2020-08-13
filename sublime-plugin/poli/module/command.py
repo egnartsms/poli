@@ -7,7 +7,7 @@ from poli.shared.command import StopCommand
 from poli.shared.command import TextCommand
 
 
-class ModuleCommandMixin:
+class ModuleTextCommandMixin:
     only_in_mode = None
 
     def is_enabled(self):
@@ -29,9 +29,9 @@ class ModuleCommandMixin:
         yield
 
 
-class ModuleTextCommand(ModuleCommandMixin, TextCommand):
+class ModuleTextCommand(ModuleTextCommandMixin, TextCommand):
     pass
 
 
-class ModuleInterruptibleTextCommand(ModuleCommandMixin, InterruptibleTextCommand):
+class ModuleInterruptibleTextCommand(ModuleTextCommandMixin, InterruptibleTextCommand):
     pass

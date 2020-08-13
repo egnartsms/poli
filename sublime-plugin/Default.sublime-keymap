@@ -113,6 +113,13 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
+    {
+        "keys": ["f12"],
+        "command": "poli_goto_definition",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"}
+        ]
+    },
 
     // REPL
     {

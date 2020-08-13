@@ -13,7 +13,7 @@ from poli.module.operation import module_contents
 from poli.module.operation import poli_module_name
 from poli.module.operation import reg_no_trailing_nl
 from poli.module.operation import reg_plus_trailing_nl
-from poli.module.operation import replace_import_sections
+from poli.module.operation import replace_import_section_in_modules
 from poli.module.operation import save_module
 from poli.module.operation import sel_cursor_location
 from poli.module.operation import selected_region
@@ -132,7 +132,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
             res = comm.rename(poli_module_name(self.view), cxt.name, new_name)
-            replace_import_sections(self.view.window(), res)
+            replace_import_section_in_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             
@@ -191,8 +191,7 @@ class PoliDeleteCascade(ModuleTextCommand):
             self.view.erase(edit, loc.entry.reg_entry_nl)
 
         save_module(self.view)
-
-        replace_import_sections(self.view.window(), res)
+        replace_import_section_in_modules(self.view.window(), res)
 
 
 class PoliMoveBy1(ModuleTextCommand):
