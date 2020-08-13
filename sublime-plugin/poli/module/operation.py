@@ -387,7 +387,7 @@ class ImportSection:
 
         return None
 
-    def record_under_cursor(self, reg):
+    def record_at(self, reg):
         row, col = self.view.rowcol(reg.begin())
         row_end, col_end = self.view.rowcol(reg.end())
         if row != row_end:
@@ -419,10 +419,9 @@ def find_name_region(view, name):
     return None
 
 
-def dollar_dot_name_under_cursor(view, reg):
+def word_at(view, reg):
     regword = view.word(reg)
-    if view.substr(sublime.Region(regword.begin() - 2, regword.begin())) != '$.':
+    if regword.empty():
         return None
 
-    word = view.substr(regword)
-    return word
+    return view.substr(regword)

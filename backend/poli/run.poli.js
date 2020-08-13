@@ -1,7 +1,3 @@
-aux
-   * as auxiliary
-   add as plus
-   multiply as mult
 bootstrap
    importEntry
    imports
@@ -407,6 +403,20 @@ opHandlers ::= ({
       let {lastInsertRowid: moduleId} = $_.db
          .prepare(`INSERT INTO module(name) VALUES (:name)`)
          .run({name: moduleName});
+   },
+
+   findReferences: function ({module: moduleName, name}) {
+      let module = $.moduleByName(moduleName);
+      let {module: originModule, name: originName} = $.whereNameCame(module, name);
+      let res = {
+         [originModule.name]: originName
+      };
+
+      for (let imp of $.importsOf(originModule, originName)) {
+         res[imp.recp.name] = imp.importedAs;
+      }
+
+      $.opRet(res);
    }
 
 })
@@ -598,6 +608,14 @@ deleteEntryCascade ::= function (module, name) {
    delete module.defs[name];
    delete module.rtobj[name];
 }
+importFor ::= function (module, name) {
+   for (let imp of $.imports) {
+      if (imp.recp === module && imp.importedAs === name) {
+         return imp;
+      }
+   }
+   return null;
+}
 importsOf ::= function* (module, name) {
    for (let imp of $.imports) {
       if (imp.donor === module && imp.name === name) {
@@ -618,4 +636,14 @@ recipientsOf ::= function (module, name) {
       recps.add(imp.recp);
    }
    return Array.from(recps);
+}
+whereNameCame ::= function (module, name) {
+   if (name in module.defs) {
+      return {module, name};
+   }
+   if (module.importedNames.has(name)) {
+      let imp = $.importFor(module, name);
+      return {module: imp.donor, name: imp.name};
+   }
+   throw new Error(`Module "${module.name}": not known name "${name}"`);
 }

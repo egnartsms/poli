@@ -120,6 +120,13 @@
             {"key": "poli_kind", "operand": "module/js"}
         ]
     },
+    {
+        "keys": ["shift+f12"],
+        "command": "poli_find_references",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"}
+        ]
+    },
 
     // REPL
     {

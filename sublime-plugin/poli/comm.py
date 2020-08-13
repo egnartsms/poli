@@ -144,5 +144,10 @@ class Communicator:
             'prefix': prefix,
         })
 
+    def find_references(self, module, name):
+        return self._send_op('findReferences', {
+            'module': module,
+            'name': name
+        })
 
 comm = Communicator()

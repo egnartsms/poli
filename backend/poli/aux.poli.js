@@ -9,7 +9,7 @@ multiply ::= function (x, y) {
 }
 sayhello ::= function () {
    console.log("No matter");
-   return {'testee': $.testee};
+   return {'testee': $.multiply(10, 20)};
 }
 compareImports ::= function () {
    $.moduleEval();
