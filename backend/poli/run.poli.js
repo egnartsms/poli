@@ -5,7 +5,7 @@ bootstrap
    moduleEval
    modules
 img2fs
-   genModuleImportsSection
+   genModuleImportSection
 -----
 WebSocket ::= $_.require('ws')
 port ::= 8080
@@ -568,7 +568,7 @@ serialize ::= function (obj) {
 }
 dumpModuleImportSection ::= function (module) {
    let pieces = [];
-   for (let piece of $.genModuleImportsSection(module)) {
+   for (let piece of $.genModuleImportSection(module)) {
       pieces.push(piece);
    }
 
