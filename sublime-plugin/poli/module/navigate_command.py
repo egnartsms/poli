@@ -7,8 +7,8 @@ from poli.comm import comm
 from poli.common.misc import index_where
 from poli.common.misc import last_index_where
 from poli.module import operation as op
+from poli.module.command import ModuleTextCommand
 from poli.shared.command import TextCommand
-from poli.shared.command import WindowCommand
 from poli.sublime.edit import call_with_edit_token
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import openfile_spec
@@ -23,27 +23,22 @@ from poli.sublime.view_dict import on_view_load
 __all__ = ['PoliGotoDefinition', 'PoliFindReferences', 'PoliGotoWarning']
 
 
-class PoliGotoDefinition(WindowCommand):
-    def run(self):
-        view = self.window.active_view()
-        reg = op.selected_region(view)
+class PoliGotoDefinition(ModuleTextCommand):
+    def run(self, edit):
+        reg = op.selected_region(self.view)
 
-        if op.import_section_region(view).contains(reg):
-            impsec = op.parse_import_section(view)
-            rec = impsec.record_at(reg)
-            if rec is None:
-                sublime.status_message("No import under cursor")
-                return
-
-            other_view = self.window.open_file(op.poli_file_name(rec.module_name))
+        if op.import_section_region(self.view).contains(reg):
+            impsec = op.parse_import_section(self.view)
+            rec = impsec.record_at_or_stop(reg)
+            other_view = self.view.window().open_file(op.poli_file_name(rec.module_name))
 
             def on_loaded():
-                if rec.entry is None:
+                if rec.name is None:
                     return
 
-                reg = op.find_name_region(other_view, rec.entry)
+                reg = op.find_name_region(other_view, rec.name)
                 if reg is None:
-                    self.window.focus_view(view)
+                    self.view.window().focus_view(self.view)
                     sublime.status_message(
                         "Not found \"{}\" in module \"{}\"".format(name, rec.module_name)
                     )
@@ -53,35 +48,33 @@ class PoliGotoDefinition(WindowCommand):
 
             on_view_load(other_view, on_loaded)
         else:
-            name = op.word_at(view, reg)
+            name = op.word_at(self.view, reg)
             if name is None:
                 sublime.status_message("No name under cursor")
                 return
 
-            reg = op.find_name_region(view, name)
+            reg = op.find_name_region(self.view, name)
 
             if reg is not None:              
-                jump(view, to=reg.begin())
+                jump(self.view, to=reg.begin())
             else:
                 # Not found among own entries, look for imports
-                impsec = op.parse_import_section(view)
+                impsec = op.parse_import_section(self.view)
                 rec = impsec.record_for_imported_name(name)
                 if rec is None:
                     sublime.status_message("The name \"{}\" is unknown".format(name))
                     return
 
-                jump(view, to=view.text_point(rec.row, len(config.indent)))
+                jump(self.view, to=self.view.text_point(rec.row, len(config.indent)))
 
 
-class PoliFindReferences(WindowCommand):
-    def run(self):
-        view = self.window.active_view()
-        word = op.word_at(view, op.selected_region(view))
-        res = comm.find_references(op.poli_module_name(view), word)
-        print("BE references:", res)
-        with active_view_preserved(self.window):
+class PoliFindReferences(ModuleTextCommand):
+    def run(self, edit):
+        word = op.word_at(self.view, op.selected_region(self.view))
+        res = comm.find_references(op.poli_module_name(self.view), word)
+        with active_view_preserved(self.view.window()):
             all_views = [
-                self.window.open_file(op.poli_file_name(module_name))
+                self.view.window().open_file(op.poli_file_name(module_name))
                 for module_name in res
             ]
         n_views_loaded = 0
@@ -91,8 +84,7 @@ class PoliFindReferences(WindowCommand):
             nonlocal locations, n_views_loaded
 
             regs = view.find_all(
-                '$.{}'.format(res[op.poli_module_name(view)]),
-                sublime.LITERAL
+                r'\$\.{}\b'.format(res[op.poli_module_name(view)])
             )
             locations += [make_location(view, reg) for reg in regs]
             n_views_loaded += 1

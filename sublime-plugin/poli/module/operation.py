@@ -4,6 +4,7 @@ import sublime
 import sublime_api
 
 from poli.common.misc import FreeObj
+from poli.common.misc import first_or_none
 from poli.common.misc import none_if
 from poli.config import backend_root
 from poli.shared.command import StopCommand
@@ -13,6 +14,7 @@ from poli.sublime.misc import active_view_preserved
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
 from poli.sublime.view_dict import on_any_view_load
+
 
 KIND_MODULE = 'module/js'
 
@@ -361,15 +363,27 @@ def parse_import_section(view):
             alias = None
 
         result.append(
-            FreeObj(
+            ImportEntry(
                 module_name=cur_module_name,
                 row=row,
-                entry=none_if('*', view.substr(thing.reg)),
+                name=none_if('*', view.substr(thing.reg)),
                 alias=None if alias is None else view.substr(alias.reg)
             )
         )
 
     return ImportSection(view, result)
+
+
+class ImportEntry:
+    def __init__(self, module_name, row, name, alias):
+        self.module_name = module_name
+        self.row = row
+        self.name = name
+        self.alias = alias
+
+    @property
+    def imported_as(self):
+        return self.alias or self.name
 
 
 class ImportSection:
@@ -378,14 +392,14 @@ class ImportSection:
         self.recs = records
 
     def imported_names(self):
-        return {rec.alias or rec.entry for rec in self.recs}
+        return {rec.imported_as for rec in self.recs}
+
+    def known_names(self):
+        """Compute all the names accessible as $.NAME for this module"""
+        return known_entries(self.view) | self.imported_names()
 
     def record_for_imported_name(self, name):
-        for rec in self.recs:
-            if (rec.alias or rec.entry) == name:
-                return rec
-
-        return None
+        return first_or_none(rec for rec in self.recs if rec.imported_as == name)
 
     def record_at(self, reg):
         row, col = self.view.rowcol(reg.begin())
@@ -399,10 +413,18 @@ class ImportSection:
 
         return None
 
+    def record_at_or_stop(self, reg):
+        rec = self.record_at(reg)
+        if rec is None:
+            sublime.status_message("No import record under cursor")
+            raise StopCommand
+
+        return rec
+
 
 def known_names(view):
     """Compute all the names accessible as $.NAME for this module"""
-    return known_entries(view) | parse_import_section(view).imported_names()
+    return parse_import_section(view).known_names()
 
 
 def known_entries(view):

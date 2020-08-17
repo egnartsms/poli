@@ -50,8 +50,8 @@ class Communicator:
         else:
             raise make_backend_error(res['error'], res['info'])
 
-    def get_module_names(self):
-        return self._send_op('getModuleNames', {})
+    def get_modules(self):
+        return self._send_op('getModules', {})
 
     def get_defn(self, module, name):
         return self._send_op('getDefinition', {
@@ -67,6 +67,11 @@ class Communicator:
     def get_importables(self, recp_module):
         return self._send_op('getImportables', {
             'recp': recp_module,
+        })
+
+    def get_module_names(self, module):
+        return self._send_op('getModuleNames', {
+            'module': module
         })
 
     def edit(self, module, name, new_defn):
@@ -136,6 +141,13 @@ class Communicator:
     def remove_unused_imports(self, module):
         return self._send_op('removeUnusedImports', {
             'module': module
+        })
+
+    def rename_import(self, module, imported_as, new_alias):
+        return self._send_op('renameImport', {
+            'module': module,
+            'importedAs': imported_as,
+            'newAlias': new_alias
         })
 
     def get_completions(self, module, prefix):

@@ -1,15 +1,44 @@
 import sublime
+import sublime_api
 import sublime_plugin
 
 from poli.comm import comm
+from poli.module import operation as op
 from poli.module.command import ModuleTextCommand
-from poli.module.operation import is_entry_name_valid
-from poli.module.operation import poli_module_name
-from poli.module.operation import replace_import_section
-from poli.module.operation import save_module
+from poli.sublime.input import ChainableInputHandler
+from poli.sublime.input import chain_input_handlers
+from poli.sublime.input import run_command_thru_palette
 
 
-__all__ = ['PoliImport', 'PoliRemoveUnusedImports']
+__all__ = [
+    'PoliImport', 'PoliRemoveUnusedImports', 'PoliRenameImport', 'PoliRenameThisImport'
+]
+
+
+class AliasCommonHandler(ChainableInputHandler, sublime_plugin.TextInputHandler):
+    def __init__(self, view, chain_tail, entry, disallowed_names):
+        super().__init__(view, chain_tail)
+        self.entry = entry
+        self.disallowed_names = disallowed_names
+
+    def placeholder(self):
+        return "[alias]"
+
+    def validate(self, value):
+        return self.preview(value) is None
+
+    def preview(self, value):
+        if value and not op.is_entry_name_valid(value):
+            return "Not a valid JavaScript name"
+
+        imported_as = value or self.entry
+        if not imported_as:
+            return "Module import without an alias"
+
+        if imported_as in self.disallowed_names:
+            return "\"{}\" already defined or imported".format(imported_as)
+
+        return None
 
 
 class PoliImport(ModuleTextCommand):
@@ -17,68 +46,96 @@ class PoliImport(ModuleTextCommand):
         module_name, entry_name = entry
 
         new_import_section = comm.import_(
-            recp_module=poli_module_name(self.view),
+            recp_module=op.poli_module_name(self.view),
             donor_module=module_name,
             name=entry_name,
             alias=alias,
         )
 
-        replace_import_section(self.view, edit, new_import_section)
-        save_module(self.view)
+        op.replace_import_section(self.view, edit, new_import_section)
+        op.save_module(self.view)
 
     def input(self, args):
-        return EntryInputHandler(poli_module_name(self.view))
+        return chain_input_handlers(self.view, args, [
+            self.EntryInputHandler,
+            self.AliasInputHandler
+        ])
 
+    class EntryInputHandler(ChainableInputHandler, sublime_plugin.ListInputHandler):
+        def __init__(self, view, args, chain_tail):
+            super().__init__(view, chain_tail)
+            res = comm.get_importables(op.poli_module_name(view))
+            self.items = [
+                ("{} ({})".format(entry or '*', module), [module, entry])
+                for module, entry in res
+            ]
 
-class EntryInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, recp_module_name):
-        res = comm.get_importables(recp_module_name)
-        self.items = [
-            ("{} ({})".format(entry, module), [module, entry])
-            for module, entry in res['importables']
-        ]
-        self.disallowed_names = res['disallowedNames']
+        def list_items(self):
+            return self.items
 
-    def list_items(self):
-        return self.items
-
-    def next_input(self, args):
-        module_name, entry_name = args['entry']
-        return AliasInputHandler(entry_name, self.disallowed_names)
-
-
-class AliasInputHandler(sublime_plugin.TextInputHandler):
-    def __init__(self, entry_name, disallowed_names):
-        self.entry_name = entry_name
-        self.disallowed_names = disallowed_names
-
-    def placeholder(self):
-        return "Alias"
-
-    def validate(self, value):
-        if value and not is_entry_name_valid(value):
-            return False
-
-        imported_as = value or self.entry_name
-        return imported_as not in self.disallowed_names
-
-    def preview(self, value):
-        if not self.validate(value):
-            return "Name collision"
-        else:
-            return None
+    class AliasInputHandler(AliasCommonHandler):
+        def __init__(self, view, args, chain_tail):
+            module_name, entry = args['entry']
+            disallowed_names = comm.get_module_names(op.poli_module_name(view))
+            super().__init__(view, chain_tail, entry, disallowed_names)
 
 
 class PoliRemoveUnusedImports(ModuleTextCommand):
     def run(self, edit):
-        res = comm.remove_unused_imports(poli_module_name(self.view))
+        res = comm.remove_unused_imports(op.poli_module_name(self.view))
 
         new_import_section = res['importSection']
         removed_count = res['removedCount']
 
         if removed_count > 0:
-            replace_import_section(self.view, edit, new_import_section)
-            save_module(self.view)
+            op.replace_import_section(self.view, edit, new_import_section)
+            op.save_module(self.view)
             sublime.status_message("Removed {} unused imports".format(removed_count))
         else:
             sublime.status_message("There are no unused imports in this module")
+
+
+class PoliRenameImport(ModuleTextCommand):
+    def run(self, edit, imported_as, new_alias):
+        text_import_section = comm.rename_import(
+            op.poli_module_name(self.view), imported_as, new_alias
+        )
+        if text_import_section is None:
+            return
+        op.replace_import_section(self.view, edit, text_import_section)
+        op.save_module(self.view)
+
+    def input(self, args):
+        return chain_input_handlers(self.view, args, [
+            self.ImportedAsInputHandler,
+            self.NewAliasInputHandler
+        ])
+
+    class ImportedAsInputHandler(ChainableInputHandler, sublime_plugin.ListInputHandler):
+        def __init__(self, view, args, chain_tail):
+            super().__init__(view, chain_tail)
+            impsec = op.parse_import_section(view)
+            self.imported_names = list(impsec.imported_names())
+
+        def list_items(self):
+            return self.imported_names
+
+    class NewAliasInputHandler(AliasCommonHandler):
+        def __init__(self, view, args, chain_tail):
+            rec = op.parse_import_section(view).record_for_imported_name(
+                args['imported_as']
+            )
+            if rec is None:
+                raise RuntimeError
+            disallowed_names = op.known_names(view)
+            super().__init__(view, chain_tail, rec.name, disallowed_names)
+
+
+class PoliRenameThisImport(ModuleTextCommand):
+    def run(self, edit):
+        reg = op.selected_region(self.view)
+        rec = op.parse_import_section(self.view).record_at_or_stop(reg)
+
+        run_command_thru_palette(self.view, 'poli_rename_import', {
+            'imported_as': rec.imported_as
+        })

@@ -47,7 +47,7 @@ class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMe
 
 class InterruptibleTextCommand(sublime_plugin.TextCommand):
     def run_(self, edit_token, args):
-        def resume(edit_token):
+        def resume(edit_token, args):
             edit.edit_token = edit_token
             try:
                 gen.send(args)
@@ -62,9 +62,9 @@ class InterruptibleTextCommand(sublime_plugin.TextCommand):
             if inspect.getgeneratorstate(gen) != 'GEN_SUSPENDED':
                 raise RuntimeError("Generator not in suspended state")
 
-            call_with_edit_token(self.view, resume)
+            call_with_edit_token(self.view, lambda et: resume(et, args))
         
-        gen = self.run(edit, callback, **args)
         edit = sublime.Edit(0)
+        gen = self.run(edit, callback, **args)
 
-        resume(edit_token)
+        resume(edit_token, None)

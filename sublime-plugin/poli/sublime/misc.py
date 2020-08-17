@@ -1,5 +1,7 @@
 import contextlib
+import re
 import sublime
+import sublime_plugin
 
 from Default.history_list import get_jump_history_for_view
 from poli.common.misc import first_or_none

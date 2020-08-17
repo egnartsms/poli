@@ -17,6 +17,7 @@ from poli.module.operation import replace_import_section_in_modules
 from poli.module.operation import save_module
 from poli.module.operation import sel_cursor_location
 from poli.module.operation import selected_region
+from poli.module.operation import import_section_region
 from poli.sublime.misc import Marker
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
@@ -60,6 +61,12 @@ class PoliRename(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
+        reg = selected_region(self.view)
+        if import_section_region(self.view).contains(reg):
+            self.view.run_command('poli_rename_this_import')
+            return
+
+        loc = module_contents(self.view).cursor_location_or_stop(reg)
         loc = sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
@@ -68,7 +75,6 @@ class PoliRename(ModuleTextCommand):
         enter_edit_mode(
             self.view, loc.entry.reg_name, target='name', name=loc.entry.name()
         )
-        set_selection(self.view, to=loc.entry.reg_name)
 
 
 class PoliAdd(ModuleTextCommand):

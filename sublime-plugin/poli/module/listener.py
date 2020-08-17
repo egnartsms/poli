@@ -1,5 +1,6 @@
 import sublime
 import sublime_plugin
+import sys
 
 from poli.comm import comm
 from poli.module.operation import KIND_MODULE
@@ -16,9 +17,9 @@ __all__ = ['PoliViewListener']
 
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
-    def is_applicable(cls, settings):
-        # return False
-        view = view_by_settings(settings)
+    def is_applicable(cls, settings):        
+        # Lod, forgive me for doing this..
+        view = sys._getframe(1).f_locals.get('view')
         return view is not None and is_view_poli(view)
 
     def on_load(self):

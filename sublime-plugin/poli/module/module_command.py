@@ -13,7 +13,7 @@ class PoliAddNewModule(ApplicationCommand):
         print("New module name is:", module_name)
 
     def input(self, args):
-        return ModuleNameInputHandler(comm.get_module_names())
+        return ModuleNameInputHandler(comm.get_modules())
 
 
 class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
