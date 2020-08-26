@@ -13,6 +13,7 @@ const {
    SRC_FOLDER,
    FS2IMG_MODULE,
    LOBBY_OID,
+   BOOTSTRAP_DEFS_OID,
    BOOTSTRAP_MODULE
 } = require('./common');
 
@@ -64,7 +65,8 @@ function makeImage(db) {
       parseBody,
       SRC_FOLDER,
       LOBBY_OID,
-      BOOTSTRAP_MODULE
+      BOOTSTRAP_MODULE,
+      BOOTSTRAP_DEFS_OID
    };
 
    let $ = Object.create(null);
@@ -78,7 +80,7 @@ function makeImage(db) {
       $[name] = moduleEval(code);
    }
 
-   db.transaction($['makeAndLoadImageByFs'])();
+   db.transaction($['makeImageByFs'])();
 }
 
 

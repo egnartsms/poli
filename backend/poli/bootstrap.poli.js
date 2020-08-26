@@ -4,17 +4,28 @@ assert ::= $_.require('assert').strict
 lobby ::= null
 modules ::= null
 imports ::= null
-makeAndLoadImageByFs ::= function () {
-   let modulesInfo = $.parseAllModules();
+makeImageByFs ::= function () {
    $.modules = {};
+   $.imports = new Set();
+
+   let modulesInfo = $.parseAllModules();
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeModule(name, body);
    }
 
-   $.imports = new Set();
-   $.imports.add({a: 10, b: 20});
-   $.imports.add({a: 100, b: 200});
-   
+   for (let minfo of modulesInfo) {
+      let recp = $.modules[minfo.name];
+      for (let {donor: donorName, asterisk, imports} of minfo.imports) {
+         let donor = $.modules[donorName];
+         if (asterisk !== null) {
+            $.importModule(recp, donor, asterisk);
+         }
+         for (let {entry, alias} of imports) {
+            $.importEntry(recp, donor, entry, alias);
+         }
+      }
+   }
+
    // Lobby exists in the DB but is empty at this point
    $.lobby = {
       modules: $.modules,
@@ -134,35 +145,36 @@ metaRuntimeKeys ::= '__rtkeys'
 metaRef ::= '__ref'
 metaType ::= '__type'
 idmap ::= new Map()
-nextOid ::= 2
+nextOid ::= 1
 insertStmt ::= $_.db.prepare(`
    INSERT INTO obj(id, val) VALUES (:oid, :val)
 `)
 updateStmt ::= $_.db.prepare(`
    UPDATE obj SET val = :val WHERE id = :oid
 `)
+selectAllStmt ::= $_.db.prepare(`
+   SELECT id, val FROM obj ORDER BY id ASC
+`)
 isObject ::= function (obj) {
    return typeof obj === 'object' && obj !== null;
 }
+hasOwnProp ::= function (obj, prop) {
+   return Object.prototype.hasOwnProperty.call(obj, prop);
+}
 toJson ::= function (obj, makeObjRef) {
+   if (obj instanceof Set) {
+      return JSON.stringify({
+         [$.metaType]: 'set',
+         'contents': Array.from(obj, x => {
+            return $.isObject(x) ? makeObjRef(x) : x;
+         })
+      });
+   }
+
    let runtimeKeys = obj[$.metaRuntimeKeys] || [];
 
    return JSON.stringify(obj, function (key, val) {
-      if (val === obj) {
-         if (val instanceof Set) {
-            return {
-               [$.metaType]: 'set',
-               'contents': Array.from(val, x => {
-                  return $.isObject(x) ? makeObjRef(x) : x;
-               })
-            };
-         }
-         else {
-            return val;
-         }      
-      }
-
-      if (this !== obj) {
+      if (val === obj || this !== obj) {
          return val;
       }
 
@@ -288,10 +300,7 @@ importEntry ::= function (recp, donor, name, alias) {
       recp,
       donor,
       name,
-      alias,
-      get importedAs() {
-         return this.alias || this.name
-      }
+      alias
    });
 }
 importModule ::= function (recp, donor, alias) {
@@ -314,48 +323,125 @@ importModule ::= function (recp, donor, alias) {
       recp,
       donor,
       name: null,
-      alias,
-      get importedAs() {
-         return this.alias;
-      }
+      alias
    })
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);
    return fun.call(null, $_, module.rtobj, module);
 }
-main ::= function () {
-   let moduleNames = $_.db.prepare(`SELECT name FROM module`).pluck().all();
-   let stmtEntries = $_.db.prepare(`
-      SELECT name, def, prev
-      FROM entry
-      WHERE module_name = :module_name
-   `);
+loadImage ::= function () {
+   let symPlaceholder = Symbol('placeholder');
 
-   for (let moduleName of moduleNames) {
-      let entries = stmtEntries.all({module_name: moduleName});
-      entries = $.orderModuleEntries(entries, 'name', 'prev');
-      $.modules[moduleName] = $.makeModuleObject(moduleName, entries);
+   function refto(refid) {
+      return {
+         [symPlaceholder]: true,
+         refid
+      };
    }
 
-   let imports = $_.db.prepare(`SELECT * FROM any_import`).all();
+   function isPlaceholder(x) {
+      return $.isObject(x) && x[symPlaceholder];
+   }
 
-   for (let {
-            recp_module_name,
-            donor_module_name,
-            name,
-            alias
-         } of imports) {
-      let recp = $.modules[recp_module_name];
-      let donor = $.modules[donor_module_name];
+   let data = $.selectAllStmt.all();
+   let id2obj = new Map();
 
-      if (name === null) {
-         $.importModule(recp, donor, alias);
+   for (let {id, val} of data) {
+      let obj = JSON.parse(val, function (k, v) {
+         if (!$.isObject(v)) {
+            return v;
+         }
+
+         if ($.hasOwnProp(v, $.metaRef)) {
+            return refto(v[$.metaRef]);
+         }
+
+         return v;
+      });
+
+      if (obj[$.metaType] === 'set') {
+         obj = new Set(obj['contents']);
+      }
+
+      $.idmap.set(obj, id);
+      id2obj.set(id, obj);
+   }
+
+   $.nextOid = data[data.length - 1].id + 1;
+
+   // Now resolve object references
+   let usedRefids = new Set(id2obj.keys())
+
+   function getByRefid(refid) {
+      usedRefids.delete(refid);
+      return id2obj.get(refid);
+   }
+
+   for (let [, obj] of id2obj) {
+      if (obj instanceof Set && $.some(obj, isPlaceholder)) {
+         let contents = Array.from(obj);
+         obj.clear();
+         for (let x of contents) {
+            if (x[symPlaceholder]) {
+               obj.add(getByRefid(x.refid));
+            }
+            else {
+               obj.add(x);
+            }
+         }
+      }
+      else if ($.some(Object.values(obj), isPlaceholder)) {
+         let entries = Object.entries(obj).filter(([k, v]) => isPlaceholder(v));
+         for (let [k, ph] of entries) {
+            obj[k] = getByRefid(ph.refid);
+         }
+      }
+   }
+
+   usedRefids.delete($_.LOBBY_OID);
+   if (usedRefids.size > 0) {
+      console.warn(`Found ${usedRefids.size} garbage objects`);
+   }
+
+   $.lobby = id2obj.get($_.LOBBY_OID);
+   $.modules = $.lobby.modules;
+   $.imports = $.lobby.imports;
+
+   $.initModuleRtObjects();
+
+   return $.modules;
+}
+initModuleRtObjects ::= function () {
+   for (let module of Object.values($.modules)) {
+      if (module.name === $_.BOOTSTRAP_MODULE) {
+         module.rtobj = $;
       }
       else {
-         $.importEntry(recp, donor, name, alias);
+         module.rtobj = Object.create(null);
+
+         for (let entry of module.entries) {
+            let def = module.defs[entry];
+            if (def.type !== 'native') {
+               throw new Error(`Unrecognized entry type: ${def.type}`);
+            }
+
+            module.rtobj[entry] = $.moduleEval(module, def.src);
+         }
       }
    }
 
-   return Object.values($.modules);
+   // Now perform the imports
+   for (let {recp, donor, name, alias} of $.imports) {
+      recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
+   }
+}
+some ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (pred(x)) {
+         return true;
+      }
+   }
+
+   return false;
 }

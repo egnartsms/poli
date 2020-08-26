@@ -5,6 +5,8 @@ const {
    BOOTSTRAP_MODULE,
    RUN_MODULE,
    SRC_FOLDER,
+   BOOTSTRAP_DEFS_OID,
+   LOBBY_OID
 } = require('./common');
 
 
@@ -21,37 +23,38 @@ function loadImage() {
       BOOTSTRAP_MODULE,
       SRC_FOLDER,
       require,
-      db
+      db,
+      LOBBY_OID,
    };
    let $ = Object.create(null);
 
    let entries = db
       .prepare(`
-         SELECT name, def
-         FROM entry
-         WHERE module_name = :bootstrap_module
+         SELECT jj.key, json_extract(obj.val, '$.src')
+         FROM json_each((
+            SELECT val
+            FROM obj
+            WHERE id = (
+               SELECT json_extract(val, '$.bootstrapDefs.__ref')
+               FROM obj
+               WHERE id = :lobby_oid
+            )
+         )) AS jj JOIN obj ON json_extract(jj.value, '$.__ref') = obj.id;
       `)
-      .all({
-         bootstrap_module: BOOTSTRAP_MODULE
-      });
+      .raw()
+      .all({lobby_oid: LOBBY_OID});
 
-   for (let {name, def} of entries) {
-      def = JSON.parse(def);
-      if (def.type !== 'native') {
-         throw new Error(`Unrecognized entry type: ${def.type}`);
-      }
-
-      $[name] = moduleEval(def.src);
+   for (let [name, src] of entries) {
+      $[name] = moduleEval(src);
    }
 
-   return $['main']();
+   return $['loadImage']();
 }
 
 
 function main() {
    let modules = loadImage();
-   let run = modules.find(m => m.name === RUN_MODULE);
-   run.rtobj['main']();
+   modules[RUN_MODULE].rtobj['main']();
 }
 
 
