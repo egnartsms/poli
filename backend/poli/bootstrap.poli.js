@@ -1,102 +1,260 @@
 -----
-modules ::= Object.create(null)
-imports ::= new Set()
-main ::= function () {
-   let moduleNames = $_.db.prepare(`SELECT name FROM module`).pluck().all();
-   let stmtEntries = $_.db.prepare(`
-      SELECT name, def, prev
-      FROM entry
-      WHERE module_name = :module_name
-   `);
-
-   for (let moduleName of moduleNames) {
-      let entries = stmtEntries.all({module_name: moduleName});
-      entries = $.orderModuleEntries(entries, 'name', 'prev');
-      $.modules[moduleName] = $.makeModuleObject(moduleName, entries);
+fs ::= $_.require('fs')
+assert ::= $_.require('assert').strict
+lobby ::= null
+modules ::= null
+imports ::= null
+makeAndLoadImageByFs ::= function () {
+   let modulesInfo = $.parseAllModules();
+   $.modules = {};
+   for (let {name, body} of modulesInfo) {
+      $.modules[name] = $.makeModule(name, body);
    }
 
-   let imports = $_.db.prepare(`SELECT * FROM any_import`).all();
+   $.imports = new Set();
+   $.imports.add({a: 10, b: 20});
+   $.imports.add({a: 100, b: 200});
+   
+   // Lobby exists in the DB but is empty at this point
+   $.lobby = {
+      modules: $.modules,
+      imports: $.imports,
+      bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
+   };
+   $.idmap.set($.lobby, $_.LOBBY_OID);
+   $.saveObjectAddCascade($.lobby);
+}
+parseAllModules ::= function () {
+   let modulesInfo = [];
 
-   for (let {
-            recp_module_name,
-            donor_module_name,
-            name,
-            alias
-         } of imports) {
-      let recp = $.modules[recp_module_name];
-      let donor = $.modules[donor_module_name];
+   for (let moduleFile of $.fs.readdirSync($_.SRC_FOLDER)) {
+      let moduleName = $.moduleNameByFile(moduleFile);
+      if (moduleName === null) {
+         console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
+         continue;
+      }
 
-      if (name === null) {
-         $.importModule(recp, donor, alias);
+      let contents = $.fs.readFileSync(`./${$_.SRC_FOLDER}/${moduleFile}`, 'utf8');
+      let {imports, body} = $.parseModule(contents);
+      let moduleInfo = {
+         name: moduleName,
+         imports,
+         body
+      };
+
+      $.validateModuleEntries(moduleInfo);
+
+      modulesInfo.push(moduleInfo);
+   }
+
+   return modulesInfo;
+}
+parseModule ::= function (str) {
+   let mtch = str.match(/^-+\n/m);
+   if (!mtch) {
+      throw new Error(`Bad module: not found the ----- separator`);
+   }
+
+   let rawImports = str.slice(0, mtch.index);
+   let rawBody = str.slice(mtch.index + mtch[0].length);
+
+   let imports = $.parseImports(rawImports);
+   let body = $_.parseBody(rawBody);
+
+   return {imports, body};
+}
+parseImports ::= function (str) {
+   let res = [];
+
+   for (let [[,donor], rawImports] of $_.matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
+      let imports = Array.from(
+         rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as\s+(?<alias>.+?))?\s*$/gm)
+      );
+
+      if (imports.length === 0) {
+         // This should not normally happen but not an error
+         continue;
+      }
+
+      let asterisk = null;
+
+      if (imports[0].groups.entry === '*') {
+         asterisk = imports[0].groups.alias;
+         imports.splice(0, 1);
+      }
+
+      res.push({
+         donor,
+         asterisk,
+         imports: Array.from(imports, imp => ({
+            entry: imp.groups.entry,
+            alias: imp.groups.alias || null,
+         }))
+      });
+   }
+
+   return res;
+}
+moduleNameByFile ::= function (moduleFile) {
+   let mtch = /^(?<module_name>.+?)\.poli\.js$/.exec(moduleFile);
+   if (!mtch) {
+      return null;
+   }
+
+   return mtch.groups.module_name;
+}
+validateModuleEntries ::= function (minfo) {
+   let entries = new Set(minfo.body.map(([name]) => name));
+
+   for (let {donor, asterisk, imports} of minfo.imports) {
+      if (asterisk !== null) {
+         if (entries.has(asterisk)) {
+            throw new Error(
+               `Corrupted image: module "${minfo.name}" imports "${donor}" as ` +
+               `"${asterisk}" which collides with another module member or import`
+            );
+         }
+         entries.add(asterisk);
+      }
+
+      for (let {entry, alias} of imports) {
+         let importedAs = alias || entry;
+         if (entries.has(importedAs)) {
+            console.log("Here!!", entry, alias, minfo);
+            throw new Error(
+               `Corrupted image: module "${minfo.name}" imports "${importedAs}" from ` +
+               `"${donor}" which collides with another module member or import`
+            );
+         }
+         entries.add(importedAs);
+      }
+   }
+}
+metaRuntimeKeys ::= '__rtkeys'
+metaRef ::= '__ref'
+metaType ::= '__type'
+idmap ::= new Map()
+nextOid ::= 2
+insertStmt ::= $_.db.prepare(`
+   INSERT INTO obj(id, val) VALUES (:oid, :val)
+`)
+updateStmt ::= $_.db.prepare(`
+   UPDATE obj SET val = :val WHERE id = :oid
+`)
+isObject ::= function (obj) {
+   return typeof obj === 'object' && obj !== null;
+}
+toJson ::= function (obj, makeObjRef) {
+   let runtimeKeys = obj[$.metaRuntimeKeys] || [];
+
+   return JSON.stringify(obj, function (key, val) {
+      if (val === obj) {
+         if (val instanceof Set) {
+            return {
+               [$.metaType]: 'set',
+               'contents': Array.from(val, x => {
+                  return $.isObject(x) ? makeObjRef(x) : x;
+               })
+            };
+         }
+         else {
+            return val;
+         }      
+      }
+
+      if (this !== obj) {
+         return val;
+      }
+
+      if (runtimeKeys.includes(key)) {
+         return null;
+      }
+
+      if (!$.isObject(val)) {
+         return val;
+      }
+
+      if (key === $.metaRuntimeKeys) {
+         return val;
+      }
+
+      return makeObjRef(val);
+   });
+}
+saveObjectAddCascade ::= function (obj) {
+   $.assert($.isObject(obj));
+
+   let toAdd = new Map();
+
+   function objref(obj) {
+      let oid = $.idmap.get(obj);
+      if (oid == null) {
+         oid = toAdd.get(obj);
+         if (oid == null) {
+            oid = $.nextOid++;
+            toAdd.set(obj, oid);
+         }
+      }
+
+      return {
+         [$.metaRef]: oid
+      };
+   }
+
+   function addObject(obj, oid) {
+      let json = $.toJson(obj, objref);
+      $.insertStmt.run({oid, val: json});
+      $.idmap.set(obj, oid);
+   }
+
+   function saveObject(obj) {
+      let oid = $.idmap.get(obj);
+      let json = $.toJson(obj, objref);
+      if (oid == null) {
+         oid = $.nextOid++;
+         $.insertStmt.run({oid, val: json});
+         $.idmap.set(obj, oid);
       }
       else {
-         $.importEntry(recp, donor, name, alias);
+         $.updateStmt.run({oid, val: json});
       }
    }
 
-   return Object.values($.modules);
+   saveObject(obj);
+
+   while (toAdd.size > 0) {
+      let {value: [obj, oid]} = toAdd.entries().next();
+      addObject(obj, oid);
+      toAdd.delete(obj);
+   }
 }
-orderModuleEntries ::= function (entries, propId, propPrevId) {
-   /**
-    Return an ordered array of module entries.
+makeModule ::= function (name, body) {
+   let defs = {};
 
-    Entries may be any objects for which the following holds:
-
-      entry[propId]: returns ID of an etry
-      entry[propPrevId]: returns ID of the immediately preceding entry
-
-    :param entries: array of items
-    :param propId, propPrevId: property names to access respective IDs.
-   */
-   let prev2entry = new Map;
-
-   for (let entry of entries) {
-      prev2entry.set(entry[propPrevId], entry);
-   }
-
-   let entry = prev2entry.get(null);
-   if (entry == null) {
-      return [];
-   }
-
-   let ordered = [];
-
-   while (entry != null) {
-      ordered.push(entry);
-      entry = prev2entry.get(entry[propId]);
-   }
-
-   return ordered;
-}
-makeModuleObject ::= function (moduleName, entries) {
-   /**
-    * entries - DB records (module entries) already in the right order
-   */
-   let defs = Object.create(null);
-
-   for (let {name, def} of entries) {
-      def = JSON.parse(def);
-      if (def.type !== 'native') {
-         throw new Error(`Unrecognized entry type: ${def.type}`);
-      }
-
-      defs[name] = def;
+   for (let [entry, src] of body) {
+      defs[entry] = {
+         type: 'native',
+         src
+      };
    }
 
    let module = {
-      name: moduleName,
+      [$.metaRuntimeKeys]: ['rtobj'],
+      name,
       importedNames: new Set(),  // filled in on import resolve
-      entries: Array.from(entries, e => e['name']),
+      entries: Array.from(body, ([entry]) => entry),
       defs: defs,
-      rtobj: (moduleName === $_.BOOTSTRAP_MODULE) ? $ : Object.create(null)
+      rtobj: null
    };
 
-   if (module.rtobj === $) {
-      return module;
+   if (name === $_.BOOTSTRAP_MODULE) {
+      module.rtobj = $;
    }
-
-   for (let {name} of entries) {
-      module.rtobj[name] = $.moduleEval(module, defs[name].src);
+   else {
+      module.rtobj = Object.create(null);
+      for (let [entry, src] of body) {
+         module.rtobj[entry] = $.moduleEval(module, src);
+      }
    }
 
    return module;
@@ -165,4 +323,39 @@ importModule ::= function (recp, donor, alias) {
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);
    return fun.call(null, $_, module.rtobj, module);
+}
+main ::= function () {
+   let moduleNames = $_.db.prepare(`SELECT name FROM module`).pluck().all();
+   let stmtEntries = $_.db.prepare(`
+      SELECT name, def, prev
+      FROM entry
+      WHERE module_name = :module_name
+   `);
+
+   for (let moduleName of moduleNames) {
+      let entries = stmtEntries.all({module_name: moduleName});
+      entries = $.orderModuleEntries(entries, 'name', 'prev');
+      $.modules[moduleName] = $.makeModuleObject(moduleName, entries);
+   }
+
+   let imports = $_.db.prepare(`SELECT * FROM any_import`).all();
+
+   for (let {
+            recp_module_name,
+            donor_module_name,
+            name,
+            alias
+         } of imports) {
+      let recp = $.modules[recp_module_name];
+      let donor = $.modules[donor_module_name];
+
+      if (name === null) {
+         $.importModule(recp, donor, alias);
+      }
+      else {
+         $.importEntry(recp, donor, name, alias);
+      }
+   }
+
+   return Object.values($.modules);
 }
