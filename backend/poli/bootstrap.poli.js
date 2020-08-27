@@ -161,12 +161,12 @@ selectAllStmt ::= $_.db.prepare(`
 isObject ::= function (obj) {
    return typeof obj === 'object' && obj !== null;
 }
-toJson ::= function (obj, makeObjRef) {
+toJson ::= function (obj, objref) {
    if (obj instanceof Set) {
       return JSON.stringify({
          [$.metaType]: 'set',
          'contents': Array.from(obj, x => {
-            return $.isObject(x) ? makeObjRef(x) : x;
+            return $.isObject(x) ? objref(x) : x;
          })
       });
    }
@@ -190,7 +190,7 @@ toJson ::= function (obj, makeObjRef) {
          return val;
       }
 
-      return makeObjRef(val);
+      return objref(val);
    });
 }
 saveObjectAddCascade ::= function (obj) {
@@ -381,7 +381,7 @@ loadImage ::= function () {
       return id2obj.get(refid);
    }
 
-   function some (itbl, pred) {
+   function some(itbl, pred) {
       for (let x of itbl) {
          if (pred(x)) {
             return true;

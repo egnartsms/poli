@@ -344,8 +344,9 @@ opHandlers ::= ({
          }
       }
 
-      for (let rec of unused) {
-         $.deleteImportDontSave(rec);
+      for (let imp of unused) {
+         $.deleteImportDontSave(imp);
+         $.deleteObject(imp);
       }
 
       $.saveObject(module.importedNames);
@@ -413,6 +414,14 @@ moduleByName ::= function (name) {
    }
    return module;
 }
+toJsonRef ::= function (obj, objref) {
+   // Convert to JSON but use reference even for obj itself
+   if ($.isObject(obj)) {
+      obj = objref(obj);
+   }
+
+   return JSON.stringify(obj);
+}
 jsonPath ::= function (...things) {
    let pieces = ['$'];
    for (let thing of things) {
@@ -431,7 +440,7 @@ jsonPath ::= function (...things) {
 }
 objrefMustExist ::= function (obj) {
    let oid = $.obj2id.get(obj);
-   if (oid === undefined) {
+   if (oid == null) {
       throw new Error(`Stumbled upon an unsaved object: ${obj}`);
    }
 
@@ -445,7 +454,7 @@ saveObject ::= function (obj) {
    let oid = $.obj2id.get(obj);
    let json = $.toJson(obj, $.objrefMustExist);
 
-   if (oid === undefined) {
+   if (oid == null) {
       oid = $.takeNextOid();
       $.stmtInsert.run({oid, val: json});
       $.obj2id.set(obj, oid);
@@ -462,7 +471,7 @@ setObjectProp ::= function (obj, prop, val) {
 
    let oid = $.obj2id.get(obj);
    let rec = $.objrefRecorder();
-   let json = $.toJson(val, rec.objref);
+   let json = $.toJsonRef(val, rec.objref);
 
    $.stmtSetProp.run({
       oid,
