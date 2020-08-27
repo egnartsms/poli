@@ -162,4 +162,10 @@ class Communicator:
             'name': name
         })
 
+    def add_module(self, module):
+        return self._send_op('addModule', {
+            'module': module
+        })
+
+
 comm = Communicator()
