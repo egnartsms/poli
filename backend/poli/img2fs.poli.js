@@ -17,7 +17,7 @@ dumpModule ::= function (module) {
    );
 
    $.writingToStream(moduleStream, function* () {
-      yield* $.genModuleImportsSection(module);
+      yield* $.genModuleImportSection(module);
 
       // Body
       for (let entry of module.entries) {
@@ -61,7 +61,7 @@ compareImports ::= function (i1, i2) {
 
    return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
 }
-genModuleImportsSection ::= function* (module) {
+genModuleImportSection ::= function* (module) {
    let imports = $.sortedImportsInto(module);
    let curDonorName = null;
 

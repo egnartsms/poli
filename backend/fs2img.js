@@ -11,7 +11,8 @@ const {
    IMAGE_PATH,
    SCHEMA_PATH,
    SRC_FOLDER,
-   FS2IMG_MODULE,
+   LOBBY_OID,
+   BOOTSTRAP_MODULE
 } = require('./common');
 
 
@@ -52,7 +53,7 @@ function parseBody(str) {
 
 
 function makeImage(db) {
-   let contents = fs.readFileSync(`./${SRC_FOLDER}/${FS2IMG_MODULE}.poli.js`, 'utf8');
+   let contents = fs.readFileSync(`./${SRC_FOLDER}/bootstrap.poli.js`, 'utf8');
    let entries = parseBody(contents);
 
    let $_ = {
@@ -60,7 +61,9 @@ function makeImage(db) {
       db,
       matchAllHeaderBodyPairs,
       parseBody,
-      SRC_FOLDER
+      SRC_FOLDER,
+      LOBBY_OID,
+      BOOTSTRAP_MODULE
    };
 
    let $ = Object.create(null);
@@ -74,7 +77,7 @@ function makeImage(db) {
       $[name] = moduleEval(code);
    }
 
-   $['main']();  
+   db.transaction($['makeImageByFs'])();
 }
 
 

@@ -1,7 +1,5 @@
 bootstrap
    moduleEval
-run
-   deleteImportMem as blooh
 -----
 add ::= function (x, y) {
    return x + y;
@@ -13,6 +11,7 @@ sayhello ::= function () {
    console.log("No matter");
    return {'testee': $.multiply(10, 20)};
 }
+testee ::= 200
 compareImports ::= function () {
    $.moduleEval();
 

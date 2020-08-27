@@ -18,7 +18,8 @@ __all__ = ['PoliViewListener']
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):        
-        # Lod, forgive me for doing this..
+        # return False
+        # Lord, forgive me for doing this..
         view = sys._getframe(1).f_locals.get('view')
         return view is not None and is_view_poli(view)
 
