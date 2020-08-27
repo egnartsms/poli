@@ -4,6 +4,7 @@ bootstrap
    importModule
    imports
    isObject
+   makeModule
    metaRef
    moduleEval
    modules
@@ -93,13 +94,12 @@ opHandlers ::= ({
 
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
-      let def = module.defs[name];
-
-      if (!def) {
+      
+      if (!$.hasOwnProperty(module.defs, name)) {
          throw new Error(`Member "${name}" not found in module "${moduleName}"`);
       }
 
-      $.opRet(def.src);
+      $.opRet(module.defs[name].src);
    },
 
    getEntries: function ({module: moduleName}) {
@@ -186,16 +186,25 @@ opHandlers ::= ({
          throw new Error(`"${name}" already defined or imported`);
       }
 
-      let idx = module.entries.indexOf(anchor);
-      if (idx === -1) {
-         throw new Error(`Not found an entry "${anchor}"`);
+      if (anchor === null) {
+         if (module.entries.length > 0) {
+            throw new Error(`Anchor entry not provided`);
+         }
+
+         module.rtobj[name] = $.moduleEval(module, defn);
+         module.entries.push(name);
+      }
+      else {
+         let idx = module.entries.indexOf(anchor);
+         if (idx === -1) {
+            throw new Error(`Not found an entry "${anchor}"`);
+         }
+
+         module.rtobj[name] = $.moduleEval(module, defn);
+         module.entries.splice(before ? idx : idx + 1, 0, name);
       }
 
-      module.rtobj[name] = $.moduleEval(module, defn);
-
-      module.entries.splice(before ? idx : idx + 1, 0, name);
       $.saveObject(module.entries);
-
       $.setObjectProp(module.defs, name, {
          type: 'native',
          src: defn
@@ -385,7 +394,13 @@ opHandlers ::= ({
    },
 
    addModule: function ({module: moduleName}) {
-      throw new Error(`Not implemented`);
+      if ($.hasOwnProperty($.modules, moduleName)) {
+         throw new Error(`Module with the name "${moduleName}" already exists`);
+      }
+
+      $.setObjectProp($.modules, moduleName, $.makeModule(moduleName, []));
+
+      $.opRet();
    },
 
    findReferences: function ({module: moduleName, name}) {
