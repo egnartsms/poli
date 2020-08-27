@@ -687,6 +687,7 @@ deleteEntry ::= function (module, name, cascade) {
       let recipients = $.recipientsOf(module, name);
       for (let imp of [...$.importsOf(module, name)]) {
          $.deleteImportDontSave(imp);
+         $.deleteObject(imp);
       }
       for (let recp of recipients) {
          $.saveObject(recp.importedNames);

@@ -1,4 +1,5 @@
 -----
+util ::= $_.require('util')
 fs ::= $_.require('fs')
 assert ::= $_.require('assert').strict
 lobby ::= null
@@ -374,10 +375,10 @@ loadImage ::= function () {
    $.nextOid = data[data.length - 1].id + 1;
 
    // Now resolve object references
-   let usedRefids = new Set(id2obj.keys())
+   let unusedRefids = new Set(id2obj.keys());
 
    function getByRefid(refid) {
-      usedRefids.delete(refid);
+      unusedRefids.delete(refid);
       return id2obj.get(refid);
    }
 
@@ -412,9 +413,16 @@ loadImage ::= function () {
       }
    }
 
-   usedRefids.delete($_.LOBBY_OID);
-   if (usedRefids.size > 0) {
-      console.warn(`Found ${usedRefids.size} garbage objects`);
+   unusedRefids.delete($_.LOBBY_OID);
+   if (unusedRefids.size > 0) {
+      console.warn(`Found ${unusedRefids.size} garbage objects`);
+      for (let refid of unusedRefids) {
+         console.log(
+            $.util.inspect(id2obj.get(refid), {
+               depth: 1
+            })
+         );
+      }
    }
 
    $.lobby = id2obj.get($_.LOBBY_OID);
