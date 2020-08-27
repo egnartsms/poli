@@ -10,7 +10,7 @@ const {
 
 function main() {
    let modules = loadImage();
-   let img2fs = modules.find(m => m.name === IMG2FS_MODULE);
+   let img2fs = modules[IMG2FS_MODULE];
 
    fs.rmdirSync(SRC_FOLDER, {recursive: true});
    fs.mkdirSync(SRC_FOLDER, {mode: '775'});

@@ -32,7 +32,7 @@ makeImageByFs ::= function () {
       imports: $.imports,
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
-   $.idmap.set($.lobby, $_.LOBBY_OID);
+   $.obj2id.set($.lobby, $_.LOBBY_OID);
    $.saveObjectAddCascade($.lobby);
 }
 parseAllModules ::= function () {
@@ -144,12 +144,15 @@ validateModuleEntries ::= function (minfo) {
 metaRuntimeKeys ::= '__rtkeys'
 metaRef ::= '__ref'
 metaType ::= '__type'
-idmap ::= new Map()
+obj2id ::= new Map()
 nextOid ::= 1
-insertStmt ::= $_.db.prepare(`
+takeNextOid ::= function () {
+   return $.nextOid++;
+}
+stmtInsert ::= $_.db.prepare(`
    INSERT INTO obj(id, val) VALUES (:oid, :val)
 `)
-updateStmt ::= $_.db.prepare(`
+stmtUpdate ::= $_.db.prepare(`
    UPDATE obj SET val = :val WHERE id = :oid
 `)
 selectAllStmt ::= $_.db.prepare(`
@@ -157,9 +160,6 @@ selectAllStmt ::= $_.db.prepare(`
 `)
 isObject ::= function (obj) {
    return typeof obj === 'object' && obj !== null;
-}
-hasOwnProp ::= function (obj, prop) {
-   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 toJson ::= function (obj, makeObjRef) {
    if (obj instanceof Set) {
@@ -196,10 +196,25 @@ toJson ::= function (obj, makeObjRef) {
 saveObjectAddCascade ::= function (obj) {
    $.assert($.isObject(obj));
 
+   let rec = $.objrefRecorder();
+   let oid = $.obj2id.get(obj);
+   let json = $.toJson(obj, rec.objref);
+   if (oid == null) {
+      oid = $.takeNextOid();
+      $.stmtInsert.run({oid, val: json});
+      $.obj2id.set(obj, oid);
+   }
+   else {
+      $.stmtUpdate.run({oid, val: json});
+   }
+
+   $.addRecordedObjects(rec);
+}
+objrefRecorder ::= function () {
    let toAdd = new Map();
 
    function objref(obj) {
-      let oid = $.idmap.get(obj);
+      let oid = $.obj2id.get(obj);
       if (oid == null) {
          oid = toAdd.get(obj);
          if (oid == null) {
@@ -213,26 +228,14 @@ saveObjectAddCascade ::= function (obj) {
       };
    }
 
+   return {toAdd, objref};
+}
+addRecordedObjects ::= function ({toAdd, objref}) {
    function addObject(obj, oid) {
       let json = $.toJson(obj, objref);
-      $.insertStmt.run({oid, val: json});
-      $.idmap.set(obj, oid);
+      $.stmtInsert.run({oid, val: json});
+      $.obj2id.set(obj, oid);
    }
-
-   function saveObject(obj) {
-      let oid = $.idmap.get(obj);
-      let json = $.toJson(obj, objref);
-      if (oid == null) {
-         oid = $.nextOid++;
-         $.insertStmt.run({oid, val: json});
-         $.idmap.set(obj, oid);
-      }
-      else {
-         $.updateStmt.run({oid, val: json});
-      }
-   }
-
-   saveObject(obj);
 
    while (toAdd.size > 0) {
       let {value: [obj, oid]} = toAdd.entries().next();
@@ -353,7 +356,7 @@ loadImage ::= function () {
             return v;
          }
 
-         if ($.hasOwnProp(v, $.metaRef)) {
+         if (typeof v[$.metaRef] === 'number') {
             return refto(v[$.metaRef]);
          }
 
@@ -364,7 +367,7 @@ loadImage ::= function () {
          obj = new Set(obj['contents']);
       }
 
-      $.idmap.set(obj, id);
+      $.obj2id.set(obj, id);
       id2obj.set(id, obj);
    }
 
@@ -378,8 +381,18 @@ loadImage ::= function () {
       return id2obj.get(refid);
    }
 
+   function some (itbl, pred) {
+      for (let x of itbl) {
+         if (pred(x)) {
+            return true;
+         }
+      }
+
+      return false;
+   }
+
    for (let [, obj] of id2obj) {
-      if (obj instanceof Set && $.some(obj, isPlaceholder)) {
+      if (obj instanceof Set && some(obj, isPlaceholder)) {
          let contents = Array.from(obj);
          obj.clear();
          for (let x of contents) {
@@ -391,7 +404,7 @@ loadImage ::= function () {
             }
          }
       }
-      else if ($.some(Object.values(obj), isPlaceholder)) {
+      else if (some(Object.values(obj), isPlaceholder)) {
          let entries = Object.entries(obj).filter(([k, v]) => isPlaceholder(v));
          for (let [k, ph] of entries) {
             obj[k] = getByRefid(ph.refid);
@@ -408,11 +421,7 @@ loadImage ::= function () {
    $.modules = $.lobby.modules;
    $.imports = $.lobby.imports;
 
-   $.initModuleRtObjects();
-
-   return $.modules;
-}
-initModuleRtObjects ::= function () {
+   // Initialize module rtobj's
    for (let module of Object.values($.modules)) {
       if (module.name === $_.BOOTSTRAP_MODULE) {
          module.rtobj = $;
@@ -435,13 +444,6 @@ initModuleRtObjects ::= function () {
    for (let {recp, donor, name, alias} of $.imports) {
       recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
    }
-}
-some ::= function (itbl, pred) {
-   for (let x of itbl) {
-      if (pred(x)) {
-         return true;
-      }
-   }
 
-   return false;
+   return $.modules;
 }

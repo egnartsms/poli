@@ -5,7 +5,6 @@ const {
    BOOTSTRAP_MODULE,
    RUN_MODULE,
    SRC_FOLDER,
-   BOOTSTRAP_DEFS_OID,
    LOBBY_OID
 } = require('./common');
 
@@ -20,10 +19,10 @@ function loadImage() {
       verbose: console.log
    });
    let $_ = {
+      db,
+      require,
       BOOTSTRAP_MODULE,
       SRC_FOLDER,
-      require,
-      db,
       LOBBY_OID,
    };
    let $ = Object.create(null);
