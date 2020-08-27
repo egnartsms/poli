@@ -506,17 +506,6 @@ deleteArrayItem ::= function (ar, i) {
    });
    ar.splice(i, 1);
 }
-updateObjectSpecial ::= function (obj, expr, params) {
-   $.assert($.obj2id.has(obj));
-
-   params = {...params, oid: $.obj2id.get(obj)}
-
-   $_.db
-      .prepare(`
-         UPDATE obj SET val = ${expr} WHERE id = :oid
-      `)
-      .run(params);
-}
 stmtDelete ::= $_.db.prepare(`
    DELETE FROM obj WHERE id = :oid
 `)
