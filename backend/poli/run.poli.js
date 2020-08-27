@@ -349,8 +349,10 @@ opHandlers ::= ({
          $.deleteObject(imp);
       }
 
-      $.saveObject(module.importedNames);
-      $.saveObject($.imports);
+      if (unused.length > 0) {
+         $.saveObject(module.importedNames);
+         $.saveObject($.imports);
+      }
 
       $.opRet({
          importSection: unused.length > 0 ? $.dumpImportSection(module) : null,
