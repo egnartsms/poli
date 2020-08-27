@@ -3,17 +3,17 @@ bootstrap
    importEntry
    importModule
    imports
+   isObject
+   metaRef
    moduleEval
    modules
    obj2id
    objrefRecorder
-   toJson
-   stmtUpdate
-   stmtInsert
-   isObject
-   metaRef
-   takeNextOid
    saveObjectAddCascade
+   stmtInsert
+   stmtUpdate
+   takeNextOid
+   toJson
 img2fs
    genModuleImportSection
 -----
