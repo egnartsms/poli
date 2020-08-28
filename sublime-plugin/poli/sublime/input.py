@@ -38,14 +38,11 @@ def chain_input_handlers(view, args, handler_classes):
 
 
 def run_command_thru_palette(view, cmd, args):
-    if sublime_api.can_accept_input(cmd, args):
-        view.run_command(cmd, args)
-    else:
-        view.window().run_command(
-            'show_overlay',
-            {
-                'overlay': 'command_palette',
-                'command': cmd,
-                'args': args,
-            }
-        )
+    view.window().run_command(
+        'show_overlay',
+        {
+            'overlay': 'command_palette',
+            'command': cmd,
+            'args': args,
+        }
+    )

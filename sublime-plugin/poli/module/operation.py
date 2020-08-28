@@ -52,7 +52,7 @@ def set_connected_status(view, is_connected):
 
 def module_contents(view):
     names = name_regions(view)
-    defs = view.find_by_selector('source.js')
+    defs = def_regions(view)
 
     if len(names) != len(defs):
         sublime.error_message("Module names and definitions don't match")
@@ -63,6 +63,10 @@ def module_contents(view):
 
 def name_regions(view):
     return view.find_by_selector('entity.name.key.poli')
+
+
+def def_regions(view):
+    return view.find_by_selector('source.js')
 
 
 def import_section_end(view):
@@ -162,6 +166,13 @@ class Entry:
 
     def contents(self):
         return self.mcont.view.substr(self.reg_entry)
+
+    def edit_cxt_if_under_edit(self):
+        reg = edit_region_for.get(self.mcont.view)
+        if reg is None or not reg.intersects(self.reg_entry):
+            return None
+
+        return edit_cxt_for[self.mcont.view]
 
     @property
     def myindex(self):

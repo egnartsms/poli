@@ -92,6 +92,20 @@ opHandlers ::= ({
       $.opRet(Object.keys($.modules));
    },
 
+   getEntries: function () {
+      let res = [];
+
+      for (let module of Object.values($.modules)) {
+         res.push([module.name, null]);
+
+         for (let entry of module.entries) {
+            res.push([module.name, entry]);
+         }
+      }
+
+      $.opRet(res);
+   },
+
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       
@@ -102,26 +116,10 @@ opHandlers ::= ({
       $.opRet(module.defs[name].src);
    },
 
-   getEntries: function ({module: moduleName}) {
+   getModuleEntries: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
 
       $.opRet(module.entries);
-   },
-
-   eval: function ({module: moduleName, code}) {
-      let module = $.moduleByName(moduleName);
-
-      let res;
-
-      try {
-         res = $.moduleEval(module, code);
-      }
-      catch (e) {
-         $.opExc('replEval', {stack: e.stack, message: e.message});
-         return;
-      }
-
-      $.opRet($.serialize(res));
    },
 
    edit: function ({module: moduleName, name, newDefn}) {
@@ -250,26 +248,150 @@ opHandlers ::= ({
       $.opRet();
    },
 
-   move: function ({module: moduleName, src, dest, before}) {
-      let module = $.moduleByName(moduleName);
+   move: function ({
+      srcModule: srcModuleName,
+      srcEntry,
+      destModule: destModuleName,
+      destEntry,
+      before
+   }) {
+      let srcModule = $.moduleByName(srcModuleName);
+      let destModule = $.moduleByName(destModuleName);
 
-      if (!$.hasOwnProperty(module.defs, src)) {
-         throw new Error(`Entry named "${src}" does not exist`);
+      if (!$.hasOwnProperty(srcModule.defs, srcEntry)) {
+         throw new Error(`Entry "${srcEntry}" does not exist in "${srcModuleName}"`);
       }
-      if (!$.hasOwnProperty(module.defs, dest)) {
-         throw new Error(`Entry named "${dest}" does not exist`);
+      if (!$.hasOwnProperty(destModule.defs, destEntry)) {
+         throw new Error(`Entry "${destEntry}" does not exist in "${destModuleName}"`);
+      }
+      if (!$.isNameFree(destModule, srcEntry)) {
+         throw new Error(`Cannot move entry because of name clash`);
       }
 
-      let i = module.entries.indexOf(src);
-      let j = module.entries.indexOf(dest);
-      j = before ? j : j + 1;
-      j = i < j ? j - 1 : j;
+      // Figure out whether it would be possible to pull all the dependency along with
+      // the entry
+      function dotRefs(src) {
+         let names = new Set();
 
-      module.entries.splice(i, 1);
-      module.entries.splice(j, 0, src);
-      $.saveObject(module.entries);
+         for (let mo of src.matchAll(/\$\.([0-9a-zA-Z_]+)/g)) {
+            names.add(mo[1]);
+         }
 
-      $.opRet();
+         return names;
+      }
+
+      let oldCode = srcModule.defs[srcEntry].src;
+      let refs = dotRefs(oldCode);
+      let offendingRefs = [];
+      let renameMap = new Map;
+      let toImport = [];
+
+      function rename(from, to) {
+         if (from !== to) {
+            renameMap.set('\\$\\.' + from, to);
+         }
+      }
+
+      for (let ref of refs) {
+         let {module: oModule, name: oEntry} = $.whereNameCame(srcModule, ref);
+
+         if (oModule == null) {
+            // Bogus reference - ignore it
+            continue;
+         }
+
+         if (oModule === destModule) {
+            // The reference "comes home". Works in case of module import, too.
+            rename(ref, oEntry);
+            continue;
+         }
+
+         let imp = $.importFromTo(oModule, oEntry, destModule);
+
+         if (imp) {
+            // Already imported
+            rename(ref, $.importedAs(imp));
+            continue;
+         }
+
+         // Not yet imported, and may be impossible to import
+         if ($.isNameFree(destModule, ref)) {
+            toImport.push([oModule, oEntry, ref]);
+         }
+         else {
+            offendingRefs.push(ref);
+         }
+      }
+
+      if (offendingRefs.length > 0) {
+         $.opRet({
+            moved: false,
+            offendingRefs
+         })
+         return;
+      }
+
+      let newCode;
+
+      if (renameMap.size > 0) {
+         let sre = Array.from(renameMap.keys(), ref => `(${ref})`).join('|');
+         let re = new RegExp(sre, 'g');
+
+         newCode = oldCode.replace(re, ref => {
+            let sub = renameMap.get(ref);
+            return sub === null ? '$' : '$.' + sub;
+         });
+      }
+      else {
+         newCode = oldCode;
+      }
+
+      if (toImport.length > 0) {
+         for (let [oModule, oEntry, ref] of toImport) {
+            if (oEntry === null) {
+               $.importModule(destModule, oModule, ref);
+            }
+            else if (ref === oEntry) {
+               $.importEntry(destModule, oModule, oEntry, null);
+            }
+            else {
+               $.importEntry(destModule, oModule, oEntry, ref);
+            }
+         }
+
+         $.saveObject(destModule.importedNames);
+         $.saveObjectAddCascade($.imports);
+      }
+
+      let def = srcModule.defs[srcEntry];
+      $.deleteObjectProp(srcModule.defs, srcEntry);
+      delete srcModule.rtobj[srcEntry];
+
+      let newVal = $.moduleEval(destModule, newCode);
+      destModule.rtobj[srcEntry] = newVal;
+      if (newCode !== oldCode) {
+         $.deleteObject(def);
+         def = {
+            type: 'native',
+            src: newCode
+         };
+      }
+      $.setObjectProp(destModule.defs, srcEntry, def);
+
+      let iSrc = srcModule.entries.indexOf(srcEntry);
+      srcModule.entries.splice(iSrc, 1);
+      $.saveObject(srcModule.entries);
+
+      let iDest = destModule.entries.indexOf(destEntry);
+      iDest = before ? iDest : iDest + 1;
+      destModule.entries.splice(iDest, 0, srcEntry);
+      $.saveObject(destModule.entries);
+
+      $.opRet({
+         moved: true,
+         newCode: newCode,
+         destImportSection: toImport.length > 0 ? $.dumpImportSection(destModule) : null
+      });
    },
 
    getImportables: function ({recp: recpModuleName}) {
@@ -379,6 +501,22 @@ opHandlers ::= ({
       $.opRet($.dumpImportSection(module));
    },
 
+   eval: function ({module: moduleName, code}) {
+      let module = $.moduleByName(moduleName);
+
+      let res;
+
+      try {
+         res = $.moduleEval(module, code);
+      }
+      catch (e) {
+         $.opExc('replEval', {stack: e.stack, message: e.message});
+         return;
+      }
+
+      $.opRet($.serialize(res));
+   },
+
    getCompletions: function ({module: moduleName, prefix}) {
       let module = $.moduleByName(moduleName);
 
@@ -406,6 +544,11 @@ opHandlers ::= ({
    findReferences: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       let {module: originModule, name: originName} = $.whereNameCame(module, name);
+      
+      if (originModule == null) {
+         throw new Error(`Module "${module.name}": not known name "${name}"`);
+      }
+
       let res = {
          [originModule.name]: originName
       };
@@ -723,6 +866,14 @@ importsOf ::= function* (module, name) {
       }
    }
 }
+importFromTo ::= function (donor, name, recp) {
+   for (let imp of $.imports) {
+      if (imp.donor === donor && imp.recp === recp && imp.name === name) {
+         return imp;
+      }
+   }
+   return null;
+}
 isNameImported ::= function (module, name) {
    let {done} = $.importsOf(module, name).next();
    return !done;
@@ -738,12 +889,14 @@ recipientsOf ::= function (module, name) {
    return Array.from(recps);
 }
 whereNameCame ::= function (module, name) {
-   if (name in module.defs) {
+   if ($.hasOwnProperty(module.defs, name)) {
       return {module, name};
    }
+
    if (module.importedNames.has(name)) {
       let imp = $.importFor(module, name);
       return {module: imp.donor, name: imp.name};
    }
-   throw new Error(`Module "${module.name}": not known name "${name}"`);
+
+   return {};
 }
