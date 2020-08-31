@@ -10,7 +10,7 @@ from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
-from poli.sublime.misc import active_view_preserved
+from poli.sublime.misc import active_view_preserved, Regions
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
 from poli.sublime.view_dict import on_any_view_load
@@ -337,12 +337,32 @@ def replace_import_section_in_modules(window, data):
     )
 
 
-def modify_module_entries(view, edit, entries):
-    with regedit.region_editing_suppressed(view):
-        for entry, newcode in entries:
-            mcont = module_contents(view)
-            entobj = mcont.entry_by_name(entry)
-            view.replace(edit, entobj.reg_def, newcode)
+def modify_module_entries(view, edit, entries_data):
+    mcont = module_contents(view)
+    code_by_entry = {entry: code for entry, code in entries_data}
+    regs, codes = [], []
+    edit_reg = regedit.regedit_for.get(view)
+
+    for entry in mcont.entries:
+        if entry.name() in code_by_entry:
+            if edit_reg and edit_reg.intersects(entry.reg_def):
+                raise RuntimeError(
+                    "Could not modify module \"{}\": entry under edit".format(
+                        poli_module_name(view)
+                    )
+                )
+            regs.append(entry.reg_def)
+            codes.append(code_by_entry[entry.name()])
+
+    if len(regs) != len(entries_data):
+        raise RuntimeError("Could not modify module \"{}\": out of sync".format(
+            poli_module_name(view)
+        ))
+
+    with regedit.region_editing_suppressed(view),\
+            Regions(view, regs) as retained:
+        for i, code in enumerate(codes):
+            view.replace(edit, retained.regs[i], code)
 
 
 def modify_modules(window, modules_data):

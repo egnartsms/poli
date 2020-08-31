@@ -1,7 +1,7 @@
 aux
    * as aux
-   Glorious
+   Sergey as x
 -----
 sayhi ::= function () {
-    return `My name is: ${$.aux.Glorious} - ${$.Glorious}`;
+    return `My name is: ${$.aux.Sergey} - ${$.x}`;
 }

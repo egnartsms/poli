@@ -5,7 +5,6 @@ from poli.comm import comm
 from poli.module import operation as op
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
-from poli.sublime.misc import Marker
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction

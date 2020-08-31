@@ -6,7 +6,7 @@ from poli.module import operation as op
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
 from poli.shared.command import WindowCommand
-from poli.sublime.misc import Marker, active_view_preserved
+from poli.sublime.misc import Regions, active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.edit import call_with_edit
@@ -44,7 +44,7 @@ class PoliMoveBy1(ModuleTextCommand):
                 insert_at = mcont.entries[i + 1].reg_entry_nl.end()
 
         with read_only_set_to(self.view, False), \
-                Marker(self.view, insert_at) as insert_marker:
+                Regions(self.view, insert_at) as insert_marker:
             text = loc.entry.contents()
             self.view.erase(edit, loc.entry.reg_entry_nl)
             reg_new = insert_in(self.view, edit, insert_marker.pos, text)

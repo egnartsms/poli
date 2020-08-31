@@ -818,7 +818,7 @@ renameImport ::= function (imp, newAlias) {
    }
 
    $.renameImportedName(recp, oldName, newName);  
-   $.setObjectProp(imp, 'alias', newAlias);
+   $.setObjectProp(imp, 'alias', newAlias || null);
 }
 updateImportForRename ::= function (imp, newName) {
    if (imp.alias === null) {
@@ -857,7 +857,7 @@ updateModuleForRename ::= function (module, oldName, newName, {
       mi = `(?:${starName}\\.)`;
    }
 
-   let re = new RegExp(`(?<=\\$\\.(?:${mi})?)${oldName}`, 'g');
+   let re = new RegExp(`(?<=\\$\\.${mi})${oldName}`, 'g');
    let modifiedEntries = [];
 
    for (let entry of module.entries) {

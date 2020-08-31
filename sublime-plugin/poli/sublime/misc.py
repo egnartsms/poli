@@ -89,13 +89,13 @@ def replace_in(view, edit, reg, s):
     return sublime.Region(reg.begin(), reg.begin() + len(s))
 
 
-class Marker:
-    """Marker is a position in a view that relocates with inserts/erases.
+class Regions:
+    """Temporarily save region(s) that adjust with text insertions/removals.
 
-    It's implemented with Sublime view.add_regions/view.erase_regions
+    Can be used to save multiple region, a single region or a single position (marker).
     """
-    NAME_TEMPLATE = '_marker_{}'
-    MAX_KEY = 0
+    NAME_TEMPLATE = '_reg_{}'
+    NEXT_KEY = 0
 
     pool = set()
 
@@ -104,21 +104,27 @@ class Marker:
         if cls.pool:
             return cls.pool.pop()
         else:
-            key = cls.MAX_KEY
-            cls.MAX_KEY += 1
+            key = cls.NEXT_KEY
+            cls.NEXT_KEY += 1
             return key
 
     @classmethod
     def _release_key(cls, k):
         cls.pool.add(k)
 
-    def __init__(self, view, pos):
+    def __init__(self, view, what):
         self.view = view
         self.key = self._alloc_key()
         self.region_name = self.NAME_TEMPLATE.format(self.key)
 
-        self.view.add_regions(self.region_name, [sublime.Region(pos)], '', '',
-                              sublime.HIDDEN)
+        if isinstance(what, int):
+            regs = [sublime.Region(what)]
+        elif isinstance(what, sublime.Region):
+            regs = [what]
+        else:
+            regs = what
+
+        self.view.add_regions(self.region_name, regs, '', '', sublime.HIDDEN)
 
     def release(self):
         assert self.key is not None
@@ -128,12 +134,21 @@ class Marker:
 
         self.key = None
         self.region_name = None
+        self.view = None
    
     @property
     def pos(self):
-        [pos] = self.view.get_regions(self.region_name)
-        return pos.a
+        return self.reg.a
 
+    @property
+    def reg(self):
+        [reg] = self.regs
+        return reg
+
+    @property
+    def regs(self):
+        return self.view.get_regions(self.region_name)
+    
     def __enter__(self):
         return self
 
