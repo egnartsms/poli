@@ -97,20 +97,11 @@ class Regions:
     NAME_TEMPLATE = '_reg_{}'
     NEXT_KEY = 0
 
-    pool = set()
-
     @classmethod
     def _alloc_key(cls):
-        if cls.pool:
-            return cls.pool.pop()
-        else:
-            key = cls.NEXT_KEY
-            cls.NEXT_KEY += 1
-            return key
-
-    @classmethod
-    def _release_key(cls, k):
-        cls.pool.add(k)
+        key = cls.NEXT_KEY
+        cls.NEXT_KEY += 1
+        return key
 
     def __init__(self, view, what):
         self.view = view
@@ -130,7 +121,6 @@ class Regions:
         assert self.key is not None
 
         self.view.erase_regions(self.region_name)
-        self._release_key(self.key)
 
         self.key = None
         self.region_name = None
