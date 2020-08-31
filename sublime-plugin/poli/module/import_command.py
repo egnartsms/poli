@@ -97,12 +97,10 @@ class PoliRemoveUnusedImports(ModuleTextCommand):
 
 class PoliRenameImport(ModuleTextCommand):
     def run(self, edit, imported_as, new_alias):
-        text_import_section = comm.rename_import(
+        data = comm.rename_import(
             op.poli_module_name(self.view), imported_as, new_alias
         )
-        if text_import_section is None:
-            return
-        op.replace_import_section(self.view, edit, text_import_section)
+        op.modify_module(self.view, edit, data)
         op.save_module(self.view)
 
     def input(self, args):

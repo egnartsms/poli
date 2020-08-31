@@ -288,7 +288,7 @@ def save_module(view):
 def highlight_unknown_names(view):
     k_names = known_names(view)
     result = sublime_api.view_find_all_with_contents(
-        view.view_id, r'\$\.([a-zA-Z0-9]+)', 0, '\\1'
+        view.view_id, r'\$\.([a-zA-Z0-9_]+)', 0, '\\1'
     )
     warning_regs = [reg for reg, name in result if name not in k_names]
     add_warnings(view, warning_regs)
@@ -341,11 +341,15 @@ def modify_module_entries(view, edit, entries_data):
     mcont = module_contents(view)
     code_by_entry = {entry: code for entry, code in entries_data}
     regs, codes = [], []
-    edit_reg = regedit.regedit_for.get(view)
+
+    if regedit.is_active_in(view):
+        ereg = regedit.editing_region(view)
+    else:
+        ereg = None
 
     for entry in mcont.entries:
         if entry.name() in code_by_entry:
-            if edit_reg and edit_reg.intersects(entry.reg_def):
+            if ereg and ereg.intersects(entry.reg_def):
                 raise RuntimeError(
                     "Could not modify module \"{}\": entry under edit".format(
                         poli_module_name(view)
@@ -365,6 +369,12 @@ def modify_module_entries(view, edit, entries_data):
             view.replace(edit, retained.regs[i], code)
 
 
+def modify_module(view, edit, module_data):
+    if module_data['importSection'] is not None:
+        replace_import_section(view, edit, module_data['importSection'])
+    modify_module_entries(view, edit, module_data['modifiedEntries'])
+
+
 def modify_modules(window, modules_data):
     with active_view_preserved(window):
         views = [
@@ -375,10 +385,7 @@ def modify_modules(window, modules_data):
     view_data = ViewDict(zip(views, modules_data))
 
     def process_view(view, edit):
-        d = view_data[view]
-        if d['importSection'] is not None:
-            replace_import_section(view, edit, d['importSection'])
-        modify_module_entries(view, edit, d['modifiedEntries'])
+        modify_module(view, edit, view_data[view])
         save_module(view)
         del view_data[view]
         if not view_data:

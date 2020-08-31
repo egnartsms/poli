@@ -521,8 +521,11 @@ opHandlers ::= ({
       if (!imp) {
          throw new Error(`Not found imported entry: "${importedAs}"`);
       }
-      $.renameImport(imp, newAlias);
-      $.opRet($.dumpImportSection(module));
+      let modifiedEntries = $.renameImport(imp, newAlias);
+      $.opRet({
+         modifiedEntries: modifiedEntries || [],
+         importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
+      });
    },
 
    eval: function ({module: moduleName, code}) {
@@ -808,7 +811,7 @@ renameImport ::= function (imp, newAlias) {
    let newName = newAlias || imp.name;
 
    if (newName === oldName) {
-      return;
+      return null;
    }
    if (imp.name === null && !newAlias) {
       throw new Error(`Module import ("${imp.donor.name}") is left unnamed`);
@@ -817,14 +820,9 @@ renameImport ::= function (imp, newAlias) {
       throw new Error(`Cannot rename import to "${newName}": name already occupied`);
    }
 
-   $.renameImportedName(recp, oldName, newName);  
+   $.renameImportedName(recp, oldName, newName);
    $.setObjectProp(imp, 'alias', newAlias || null);
-}
-updateImportForRename ::= function (imp, newName) {
-   if (imp.alias === null) {
-      $.renameImportedName(imp.recp, imp.name, newName);
-   }
-   $.setObjectProp(imp, 'name', newName);
+   return $.updateModuleForRename(recp, oldName, newName);
 }
 renameImportedName ::= function (recp, oldName, newName) {
    recp.rtobj[newName] = recp.rtobj[oldName];
@@ -840,6 +838,12 @@ deleteImportDontSave ::= function (imp) {
    delete recp.rtobj[$.importedAs(imp)];
    recp.importedNames.delete($.importedAs(imp));
    $.imports.delete(imp);
+}
+updateImportForRename ::= function (imp, newName) {
+   if (imp.alias === null) {
+      $.renameImportedName(imp.recp, imp.name, newName);
+   }
+   $.setObjectProp(imp, 'name', newName);
 }
 updateModuleForRename ::= function (module, oldName, newName, {
    starName = null,

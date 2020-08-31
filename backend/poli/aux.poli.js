@@ -1,4 +1,5 @@
-bootstrap
-   moduleEval
+obj-persist
+   * as pers
 -----
-Sergey ::= "Jobb"
+def_1 ::= 'def1'
+Def_2 ::= 'def2'

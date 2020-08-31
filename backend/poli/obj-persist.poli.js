@@ -1,7 +1,9 @@
 aux
-   * as aux
-   Sergey as x
+   * as knux
+   Def_2
+   def_1 as ren_def_1
 -----
 sayhi ::= function () {
-    return `My name is: ${$.aux.Sergey} - ${$.x}`;
+    return `My name is: ${$.knux.def_1} - ${$.knux.Def_2} - ${$.ren_def_1} - ${$.Def_2}`;
 }
+brim ::= 'serg'
