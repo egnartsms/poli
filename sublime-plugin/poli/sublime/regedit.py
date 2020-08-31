@@ -203,12 +203,18 @@ def region_editing_suppressed(view):
         regedit_for[view].set_read_only()
 
 
+_suppress = False
+
+
 class RegEditListener(sublime_plugin.EventListener):
     """Enforce region editing to any view that has been assigned a RegEdit
 
     Note: how much does this impact performance?  Dict lookup happens for every view.
     """
     def on_modified(self, view):
+        if _suppress:
+            return
+
         if is_active_in(view):
             regedit_for[view].undo_modifications_outside_edit_region()
 

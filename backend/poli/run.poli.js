@@ -871,6 +871,8 @@ updateModuleForRename ::= function (module, oldName, newName, {
       let newVal = $.moduleEval(module, newCode);
 
       module.rtobj[entry] = newVal;
+
+      $.deleteObject(module.defs[entry]);
       $.setObjectProp(module.defs, entry, {
          type: 'native',
          src: newCode

@@ -15,7 +15,7 @@ from poli.sublime.selection import set_selection
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete', 'PoliDeleteCascade', 'PoliMoveBy1', 'PoliMoveHere'
+    'PoliDelete', 'PoliDeleteCascade'
 ]
 
 
@@ -83,13 +83,14 @@ class PoliAdd(ModuleTextCommand):
             )
         else:
             loc = op.sel_cursor_location(self.view)
+            entry_name = loc.entry.name()
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(
-                at=loc.entry.reg_name.begin() if before else loc.entry.reg_def_nl.end()
+                at=(loc.entry.reg_entry_nl.begin() if before else
+                    loc.entry.reg_entry_nl.end())
             )
             op.enter_edit_mode(
-                self.view, reg_new,
-                target='entry', name=loc.entry.name(), is_before=before
+                self.view, reg_new, target='entry', name=entry_name, is_before=before
             )
 
 
@@ -138,7 +139,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
             res = comm.rename(op.poli_module_name(self.view), cxt.name, new_name)
-            op.replace_import_section_in_modules(self.view.window(), res)
+            op.modify_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             

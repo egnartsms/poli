@@ -337,6 +337,39 @@ def replace_import_section_in_modules(window, data):
     )
 
 
+def modify_module_entries(view, edit, entries):
+    with regedit.region_editing_suppressed(view):
+        for entry, newcode in entries:
+            mcont = module_contents(view)
+            entobj = mcont.entry_by_name(entry)
+            view.replace(edit, entobj.reg_def, newcode)
+
+
+def modify_modules(window, modules_data):
+    with active_view_preserved(window):
+        views = [
+            window.open_file(poli_file_name(d['module']))
+            for d in modules_data
+        ]
+
+    view_data = ViewDict(zip(views, modules_data))
+
+    def process_view(view, edit):
+        d = view_data[view]
+        if d['importSection'] is not None:
+            replace_import_section(view, edit, d['importSection'])
+        modify_module_entries(view, edit, d['modifiedEntries'])
+        save_module(view)
+        del view_data[view]
+        if not view_data:
+            sublime.status_message("{} modules updated".format(len(views)))
+
+    on_any_view_load(
+        views,
+        lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
+    )
+
+
 def parse_import_section(view):
     class Module(FreeObj): pass
     class Entry(FreeObj): pass

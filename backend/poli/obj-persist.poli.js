@@ -1,6 +1,7 @@
 aux
    * as aux
-   multiply as mnozh
+   Glorious
 -----
-x ::= 24
-fuck ::= 'you'
+sayhi ::= function () {
+    return `My name is: ${$.aux.Glorious} - ${$.Glorious}`;
+}
