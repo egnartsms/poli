@@ -122,61 +122,6 @@ opHandlers ::= ({
       $.opRet(module.entries);
    },
 
-   edit: function ({module: moduleName, name, newDefn}) {
-      let module = $.moduleByName(moduleName);
-
-      if (!module.defs[name]) {
-         throw new Error(`Not found entry "${name}" in module "${moduleName}"`);
-      }
-
-      let newVal = $.moduleEval(module, newDefn);
-
-      $.deleteObject(module.defs[name]);
-      $.setObjectProp(module.defs, name, {
-         type: 'native',
-         src: newDefn
-      });
-      module.rtobj[name] = newVal;
-
-      for (let imp of $.importsOf(module, name)) {
-         imp.recp.rtobj[$.importedAs(imp)] = newVal;
-      }
-
-      $.opRet();
-   },
-
-   rename: function ({module: moduleName, oldName, newName}) {
-      let module = $.moduleByName(moduleName);
-
-      if (!(oldName in module.defs)) {
-         throw new Error(`Did not find an entry named "${oldName}"`);
-      }
-      if (!$.isNameFree(module, newName)) {
-         throw new Error(`Cannot rename to "${newName}": such an entry already ` +
-                         `exists or imported`);
-      }
-      let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
-      if (offendingModules.length > 0) {
-         throw new Error(`Cannot rename to "${newName}": cannot rename imports in ` +
-                         `modules: ${offendingModules.map(m => m.name).join(',')}`);
-      }
-
-      let recipients = $.recipientsOf(module, oldName);
-
-      for (let imp of $.importsOf(module, oldName)) {
-         $.updateImportForRename(imp, newName);
-      }
-
-      $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
-      $.setObjectProp(module.defs, newName, module.defs[oldName]);
-      $.deleteObjectProp(module.defs, oldName);
-
-      module.rtobj[newName] = module.rtobj[oldName];
-      delete module.rtobj[oldName];
-
-      $.opRet($.dumpImportSections(recipients));
-   },
-
    add: function ({module: moduleName, name, defn, anchor, before}) {
       let module = $.moduleByName(moduleName);
 
@@ -209,6 +154,79 @@ opHandlers ::= ({
       });
 
       $.opRet();
+   },
+
+   edit: function ({module: moduleName, name, newDefn}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!module.defs[name]) {
+         throw new Error(`Not found entry "${name}" in module "${moduleName}"`);
+      }
+
+      let newVal = $.moduleEval(module, newDefn);
+
+      $.deleteObject(module.defs[name]);
+      $.setObjectProp(module.defs, name, {
+         type: 'native',
+         src: newDefn
+      });
+      module.rtobj[name] = newVal;
+
+      for (let imp of $.importsOf(module, name)) {
+         imp.recp.rtobj[$.importedAs(imp)] = newVal;
+      }
+
+      $.opRet();
+   },
+
+   rename: function ({module: moduleName, oldName, newName}) {
+      let module = $.moduleByName(moduleName);
+
+      if (!$.hasOwnProperty(module.defs, oldName)) {
+         throw new Error(`Did not find an entry named "${oldName}"`);
+      }
+      if (oldName === newName) {
+         $.opRet([]);
+         return;
+      }
+      if (!$.isNameFree(module, newName)) {
+         throw new Error(`Cannot rename to "${newName}": such an entry already ` +
+                         `exists or imported`);
+      }
+
+      let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
+      if (offendingModules.length > 0) {
+         throw new Error(`Cannot rename to "${newName}": cannot rename imports in ` +
+                         `modules: ${offendingModules.map(m => m.name).join(',')}`);
+      }
+
+      let modifiedModules = $.updateRecipientsForRename(module, oldName, newName);
+      let modifiedEntries = $.updateModuleForRename(module, oldName, newName);
+
+      modifiedModules.unshift({
+         module,
+         modifiedEntries,
+         importSectionAffected: false
+      });
+
+      $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
+      $.setObjectProp(module.defs, newName, module.defs[oldName]);
+      $.deleteObjectProp(module.defs, oldName);
+
+      module.rtobj[newName] = module.rtobj[oldName];
+      delete module.rtobj[oldName];
+
+      let res = [];
+
+      for (let {module, modifiedEntries, importSectionAffected} of modifiedModules) {
+         res.push({
+            module: module.name,
+            modifiedEntries,
+            importSection: importSectionAffected ? $.dumpImportSection(module) : null
+         });
+      }
+
+      $.opRet(res);
    },
 
    delete: function ({module: moduleName, name}) {
@@ -288,7 +306,7 @@ opHandlers ::= ({
 
       function rename(from, to) {
          if (from !== to) {
-            renameMap.set('\\$\\.' + from, to);
+            renameMap.set(from, to);
          }
       }
 
@@ -334,12 +352,18 @@ opHandlers ::= ({
       let newCode;
 
       if (renameMap.size > 0) {
-         let sre = Array.from(renameMap.keys(), ref => `(${ref})`).join('|');
+         let sre = `\\$\\.(?:${Array.from(renameMap.keys(), x => `(${x})`).join('|')})`;
          let re = new RegExp(sre, 'g');
 
-         newCode = oldCode.replace(re, ref => {
-            let sub = renameMap.get(ref);
-            return sub === null ? '$' : '$.' + sub;
+         newCode = oldCode.replace(re, function () {
+            for (let i = 1; i < arguments.length; i += 1) {
+               if (arguments[i]) {
+                  let ref = arguments[i];
+                  let sub = renameMap.get(ref);
+                  return sub === null ? '$' : '$.' + sub;
+               }
+            }
+            $.assert(0);
          });
       }
       else {
@@ -778,43 +802,37 @@ offendingModulesOnRename ::= function (module, oldName, newName) {
 
    return offendingModules;
 }
-updateImportForRename ::= function (imp, newName) {
-   // Don't check for the possibility to rename to 'newName'. This must have already been
-   // checked before.
-   if (imp.alias === null) {
-      let {recp, name: oldName} = imp;
-
-      recp.rtobj[newName] = recp.rtobj[oldName];
-      delete recp.rtobj[oldName];
-      recp.importedNames.delete(oldName);
-      recp.importedNames.add(newName);
-      $.saveObject(recp.importedNames);
-   }
-   $.setObjectProp(imp, 'name', newName);
-}
 renameImport ::= function (imp, newAlias) {
    let recp = imp.recp;
    let oldName = $.importedAs(imp);
    let newName = newAlias || imp.name;
 
+   if (newName === oldName) {
+      return;
+   }
    if (imp.name === null && !newAlias) {
       throw new Error(`Module import ("${imp.donor.name}") is left unnamed`);
    }
    if (!$.isNameFree(recp, newName)) {
       throw new Error(`Cannot rename import to "${newName}": name already occupied`);
    }
-   if (newName === oldName) {
-      return;
-   }
 
+   $.renameImportedName(recp, oldName, newName);  
+   $.setObjectProp(imp, 'alias', newAlias);
+}
+updateImportForRename ::= function (imp, newName) {
+   if (imp.alias === null) {
+      $.renameImportedName(imp.recp, imp.name, newName);
+   }
+   $.setObjectProp(imp, 'name', newName);
+}
+renameImportedName ::= function (recp, oldName, newName) {
    recp.rtobj[newName] = recp.rtobj[oldName];
    delete recp.rtobj[oldName];
-   
+
    recp.importedNames.delete(oldName);
    recp.importedNames.add(newName);
    $.saveObject(recp.importedNames);
-   
-   $.setObjectProp(imp, 'alias', newAlias);
 }
 deleteImportDontSave ::= function (imp) {
    let {recp} = imp;
@@ -822,6 +840,76 @@ deleteImportDontSave ::= function (imp) {
    delete recp.rtobj[$.importedAs(imp)];
    recp.importedNames.delete($.importedAs(imp));
    $.imports.delete(imp);
+}
+updateModuleForRename ::= function (module, oldName, newName, {
+   starName = null,
+   directToo = false
+} = {}) {
+   let mi;
+
+   if (starName === null) {
+      mi = '';
+   }
+   else if (directToo) {
+      mi = `(?:${starName}\\.)?`;
+   }
+   else {
+      mi = `(?:${starName}\\.)`;
+   }
+
+   let re = new RegExp(`(?<=\\$\\.(?:${mi})?)${oldName}`, 'g');
+   let modifiedEntries = [];
+
+   for (let entry of module.entries) {
+      let oldCode = module.defs[entry].src;
+      let newCode = oldCode.replace(re, () => newName);
+      
+      if (oldCode === newCode) {
+         continue;
+      }
+
+      let newVal = $.moduleEval(module, newCode);
+
+      module.rtobj[entry] = newVal;
+      $.setObjectProp(module.defs, entry, {
+         type: 'native',
+         src: newCode
+      });
+
+      modifiedEntries.push([entry, newCode]);
+   }
+
+   return modifiedEntries;
+}
+updateRecipientsForRename ::= function (module, oldName, newName) {
+   let direct = new Map;
+   let star = new Map;
+
+   for (let imp of $.importsOf(module, oldName)) {
+      direct.set(imp.recp, imp.alias === null);
+      $.updateImportForRename(imp, newName);
+   }
+
+   for (let imp of $.starImportsOf(module)) {
+      star.set(imp.recp, imp.alias);
+   }
+
+   let recps = new Set([...direct.keys(), ...star.keys()]);
+   let modifiedModules = [];
+
+   for (let recp of recps) {
+      let modifiedEntries = $.updateModuleForRename(recp, oldName, newName, {
+         starName: star.get(recp) || null,
+         directToo: direct.get(recp)
+      });
+      modifiedModules.push({
+         module: recp,
+         modifiedEntries,
+         importSectionAffected: direct.has(recp)
+      });
+   }
+
+   return modifiedModules;
 }
 deleteEntry ::= function (module, name, cascade) {
    if (!$.hasOwnProperty(module.defs, name)) {
@@ -866,6 +954,13 @@ importsOf ::= function* (module, name) {
       }
    }
 }
+starImportsOf ::= function* (module) {
+   for (let imp of $.imports) {
+      if (imp.donor === module && imp.name === null) {
+         yield imp;
+      }
+   }
+}
 importFromTo ::= function (donor, name, recp) {
    for (let imp of $.imports) {
       if (imp.donor === donor && imp.recp === recp && imp.name === name) {
@@ -879,7 +974,7 @@ isNameImported ::= function (module, name) {
    return !done;
 }
 isNameFree ::= function (module, name) {
-   return !(name in module.defs) && !module.importedNames.has(name);
+   return !($.hasOwnProperty(module.defs, name) || module.importedNames.has(name));
 }
 recipientsOf ::= function (module, name) {
    let recps = new Set;

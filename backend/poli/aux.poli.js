@@ -7,11 +7,11 @@ add ::= function (x, y) {
 multiply ::= function (x, y) {
    return x * y;
 }
+testee ::= 200
 sayhello ::= function () {
    console.log("No matter");
    return {'testee': $.multiply(10, 20)};
 }
-testee ::= 200
 compareImports ::= function () {
    $.moduleEval();
 
