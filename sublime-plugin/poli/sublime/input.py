@@ -37,8 +37,8 @@ def chain_input_handlers(view, args, handler_classes):
         return head(view, args, chain_tail)
 
 
-def run_command_thru_palette(view, cmd, args):
-    view.window().run_command(
+def run_command_thru_palette(window, cmd, args):
+    window.run_command(
         'show_overlay',
         {
             'overlay': 'command_palette',

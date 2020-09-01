@@ -290,9 +290,10 @@ opHandlers ::= ({
       // the entry
       function dotRefs(src) {
          let names = new Set();
+         let re = /\$\.([0-9a-zA-Z_]+(?:\.[0-9a-zA-Z_]+)?)/g;
 
-         for (let mo of src.matchAll(/\$\.([0-9a-zA-Z_]+)/g)) {
-            names.add(mo[1]);
+         for (let [, ref] of src.matchAll(re)) {
+            names.add(ref);
          }
 
          return names;
@@ -303,6 +304,7 @@ opHandlers ::= ({
       let offendingRefs = [];
       let renameMap = new Map;
       let toImport = [];
+      let danglingRefs = [];
 
       function rename(from, to) {
          if (from !== to) {
@@ -310,11 +312,33 @@ opHandlers ::= ({
          }
       }
 
-      for (let ref of refs) {
-         let {module: oModule, name: oEntry} = $.whereNameCame(srcModule, ref);
+      function originOf([refModule, refName]) {
+         if (refModule !== null) {
+            let {module, name: mustBeNull} = $.whereNameCame(srcModule, refModule);
+            if (!module || mustBeNull !== null || !$.hasOwnProperty(module.defs, refName)) {
+               return {};
+            }
+            return {module, name: refName};
+         }
+         else {
+            return $.whereNameCame(srcModule, refName);
+         }
+      }
 
-         if (oModule == null) {
-            // Bogus reference - ignore it
+      function splitRef(ref) {
+         let pref = ref.split('.');
+         if (pref.length === 1) {
+            pref.unshift(null);
+         }
+         return pref;
+      }
+
+      for (let ref of refs) {
+         let refPair = splitRef(ref);
+         let {module: oModule, name: oEntry} = originOf(refPair);
+
+         if (!oEntry) {
+            danglingRefs.push(ref);
             continue;
          }
 
@@ -324,17 +348,25 @@ opHandlers ::= ({
             continue;
          }
 
+         // See whether the entry is already imported directly
          let imp = $.importFromTo(oModule, oEntry, destModule);
 
          if (imp) {
-            // Already imported
             rename(ref, $.importedAs(imp));
             continue;
          }
 
-         // Not yet imported, and may be impossible to import
-         if ($.isNameFree(destModule, ref)) {
-            toImport.push([oModule, oEntry, ref]);
+         // If not imported directly then the oModule may have already been star-imported
+         let starImp = $.importFromTo(oModule, null, destModule);
+
+         if (starImp) {
+            rename(ref, `${starImp.alias}.${oEntry}`);
+            continue;
+         }
+
+         // Must import it directly then
+         if ($.isNameFree(destModule, refPair[1])) {
+            toImport.push([oModule, oEntry, refPair[1]]);
          }
          else {
             offendingRefs.push(ref);
@@ -345,42 +377,30 @@ opHandlers ::= ({
          $.opRet({
             moved: false,
             offendingRefs
-         })
+         });
          return;
       }
 
       let newCode;
 
       if (renameMap.size > 0) {
-         let sre = `\\$\\.(?:${Array.from(renameMap.keys(), x => `(${x})`).join('|')})`;
+         let alts = 
+            Array.from(renameMap.keys(), r => `(?:${r.replace(/\./g, '\\.')})`)
+            .join('|');
+         let sre = `(?<=\\$\\.)${alts}`;
          let re = new RegExp(sre, 'g');
 
-         newCode = oldCode.replace(re, function () {
-            for (let i = 1; i < arguments.length; i += 1) {
-               if (arguments[i]) {
-                  let ref = arguments[i];
-                  let sub = renameMap.get(ref);
-                  return sub === null ? '$' : '$.' + sub;
-               }
-            }
-            $.assert(0);
-         });
+         newCode = oldCode.replace(re, ref => renameMap.get(ref));
       }
       else {
          newCode = oldCode;
       }
 
       if (toImport.length > 0) {
-         for (let [oModule, oEntry, ref] of toImport) {
-            if (oEntry === null) {
-               $.importModule(destModule, oModule, ref);
-            }
-            else if (ref === oEntry) {
-               $.importEntry(destModule, oModule, oEntry, null);
-            }
-            else {
-               $.importEntry(destModule, oModule, oEntry, ref);
-            }
+         for (let [oModule, oEntry, importAs] of toImport) {
+            $.importEntry(
+               destModule, oModule, oEntry, importAs === oEntry ? null : importAs
+            );
          }
 
          $.saveObject(destModule.importedNames);
@@ -414,7 +434,8 @@ opHandlers ::= ({
       $.opRet({
          moved: true,
          newCode: newCode,
-         destImportSection: toImport.length > 0 ? $.dumpImportSection(destModule) : null
+         importSection: toImport.length > 0 ? $.dumpImportSection(destModule) : null,
+         danglingRefs
       });
    },
 

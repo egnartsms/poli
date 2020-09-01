@@ -5,8 +5,7 @@
     },
     {
         "caption": "Poli: Move",
-        "command": "poli_move",
-        "args": {"before": false}
+        "command": "poli_move"
     },
     {
         "caption": "Poli: Open REPL JS",

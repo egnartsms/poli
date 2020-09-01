@@ -6,17 +6,20 @@ from poli.module import operation as op
 from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
 from poli.shared.command import WindowCommand
-from poli.sublime.misc import Regions, active_view_preserved
+from poli.sublime import regedit
+from poli.sublime.edit import call_with_edit
+from poli.sublime.input import ChainableInputHandler
+from poli.sublime.input import chain_input_handlers
+from poli.sublime.input import run_command_thru_palette
+from poli.sublime.misc import Regions
+from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
-from poli.sublime.edit import call_with_edit
 from poli.sublime.selection import set_selection
-from poli.sublime import regedit
-from poli.sublime.input import chain_input_handlers, ChainableInputHandler
 from poli.sublime.view_dict import on_view_load
 
 
-__all__ = ['PoliMoveBy1', 'PoliMove']
+__all__ = ['PoliMoveBy1', 'PoliMove', 'PoliMoveThis']
 
 
 class PoliMoveBy1(ModuleTextCommand):
@@ -62,7 +65,7 @@ class PoliMove(WindowCommand):
         src_view = self.window.find_open_file(op.poli_file_name(src_module))
         if src_view is not None and regedit.is_active_in(src_view):
             entry = op.module_contents(src_view).entry_by_name(src_entry)
-            if entry is None or entry.edit_cxt_if_under_edit():
+            if entry is None or entry.is_under_edit():
                 sulime.error_message("Source entry is under edit or not found")
                 return
 
@@ -70,14 +73,11 @@ class PoliMove(WindowCommand):
         # Other kinds of editing might fool the Sublime parser (e.g. in-progress renaming)
         dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
         if dest_view is not None and regedit.is_active_in(dest_view):
-            entry = op.module_contents(src_view).entry_by_name(src_entry)
-            if entry is not None:
-                cxt = entry.edit_cxt_if_under_edit()
-                ok = cxt.target == 'defn'
-            else:
-                ok = False
-
-            if not ok:
+            entry = op.module_contents(src_view).entry_by_name(dest_entry)
+            
+            if (entry is None or
+                    entry.is_under_edit() and
+                    op.edit_cxt_for[dest_view].target != 'defn'):
                 sulime.error_message("Cound not determine destination entry location")
                 return
 
@@ -89,12 +89,11 @@ class PoliMove(WindowCommand):
             before=before
         )
         print("Got this:", res)
-        return
 
         if not res['moved']:
             offending_refs = res['offendingRefs']
-            sublime.error_message("Could not move these references: {}".format(
-                ','.join(offendingRefs)
+            sublime.error_message("Could not move these references: \n   {}".format(
+                ',\n   '.join('$.' + r for r in offending_refs)
             ))
             return
 
@@ -104,63 +103,53 @@ class PoliMove(WindowCommand):
 
         def process_src_view(edit):
             with regedit.region_editing_suppressed(src_view):
-                mcont = op.module_contents(src_view)
-                entry = mcont.entry_by_name(src_entry)
+                entry = op.module_contents(src_view).entry_by_name(src_entry)
                 src_view.erase(edit, entry.reg_entry_nl)
-
                 op.save_module(src_view)
 
         def process_dest_view(edit):
             with regedit.region_editing_suppressed(dest_view):
-                mcont = op.module_contents(dest_view)
-                entry = mcont.entry_by_name(dest_entry)
+                entry = op.module_contents(dest_view).entry_by_name(dest_entry)
 
                 if before:
                     insert_at = entry.reg_entry_nl.begin()
                 else:
                     insert_at = entry.reg_entry_nl.end()
 
-                n = dest_view.insert(edit, insert_at, res['newCode'])
-                dest_view.insert(edit, insert_at + n, '\n')
+                dest_view.insert(
+                    edit, insert_at, '{} ::= {}\n'.format(src_entry, res['newCode'])
+                )
+
+                if res['importSection'] is not None:
+                    op.replace_import_section(dest_view, edit, res['importSection'])
 
                 op.save_module(dest_view)
 
+                if res['danglingRefs']:
+                    sublime.message_dialog(
+                        "These references appear to be dangling: \n   {}".format(
+                            ',\n   '.join('$.' + r for r in res['danglingRefs'])
+                        )
+                    )
+
         on_view_load(src_view, lambda: call_with_edit(src_view, process_src_view))
         on_view_load(dest_view, lambda: call_with_edit(dest_view, process_dest_view))
-
-        # op.replace_import_section(sublime.active_window(), res)
-
-        # # Synchronize the view(s)
-        # if before:
-        #     insert_at = loc.entry.reg_entry_nl.begin()
-        # else:
-        #     insert_at = loc.entry.reg_entry_nl.end()
-
-        # with read_only_set_to(self.view, False), \
-        #         Marker(self.view, insert_at) as insert_marker:
-        #     src_entry = mcont.entry_by_name(src_entry_name)
-        #     text = src_entry.contents()
-        #     self.view.erase(edit, src_entry.reg_entry_nl)
-        #     reg_new = insert_in(self.view, edit, insert_marker.pos, text)
-        #     self.view.insert(edit, reg_new.end(), '\n')
-        #     set_selection(self.view, to=reg_new, show=True)
-
-        # op.save_module(self.view)
 
     def input(self, args):
         return chain_input_handlers(None, args, [
             self.SrcModuleEntry,
             self.DestModule,
             self.DestEntry,
+            self.Before
         ])
 
     class SrcModuleEntry(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
-            res = comm.get_entries()
+            data = comm.get_entries()
             self.items = [
                 ("{} ({})".format(entry or '*', module), [module, entry])
-                for module, entry in res
+                for module, entry in data
             ]
 
         def list_items(self):
@@ -187,32 +176,19 @@ class PoliMove(WindowCommand):
         def list_items(self):
             return self.items
 
+    class Before(ChainableInputHandler, sublime_plugin.ListInputHandler):
+        def __init__(self, view, args, chain_tail):
+            super().__init__(view, chain_tail)
 
-# class PoliMoveThere(ModuleTextCommand):
-#     def run(self):
-#         pass
+        def list_items(self):
+            return [("Before", True), ("After", False)]
 
 
-# class PoliMoveHere(ModuleTextCommand):
-#     only_in_mode = 'browse'
+class PoliMoveThis(ModuleTextCommand):
+    only_in_mode = 'browse'
 
-#     def run(self, edit, before):
-#         mcont = op.module_contents(self.view)
-#         loc = mcont.cursor_location_or_stop(op.selected_region(self.view))
-#         sublime.run_command('poli_move', {
-#             'dest_module': op.poli_module_name(self.view),
-#             'dest_entry': loc.entry.name(),
-#             'before': before
-#         })
-
-#         dest_entry_name = loc.entry.name()
-#         entry_names = comm.get_module_entries(op.poli_module_name(self.view))
-#         entry_names.remove(dest_entry_name)
-
-#         self.view.window().show_quick_panel(entry_names, callback)
-#         (idx,) = yield
-
-#         if idx == -1:
-#             return
-
-#         src_entry_name = entry_names[idx]
+    def run(self, edit):
+        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        run_command_thru_palette(self.view.window(), 'poli_move', {
+            'src_module_entry': [op.poli_module_name(self.view), loc.entry.name()],
+        })

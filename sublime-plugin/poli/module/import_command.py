@@ -134,6 +134,6 @@ class PoliRenameThisImport(ModuleTextCommand):
         reg = op.selected_region(self.view)
         rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
-        run_command_thru_palette(self.view, 'poli_rename_import', {
+        run_command_thru_palette(self.view.window(), 'poli_rename_import', {
             'imported_as': rec.imported_as
         })

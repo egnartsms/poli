@@ -167,12 +167,11 @@ class Entry:
     def contents(self):
         return self.mcont.view.substr(self.reg_entry)
 
-    def edit_cxt_if_under_edit(self):
-        reg = edit_region_for.get(self.mcont.view)
-        if reg is None or not reg.intersects(self.reg_entry):
-            return None
+    def is_under_edit(self):
+        if not regedit.is_active_in(self.mcont.view):
+            return False
 
-        return edit_cxt_for[self.mcont.view]
+        return regedit.editing_region(self.mcont.view).intersects(self.reg_entry)
 
     @property
     def myindex(self):

@@ -1,9 +1,11 @@
 aux
    * as knux
-   Def_2
-   def_1 as ren_def_1
+run
+   importFor
+   importsOf
+   moduleByName
 -----
-sayhi ::= function () {
-    return `My name is: ${$.knux.def_1} - ${$.knux.Def_2} - ${$.ren_def_1} - ${$.Def_2}`;
-}
 brim ::= 'serg'
+sayhi ::= function () {
+    return [$.moduleByName('aux'), $.importsOf(), $.importFor()];
+}

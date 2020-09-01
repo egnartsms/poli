@@ -1,5 +1,7 @@
-obj-persist
-   * as pers
+run
+   * as run
+   moduleByName
 -----
+moduleByNam ::= 'mbn'
 def_1 ::= 'def1'
-Def_2 ::= 'def2'
+def_2 ::= 'def2'

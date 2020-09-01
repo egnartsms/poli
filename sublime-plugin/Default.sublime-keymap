@@ -96,23 +96,22 @@
         ]
     },
     {
-        "keys": ["M", "b"],
-        "command": "poli_move_here",
-        "args": {"before": true},
+        "keys": ["m"],
+        "command": "poli_move_this",
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
-    {
-        "keys": ["M", "a"],
-        "command": "poli_move_here",
-        "args": {"before": false},
-        "context": [
-            {"key": "poli_kind", "operand": "module/js"},
-            {"key": "poli_regedit", "operand": false}
-        ]
-    },
+    // {
+    //     "keys": ["M", "a"],
+    //     "command": "poli_move_here",
+    //     "args": {"before": false},
+    //     "context": [
+    //         {"key": "poli_kind", "operand": "module/js"},
+    //         {"key": "poli_regedit", "operand": false}
+    //     ]
+    // },
     // Navigation in JS modules
     {
         "keys": ["f12"],
