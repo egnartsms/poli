@@ -1,11 +1,9 @@
-aux
-   * as knux
 run
-   importFor
-   importsOf
-   moduleByName
+   * as Run
 -----
-brim ::= 'serg'
+def_1 ::= 'def1'
+def_2 ::= 'def2'
 sayhi ::= function () {
-    return [$.moduleByName('aux'), $.importsOf(), $.importFor()];
+    return [$.Run.moduleByName('aux'), $.Run.importsOf(), $.Run.importFor()];
 }
+brim ::= 'serg'

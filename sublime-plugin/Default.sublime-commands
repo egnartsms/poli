@@ -3,10 +3,16 @@
         "caption": "Poli: Reconnect to server",
         "command": "poli_reconnect"
     },
+    // Move
     {
         "caption": "Poli: Move",
         "command": "poli_move"
     },
+    {
+        "caption": "Poli: Move to this module",
+        "command": "poli_move_to_this_module"
+    },
+    // REPL
     {
         "caption": "Poli: Open REPL JS",
         "command": "poli_repl_open"

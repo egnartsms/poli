@@ -19,7 +19,9 @@ from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import on_view_load
 
 
-__all__ = ['PoliMoveBy1', 'PoliMove', 'PoliMoveThis']
+__all__ = [
+    'PoliMoveBy1', 'PoliMove', 'PoliMoveThis', 'PoliMoveHere', 'PoliMoveToThisModule'
+]
 
 
 class PoliMoveBy1(ModuleTextCommand):
@@ -66,19 +68,19 @@ class PoliMove(WindowCommand):
         if src_view is not None and regedit.is_active_in(src_view):
             entry = op.module_contents(src_view).entry_by_name(src_entry)
             if entry is None or entry.is_under_edit():
-                sulime.error_message("Source entry is under edit or not found")
+                sublime.error_message("Source entry is under edit or not found")
                 return
 
         # The destination entry should also not be under edit (except definition editing)
         # Other kinds of editing might fool the Sublime parser (e.g. in-progress renaming)
         dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
         if dest_view is not None and regedit.is_active_in(dest_view):
-            entry = op.module_contents(src_view).entry_by_name(dest_entry)
+            entry = op.module_contents(dest_view).entry_by_name(dest_entry)
             
             if (entry is None or
                     entry.is_under_edit() and
                     op.edit_cxt_for[dest_view].target != 'defn'):
-                sulime.error_message("Cound not determine destination entry location")
+                sublime.error_message("Cound not determine destination entry location")
                 return
 
         res = comm.move(
@@ -88,7 +90,6 @@ class PoliMove(WindowCommand):
             dest_entry=dest_entry,
             before=before
         )
-        print("Got this:", res)
 
         if not res['moved']:
             offending_refs = res['offendingRefs']
@@ -155,6 +156,9 @@ class PoliMove(WindowCommand):
         def list_items(self):
             return self.items
 
+        def placeholder(self):
+            return "Entry to move"
+
     class DestModule(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
@@ -162,6 +166,9 @@ class PoliMove(WindowCommand):
 
         def list_items(self):
             return self.items
+
+        def placeholder(self):
+            return "Destination module"
 
     class DestEntry(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
@@ -175,6 +182,9 @@ class PoliMove(WindowCommand):
 
         def list_items(self):
             return self.items
+
+        def placeholder(self):
+            return "Anchor entry"
 
     class Before(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
@@ -191,4 +201,23 @@ class PoliMoveThis(ModuleTextCommand):
         loc = op.sel_cursor_location(self.view, require_fully_selected=True)
         run_command_thru_palette(self.view.window(), 'poli_move', {
             'src_module_entry': [op.poli_module_name(self.view), loc.entry.name()],
+        })
+
+
+class PoliMoveHere(ModuleTextCommand):
+    only_in_mode = 'browse'
+
+    def run(self, edit, before):
+        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        run_command_thru_palette(self.view.window(), 'poli_move', {
+            'dest_module': op.poli_module_name(self.view),
+            'dest_entry': loc.entry.name(),
+            'before': before
+        })
+
+
+class PoliMoveToThisModule(ModuleTextCommand):
+    def run(self, edit):
+        run_command_thru_palette(self.view.window(), 'poli_move', {
+            'dest_module': op.poli_module_name(self.view)
         })

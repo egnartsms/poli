@@ -1,5 +1,13 @@
 [
     {
+        "keys": ["ctrl+s"],
+        "command": "noop",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"}
+        ]
+    },
+    // Editing
+    {
         "keys": ["s"],
         "command": "poli_select",
         "context": [
@@ -73,6 +81,8 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
+
+    // Moves
     {
         "keys": ["ctrl+shift+up"],
         "command": "poli_move_by1",
@@ -103,15 +113,24 @@
             {"key": "poli_regedit", "operand": false}
         ]
     },
-    // {
-    //     "keys": ["M", "a"],
-    //     "command": "poli_move_here",
-    //     "args": {"before": false},
-    //     "context": [
-    //         {"key": "poli_kind", "operand": "module/js"},
-    //         {"key": "poli_regedit", "operand": false}
-    //     ]
-    // },
+    {
+        "keys": ["M", "a"],
+        "command": "poli_move_here",
+        "args": {"before": false},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
+    {
+        "keys": ["M", "b"],
+        "command": "poli_move_here",
+        "args": {"before": true},
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_regedit", "operand": false}
+        ]
+    },
     // Navigation in JS modules
     {
         "keys": ["f12"],
