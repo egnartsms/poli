@@ -125,12 +125,12 @@ class Communicator:
             'direction': direction
         })
 
-    def move(self, src_module, src_entry, dest_module, dest_entry, before):
+    def move(self, src_module, entry, dest_module, anchor, before):
         return self._send_op('move', {
             'srcModule': src_module,
-            'srcEntry': src_entry,
+            'entry': entry,
             'destModule': dest_module,
-            'destEntry': dest_entry,
+            'anchor': anchor,
             'before': before
         })
 

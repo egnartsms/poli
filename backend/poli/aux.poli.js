@@ -1,5 +1,6 @@
-run
-   * as run
-   moduleByName
+obj-persist
+   useA
 -----
-moduleByNam ::= 'mbn'
+AA ::= "Johnny"
+B ::= "Billy"
+C ::= "Silly"
