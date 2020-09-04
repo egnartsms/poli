@@ -1,6 +1,6 @@
 obj-persist
    useA
 -----
-AA ::= "Johnny"
+Johnny ::= "Johnny"
 B ::= "Billy"
 C ::= "Silly"

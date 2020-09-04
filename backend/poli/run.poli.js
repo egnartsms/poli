@@ -785,8 +785,8 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    if (srcModule === destModule) {
       throw new Error(`Cannot move inside a single module`);
    }
-   if (!$.hasOwnProperty(srcModule.defs, srcEntry)) {
-      throw new Error(`Entry "${srcEntry}" does not exist in "${srcModuleName}"`);
+   if (!$.hasOwnProperty(srcModule.defs, entry)) {
+      throw new Error(`Entry "${entry}" does not exist in "${srcModuleName}"`);
    }
 
    if (anchor === null) {

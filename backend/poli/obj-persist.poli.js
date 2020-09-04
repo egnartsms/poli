@@ -1,7 +1,7 @@
 aux
    * as aux
-   AA
+   Johnny
 -----
-useA ::= () => $.AA
+useA ::= () => $.Johnny
 useB ::= () => $.aux.B
 useC ::= () => $.aux.C
