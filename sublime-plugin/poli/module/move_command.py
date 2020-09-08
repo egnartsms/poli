@@ -1,5 +1,6 @@
 import sublime
 import sublime_plugin
+import traceback
 
 from poli.comm import comm
 from poli.module import operation as op
@@ -16,7 +17,8 @@ from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
-from poli.sublime.view_dict import on_view_load
+from poli.sublime.view_dict import edit_view_loaded, view_loaded
+from poli.common import asynch
 
 
 __all__ = [
@@ -98,53 +100,100 @@ class PoliMove(WindowCommand):
             if res['offendingRefs']:
                 msg.append(
                     "the definition refers to names that could not be imported into "
-                    "the destination module: {}".format(', '.join(res['offendingRefs']))
+                    "the destination module: {}".format(
+                        ', '.join('$.' + r for r in res['offendingRefs'])
+                    )
                 )
             if res['blockingReferrers']:
                 msg.append(
                     "these modules cannot star-import the entry from the destination "
-                    "module: {}".format(', '.join(res['offendingRefs']))
+                    "module: {}".format(', '.join(res['blockingReferrers']))
                 )
 
             sublime.error_message('\n'.join(msg))
             return
 
-        with active_view_preserved(self.window):
-            src_view = self.window.open_file(op.poli_file_name(src_module))
-            dest_view = self.window.open_file(op.poli_file_name(dest_module))
+        def process_source(view):
+            edit = yield edit_view_loaded(view)
+            
+            with regedit.region_editing_suppressed(view):
+                entry_obj = op.module_contents(view).entry_by_name(entry)
+                view.erase(edit, entry_obj.reg_entry_nl)
+                op.save_module(view)
 
-        def process_src_view(edit):
-            with regedit.region_editing_suppressed(src_view):
-                entry = op.module_contents(src_view).entry_by_name(entry)
-                src_view.erase(edit, entry.reg_entry_nl)
-                op.save_module(src_view)
+        def process_destination(view):
+            edit = yield edit_view_loaded(view)
 
-        def process_dest_view(edit):
-            with regedit.region_editing_suppressed(dest_view):
-                entry = op.module_contents(dest_view).entry_by_name(anchor)
+            with regedit.region_editing_suppressed(view):
+                entry_obj = op.module_contents(view).entry_by_name(anchor)
 
                 if before:
-                    insert_at = entry.reg_entry_nl.begin()
+                    insert_at = entry_obj.reg_entry_nl.begin()
                 else:
-                    insert_at = entry.reg_entry_nl.end()
+                    insert_at = entry_obj.reg_entry_nl.end()
 
-                dest_view.insert(
+                view.insert(
                     edit, insert_at, '{} ::= {}\n'.format(entry, res['newCode'])
                 )
 
-                op.save_module(dest_view)
+                op.save_module(view)
 
-        on_view_load(src_view, lambda: call_with_edit(src_view, process_src_view))
-        on_view_load(dest_view, lambda: call_with_edit(dest_view, process_dest_view))
+        def process_other(view, module_data):
+            edit = yield edit_view_loaded(view)
+            op.modify_module(view, edit, module_data)
+            op.save_module(view)
 
-        op.modify_modules(res['modifiedModules'])
+        def process():
+            with active_view_preserved(self.window):
+                src_view = self.window.open_file(op.poli_file_name(src_module))
+                dest_view = self.window.open_file(op.poli_file_name(dest_module))
+                other_views = [
+                    self.window.open_file(op.poli_file_name(d['module']))
+                    for d in res['modifiedModules']
+                ]
 
-        if res['danglingRefs']:
-            sublime.message_dialog(
-                "These references appear to be dangling: \n   {}".format(
-                    ',\n   '.join('$.' + r for r in res['danglingRefs'])
+            comap = {
+                0: process_source(src_view),
+                1: process_destination(dest_view),
+            }
+            for view, module_data in zip(other_views, res['modifiedModules']):
+                comap[op.poli_module_name(view)] = process_other(view, module_data)
+
+            success, failure = yield asynch.in_parallel(comap)
+            src_exc = failure.pop(0, None)
+            dest_exc = failure.pop(1, None)
+            if failure or src_exc or dest_exc:
+                modules = set(failure)
+                if src_exc:
+                    modules.add(op.poli_module_name(src_view))
+                if dest_exc:
+                    modules.add(op.poli_module_name(dest_view))
+
+                sublime.error_message(
+                    "The following modules failed to update (you may consider refreshing "
+                    "them from the image): {}".format(', '.join(modules))
                 )
-            )
+
+                if src_exc:
+                    print("Source updating failed:")
+                    traceback.print_exception(type(src_exc), src_exc, None)
+                if dest_exc:
+                    print("Dest updating failed:")
+                    traceback.print_exception(type(dest_exc), dest_exc, None)
+                if failure:
+                    for name, exc in failure.items():
+                        print("Modified module \"{}\"updating failed:".format(name))
+                        traceback.print_exception(type(exc), exc, None)
+            elif res['danglingRefs']:
+                sublime.message_dialog(
+                    "These references appear to be dangling: {}".format(
+                        ','.join('$.' + r for r in res['danglingRefs'])
+                    )
+                )
+            else:
+                sublime.status_message("Move succeeded!")
+
+        asynch.run(process())
 
     def input(self, args):
         return chain_input_handlers(None, args, [
@@ -173,6 +222,7 @@ class PoliMove(WindowCommand):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
             self.items = comm.get_modules()
+            self.items.remove(args['src_module_entry'][0])
 
         def list_items(self):
             return self.items

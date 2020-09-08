@@ -847,12 +847,12 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    if (fwd.renameMap.size > 0) {
       let alts = 
-         Array.from(renameMap.keys(), r => `(?:${r.replace(/\./g, '\\.')})`)
+         Array.from(fwd.renameMap.keys(), r => `(?:${r.replace(/\./g, '\\.')})`)
          .join('|');
       let sre = `(?<=\\$\\.)${alts}`;
       let re = new RegExp(sre, 'g');
 
-      newCode = defn.src.replace(re, ref => renameMap.get(ref));
+      newCode = defn.src.replace(re, ref => fwd.renameMap.get(ref));
    }
    else {
       newCode = defn.src;
@@ -871,11 +871,11 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    let iAnchor;
 
-   if (destEntry === null) {
+   if (anchor === null) {
       iAnchor = 0;
    }
    else {
-      iAnchor = destModule.entries.indexOf(destEntry);
+      iAnchor = destModule.entries.indexOf(anchor);
       iAnchor = before ? iAnchor : iAnchor + 1;
    }
    
@@ -884,7 +884,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    // Stage 5. Add imports
    for (let imp of [...fwd.importsToAdd, ...bwd.importsToAdd]) {
-      $.doImport(bwd.importToAdd);
+      $.doImport(imp);
       $.saveObject(imp.recp.importedNames);
    }
 
@@ -902,7 +902,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
       danglingRefs: fwd.danglingRefs,
       newCode: newCode,
       modifiedModules: Array.from(modulesToReport, module => ({
-         module,
+         module: module.name,
          importSection:
             importSectionAffected.has(module) ? $.dumpImportSection(module) : null,
          modifiedEntries: modifiedModules.get(module) || null

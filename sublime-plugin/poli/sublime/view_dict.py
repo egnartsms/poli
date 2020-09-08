@@ -1,12 +1,12 @@
+import collections.abc
 import functools
+import sublime
 import sublime_plugin
 
-import collections.abc
+from poli.sublime.edit import call_with_edit
+
 
 __all__ = ['ViewDictListener']
-
-
-_missing = object()
 
 
 class ViewDict(collections.abc.MutableMapping):
@@ -59,9 +59,29 @@ def on_view_load(view, callback):
     if view.is_loading():
         on_view_loaded.setdefault(view, []).append(callback)
     else:
-        callback()
+        sublime.set_timeout(callback, 0)
+
+
+def edit_view_loaded(view):
+    def awaitable(resolve, reject):
+        view_loaded(view)(
+            lambda: call_with_edit(view, resolve),
+            reject
+        )
+
+    return awaitable
+
+
+def view_loaded(view):
+    def awaitable(resolve, reject):
+        if view.is_loading():
+            on_view_loaded.setdefault(view, []).append(resolve)
+        else:
+            resolve()
+
+    return awaitable
 
 
 def on_any_view_load(views, callback):
     for view in views:
-        on_view_load(view, functools.partial(callback, view=view))
+        on_view_load(view, functools.partial(callback, view))

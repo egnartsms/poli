@@ -1,6 +1,3 @@
-obj-persist
-   useA
 -----
-Johnny ::= "Johnny"
-B ::= "Billy"
-C ::= "Silly"
+partner ::= 'partner'
+anotherPartner ::= 'ap'

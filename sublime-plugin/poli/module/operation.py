@@ -10,10 +10,13 @@ from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
-from poli.sublime.misc import active_view_preserved, Regions
+from poli.sublime.misc import Regions
+from poli.sublime.misc import active_view_preserved
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
 from poli.sublime.view_dict import on_any_view_load
+from poli.sublime.view_dict import on_view_load, view_loaded
+from poli.common import asynch
 
 
 KIND_MODULE = 'module/js'
@@ -304,15 +307,6 @@ def get_warnings(view):
     return view.get_regions('warnings')
 
 
-def replace_import_section(view, edit, new_import_section):
-    with regedit.region_editing_suppressed(view):
-        view.replace(
-            edit,
-            sublime.Region(0, module_body_start(view)),
-            new_import_section
-        )
-
-
 def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
@@ -336,7 +330,19 @@ def replace_import_section_in_modules(window, data):
     )
 
 
+def replace_import_section(view, edit, new_import_section):
+    with regedit.region_editing_suppressed(view):
+        view.replace(
+            edit,
+            sublime.Region(0, module_body_start(view)),
+            new_import_section
+        )
+
+
 def modify_module_entries(view, edit, entries_data):
+    if not entries_data:
+        return
+
     mcont = module_contents(view)
     code_by_entry = {entry: code for entry, code in entries_data}
     regs, codes = [], []
@@ -374,7 +380,10 @@ def modify_module(view, edit, module_data):
     modify_module_entries(view, edit, module_data['modifiedEntries'])
 
 
-def modify_modules(window, modules_data):
+def modify_and_save_modules(window, modules_data):
+    if not modules_data:
+        return
+
     with active_view_preserved(window):
         views = [
             window.open_file(poli_file_name(d['module']))
@@ -382,18 +391,17 @@ def modify_modules(window, modules_data):
         ]
 
     view_data = ViewDict(zip(views, modules_data))
-
+    
     def process_view(view, edit):
         modify_module(view, edit, view_data[view])
         save_module(view)
-        del view_data[view]
-        if not view_data:
-            sublime.status_message("{} modules updated".format(len(views)))
 
-    on_any_view_load(
-        views,
-        lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
-    )
+    awt = asynch.as_completed([view_loaded(view) for view in views])
+    while awt:
+        view, awt = yield awt
+        call_with_edit(view, lambda edit: process_view(view, edit))
+
+    sublime.status_message("{} modules updated".format(len(views)))
 
 
 def parse_import_section(view):
@@ -403,9 +411,9 @@ def parse_import_section(view):
 
     things = (
         [Module(reg=reg) for reg in view.find_by_selector('meta.import.poli.module')] +
-        [Entry(reg=reg)
-         for reg in view.find_by_selector('meta.import.poli.entry, meta.import.poli.asterisk')
-        ] +
+        [Entry(reg=reg) for reg in view.find_by_selector(
+            'meta.import.poli.entry, meta.import.poli.asterisk'
+         )] +
         [Alias(reg=reg) for reg in view.find_by_selector('meta.import.poli.alias')]
     )
     things.sort(key=lambda x: x.reg.begin())

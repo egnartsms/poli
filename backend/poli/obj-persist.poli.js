@@ -1,7 +1,8 @@
 aux
-   * as aux
-   Johnny
+   anotherPartner as ap
+   partner
 -----
-useA ::= () => $.Johnny
-useB ::= () => $.aux.B
-useC ::= () => $.aux.C
+john ::= 'john'
+beingMoved ::= function () {
+    return $.partner + 'x' + $.ap;
+}
