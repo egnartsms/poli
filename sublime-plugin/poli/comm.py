@@ -177,5 +177,10 @@ class Communicator:
             'newName': new_name
         })
 
+    def refresh_module(self, module):
+        return self._send_op('refreshModule', {
+            'module': module
+        })
+
 
 comm = Communicator()

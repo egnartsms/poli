@@ -52,5 +52,9 @@
     {
         "caption": "Poli: Rename module",
         "command": "poli_rename_module"
+    },
+    {
+        "caption": "Poli: Refresh module",
+        "command": "poli_refresh_module"
     }
 ]
