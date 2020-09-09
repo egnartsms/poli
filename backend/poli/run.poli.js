@@ -16,6 +16,7 @@ bootstrap
    takeNextOid
    toJson
 img2fs
+   flushModule
    genModuleImportSection
 -----
 assert ::= $_.require('assert').strict
@@ -441,6 +442,14 @@ opHandlers ::= ({
       }
 
       $.opRet($.dumpImportSections(affected));
+   },
+
+   refreshModule: function ({module: moduleName}) {
+      let module = $.moduleByName(moduleName);
+
+      $.flushModule(module);
+
+      $.opRet();
    },
 
    findReferences: function ({module: moduleName, name}) {

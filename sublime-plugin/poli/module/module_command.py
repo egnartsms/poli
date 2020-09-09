@@ -7,9 +7,10 @@ from poli.comm import comm
 from poli.module import operation as op
 from poli.module.command import ModuleTextCommand
 from poli.shared.command import ApplicationCommand
+from poli.sublime import regedit
 
 
-__all__ = ['PoliAddNewModule', 'PoliRenameModule']
+__all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule']
 
 
 class PoliAddNewModule(ApplicationCommand):
@@ -55,3 +56,14 @@ class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
 
     def validate(self, value):
         return self.preview(value) is None
+
+
+class PoliRefreshModule(ModuleTextCommand):
+    def run(self, edit):
+        if regedit.is_active_in(self.view):
+            ok = sublime.ok_cancel_dialog("Unsaved changes would be lost. Continue?")
+            if not ok:
+                return
+            op.terminate_edit_mode(self.view)
+
+        comm.refresh_module(op.poli_module_name(self.view))

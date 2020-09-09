@@ -6,10 +6,10 @@ fs ::= $_.require('fs')
 ind ::= '   '
 main ::= function () {
    for (let moduleName in $.modules) {
-      $.dumpModule($.modules[moduleName]);
+      $.flushModule($.modules[moduleName]);
    }
 }
-dumpModule ::= function (module) {
+flushModule ::= function (module) {
    let moduleStream = $.fs.createWriteStream(
       `${$_.SRC_FOLDER}/${module.name}.poli.js`, {
          mode: '664'
