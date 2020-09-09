@@ -3,6 +3,3 @@ aux
    partner
 -----
 john ::= 'john'
-beingMoved ::= function () {
-    return $.partner + 'x' + $.ap;
-}

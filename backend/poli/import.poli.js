@@ -1,4 +1,4 @@
-obj-persist
+aux
    beingMoved as bm
 -----
 referringEntry ::= () => {

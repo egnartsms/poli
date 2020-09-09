@@ -1,6 +1,4 @@
 import re
-import sublime
-import sublime_api
 import sublime_plugin
 
 

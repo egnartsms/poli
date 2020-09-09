@@ -1,3 +1,4 @@
+import functools
 import os.path
 import re
 import sublime
@@ -14,9 +15,7 @@ from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
-from poli.sublime.view_dict import on_any_view_load
-from poli.sublime.view_dict import on_view_load, view_loaded
-from poli.common import asynch
+from poli.sublime.view_dict import on_all_views_load
 
 
 KIND_MODULE = 'module/js'
@@ -317,17 +316,17 @@ def replace_import_section_in_modules(window, data):
 
     view_data = ViewDict(zip(views, data.values()))
 
-    def process_view(view, edit):
+    def process_1(view, edit):
         replace_import_section(view, edit, view_data[view])
         save_module(view)
-        del view_data[view]
-        if not view_data:
-            sublime.status_message("{} modules' imports updated".format(len(views)))
 
-    on_any_view_load(
-        views,
-        lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
-    )
+    def proceed():
+        for view in views:
+            call_with_edit(view, functools.partial(process_1, view))
+        
+        sublime.status_message("{} modules' imports updated".format(len(views)))
+
+    on_all_views_load(views, proceed)
 
 
 def replace_import_section(view, edit, new_import_section):
@@ -390,18 +389,17 @@ def modify_and_save_modules(window, modules_data):
             for d in modules_data
         ]
 
-    view_data = ViewDict(zip(views, modules_data))
-    
-    def process_view(view, edit):
-        modify_module(view, edit, view_data[view])
+    def process_1(view, module_data, edit):
+        modify_module(view, edit, module_data)
         save_module(view)
 
-    awt = asynch.as_completed([view_loaded(view) for view in views])
-    while awt:
-        view, awt = yield awt
-        call_with_edit(view, lambda edit: process_view(view, edit))
+    def proceed():
+        for view, module_data in zip(views, modules_data):
+            call_with_edit(view, functools.partial(process_1, view, module_data))
 
-    sublime.status_message("{} modules updated".format(len(views)))
+        sublime.status_message("{} modules updated".format(len(views)))
+
+    on_all_views_load(views, proceed)
 
 
 def parse_import_section(view):

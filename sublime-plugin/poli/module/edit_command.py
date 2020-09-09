@@ -2,9 +2,7 @@ import re
 import sublime
 
 from poli.comm import comm
-from poli.common import asynch
 from poli.module import operation as op
-from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
@@ -139,7 +137,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
             res = comm.rename(op.poli_module_name(self.view), cxt.name, new_name)
-            asynch.run(op.modify_and_save_modules(self.view.window(), res))
+            op.modify_and_save_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             

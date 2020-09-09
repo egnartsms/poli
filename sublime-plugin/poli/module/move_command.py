@@ -2,9 +2,11 @@ import sublime
 import sublime_plugin
 import traceback
 
+from functools import partial
+
 from poli.comm import comm
+from poli.common.misc import exc_recorded
 from poli.module import operation as op
-from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
 from poli.shared.command import WindowCommand
 from poli.sublime import regedit
@@ -17,8 +19,7 @@ from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
-from poli.sublime.view_dict import edit_view_loaded, view_loaded
-from poli.common import asynch
+from poli.sublime.view_dict import on_all_views_load
 
 
 __all__ = [
@@ -113,17 +114,13 @@ class PoliMove(WindowCommand):
             sublime.error_message('\n'.join(msg))
             return
 
-        def process_source(view):
-            edit = yield edit_view_loaded(view)
-            
+        def process_source(view, edit):          
             with regedit.region_editing_suppressed(view):
                 entry_obj = op.module_contents(view).entry_by_name(entry)
                 view.erase(edit, entry_obj.reg_entry_nl)
                 op.save_module(view)
 
-        def process_destination(view):
-            edit = yield edit_view_loaded(view)
-
+        def process_destination(view, edit):
             with regedit.region_editing_suppressed(view):
                 entry_obj = op.module_contents(view).entry_by_name(anchor)
 
@@ -138,52 +135,56 @@ class PoliMove(WindowCommand):
 
                 op.save_module(view)
 
-        def process_other(view, module_data):
-            edit = yield edit_view_loaded(view)
+        def process_other(view, module_data, edit):
             op.modify_module(view, edit, module_data)
             op.save_module(view)
 
-        def process():
-            with active_view_preserved(self.window):
-                src_view = self.window.open_file(op.poli_file_name(src_module))
-                dest_view = self.window.open_file(op.poli_file_name(dest_module))
-                other_views = [
-                    self.window.open_file(op.poli_file_name(d['module']))
-                    for d in res['modifiedModules']
-                ]
+        def proceed(src_view, dest_view, other_views):
+            with exc_recorded() as exc_src:
+                call_with_edit(src_view, partial(process_source, src_view))
 
-            comap = {
-                0: process_source(src_view),
-                1: process_destination(dest_view),
+            with exc_recorded() as exc_dest:
+                call_with_edit(dest_view, partial(process_destination, dest_view))
+
+            exc_others = [exc_recorded() for view in other_views]
+
+            for exc, view, module_data in zip(
+                    exc_others, other_views, res['modifiedModules']
+            ):
+                with exc:
+                    call_with_edit(
+                        view, partial(process_other, view, module_data)
+                    )
+
+            fmodules = {
+                op.poli_module_name(view)
+                for exc, view in zip(exc_others, other_views)
+                if exc
             }
-            for view, module_data in zip(other_views, res['modifiedModules']):
-                comap[op.poli_module_name(view)] = process_other(view, module_data)
+            if exc_src:
+                fmodules.add(op.poli_module_name(src_view))
+            if exc_dest:
+                fmodules.add(op.poli_module_name(dest_view))
 
-            success, failure = yield asynch.in_parallel(comap)
-            src_exc = failure.pop(0, None)
-            dest_exc = failure.pop(1, None)
-            if failure or src_exc or dest_exc:
-                modules = set(failure)
-                if src_exc:
-                    modules.add(op.poli_module_name(src_view))
-                if dest_exc:
-                    modules.add(op.poli_module_name(dest_view))
-
+            if fmodules:
                 sublime.error_message(
                     "The following modules failed to update (you may consider refreshing "
-                    "them from the image): {}".format(', '.join(modules))
+                    "them from the image): {}".format(', '.join(fmodules))
                 )
 
-                if src_exc:
+                if exc_src:
                     print("Source updating failed:")
-                    traceback.print_exception(type(src_exc), src_exc, None)
-                if dest_exc:
+                    traceback.print_exception(type(exc_src.exc), exc_src.exc, None)
+                if exc_dest:
                     print("Dest updating failed:")
-                    traceback.print_exception(type(dest_exc), dest_exc, None)
-                if failure:
-                    for name, exc in failure.items():
-                        print("Modified module \"{}\"updating failed:".format(name))
-                        traceback.print_exception(type(exc), exc, None)
+                    traceback.print_exception(type(exc_dest.exc), exc_dest.exc, None)
+                for view, exc in zip(other_views, exc_others):
+                    if not exc:
+                        continue
+                    print("Modified module \"{}\" updating failed:".format(
+                        op.poli_module_name(view)
+                    ))
+                    traceback.print_exception(type(exc.exc), exc.exc, None)
             elif res['danglingRefs']:
                 sublime.message_dialog(
                     "These references appear to be dangling: {}".format(
@@ -193,7 +194,18 @@ class PoliMove(WindowCommand):
             else:
                 sublime.status_message("Move succeeded!")
 
-        asynch.run(process())
+        with active_view_preserved(self.window):
+            src_view = self.window.open_file(op.poli_file_name(src_module))
+            dest_view = self.window.open_file(op.poli_file_name(dest_module))
+            other_views = [
+                self.window.open_file(op.poli_file_name(d['module']))
+                for d in res['modifiedModules']
+            ]
+
+        on_all_views_load(
+            [src_view, dest_view] + other_views,
+            lambda: proceed(src_view, dest_view, other_views)
+        )
 
     def input(self, args):
         return chain_input_handlers(None, args, [

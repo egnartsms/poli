@@ -1,9 +1,5 @@
 import collections.abc
-import functools
-import sublime
 import sublime_plugin
-
-from poli.sublime.edit import call_with_edit
 
 
 __all__ = ['ViewDictListener']
@@ -59,29 +55,18 @@ def on_view_load(view, callback):
     if view.is_loading():
         on_view_loaded.setdefault(view, []).append(callback)
     else:
-        sublime.set_timeout(callback, 0)
+        callback()
 
 
-def edit_view_loaded(view):
-    def awaitable(resolve, reject):
-        view_loaded(view)(
-            lambda: call_with_edit(view, resolve),
-            reject
-        )
+def on_all_views_load(views, callback):
+    n = len(views)
 
-    return awaitable
+    def load_1():
+        nonlocal n
 
+        n -= 1
+        if n == 0:
+            callback()
 
-def view_loaded(view):
-    def awaitable(resolve, reject):
-        if view.is_loading():
-            on_view_loaded.setdefault(view, []).append(resolve)
-        else:
-            resolve()
-
-    return awaitable
-
-
-def on_any_view_load(views, callback):
     for view in views:
-        on_view_load(view, functools.partial(callback, view))
+        on_view_load(view, load_1)

@@ -1,11 +1,9 @@
-import os
 import re
 import sublime_plugin
 import sublime
 
 from poli.comm import comm
 from poli.shared.command import ApplicationCommand
-from poli import config
 from poli.module import operation as op
 
 

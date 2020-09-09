@@ -1,5 +1,4 @@
 import sublime
-import sublime_api
 
 from Default.symbol import navigate_to_symbol
 from poli import config
@@ -9,14 +8,10 @@ from poli.common.misc import last_index_where
 from poli.module import operation as op
 from poli.module.command import ModuleTextCommand
 from poli.shared.command import TextCommand
-from poli.sublime.edit import call_with_edit_token
 from poli.sublime.misc import active_view_preserved
-from poli.sublime.misc import openfile_spec
-from poli.sublime.misc import push_to_jump_history
-from poli.sublime.misc import region_to_openfile_spec
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
-from poli.sublime.view_dict import on_any_view_load
+from poli.sublime.view_dict import on_all_views_load
 from poli.sublime.view_dict import on_view_load
 
 
@@ -77,19 +72,6 @@ class PoliFindReferences(ModuleTextCommand):
                 self.view.window().open_file(op.poli_file_name(module_name))
                 for module_name in res
             ]
-        n_views_loaded = 0
-        locations = []
-
-        def view_loaded(view):
-            nonlocal locations, n_views_loaded
-
-            regs = view.find_all(
-                r'\$\.{}\b'.format(res[op.poli_module_name(view)])
-            )
-            locations += [make_location(view, reg) for reg in regs]
-            n_views_loaded += 1
-            if n_views_loaded == len(all_views):
-                navigate_to_symbol(sublime.active_window().active_view(), word, locations)
 
         def make_location(view, reg):
             row, col = view.rowcol(reg.begin())
@@ -99,7 +81,18 @@ class PoliFindReferences(ModuleTextCommand):
                 (row + 1, col + 1)
             )
 
-        on_any_view_load(all_views, view_loaded)
+        def proceed():
+            locations = []
+
+            for view in all_views:
+                regs = view.find_all(
+                    r'\$\.{}\b'.format(res[op.poli_module_name(view)])
+                )
+                locations.extend(make_location(view, reg) for reg in regs)
+
+            navigate_to_symbol(sublime.active_window().active_view(), word, locations)
+
+        on_all_views_load(all_views, proceed)
 
 
 class PoliGotoWarning(TextCommand):

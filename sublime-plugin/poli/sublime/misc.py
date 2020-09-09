@@ -1,17 +1,7 @@
 import contextlib
-import re
 import sublime
-import sublime_plugin
 
 from Default.history_list import get_jump_history_for_view
-from poli.common.misc import first_or_none
-
-
-def view_by_settings(settings):
-    return first_or_none(
-        view for view in all_views()
-        if view.settings().settings_id == settings.settings_id
-    )
 
 
 def all_views():
