@@ -1,6 +1,4 @@
 import re
-import sublime
-import sublime_api
 import sublime_plugin
 
 
@@ -37,15 +35,12 @@ def chain_input_handlers(view, args, handler_classes):
         return head(view, args, chain_tail)
 
 
-def run_command_thru_palette(view, cmd, args):
-    if sublime_api.can_accept_input(cmd, args):
-        view.run_command(cmd, args)
-    else:
-        view.window().run_command(
-            'show_overlay',
-            {
-                'overlay': 'command_palette',
-                'command': cmd,
-                'args': args,
-            }
-        )
+def run_command_thru_palette(window, cmd, args):
+    window.run_command(
+        'show_overlay',
+        {
+            'overlay': 'command_palette',
+            'command': cmd,
+            'args': args,
+        }
+    )

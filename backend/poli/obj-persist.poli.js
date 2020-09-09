@@ -1,2 +1,5 @@
+aux
+   anotherPartner as ap
+   partner
 -----
-x ::= 24
+john ::= 'john'

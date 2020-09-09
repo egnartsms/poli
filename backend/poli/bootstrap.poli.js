@@ -19,10 +19,10 @@ makeImageByFs ::= function () {
       for (let {donor: donorName, asterisk, imports} of minfo.imports) {
          let donor = $.modules[donorName];
          if (asterisk !== null) {
-            $.importModule(recp, donor, asterisk);
+            $.doImport({recp, donor, name: null, alias: asterisk});
          }
          for (let {entry, alias} of imports) {
-            $.importEntry(recp, donor, entry, alias);
+            $.doImport({recp, donor, name: entry, alias});
          }
       }
    }
@@ -275,7 +275,16 @@ makeModule ::= function (name, body) {
 
    return module;
 }
-importEntry ::= function (recp, donor, name, alias) {
+doImport ::= function (imp) {
+   if (imp.name === null) {
+      $.validateStarImport(imp);
+   }
+   else {
+      $.validateImport(imp);
+   }
+   $.effectuateImport(imp);
+}
+validateImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
 
    if (!(name in donor.defs)) {
@@ -296,18 +305,8 @@ importEntry ::= function (recp, donor, name, alias) {
          `modules`
       );         
    }
-
-   recp.importedNames.add(importedAs);
-   recp.rtobj[importedAs] = donor.rtobj[name];
-
-   $.imports.add({
-      recp,
-      donor,
-      name,
-      alias
-   });
 }
-importModule ::= function (recp, donor, alias) {
+validateStarImport ::= function ({recp, donor, alias}) {
    if (alias in recp.defs) {
       throw new Error(
          `Module "${recp.name}": cannot import "${donor.name}" as "${alias}": ` +
@@ -319,16 +318,20 @@ importModule ::= function (recp, donor, alias) {
          `Module "${recp.name}": the name "${alias}" imported from multiple modules`
       );
    }
+}
+effectuateImport ::= function (imp) {
+   if (imp.name === null) {
+      imp.recp.importedNames.add(imp.alias);
+      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
+   }
+   else {
+      let importedAs = imp.alias || imp.name;
 
-   recp.importedNames.add(alias);
-   recp.rtobj[alias] = donor.rtobj;
+      imp.recp.importedNames.add(importedAs);
+      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
+   }
 
-   $.imports.add({
-      recp,
-      donor,
-      name: null,
-      alias
-   })
+   $.imports.add(imp);
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);

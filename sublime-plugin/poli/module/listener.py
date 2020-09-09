@@ -9,7 +9,6 @@ from poli.module.operation import poli_module_name
 from poli.module.operation import set_connected_status
 from poli.module.operation import highlight_unknown_names
 from poli.shared.setting import poli_kind
-from poli.sublime.misc import view_by_settings
 
 
 __all__ = ['PoliViewListener']

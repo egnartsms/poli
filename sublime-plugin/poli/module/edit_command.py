@@ -3,9 +3,7 @@ import sublime
 
 from poli.comm import comm
 from poli.module import operation as op
-from poli.module.command import ModuleInterruptibleTextCommand
 from poli.module.command import ModuleTextCommand
-from poli.sublime.misc import Marker
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
@@ -15,7 +13,7 @@ from poli.sublime.selection import set_selection
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete', 'PoliDeleteCascade', 'PoliMoveBy1', 'PoliMoveHere'
+    'PoliDelete', 'PoliDeleteCascade'
 ]
 
 
@@ -83,13 +81,14 @@ class PoliAdd(ModuleTextCommand):
             )
         else:
             loc = op.sel_cursor_location(self.view)
+            entry_name = loc.entry.name()
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(
-                at=loc.entry.reg_name.begin() if before else loc.entry.reg_def_nl.end()
+                at=(loc.entry.reg_entry_nl.begin() if before else
+                    loc.entry.reg_entry_nl.end())
             )
             op.enter_edit_mode(
-                self.view, reg_new,
-                target='entry', name=loc.entry.name(), is_before=before
+                self.view, reg_new, target='entry', name=entry_name, is_before=before
             )
 
 
@@ -138,7 +137,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
             res = comm.rename(op.poli_module_name(self.view), cxt.name, new_name)
-            op.replace_import_section_in_modules(self.view.window(), res)
+            op.modify_and_save_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             
@@ -198,80 +197,3 @@ class PoliDeleteCascade(ModuleTextCommand):
 
         op.save_module(self.view)
         op.replace_import_section_in_modules(self.view.window(), res)
-
-
-class PoliMoveBy1(ModuleTextCommand):
-    only_in_mode = 'browse'
-
-    def run(self, edit, direction):
-        mcont = op.module_contents(self.view)
-        loc = mcont.cursor_location_or_stop(
-            op.selected_region(self.view), require_fully_selected=True
-        )
-        comm.move_by_1(op.poli_module_name(self.view), loc.entry.name(), direction)
-
-        # OK, now synchronize the view itself
-        i = loc.entry.myindex
-
-        if direction == 'up':
-            if i == 0:
-                insert_at = mcont.entries[-1].reg_entry_nl.end()
-            else:
-                insert_at = mcont.entries[i - 1].reg_entry_nl.begin()
-        else:
-            if i + 1 == len(mcont.entries):
-                insert_at = mcont.body_start
-            else:
-                insert_at = mcont.entries[i + 1].reg_entry_nl.end()
-
-        with read_only_set_to(self.view, False), \
-                Marker(self.view, insert_at) as insert_marker:
-            text = loc.entry.contents()
-            self.view.erase(edit, loc.entry.reg_entry_nl)
-            reg_new = insert_in(self.view, edit, insert_marker.pos, text)
-            self.view.insert(edit, reg_new.end(), '\n')
-            set_selection(self.view, to=reg_new, show=True)
-
-        op.save_module(self.view)
-
-
-class PoliMoveHere(ModuleInterruptibleTextCommand):
-    only_in_mode = 'browse'
-
-    def run(self, edit, callback, before):
-        mcont = op.module_contents(self.view)
-        loc = mcont.cursor_location_or_stop(op.selected_region(self.view))
-        dest_entry_name = loc.entry.name()
-        entry_names = comm.get_entries(op.poli_module_name(self.view))
-        entry_names.remove(dest_entry_name)
-
-        self.view.window().show_quick_panel(entry_names, callback)
-        (idx,) = yield
-
-        if idx == -1:
-            return
-
-        src_entry_name = entry_names[idx]
-        comm.move(
-            module=op.poli_module_name(self.view),
-            src=src_entry_name,
-            dest=dest_entry_name,
-            before=before
-        )
-
-        # Synchronize the view
-        if before:
-            insert_at = loc.entry.reg_entry_nl.begin()
-        else:
-            insert_at = loc.entry.reg_entry_nl.end()
-
-        with read_only_set_to(self.view, False), \
-                Marker(self.view, insert_at) as insert_marker:
-            src_entry = mcont.entry_by_name(src_entry_name)
-            text = src_entry.contents()
-            self.view.erase(edit, src_entry.reg_entry_nl)
-            reg_new = insert_in(self.view, edit, insert_marker.pos, text)
-            self.view.insert(edit, reg_new.end(), '\n')
-            set_selection(self.view, to=reg_new, show=True)
-
-        op.save_module(self.view)

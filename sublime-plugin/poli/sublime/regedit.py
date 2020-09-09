@@ -13,6 +13,7 @@ __all__ = ['RegEditListener']
 
 CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
+_log = False
 
 class RegEdit:
     """Region edit context.
@@ -117,6 +118,12 @@ class RegEdit:
         """
         while True:
             pre, post, rowcol = self._get_state()
+
+            if _log:
+                print("pre/post/rowcol:", pre, post, rowcol)
+                print("remembered: ", self.pre, self.post, self.rowcol)
+                print("sel:", list(self.view.sel()))
+
             if pre == self.pre and post == self.post and rowcol == self.rowcol:
                 break
             elif pre > self.pre and post == self.post and \
@@ -133,6 +140,8 @@ class RegEdit:
                 break
 
             with read_only_set_to(self.view, False):
+                if _log:
+                    print("Undoing")
                 self.view.run_command('undo')
 
             sublime.status_message("Cannot edit outside the editing region")
@@ -208,8 +217,19 @@ class RegEditListener(sublime_plugin.EventListener):
 
     Note: how much does this impact performance?  Dict lookup happens for every view.
     """
+    n = 0
+
+    def cb(self, view):
+        print(regedit_for[view]._get_state())
+        self.n += 1
+        if self.n == 5:
+            self.n = 0
+        else:
+            sublime.set_timeout(lambda: self.cb(view), 10)
+
     def on_modified(self, view):
         if is_active_in(view):
+            # sublime.set_timeout(lambda: self.cb(view), 10)
             regedit_for[view].undo_modifications_outside_edit_region()
 
     def on_selection_modified(self, view):

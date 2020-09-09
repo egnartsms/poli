@@ -1,12 +1,8 @@
-import functools
+import collections.abc
 import sublime_plugin
 
-import collections.abc
 
 __all__ = ['ViewDictListener']
-
-
-_missing = object()
 
 
 class ViewDict(collections.abc.MutableMapping):
@@ -62,6 +58,15 @@ def on_view_load(view, callback):
         callback()
 
 
-def on_any_view_load(views, callback):
+def on_all_views_load(views, callback):
+    n = len(views)
+
+    def load_1():
+        nonlocal n
+
+        n -= 1
+        if n == 0:
+            callback()
+
     for view in views:
-        on_view_load(view, functools.partial(callback, view=view))
+        on_view_load(view, load_1)

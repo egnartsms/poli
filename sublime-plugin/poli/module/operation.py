@@ -1,3 +1,4 @@
+import functools
 import os.path
 import re
 import sublime
@@ -10,10 +11,11 @@ from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
+from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
-from poli.sublime.view_dict import on_any_view_load
+from poli.sublime.view_dict import on_all_views_load
 
 
 KIND_MODULE = 'module/js'
@@ -52,7 +54,7 @@ def set_connected_status(view, is_connected):
 
 def module_contents(view):
     names = name_regions(view)
-    defs = view.find_by_selector('source.js')
+    defs = def_regions(view)
 
     if len(names) != len(defs):
         sublime.error_message("Module names and definitions don't match")
@@ -63,6 +65,10 @@ def module_contents(view):
 
 def name_regions(view):
     return view.find_by_selector('entity.name.key.poli')
+
+
+def def_regions(view):
+    return view.find_by_selector('source.js')
 
 
 def import_section_end(view):
@@ -162,6 +168,12 @@ class Entry:
 
     def contents(self):
         return self.mcont.view.substr(self.reg_entry)
+
+    def is_under_edit(self):
+        if not regedit.is_active_in(self.mcont.view):
+            return False
+
+        return regedit.editing_region(self.mcont.view).intersects(self.reg_entry)
 
     @property
     def myindex(self):
@@ -277,7 +289,7 @@ def save_module(view):
 def highlight_unknown_names(view):
     k_names = known_names(view)
     result = sublime_api.view_find_all_with_contents(
-        view.view_id, r'\$\.([a-zA-Z0-9]+)', 0, '\\1'
+        view.view_id, r'\$\.([a-zA-Z0-9_]+)', 0, '\\1'
     )
     warning_regs = [reg for reg, name in result if name not in k_names]
     add_warnings(view, warning_regs)
@@ -294,15 +306,6 @@ def get_warnings(view):
     return view.get_regions('warnings')
 
 
-def replace_import_section(view, edit, new_import_section):
-    with regedit.region_editing_suppressed(view):
-        view.replace(
-            edit,
-            sublime.Region(0, module_body_start(view)),
-            new_import_section
-        )
-
-
 def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
@@ -313,17 +316,90 @@ def replace_import_section_in_modules(window, data):
 
     view_data = ViewDict(zip(views, data.values()))
 
-    def process_view(view, edit):
+    def process_1(view, edit):
         replace_import_section(view, edit, view_data[view])
         save_module(view)
-        del view_data[view]
-        if not view_data:
-            sublime.status_message("{} modules' imports updated".format(len(views)))
 
-    on_any_view_load(
-        views,
-        lambda view: call_with_edit(view, lambda edit: process_view(view, edit))
-    )
+    def proceed():
+        for view in views:
+            call_with_edit(view, functools.partial(process_1, view))
+        
+        sublime.status_message("{} modules' imports updated".format(len(views)))
+
+    on_all_views_load(views, proceed)
+
+
+def replace_import_section(view, edit, new_import_section):
+    with regedit.region_editing_suppressed(view):
+        view.replace(
+            edit,
+            sublime.Region(0, module_body_start(view)),
+            new_import_section
+        )
+
+
+def modify_module_entries(view, edit, entries_data):
+    if not entries_data:
+        return
+
+    mcont = module_contents(view)
+    code_by_entry = {entry: code for entry, code in entries_data}
+    regs, codes = [], []
+
+    if regedit.is_active_in(view):
+        ereg = regedit.editing_region(view)
+    else:
+        ereg = None
+
+    for entry in mcont.entries:
+        if entry.name() in code_by_entry:
+            if ereg and ereg.intersects(entry.reg_def):
+                raise RuntimeError(
+                    "Could not modify module \"{}\": entry under edit".format(
+                        poli_module_name(view)
+                    )
+                )
+            regs.append(entry.reg_def)
+            codes.append(code_by_entry[entry.name()])
+
+    if len(regs) != len(entries_data):
+        raise RuntimeError("Could not modify module \"{}\": out of sync".format(
+            poli_module_name(view)
+        ))
+
+    with regedit.region_editing_suppressed(view),\
+            Regions(view, regs) as retained:
+        for i, code in enumerate(codes):
+            view.replace(edit, retained.regs[i], code)
+
+
+def modify_module(view, edit, module_data):
+    if module_data['importSection'] is not None:
+        replace_import_section(view, edit, module_data['importSection'])
+    modify_module_entries(view, edit, module_data['modifiedEntries'])
+
+
+def modify_and_save_modules(window, modules_data):
+    if not modules_data:
+        return
+
+    with active_view_preserved(window):
+        views = [
+            window.open_file(poli_file_name(d['module']))
+            for d in modules_data
+        ]
+
+    def process_1(view, module_data, edit):
+        modify_module(view, edit, module_data)
+        save_module(view)
+
+    def proceed():
+        for view, module_data in zip(views, modules_data):
+            call_with_edit(view, functools.partial(process_1, view, module_data))
+
+        sublime.status_message("{} modules updated".format(len(views)))
+
+    on_all_views_load(views, proceed)
 
 
 def parse_import_section(view):
@@ -333,9 +409,9 @@ def parse_import_section(view):
 
     things = (
         [Module(reg=reg) for reg in view.find_by_selector('meta.import.poli.module')] +
-        [Entry(reg=reg)
-         for reg in view.find_by_selector('meta.import.poli.entry, meta.import.poli.asterisk')
-        ] +
+        [Entry(reg=reg) for reg in view.find_by_selector(
+            'meta.import.poli.entry, meta.import.poli.asterisk'
+         )] +
         [Alias(reg=reg) for reg in view.find_by_selector('meta.import.poli.alias')]
     )
     things.sort(key=lambda x: x.reg.begin())

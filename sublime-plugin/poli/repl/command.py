@@ -75,7 +75,7 @@ class PoliReplSend(ReplTextCommand):
 
         insert_prompt_at_end(self.view, edit)
 
-        hns_for.pop(self.view)
+        hns_for.pop(self.view, None)
 
 
 class PoliReplClear(ReplTextCommand):
@@ -83,7 +83,7 @@ class PoliReplClear(ReplTextCommand):
         self.view.set_read_only(False)
         self.view.erase(edit, sublime.Region(0, self.view.size()))
         insert_prompt_at_end(self.view, edit)
-        hns_for.pop(self.view)
+        hns_for.pop(self.view, None)
 
 
 class PoliReplSetCurrentModule(ReplInterruptibleTextCommand):

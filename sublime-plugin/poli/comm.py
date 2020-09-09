@@ -53,14 +53,17 @@ class Communicator:
     def get_modules(self):
         return self._send_op('getModules', {})
 
+    def get_entries(self):
+        return self._send_op('getEntries', {})
+
     def get_defn(self, module, name):
         return self._send_op('getDefinition', {
             'module': module,
             'name': name
         })
-
-    def get_entries(self, module):
-        return self._send_op('getEntries', {
+    
+    def get_module_entries(self, module):
+        return self._send_op('getModuleEntries', {
             'module': module
         })
 
@@ -122,11 +125,12 @@ class Communicator:
             'direction': direction
         })
 
-    def move(self, module, src, dest, before):
+    def move(self, src_module, entry, dest_module, anchor, before):
         return self._send_op('move', {
-            'module': module,
-            'src': src,
-            'dest': dest,
+            'srcModule': src_module,
+            'entry': entry,
+            'destModule': dest_module,
+            'anchor': anchor,
             'before': before
         })
 

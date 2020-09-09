@@ -1,5 +1,4 @@
 import sublime
-import sublime_api
 import sublime_plugin
 
 from poli.comm import comm
@@ -97,12 +96,10 @@ class PoliRemoveUnusedImports(ModuleTextCommand):
 
 class PoliRenameImport(ModuleTextCommand):
     def run(self, edit, imported_as, new_alias):
-        text_import_section = comm.rename_import(
+        data = comm.rename_import(
             op.poli_module_name(self.view), imported_as, new_alias
         )
-        if text_import_section is None:
-            return
-        op.replace_import_section(self.view, edit, text_import_section)
+        op.modify_module(self.view, edit, data)
         op.save_module(self.view)
 
     def input(self, args):
@@ -136,6 +133,6 @@ class PoliRenameThisImport(ModuleTextCommand):
         reg = op.selected_region(self.view)
         rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
-        run_command_thru_palette(self.view, 'poli_rename_import', {
+        run_command_thru_palette(self.view.window(), 'poli_rename_import', {
             'imported_as': rec.imported_as
         })

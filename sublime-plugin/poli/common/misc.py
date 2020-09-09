@@ -48,3 +48,20 @@ class SubscriptableProxy:
 
 def none_if(none_value, value):
     return None if value == none_value else value
+
+
+class exc_recorded:
+    def __init__(self):
+        self.exc = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_value is not None:
+            self.exc = exc_value
+
+        return True
+
+    def __bool__(self):
+        return self.exc is not None
