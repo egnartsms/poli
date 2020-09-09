@@ -63,7 +63,7 @@ class PoliMoveBy1(ModuleTextCommand):
 
 
 class PoliMove(WindowCommand):
-    def run(self, src_module_entry, dest_module, anchor, before):
+    def run(self, src_module_entry, dest_module, anchor, before=None):
         src_module, entry = src_module_entry
 
         # Check that we're not attempting to move an entry which is under edit
@@ -77,9 +77,16 @@ class PoliMove(WindowCommand):
         # The destination entry should also not be under edit (except definition editing)
         # Other kinds of editing might fool the Sublime parser (e.g. ongoing renaming)
         dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
-        if (dest_view is not None and anchor is not None and
-                regedit.is_active_in(dest_view)):
-            entry = op.module_contents(dest_view).entry_by_name(anchor)
+        if dest_view is not None and \
+                anchor is not None and \
+                regedit.is_active_in(dest_view):
+            mcont = op.module_contents(dest_view)
+            if anchor is True:
+                entry = mcont.entries[-1]
+            elif anchor is False:
+                entry = mcont.entries[0]
+            else:
+                entry = mcont.entry_by_name(anchor)
             
             if (entry is None or
                     entry.is_under_edit() and
@@ -125,7 +132,13 @@ class PoliMove(WindowCommand):
                 if anchor is None:
                     insert_at = op.module_body_start(view)
                 else:
-                    entry_obj = op.module_contents(view).entry_by_name(anchor)
+                    mcont = op.module_contents(view)
+                    if anchor is False:
+                        entry_obj = mcont.entries[0]
+                    elif anchor is True:
+                        entry_obj = mcont.entries[-1]
+                    else:
+                        entry_obj = op.module_contents(view).entry_by_name(anchor)
 
                     if before:
                         insert_at = entry_obj.reg_entry_nl.begin()
@@ -246,6 +259,9 @@ class PoliMove(WindowCommand):
             return "Destination module"
 
     class Anchor(ChainableInputHandler, sublime_plugin.ListInputHandler):
+        BOTTOM = '<<<Bottom>>>'
+        TOP = '<<<Top>>'
+
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
             dest_module = args['dest_module']
@@ -255,11 +271,20 @@ class PoliMove(WindowCommand):
             if src_module == dest_module:
                 self.items.remove(entry)
 
+            self.items[:0] = [(self.BOTTOM, True), (self.TOP, False)]
+
         def list_items(self):
             return self.items
 
         def placeholder(self):
             return "Anchor entry"
+
+        def next_input(self, args):
+            value = args['anchor']
+            if value is False or value is True:
+                return None
+            else:
+                return super().next_input(args)
 
     class Before(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):

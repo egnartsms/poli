@@ -165,6 +165,12 @@
         ]
     },
 
+    // Import
+    {
+        "keys": ["f5"],
+        "command": "poli_remove_unused_imports_in_all_modules"
+    },
+
     // REPL
     {
         "keys": ["ctrl+enter"],

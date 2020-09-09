@@ -21,6 +21,7 @@ class ChainableInputHandler(sublime_plugin.CommandInputHandler):
     def __init__(self, view, chain_tail):
         self.view = view
         self.chain_tail = chain_tail
+        print("Created", self)
 
 
 def chain_input_handlers(view, args, handler_classes):

@@ -1,23 +1,18 @@
 bootstrap
-   addRecordedObjects
-   doImport
-   effectuateImport
    imports
-   isObject
    makeModule
-   metaRef
    moduleEval
    modules
-   obj2id
-   objrefRecorder
    saveObjectAddCascade
-   stmtInsert
-   stmtUpdate
-   takeNextOid
-   toJson
 img2fs
    flushModule
    genModuleImportSection
+persist
+   deleteArrayItem
+   deleteObject
+   deleteObjectProp
+   saveObject
+   setObjectProp
 -----
 assert ::= $_.require('assert').strict
 WebSocket ::= $_.require('ws')
@@ -64,13 +59,53 @@ handleOperation ::= function (op) {
 
    try {      
       $_.db.transaction(() => $.opHandlers[op['op']].call(null, op['args']))();
+      $.applyRtDelta();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
+      // Remember that we don't yet have a normal rolling back, so after a failure
+      // things in memory will most likely be corrupted.
+      $.discardRtDelta();
       console.error(e);
       $.opExc('generic', {stack: e.stack, message: e.message});
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
+}
+rtrec ::= function (module, prop, val) {
+   let delta = $.rtdelta.get(module);
+   if (!delta) {
+      delta = new Object(null);
+      $.rtdelta.set(module, delta);
+   }
+
+   delta[prop] = val;
+}
+rtdelta ::= new Map
+delmark ::= Object.create(null)
+rtget ::= function (module, name) {
+   let delta = $.rtdelta.get(module);
+   if (!delta || !(name in delta)) {
+      return module.rtobj[name];
+   }
+
+   let val = delta[name];
+   return val === $.delmark ? undefined : val;
+}
+applyRtDelta ::= function () {
+   for (let [module, delta] of $.rtdelta) {
+      for (let [prop, val] of Object.entries(delta)) {
+         if (val === $.delmark) {
+            delete module.rtobj[prop];
+         }
+         else {
+            module.rtobj[prop] = val;
+         }
+      }
+   }
+   $.rtdelta.clear();
+}
+discardRtDelta ::= function () {
+   $.rtdelta.clear();
 }
 send ::= function (msg) {
    $.ws.send(JSON.stringify(msg));
@@ -135,7 +170,7 @@ opHandlers ::= ({
             throw new Error(`Anchor entry not provided`);
          }
 
-         module.rtobj[name] = $.moduleEval(module, defn);
+         $.rtrec(module, name, $.moduleEval(module, defn));
          module.entries.push(name);
       }
       else {
@@ -144,7 +179,7 @@ opHandlers ::= ({
             throw new Error(`Not found an entry "${anchor}"`);
          }
 
-         module.rtobj[name] = $.moduleEval(module, defn);
+         $.rtrec(module, name, $.moduleEval(module, defn));
          module.entries.splice(before ? idx : idx + 1, 0, name);
       }
 
@@ -171,9 +206,9 @@ opHandlers ::= ({
          type: 'native',
          src: newDefn
       });
-      module.rtobj[name] = newVal;
 
-      $.propagateValueToRecipients(module, name);
+      $.rtrec(module, name, newVal);
+      $.propagateValueToRecipients(module, name, newVal);
 
       $.opRet();
    },
@@ -212,8 +247,8 @@ opHandlers ::= ({
       $.setObjectProp(module.defs, newName, module.defs[oldName]);
       $.deleteObjectProp(module.defs, oldName);
 
-      module.rtobj[newName] = module.rtobj[oldName];
-      delete module.rtobj[oldName];
+      $.rtrec(module, newName, $.rtget(module, oldName));
+      $.rtrec(module, oldName, $.delmark);
 
       let res = [];
 
@@ -323,7 +358,7 @@ opHandlers ::= ({
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
 
-      $.doImport({recp, donor, name: name || null, alias: alias || null});
+      $.effectuateImport({recp, donor, name: name || null, alias: alias || null});
 
       $.saveObject(recp.importedNames);
       $.saveObjectAddCascade($.imports);
@@ -332,24 +367,12 @@ opHandlers ::= ({
    },
 
    removeUnusedImports: function ({module: moduleName}) {
-      function isUsed(module, name) {
-         name = '$.' + name;
-
-         for (let {src} of Object.values(module.defs)) {
-            if (src.includes(name)) {
-               return true;
-            }
-         }
-
-         return false;
-      }
-
       let module = $.moduleByName(moduleName);
 
       let unused = [];
 
       for (let imp of $.imports) {
-         if (imp.recp === module && !isUsed(module, $.importedAs(imp))) {
+         if (imp.recp === module && !$.isNameReferredTo(module, $.importedAs(imp))) {
             unused.push(imp);
          }
       }
@@ -367,6 +390,39 @@ opHandlers ::= ({
       $.opRet({
          importSection: unused.length > 0 ? $.dumpImportSection(module) : null,
          removedCount: unused.length
+      });
+   },
+
+   removeUnusedImportsInAllModules: function () {
+      let unused = [];
+      let recps = new Set;
+
+      for (let imp of $.imports) {
+         if (!$.isNameReferredTo(imp.recp, $.importedAs(imp))) {
+            unused.push(imp);
+            recps.add(imp.recp);
+         }
+      }
+
+      for (let imp of unused) {
+         $.deleteImportDontSave(imp);
+         $.deleteObject(imp);
+      }
+
+      if (unused.length > 0) {
+         for (let recp of recps) {
+            $.saveObject(recp.importedNames);
+         }
+         $.saveObject($.imports);
+      }
+
+      $.opRet({
+         removedCount: unused.length,
+         modifiedModules: Array.from(recps, module => ({
+            module: module.name,
+            importSection: $.dumpImportSection(module),
+            modifiedEntries: []
+         }))
       });
    },
 
@@ -472,6 +528,17 @@ opHandlers ::= ({
    }
 
 })
+isNameReferredTo ::= function (module, name) {
+   let re = new RegExp(`\\$\\.${name}\\b`);
+
+   for (let {src} of Object.values(module.defs)) {
+      if (re.test(src)) {
+         return true;
+      }
+   }
+
+   return false;
+}
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
@@ -485,104 +552,17 @@ moduleByName ::= function (name) {
    }
    return module;
 }
-toJsonRef ::= function (obj, objref) {
-   // Convert to JSON but use reference even for obj itself
-   if ($.isObject(obj)) {
-      obj = objref(obj);
-   }
-
-   return JSON.stringify(obj);
-}
-jsonPath ::= function (...things) {
-   let pieces = ['$'];
-   for (let thing of things) {
-      if (typeof thing === 'string') {
-         pieces.push('.' + thing);
-      }
-      else if (typeof thing === 'number') {
-         pieces.push(`[${thing}]`);
-      }
-      else {
-         throw new Error(`Invalid JSON path item: ${thing}`);
-      }
-   }
-
-   return pieces.join('');
-}
-objrefMustExist ::= function (obj) {
-   let oid = $.obj2id.get(obj);
-   if (oid == null) {
-      throw new Error(`Stumbled upon an unsaved object: ${obj}`);
-   }
-
-   return {
-      [$.metaRef]: oid
-   };
-}
-saveObject ::= function (obj) {
-   $.assert($.isObject(obj));
-
-   let oid = $.obj2id.get(obj);
-   let json = $.toJson(obj, $.objrefMustExist);
-
-   if (oid == null) {
-      oid = $.takeNextOid();
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
+effectuateImport ::= function (imp) {
+   if (imp.name === null) {
+      imp.recp.importedNames.add(imp.alias);
+      $.rtrec(imp.recp, imp.alias, imp.donor.rtobj);
    }
    else {
-      $.stmtUpdate.run({oid, val: json});
+      imp.recp.importedNames.add($.importedAs(imp));
+      $.rtrec(imp.recp, $.importedAs(imp), $.rtget(imp.donor, imp.name));
    }
-}
-stmtSetProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :oid
-`)
-setObjectProp ::= function (obj, prop, val) {
-   $.assert($.obj2id.has(obj));
 
-   let oid = $.obj2id.get(obj);
-   let rec = $.objrefRecorder();
-   let json = $.toJsonRef(val, rec.objref);
-
-   $.stmtSetProp.run({
-      oid,
-      path: $.jsonPath(prop),
-      propval: json
-   });
-
-   $.addRecordedObjects(rec);
-
-   obj[prop] = val;
-}
-stmtDeleteProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_remove(val, :path) WHERE id = :oid
-`)
-deleteObjectProp ::= function (obj, prop) {
-   $.assert($.obj2id.has(obj));
-
-   $.stmtDeleteProp.run({
-      oid: $.obj2id.get(obj),
-      path: $.jsonPath(prop),
-   });
-   delete obj[prop];   
-}
-deleteArrayItem ::= function (ar, i) {
-   $.assert($.obj2id.has(ar));
-
-   $.stmtDeleteProp.run({
-      oid: $.obj2id.get(ar),
-      path: $.jsonPath(i),
-   });
-   ar.splice(i, 1);
-}
-stmtDelete ::= $_.db.prepare(`
-   DELETE FROM obj WHERE id = :oid
-`)
-deleteObject ::= function (obj) {
-   $.assert($.obj2id.has(obj));
-
-   $.stmtDelete.run({oid: $.obj2id.get(obj)});
-   $.obj2id.delete(obj);
+   $.imports.add(imp);
 }
 serialize ::= function (obj) {
    const inds = '   ';
@@ -709,8 +689,8 @@ renameImport ::= function (imp, newAlias) {
    return $.renameRefsIn(recp, [oldName, newName]);
 }
 renameImportedName ::= function (recp, oldName, newName) {
-   recp.rtobj[newName] = recp.rtobj[oldName];
-   delete recp.rtobj[oldName];
+   $.rtrec(recp, newName, $.rtget(recp, oldName));
+   $.rtrec(recp, oldName, $.delmark);
 
    recp.importedNames.delete(oldName);
    recp.importedNames.add(newName);
@@ -719,15 +699,9 @@ renameImportedName ::= function (recp, oldName, newName) {
 deleteImportDontSave ::= function (imp) {
    let {recp} = imp;
 
-   delete recp.rtobj[$.importedAs(imp)];
+   $.rtrec(recp, $.importedAs(imp), $.delmark);
    recp.importedNames.delete($.importedAs(imp));
    $.imports.delete(imp);
-}
-updateImportForEntryRename ::= function (imp, newName) {
-   if (imp.alias === null) {
-      $.renameImportedName(imp.recp, imp.name, newName);
-   }
-   $.setObjectProp(imp, 'name', newName);
 }
 renameRefsIn ::= function (module, renameMap) {
    function escape(ref) {
@@ -741,13 +715,13 @@ renameRefsIn ::= function (module, renameMap) {
       renameMap = new Map(renameMap);
    }
 
-   let alts = Array.from(renameMap.keys(), escape).join('|');
+   let alts = Array.from(renameMap.keys(), escape);
 
-   if (alts === '') {
+   if (alts.length === 0) {
       return [];
    }
 
-   let re = new RegExp(`(?<=\\$\\.)${alts}`, 'g');
+   let re = new RegExp(`(?<=\\$\\.)${alts.join('|')}\\b`, 'g');
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
@@ -766,22 +740,27 @@ renameRefsIn ::= function (module, renameMap) {
          src: newCode
       });
 
-      module.rtobj[entry] = newVal;
-      $.propagateValueToRecipients(module, entry);
+      $.rtrec(module, entry, newVal);
+      $.propagateValueToRecipients(module, entry, newVal);
 
       modifiedEntries.push([entry, newCode]);
    }
 
    return modifiedEntries;
 }
-propagateValueToRecipients ::= function (module, name) {
-   let val = module.rtobj[name];
+propagateValueToRecipients ::= function (module, name, val) {
    for (let imp of $.importsOf(module, name)) {
-      imp.recp.rtobj[$.importedAs(imp)] = val;
+      $.rtrec(imp.recp, $.importedAs(imp), val);
    }
 }
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
+}
+updateImportForEntryRename ::= function (imp, newName) {
+   if (imp.alias === null) {
+      $.renameImportedName(imp.recp, imp.name, newName);
+   }
+   $.setObjectProp(imp, 'name', newName);
 }
 modifyRecipientsForRename ::= function (module, oldName, newName) {
    let referrers = $.referrerModules(module, oldName);
@@ -824,7 +803,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
          throw new Error(`Anchor entry is null but the destination module is not empty`);
       }
    }
-   else if (!$.hasOwnProperty(destModule.defs, anchor)) {
+   else if (typeof anchor === 'string' && !$.hasOwnProperty(destModule.defs, anchor)) {
       throw new Error(`Anchor entry "${anchor}" does not exist in "${destModuleName}"`);
    }
 
@@ -858,7 +837,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    // Stage 2. Take out srcModule[entry] definition
    let defn = srcModule.defs[entry];
    $.deleteObjectProp(srcModule.defs, entry);
-   delete srcModule.rtobj[entry];
+   $.rtrec(srcModule, entry, $.delmark);
 
    srcModule.entries.splice(srcModule.entries.indexOf(entry), 1);
    $.saveObject(srcModule.entries);
@@ -889,7 +868,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    }
 
    let newVal = $.moduleEval(destModule, newCode);
-   destModule.rtobj[entry] = newVal;
+   $.rtrec(destModule, entry, newVal);
    if (newCode !== defn.src) {
       $.deleteObject(defn);
       defn = {
@@ -904,6 +883,12 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    if (anchor === null) {
       iAnchor = 0;
    }
+   else if (anchor === false) {
+      iAnchor = 0;
+   }
+   else if (anchor === true) {
+      iAnchor = destModule.entries.length;
+   }
    else {
       iAnchor = destModule.entries.indexOf(anchor);
       iAnchor = before ? iAnchor : iAnchor + 1;
@@ -914,7 +899,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    // Stage 5. Add imports
    for (let imp of [...fwd.importsToAdd, ...bwd.importsToAdd]) {
-      $.doImport(imp);
+      $.effectuateImport(imp);
       $.saveObject(imp.recp.importedNames);
    }
 
@@ -953,39 +938,85 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
       }
    }
 
-   function originOf(refModule, refName) {
-      if (refModule !== null) {
-         let {module, name: mustBeNull} = $.whereNameCame(srcModule, refModule);
-         if (!module || mustBeNull !== null || !$.hasOwnProperty(module.defs, refName)) {
-            return {};
-         }
-         return {module, name: refName};
+   function originOf(ref) {
+      let pref = ref.split('.');
+      let refModule, refName;
+
+      if (pref.length === 1) {
+         refModule = null;
+         [refName] = pref;
       }
       else {
-         return $.whereNameCame(srcModule, refName);
+         [refModule, refName] = pref;
       }
-   }
 
-   function splitRef(ref) {
-      let pref = ref.split('.');
-      if (pref.length === 1) {
-         pref.unshift(null);
+      if (refModule !== null) {
+         let {module, name} = $.whereNameCame(srcModule, refModule);
+         if (module == null) {
+            return {
+               found: false
+            };
+         }
+         if (name !== null) {
+            // ref is 'D.importedEntry.property'
+            return {
+               found: true,
+               module,
+               name,
+               ref: refModule,
+               refName: refModule
+            }
+         }
+         if (!$.hasOwnProperty(module.defs, refName)) {
+            return {
+               found: false
+            };
+         }
+         
+         return {
+            found: true,
+            module,
+            name: refName,
+            ref,
+            refName
+         };
       }
-      return pref;
+      else {
+         let {module, name} = $.whereNameCame(srcModule, refName);
+         if (module == null) {
+            return {
+               found: false
+            };
+         }
+         else {
+            return {
+               found: true,
+               module,
+               name,
+               ref,
+               refName
+            }
+         }
+      }
    }
 
    for (let ref of refs) {
-      let [refModule, refName] = splitRef(ref);
-      let {module: oModule, name: oEntry} = originOf(refModule, refName);
+      let {
+         found,
+         module: oModule,
+         name: oEntry,
+         ref: xref,
+         refName
+      } = originOf(ref);
 
-      if (!oEntry) {
+      if (!found) {
          danglingRefs.push(ref);
          continue;
       }
 
       if (oModule === destModule) {
          // The reference "comes home"
-         rename(ref, oEntry);
+         rename(xref, oEntry);
          continue;
       }
 
@@ -993,13 +1024,13 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
       let {eimp, simp} = $.entryReferableIn(oModule, oEntry, destModule);
 
       if (eimp) {
-         rename(ref, $.importedAs(eimp));
+         rename(xref, $.importedAs(eimp));
          continue;
       }
 
       // If not imported directly then the oModule may have already been star-imported
       if (simp) {
-         rename(ref, $.joindot(simp.alias, oEntry));
+         rename(xref, $.joindot(simp.alias, oEntry));
          continue;
       }
 
@@ -1013,7 +1044,7 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
          });
       }
       else {
-         offendingRefs.push(ref);
+         offendingRefs.push(xref);
       }
    }
 
@@ -1160,9 +1191,6 @@ anyDefRefersTo ::= function (module, ref, except=null) {
 
    return false;
 }
-doesDefnUseRef ::= function (module, entry, ref) {
-   return module.defs[entry].src.includes('$.' + ref);
-}
 deleteEntry ::= function (module, name, cascade) {
    if (!$.hasOwnProperty(module.defs, name)) {
       throw new Error(`Entry named "${name}" does not exist`);
@@ -1187,7 +1215,7 @@ deleteEntry ::= function (module, name, cascade) {
    $.deleteArrayItem(module.entries, module.entries.indexOf(name));
    $.deleteObject(module.defs[name]);
    $.deleteObjectProp(module.defs, name);
-   delete module.rtobj[name];   
+   $.rtrec(module, name, $.delmark);
 
    return true;
 }

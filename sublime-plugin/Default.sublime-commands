@@ -40,6 +40,10 @@
         "command": "poli_remove_unused_imports"
     },
     {
+        "caption": "Poli: Remove unused imports in all modules",
+        "command": "poli_remove_unused_imports_in_all_modules"
+    },
+    {
         "caption": "Poli: Rename import",
         "command": "poli_rename_import"
     },

@@ -282,7 +282,19 @@ doImport ::= function (imp) {
    else {
       $.validateImport(imp);
    }
-   $.effectuateImport(imp);
+
+   if (imp.name === null) {
+      imp.recp.importedNames.add(imp.alias);
+      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
+   }
+   else {
+      let importedAs = imp.alias || imp.name;
+
+      imp.recp.importedNames.add(importedAs);
+      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
+   }
+
+   $.imports.add(imp);
 }
 validateImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
@@ -318,20 +330,6 @@ validateStarImport ::= function ({recp, donor, alias}) {
          `Module "${recp.name}": the name "${alias}" imported from multiple modules`
       );
    }
-}
-effectuateImport ::= function (imp) {
-   if (imp.name === null) {
-      imp.recp.importedNames.add(imp.alias);
-      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
-   }
-   else {
-      let importedAs = imp.alias || imp.name;
-
-      imp.recp.importedNames.add(importedAs);
-      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
-   }
-
-   $.imports.add(imp);
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);

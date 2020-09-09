@@ -147,6 +147,9 @@ class Communicator:
             'module': module
         })
 
+    def remove_unused_imports_in_all_modules(self):
+        return self._send_op('removeUnusedImportsInAllModules', {})
+
     def rename_import(self, module, imported_as, new_alias):
         return self._send_op('renameImport', {
             'module': module,

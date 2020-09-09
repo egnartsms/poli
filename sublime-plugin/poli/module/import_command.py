@@ -7,10 +7,12 @@ from poli.module.command import ModuleTextCommand
 from poli.sublime.input import ChainableInputHandler
 from poli.sublime.input import chain_input_handlers
 from poli.sublime.input import run_command_thru_palette
+from poli.shared.command import WindowCommand
 
 
 __all__ = [
-    'PoliImport', 'PoliRemoveUnusedImports', 'PoliRenameImport', 'PoliRenameThisImport'
+    'PoliImport', 'PoliRemoveUnusedImports', 'PoliRenameImport', 'PoliRenameThisImport',
+    'PoliRemoveUnusedImportsInAllModules'
 ]
 
 
@@ -79,21 +81,6 @@ class PoliImport(ModuleTextCommand):
             super().__init__(view, chain_tail, entry, disallowed_names)
 
 
-class PoliRemoveUnusedImports(ModuleTextCommand):
-    def run(self, edit):
-        res = comm.remove_unused_imports(op.poli_module_name(self.view))
-
-        new_import_section = res['importSection']
-        removed_count = res['removedCount']
-
-        if removed_count > 0:
-            op.replace_import_section(self.view, edit, new_import_section)
-            op.save_module(self.view)
-            sublime.status_message("Removed {} unused imports".format(removed_count))
-        else:
-            sublime.status_message("There are no unused imports in this module")
-
-
 class PoliRenameImport(ModuleTextCommand):
     def run(self, edit, imported_as, new_alias):
         data = comm.rename_import(
@@ -136,3 +123,32 @@ class PoliRenameThisImport(ModuleTextCommand):
         run_command_thru_palette(self.view.window(), 'poli_rename_import', {
             'imported_as': rec.imported_as
         })
+
+
+class PoliRemoveUnusedImports(ModuleTextCommand):
+    def run(self, edit):
+        res = comm.remove_unused_imports(op.poli_module_name(self.view))
+
+        new_import_section = res['importSection']
+        removed_count = res['removedCount']
+
+        if removed_count > 0:
+            op.replace_import_section(self.view, edit, new_import_section)
+            op.save_module(self.view)
+            sublime.status_message("Removed {} unused imports".format(removed_count))
+        else:
+            sublime.status_message("There are no unused imports in this module")
+
+
+class PoliRemoveUnusedImportsInAllModules(WindowCommand):
+    def run(self):
+        res = comm.remove_unused_imports_in_all_modules()
+
+        modified_modules = res['modifiedModules']
+        removed_count = res['removedCount']
+        
+        if removed_count > 0:
+            op.modify_and_save_modules(self.window, modified_modules)
+            sublime.status_message("Removed {} unused imports".format(removed_count))
+        else:
+            sublime.status_message("There are no unused imports in any module")
