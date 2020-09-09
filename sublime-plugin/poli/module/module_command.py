@@ -1,13 +1,15 @@
 import re
-import sublime_plugin
+import os
 import sublime
+import sublime_plugin
 
 from poli.comm import comm
-from poli.shared.command import ApplicationCommand
 from poli.module import operation as op
+from poli.module.command import ModuleTextCommand
+from poli.shared.command import ApplicationCommand
 
 
-__all__ = ['PoliAddNewModule']
+__all__ = ['PoliAddNewModule', 'PoliRenameModule']
 
 
 class PoliAddNewModule(ApplicationCommand):
@@ -20,6 +22,18 @@ class PoliAddNewModule(ApplicationCommand):
 
         comm.add_module(module_name)
         sublime.active_window().open_file(op.poli_file_name(module_name))
+
+    def input(self, args):
+        return ModuleNameInputHandler(comm.get_modules())
+
+
+class PoliRenameModule(ModuleTextCommand):
+    def run(self, edit, module_name):
+        res = comm.rename_module(op.poli_module_name(self.view), module_name)
+        new_file_name = op.poli_file_name(module_name)
+        os.rename(self.view.file_name(), new_file_name)
+        self.view.retarget(new_file_name)
+        op.replace_import_section_in_modules(self.view.window(), res)
 
     def input(self, args):
         return ModuleNameInputHandler(comm.get_modules())
