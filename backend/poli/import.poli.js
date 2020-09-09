@@ -1,6 +1,7 @@
-aux
-   beingMoved as bm
+helper
+   anotherPartner
+   partner
 -----
-referringEntry ::= () => {
-    return $.bm();
+beingMoved ::= function () {
+    return $.partner + 'x' + $.anotherPartner;
 }

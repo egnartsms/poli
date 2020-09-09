@@ -171,5 +171,11 @@ class Communicator:
             'module': module
         })
 
+    def rename_module(self, module, new_name):
+        return self._send_op('renameModule', {
+            'module': module,
+            'newName': new_name
+        })
+
 
 comm = Communicator()

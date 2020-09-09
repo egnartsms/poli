@@ -422,6 +422,27 @@ opHandlers ::= ({
       $.opRet();
    },
 
+   renameModule: function ({module: moduleName, newName}) {
+      let module = $.moduleByName(moduleName);
+
+      if ($.hasOwnProperty($.modules, newName)) {
+         throw new Error(`Module with the name "${moduleName}" already exists`);
+      }
+
+      $.setObjectProp($.modules, newName, module);
+      $.deleteObjectProp($.modules, moduleName);
+      $.setObjectProp(module, 'name', newName);
+
+      let affected = new Set;
+      for (let imp of $.imports) {
+         if (imp.donor === module) {
+            affected.add(imp.recp);
+         }
+      }
+
+      $.opRet($.dumpImportSections(affected));
+   },
+
    findReferences: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       let {module: originModule, name: originName} = $.whereNameCame(module, name);

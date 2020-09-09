@@ -48,5 +48,9 @@
     {
         "caption": "Poli: Add new module",
         "command": "poli_add_new_module"
+    },
+    {
+        "caption": "Poli: Rename module",
+        "command": "poli_rename_module"
     }
 ]

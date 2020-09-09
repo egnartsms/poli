@@ -122,12 +122,15 @@ class PoliMove(WindowCommand):
 
         def process_destination(view, edit):
             with regedit.region_editing_suppressed(view):
-                entry_obj = op.module_contents(view).entry_by_name(anchor)
-
-                if before:
-                    insert_at = entry_obj.reg_entry_nl.begin()
+                if anchor is None:
+                    insert_at = op.module_body_start(view)
                 else:
-                    insert_at = entry_obj.reg_entry_nl.end()
+                    entry_obj = op.module_contents(view).entry_by_name(anchor)
+
+                    if before:
+                        insert_at = entry_obj.reg_entry_nl.begin()
+                    else:
+                        insert_at = entry_obj.reg_entry_nl.end()
 
                 view.insert(
                     edit, insert_at, '{} ::= {}\n'.format(entry, res['newCode'])
