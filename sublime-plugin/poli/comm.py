@@ -157,6 +157,13 @@ class Communicator:
             'newAlias': new_alias
         })
 
+    def delete_import(self, module, imported_as, force):
+        return self._send_op('deleteImport', {
+            'module': module,
+            'importedAs': imported_as,
+            'force': force
+        })
+
     def get_completions(self, module, prefix):
         return self._send_op('getCompletions', {
             'module': module,
@@ -183,6 +190,13 @@ class Communicator:
     def refresh_module(self, module):
         return self._send_op('refreshModule', {
             'module': module
+        })
+
+    def replace_usages(self, module, name, new_name):
+        return self._send_op('replaceUsages', {
+            'module': module,
+            'name': name,
+            'newName': new_name
         })
 
 

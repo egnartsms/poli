@@ -147,6 +147,13 @@
         ]
     },
     {
+        "keys": ["ctrl+shift+r"],
+        "command": "poli_goto_entry",
+        "context": [
+            {"key": "poli_kind", "operand": "module/js"}
+        ]
+    },
+    {
         "keys": ["`"],
         "command": "poli_goto_warning",
         "args": {"forward": true},

@@ -11,7 +11,8 @@ from poli.shared.command import WindowCommand
 
 
 __all__ = [
-    'PoliImport', 'PoliRemoveUnusedImports', 'PoliRenameImport', 'PoliRenameThisImport',
+    'PoliImport', 'PoliRenameImport', 'PoliRenameThisImport', 'PoliDeleteImport',
+    'PoliDeleteThisImport', 'PoliRemoveUnusedImports',
     'PoliRemoveUnusedImportsInAllModules'
 ]
 
@@ -122,6 +123,36 @@ class PoliRenameThisImport(ModuleTextCommand):
 
         run_command_thru_palette(self.view.window(), 'poli_rename_import', {
             'imported_as': rec.imported_as
+        })
+
+
+class PoliDeleteImport(ModuleTextCommand):
+    def run(self, edit, imported_as, force):
+        res = comm.delete_import(op.poli_module_name(self.view), imported_as, force)
+        if not res['deleted']:
+            assert not force  # otherwise it would have deleted the import
+
+            delete_anyway = sublime.ok_cancel_dialog(
+                "The import \"{}\" is used. Force delete?".format(imported_as),
+                "Delete"
+            )
+            if not delete_anyway:
+                return
+
+            res = comm.delete_import(op.poli_module_name(self.view), imported_as, True)
+        
+        op.replace_import_section(self.view, edit, res['importSection'])
+        op.save_module(self.view)
+
+
+class PoliDeleteThisImport(ModuleTextCommand):
+    def run(self, edit, force):
+        reg = op.selected_region(self.view)
+        rec = op.parse_import_section(self.view).record_at_or_stop(reg)
+
+        self.view.run_command('poli_delete_import', {
+            'imported_as': rec.imported_as,
+            'force': force
         })
 
 

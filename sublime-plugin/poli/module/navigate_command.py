@@ -1,4 +1,5 @@
 import sublime
+import sublime_plugin
 
 from Default.symbol import navigate_to_symbol
 from poli import config
@@ -7,7 +8,7 @@ from poli.common.misc import index_where
 from poli.common.misc import last_index_where
 from poli.module import operation as op
 from poli.module.command import ModuleTextCommand
-from poli.shared.command import TextCommand
+from poli.shared.command import WindowCommand
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
@@ -15,7 +16,7 @@ from poli.sublime.view_dict import on_all_views_load
 from poli.sublime.view_dict import on_view_load
 
 
-__all__ = ['PoliGotoDefinition', 'PoliFindReferences', 'PoliGotoWarning']
+__all__ = ['PoliGotoDefinition', 'PoliFindReferences', 'PoliGotoWarning', 'PoliGotoEntry']
 
 
 class PoliGotoDefinition(ModuleTextCommand):
@@ -25,23 +26,7 @@ class PoliGotoDefinition(ModuleTextCommand):
         if op.import_section_region(self.view).contains(reg):
             impsec = op.parse_import_section(self.view)
             rec = impsec.record_at_or_stop(reg)
-            other_view = self.view.window().open_file(op.poli_file_name(rec.module_name))
-
-            def on_loaded():
-                if rec.name is None:
-                    return
-
-                reg = op.find_name_region(other_view, rec.name)
-                if reg is None:
-                    self.view.window().focus_view(self.view)
-                    sublime.status_message(
-                        "Not found \"{}\" in module \"{}\"".format(name, rec.module_name)
-                    )
-                    return
-
-                set_selection(other_view, to=reg.begin(), show=True)
-
-            on_view_load(other_view, on_loaded)
+            op.goto_module_entry(self.view.window(), rec.module_name, rec.name)
         else:
             name = op.word_at(self.view, reg)
             if name is None:
@@ -95,7 +80,7 @@ class PoliFindReferences(ModuleTextCommand):
         on_all_views_load(all_views, proceed)
 
 
-class PoliGotoWarning(TextCommand):
+class PoliGotoWarning(ModuleTextCommand):
     def run(self, edit, forward):
         reg = op.selected_region(self.view)
         warnings = op.get_warnings(self.view)
@@ -108,3 +93,23 @@ class PoliGotoWarning(TextCommand):
             sublime.status_message("No warning found")
         else:
             jump(self.view, warnings[idx].begin())
+
+
+class PoliGotoEntry(WindowCommand):
+    def run(self):
+        data = comm.get_entries()
+        
+        def proceed(idx):
+            if idx == -1:
+                return
+
+            module, entry = data[idx]
+            op.goto_module_entry(self.window, module, entry)
+
+        self.window.show_quick_panel(
+            [entry for module, entry in data],
+            proceed
+        )
+
+    def input(self, args):
+        return EntryInputHandler()

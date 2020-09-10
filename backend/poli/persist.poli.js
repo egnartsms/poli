@@ -1,31 +1,10 @@
 bootstrap
    addRecordedObjects
    isObject
-   metaRef
    obj2id
    objrefRecorder
-   stmtInsert
-   stmtUpdate
-   takeNextOid
-   toJson
-run
-   assert
 -----
-saveObject ::= function (obj) {
-   $.assert($.isObject(obj));
-
-   let oid = $.obj2id.get(obj);
-   let json = $.toJson(obj, $.objrefMustExist);
-
-   if (oid == null) {
-      oid = $.takeNextOid();
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
-   }
-   else {
-      $.stmtUpdate.run({oid, val: json});
-   }
-}
+assert ::= $_.require('assert').strict
 setObjectProp ::= function (obj, prop, val) {
    $.assert($.obj2id.has(obj));
 
@@ -99,14 +78,4 @@ jsonPath ::= function (...things) {
    }
 
    return pieces.join('');
-}
-objrefMustExist ::= function (obj) {
-   let oid = $.obj2id.get(obj);
-   if (oid == null) {
-      throw new Error(`Stumbled upon an unsaved object: ${obj}`);
-   }
-
-   return {
-      [$.metaRef]: oid
-   };
 }

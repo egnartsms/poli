@@ -20,7 +20,7 @@ class TextCommand(sublime_plugin.TextCommand, metaclass=WrappingMethodClass):
         except StopCommand:
             pass
         except BackendError as e:
-            sublime.status_message("BE error: " + e.message)
+            sublime.error_message(e.message)
 
 
 class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass):
@@ -31,7 +31,7 @@ class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass)
         except StopCommand:
             pass
         except BackendError as e:
-            sublime.status_message("BE error: " + e.message)
+            sublime.error_message(e.message)
 
 
 class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMethodClass):
@@ -42,7 +42,7 @@ class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMe
         except StopCommand:
             pass
         except BackendError as e:
-            sublime.status_message("BE error: " + e.message)
+            sublime.error_message(e.message)
 
 
 class InterruptibleTextCommand(sublime_plugin.TextCommand):

@@ -1,18 +1,41 @@
 bootstrap
+   hasOwnProperty
    imports
    makeModule
    moduleEval
    modules
-   saveObjectAddCascade
+   saveObject
 img2fs
    flushModule
    genModuleImportSection
+import
+   deleteImport
+   importFor
+   importFromTo
+   importedAs
+   importsOf
+   isNameUsedForImport
+   recipientsOf
+   referabilityImports
+   starImportFromTo
 persist
    deleteArrayItem
    deleteObject
    deleteObjectProp
-   saveObject
    setObjectProp
+reference
+   anyDefRefersTo
+   extractRefs
+   isNameFree
+   isNameReferredTo
+   referrerModules
+   whereNameCame
+rt-rec
+   applyRtDelta
+   delmark
+   discardRtDelta
+   rtget
+   rtset
 -----
 assert ::= $_.require('assert').strict
 WebSocket ::= $_.require('ws')
@@ -71,42 +94,6 @@ handleOperation ::= function (op) {
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
-rtrec ::= function (module, prop, val) {
-   let delta = $.rtdelta.get(module);
-   if (!delta) {
-      delta = new Object(null);
-      $.rtdelta.set(module, delta);
-   }
-
-   delta[prop] = val;
-}
-rtdelta ::= new Map
-delmark ::= Object.create(null)
-rtget ::= function (module, name) {
-   let delta = $.rtdelta.get(module);
-   if (!delta || !(name in delta)) {
-      return module.rtobj[name];
-   }
-
-   let val = delta[name];
-   return val === $.delmark ? undefined : val;
-}
-applyRtDelta ::= function () {
-   for (let [module, delta] of $.rtdelta) {
-      for (let [prop, val] of Object.entries(delta)) {
-         if (val === $.delmark) {
-            delete module.rtobj[prop];
-         }
-         else {
-            module.rtobj[prop] = val;
-         }
-      }
-   }
-   $.rtdelta.clear();
-}
-discardRtDelta ::= function () {
-   $.rtdelta.clear();
-}
 send ::= function (msg) {
    $.ws.send(JSON.stringify(msg));
 }
@@ -132,8 +119,6 @@ opHandlers ::= ({
       let res = [];
 
       for (let module of Object.values($.modules)) {
-         res.push([module.name, null]);
-
          for (let entry of module.entries) {
             res.push([module.name, entry]);
          }
@@ -170,7 +155,7 @@ opHandlers ::= ({
             throw new Error(`Anchor entry not provided`);
          }
 
-         $.rtrec(module, name, $.moduleEval(module, defn));
+         $.rtset(module, name, $.moduleEval(module, defn));
          module.entries.push(name);
       }
       else {
@@ -179,7 +164,7 @@ opHandlers ::= ({
             throw new Error(`Not found an entry "${anchor}"`);
          }
 
-         $.rtrec(module, name, $.moduleEval(module, defn));
+         $.rtset(module, name, $.moduleEval(module, defn));
          module.entries.splice(before ? idx : idx + 1, 0, name);
       }
 
@@ -207,7 +192,7 @@ opHandlers ::= ({
          src: newDefn
       });
 
-      $.rtrec(module, name, newVal);
+      $.rtset(module, name, newVal);
       $.propagateValueToRecipients(module, name, newVal);
 
       $.opRet();
@@ -247,8 +232,8 @@ opHandlers ::= ({
       $.setObjectProp(module.defs, newName, module.defs[oldName]);
       $.deleteObjectProp(module.defs, oldName);
 
-      $.rtrec(module, newName, $.rtget(module, oldName));
-      $.rtrec(module, oldName, $.delmark);
+      $.rtset(module, newName, $.rtget(module, oldName));
+      $.rtset(module, oldName, $.delmark);
 
       let res = [];
 
@@ -361,7 +346,7 @@ opHandlers ::= ({
       $.effectuateImport({recp, donor, name: name || null, alias: alias || null});
 
       $.saveObject(recp.importedNames);
-      $.saveObjectAddCascade($.imports);
+      $.saveObject($.imports);
 
       $.opRet($.dumpImportSection(recp));
    },
@@ -378,8 +363,7 @@ opHandlers ::= ({
       }
 
       for (let imp of unused) {
-         $.deleteImportDontSave(imp);
-         $.deleteObject(imp);
+         $.deleteImport(imp);
       }
 
       if (unused.length > 0) {
@@ -405,8 +389,7 @@ opHandlers ::= ({
       }
 
       for (let imp of unused) {
-         $.deleteImportDontSave(imp);
-         $.deleteObject(imp);
+         $.deleteImport(imp);
       }
 
       if (unused.length > 0) {
@@ -436,6 +419,32 @@ opHandlers ::= ({
       $.opRet({
          modifiedEntries: modifiedEntries || [],
          importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
+      });
+   },
+
+   deleteImport: function ({module: moduleName, importedAs, force}) {
+      let module = $.moduleByName(moduleName);
+      let imp = $.importFor(module, importedAs);
+      if (!imp) {
+         throw new Error(`Not found imported entry: "${importedAs}"`);
+      }
+
+      let isUsed = $.isNameReferredTo(module, importedAs);
+
+      if (isUsed && !force) {
+         $.opRet({
+            deleted: false
+         });
+         return;
+      }
+
+      $.deleteImport(imp);
+      $.saveObject(module.importedNames);
+      $.saveObject($.imports);
+
+      $.opRet({
+         deleted: true,
+         importSection: $.dumpImportSection(module)
       });
    },
 
@@ -525,26 +534,26 @@ opHandlers ::= ({
       }
 
       $.opRet(res);
+   },
+
+   replaceUsages: function ({module: moduleName, name, newName}) {
+      let module = $.moduleByName(moduleName);
+
+      if ($.isNameFree(module, name)) {
+         throw new Error(`Unknown name "${name}" in module ${module.name}`);
+      }
+      if ($.isNameFree(module, newName)) {
+         throw new Error(`Unknown name "${newName}" in module ${module.name}`);
+      }
+
+      let modifiedEntries = $.renameRefsIn(module, [name, newName]);
+      return $.opRet({
+         importSection: null,
+         modifiedEntries
+      });
    }
 
 })
-isNameReferredTo ::= function (module, name) {
-   let re = new RegExp(`\\$\\.${name}\\b`);
-
-   for (let {src} of Object.values(module.defs)) {
-      if (re.test(src)) {
-         return true;
-      }
-   }
-
-   return false;
-}
-hasOwnProperty ::= function (obj, prop) {
-   return Object.prototype.hasOwnProperty.call(obj, prop);
-}
-importedAs ::= function (imp) {
-   return imp.alias || imp.name;
-}
 moduleByName ::= function (name) {
    let module = $.modules[name];
    if (!module) {
@@ -553,13 +562,15 @@ moduleByName ::= function (name) {
    return module;
 }
 effectuateImport ::= function (imp) {
+   $.assert(!$.imports.has(imp));
+
    if (imp.name === null) {
       imp.recp.importedNames.add(imp.alias);
-      $.rtrec(imp.recp, imp.alias, imp.donor.rtobj);
+      $.rtset(imp.recp, imp.alias, imp.donor.rtobj);
    }
    else {
       imp.recp.importedNames.add($.importedAs(imp));
-      $.rtrec(imp.recp, $.importedAs(imp), $.rtget(imp.donor, imp.name));
+      $.rtset(imp.recp, $.importedAs(imp), $.rtget(imp.donor, imp.name));
    }
 
    $.imports.add(imp);
@@ -689,19 +700,12 @@ renameImport ::= function (imp, newAlias) {
    return $.renameRefsIn(recp, [oldName, newName]);
 }
 renameImportedName ::= function (recp, oldName, newName) {
-   $.rtrec(recp, newName, $.rtget(recp, oldName));
-   $.rtrec(recp, oldName, $.delmark);
+   $.rtset(recp, newName, $.rtget(recp, oldName));
+   $.rtset(recp, oldName, $.delmark);
 
    recp.importedNames.delete(oldName);
    recp.importedNames.add(newName);
    $.saveObject(recp.importedNames);
-}
-deleteImportDontSave ::= function (imp) {
-   let {recp} = imp;
-
-   $.rtrec(recp, $.importedAs(imp), $.delmark);
-   recp.importedNames.delete($.importedAs(imp));
-   $.imports.delete(imp);
 }
 renameRefsIn ::= function (module, renameMap) {
    function escape(ref) {
@@ -740,7 +744,7 @@ renameRefsIn ::= function (module, renameMap) {
          src: newCode
       });
 
-      $.rtrec(module, entry, newVal);
+      $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry, newVal);
 
       modifiedEntries.push([entry, newCode]);
@@ -750,7 +754,7 @@ renameRefsIn ::= function (module, renameMap) {
 }
 propagateValueToRecipients ::= function (module, name, val) {
    for (let imp of $.importsOf(module, name)) {
-      $.rtrec(imp.recp, $.importedAs(imp), val);
+      $.rtset(imp.recp, $.importedAs(imp), val);
    }
 }
 joindot ::= function (starName, entryName) {
@@ -768,7 +772,7 @@ modifyRecipientsForRename ::= function (module, oldName, newName) {
 
    for (let referrer of referrers) {
       let rnmap = new Map;
-      let {eimp, simp} = $.entryReferableIn(module, oldName, referrer);
+      let {eimp, simp} = $.referabilityImports(module, oldName, referrer);
 
       if (eimp) {
          $.updateImportForEntryRename(eimp, newName);
@@ -829,15 +833,14 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    // Stage 1. Delete imports
    for (let imp of bwd.importsToRemove) {
-      $.deleteImportDontSave(imp);
-      $.deleteObject(imp);
+      $.deleteImport(imp);
       $.saveObject(imp.recp.importedNames);
    }
 
    // Stage 2. Take out srcModule[entry] definition
    let defn = srcModule.defs[entry];
    $.deleteObjectProp(srcModule.defs, entry);
-   $.rtrec(srcModule, entry, $.delmark);
+   $.rtset(srcModule, entry, $.delmark);
 
    srcModule.entries.splice(srcModule.entries.indexOf(entry), 1);
    $.saveObject(srcModule.entries);
@@ -868,7 +871,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    }
 
    let newVal = $.moduleEval(destModule, newCode);
-   $.rtrec(destModule, entry, newVal);
+   $.rtset(destModule, entry, newVal);
    if (newCode !== defn.src) {
       $.deleteObject(defn);
       defn = {
@@ -903,7 +906,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
       $.saveObject(imp.recp.importedNames);
    }
 
-   $.saveObjectAddCascade($.imports);
+   $.saveObject($.imports);
 
    let importSectionAffected = bwd.importSectionAffected;
    if (fwd.importsToAdd.length > 0) {
@@ -1021,7 +1024,7 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
       }
 
       // See whether the entry is already imported directly
-      let {eimp, simp} = $.entryReferableIn(oModule, oEntry, destModule);
+      let {eimp, simp} = $.referabilityImports(oModule, oEntry, destModule);
 
       if (eimp) {
          rename(xref, $.importedAs(eimp));
@@ -1055,16 +1058,6 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
       importsToAdd
    };
 }
-extractRefs ::= function (module, entry) {
-   let names = new Set();
-   let re = /\$\.([0-9a-zA-Z_]+(?:\.[0-9a-zA-Z_]+)?)/g;
-
-   for (let [, ref] of module.defs[entry].src.matchAll(re)) {
-      names.add(ref);
-   }
-
-   return names;
-}
 computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModule) {
    let referrers = $.referrerModules(srcModule, entry);
 
@@ -1078,7 +1071,7 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
    let importSectionAffected = new Set;
 
    for (let recp of referrers) {
-      let {eimp, simp} = $.entryReferableIn(srcModule, entry, recp);
+      let {eimp, simp} = $.referabilityImports(srcModule, entry, recp);
 
       if (eimp) {
          importsToRemove.push(eimp);
@@ -1109,7 +1102,7 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
 
    // Examine destModule
    if (destIsReferrerToo) {
-      let {eimp, simp} = $.entryReferableIn(srcModule, entry, destModule);
+      let {eimp, simp} = $.referabilityImports(srcModule, entry, destModule);
       let rnmap = [];
 
       if (eimp) {
@@ -1159,52 +1152,19 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
       importSectionAffected
    };
 }
-referrerModules ::= function (module, entry) {
-   let referrers = new Set;
-
-   for (let imp of $.importsOf(module, entry)) {
-      referrers.add(imp.recp);
-   }
-
-   for (let imp of $.starImportsOf(module)) {
-      referrers.add(imp.recp);
-   }
-
-   return referrers;
-}
-entryReferableIn ::= function (donor, entry, recp) {
-   return {
-      eimp: $.importFromTo(donor, entry, recp),
-      simp: $.starImportFromTo(donor, recp)
-   };
-}
-anyDefRefersTo ::= function (module, ref, except=null) {
-   for (let entry of module.entries) {
-      if (except && entry === except) {
-         continue;
-      }
-
-      if (module.defs[entry].src.includes('$.' + ref)) {
-         return true;
-      }
-   }
-
-   return false;
-}
 deleteEntry ::= function (module, name, cascade) {
    if (!$.hasOwnProperty(module.defs, name)) {
       throw new Error(`Entry named "${name}" does not exist`);
    }
 
-   if ($.isNameImported(module, name)) {
+   if ($.isNameUsedForImport(module, name)) {
       if (!cascade) {
          return false;
       }
 
       let recipients = $.recipientsOf(module, name);
       for (let imp of [...$.importsOf(module, name)]) {
-         $.deleteImportDontSave(imp);
-         $.deleteObject(imp);
+         $.deleteImport(imp);
       }
       for (let recp of recipients) {
          $.saveObject(recp.importedNames);
@@ -1215,66 +1175,7 @@ deleteEntry ::= function (module, name, cascade) {
    $.deleteArrayItem(module.entries, module.entries.indexOf(name));
    $.deleteObject(module.defs[name]);
    $.deleteObjectProp(module.defs, name);
-   $.rtrec(module, name, $.delmark);
+   $.rtset(module, name, $.delmark);
 
    return true;
-}
-importFor ::= function (module, name) {
-   for (let imp of $.imports) {
-      if (imp.recp === module && $.importedAs(imp) === name) {
-         return imp;
-      }
-   }
-   return null;
-}
-importsOf ::= function* (module, name) {
-   for (let imp of $.imports) {
-      if (imp.donor === module && imp.name === name) {
-         yield imp;
-      }
-   }
-}
-starImportsOf ::= function* (module) {
-   for (let imp of $.imports) {
-      if (imp.donor === module && imp.name === null) {
-         yield imp;
-      }
-   }
-}
-importFromTo ::= function (donor, name, recp) {
-   for (let imp of $.imports) {
-      if (imp.donor === donor && imp.recp === recp && imp.name === name) {
-         return imp;
-      }
-   }
-   return null;
-}
-starImportFromTo ::= function (donor, recp) {
-   return $.importFromTo(donor, null, recp);
-}
-isNameImported ::= function (module, name) {
-   let {done} = $.importsOf(module, name).next();
-   return !done;
-}
-isNameFree ::= function (module, name) {
-   return !($.hasOwnProperty(module.defs, name) || module.importedNames.has(name));
-}
-recipientsOf ::= function (module, name) {
-   let recps = new Set;
-   for (let imp of $.importsOf(module, name)) {
-      recps.add(imp.recp);
-   }
-   return Array.from(recps);
-}
-whereNameCame ::= function (module, name) {
-   if ($.hasOwnProperty(module.defs, name)) {
-      return {module, name};
-   }
-
-   if (module.importedNames.has(name)) {
-      let imp = $.importFor(module, name);
-      return {module: imp.donor, name: imp.name};
-   }
-
-   return {};
 }

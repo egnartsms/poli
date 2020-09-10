@@ -169,7 +169,16 @@ class PoliDelete(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        reg = op.selected_region(self.view)
+        if op.import_section_region(self.view).contains(reg):
+            self.view.run_command('poli_delete_this_import', {
+                'force': False
+            })
+            return
+
+        loc = op.module_contents(self.view).cursor_location_or_stop(
+            reg, require_fully_selected=True
+        )
         ok = comm.delete(op.poli_module_name(self.view), loc.entry.name())
         if not ok:
             sublime.status_message(
@@ -189,7 +198,16 @@ class PoliDeleteCascade(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        reg = op.selected_region(self.view)
+        if op.import_section_region(self.view).contains(reg):
+            self.view.run_command('poli_delete_this_import', {
+                'force': True
+            })
+            return
+
+        loc = op.module_contents(self.view).cursor_location_or_stop(
+            reg, require_fully_selected=True
+        )
         res = comm.delete_cascade(op.poli_module_name(self.view), loc.entry.name())
 
         with read_only_set_to(self.view, False):

@@ -13,9 +13,11 @@ from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
+from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
 from poli.sublime.view_dict import on_all_views_load
+from poli.sublime.view_dict import on_view_load
 
 
 KIND_MODULE = 'module/js'
@@ -427,7 +429,7 @@ def parse_import_section(view):
     )
     things.sort(key=lambda x: x.reg.begin())
 
-    result = []
+    records = []
     cur_module_name = None
     i = 0
 
@@ -449,8 +451,8 @@ def parse_import_section(view):
         else:
             alias = None
 
-        result.append(
-            ImportEntry(
+        records.append(
+            ImportRecord(
                 module_name=cur_module_name,
                 row=row,
                 name=none_if('*', view.substr(thing.reg)),
@@ -458,10 +460,10 @@ def parse_import_section(view):
             )
         )
 
-    return ImportSection(view, result)
+    return ImportSection(view, records)
 
 
-class ImportEntry:
+class ImportRecord:
     def __init__(self, module_name, row, name, alias):
         self.module_name = module_name
         self.row = row
@@ -534,3 +536,22 @@ def word_at(view, reg):
         return None
 
     return view.substr(regword)
+
+
+def goto_module_entry(window, module, entry):
+    old_view = window.active_view()
+    view = window.open_file(poli_file_name(module))
+
+    def on_loaded():
+        reg = find_name_region(view, entry)
+        if reg is None:
+            window.focus_view(old_view)
+            sublime.status_message(
+                "Not found \"{}\" in module \"{}\"".format(entry, module)
+            )
+            return
+
+        set_selection(view, to=reg.begin(), show=True)
+
+    if entry is not None:
+        on_view_load(view, on_loaded)

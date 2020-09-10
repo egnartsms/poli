@@ -34,7 +34,7 @@ makeImageByFs ::= function () {
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
    $.obj2id.set($.lobby, $_.LOBBY_OID);
-   $.saveObjectAddCascade($.lobby);
+   $.saveObject($.lobby);
 }
 parseAllModules ::= function () {
    let modulesInfo = [];
@@ -194,7 +194,7 @@ toJson ::= function (obj, objref) {
       return objref(val);
    });
 }
-saveObjectAddCascade ::= function (obj) {
+saveObject ::= function (obj) {
    $.assert($.isObject(obj));
 
    let rec = $.objrefRecorder();
@@ -299,13 +299,13 @@ doImport ::= function (imp) {
 validateImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
 
-   if (!(name in donor.defs)) {
+   if (!$.hasOwnProperty(donor.defs, name)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${name}" from "${donor.name}": ` +
          `no such definition`
       );
    }
-   if (importedAs in recp.defs) {
+   if ($.hasOwnProperty(recp.defs, importedAs)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${importedAs}" from the module ` +
          `"${donor.name}": the name collides with own definition`
@@ -319,7 +319,7 @@ validateImport ::= function ({recp, donor, name, alias}) {
    }
 }
 validateStarImport ::= function ({recp, donor, alias}) {
-   if (alias in recp.defs) {
+   if ($.hasOwnProperty(recp.defs, alias)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${donor.name}" as "${alias}": ` +
          `the name collides with own definition`
@@ -330,6 +330,9 @@ validateStarImport ::= function ({recp, donor, alias}) {
          `Module "${recp.name}": the name "${alias}" imported from multiple modules`
       );
    }
+}
+hasOwnProperty ::= function (obj, prop) {
+   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);

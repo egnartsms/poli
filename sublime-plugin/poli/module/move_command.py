@@ -8,7 +8,7 @@ from poli.comm import comm
 from poli.common.misc import exc_recorded
 from poli.module import operation as op
 from poli.module.command import ModuleTextCommand
-from poli.shared.command import WindowCommand
+from poli.shared.command import WindowCommand, StopCommand
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.input import ChainableInputHandler
@@ -66,33 +66,8 @@ class PoliMove(WindowCommand):
     def run(self, src_module_entry, dest_module, anchor, before=None):
         src_module, entry = src_module_entry
 
-        # Check that we're not attempting to move an entry which is under edit
-        src_view = self.window.find_open_file(op.poli_file_name(src_module))
-        if src_view is not None and regedit.is_active_in(src_view):
-            entry = op.module_contents(src_view).entry_by_name(entry)
-            if entry is None or entry.is_under_edit():
-                sublime.error_message("Source entry is under edit or not found")
-                return
-
-        # The destination entry should also not be under edit (except definition editing)
-        # Other kinds of editing might fool the Sublime parser (e.g. ongoing renaming)
-        dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
-        if dest_view is not None and \
-                anchor is not None and \
-                regedit.is_active_in(dest_view):
-            mcont = op.module_contents(dest_view)
-            if anchor is True:
-                entry = mcont.entries[-1]
-            elif anchor is False:
-                entry = mcont.entries[0]
-            else:
-                entry = mcont.entry_by_name(anchor)
-            
-            if (entry is None or
-                    entry.is_under_edit() and
-                    op.edit_cxt_for[dest_view].target != 'defn'):
-                sublime.error_message("Anchor entry is under edit or not found")
-                return
+        self._check_src_available(src_module, entry)
+        self._check_anchor_available(dest_module, anchor)
 
         res = comm.move(
             src_module=src_module,
@@ -134,16 +109,16 @@ class PoliMove(WindowCommand):
                 else:
                     mcont = op.module_contents(view)
                     if anchor is False:
-                        entry_obj = mcont.entries[0]
+                        insert_at = mcont.entries[0].reg_entry_nl.begin()
                     elif anchor is True:
-                        entry_obj = mcont.entries[-1]
+                        insert_at = mcont.entries[-1].reg_entry_nl.end()
                     else:
                         entry_obj = op.module_contents(view).entry_by_name(anchor)
 
-                    if before:
-                        insert_at = entry_obj.reg_entry_nl.begin()
-                    else:
-                        insert_at = entry_obj.reg_entry_nl.end()
+                        if before:
+                            insert_at = entry_obj.reg_entry_nl.begin()
+                        else:
+                            insert_at = entry_obj.reg_entry_nl.end()
 
                 view.insert(
                     edit, insert_at, '{} ::= {}\n'.format(entry, res['newCode'])
@@ -223,6 +198,37 @@ class PoliMove(WindowCommand):
             lambda: proceed(src_view, dest_view, other_views)
         )
 
+    def _check_src_available(self, src_module, entry):
+        """Check that we're not attempting to move an entry which is under edit"""
+        src_view = self.window.find_open_file(op.poli_file_name(src_module))
+        if src_view is not None and regedit.is_active_in(src_view):
+            entry_obj = op.module_contents(src_view).entry_by_name(entry)
+            if entry_obj is None or entry_obj.is_under_edit():
+                sublime.error_message("Source entry is under edit or not found")
+                raise StopCommand
+
+    def _check_anchor_available(self, dest_module, anchor):
+        """Check that the anchor entry is not under edit (except definition editing).
+        
+        Other kinds of editing might fool the Sublime parser (e.g. ongoing renaming)
+        """
+        dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
+        if dest_view is not None and anchor is not None and \
+                regedit.is_active_in(dest_view):
+            mcont = op.module_contents(dest_view)
+            if anchor is True:
+                entry_obj = mcont.entries[-1]
+            elif anchor is False:
+                entry_obj = mcont.entries[0]
+            else:
+                entry_obj = mcont.entry_by_name(anchor)
+            
+            if (entry_obj is None or
+                    entry_obj.is_under_edit() and
+                    op.edit_cxt_for[dest_view].target != 'defn'):
+                sublime.error_message("Anchor entry is under edit or not found")
+                raise StopCommand
+
     def input(self, args):
         return chain_input_handlers(None, args, [
             self.SrcModuleEntry,
@@ -236,7 +242,7 @@ class PoliMove(WindowCommand):
             super().__init__(view, chain_tail)
             data = comm.get_entries()
             self.items = [
-                ("{} ({})".format(entry or '*', module), [module, entry])
+                ("{} ({})".format(entry, module), [module, entry])
                 for module, entry in data
             ]
 
@@ -271,7 +277,8 @@ class PoliMove(WindowCommand):
             if src_module == dest_module:
                 self.items.remove(entry)
 
-            self.items[:0] = [(self.BOTTOM, True), (self.TOP, False)]
+            if self.items:
+                self.items[:0] = [(self.BOTTOM, True), (self.TOP, False)]
 
         def list_items(self):
             return self.items
@@ -281,7 +288,7 @@ class PoliMove(WindowCommand):
 
         def next_input(self, args):
             value = args['anchor']
-            if value is False or value is True:
+            if value in (False, True, None):
                 return None
             else:
                 return super().next_input(args)
