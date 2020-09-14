@@ -4,8 +4,27 @@ persist
    deleteObject
 rt-rec
    delmark
+   rtget
    rtset
+run
+   assert
 -----
+addImport ::= function (imp) {
+   $.assert(!$.imports.has(imp));
+
+   let {recp, donor, alias, name} = imp;
+
+   if (name === null) {
+      recp.importedNames.add(alias);
+      $.rtset(recp, alias, donor.rtobj);
+   }
+   else {
+      recp.importedNames.add($.importedAs(imp));
+      $.rtset(recp, $.importedAs(imp), $.rtget(donor, name));
+   }
+
+   $.imports.add(imp);
+}
 importedAs ::= function (imp) {
    return imp.alias || imp.name;
 }
@@ -23,7 +42,7 @@ starImportsOf ::= function* (module) {
       }
    }
 }
-isNameUsedForImport ::= function (module, name) {
+isEntryImportedByAnyone ::= function (module, name) {
    let {done} = $.importsOf(module, name).next();
    return !done;
 }
@@ -62,8 +81,9 @@ referabilityImports ::= function (donor, entry, recp) {
 deleteImport ::= function (imp) {
    let {recp} = imp;
 
-   $.rtset(recp, $.importedAs(imp), $.delmark);
    recp.importedNames.delete($.importedAs(imp));
    $.imports.delete(imp);
    $.deleteObject(imp);
+   
+   $.rtset(recp, $.importedAs(imp), $.delmark);
 }

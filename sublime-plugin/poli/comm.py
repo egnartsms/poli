@@ -77,22 +77,22 @@ class Communicator:
             'module': module
         })
 
-    def edit(self, module, name, new_defn):
-        return self._send_op('edit', {
+    def edit_entry(self, module, name, new_defn):
+        return self._send_op('editEntry', {
             'module': module,
             'name': name,
             'newDefn': new_defn
         })
 
-    def rename(self, module, old_name, new_name):
-        return self._send_op('rename', {
+    def rename_entry(self, module, old_name, new_name):
+        return self._send_op('renameEntry', {
             'module': module,
             'oldName': old_name,
             'newName': new_name
         })
 
-    def add(self, module, name, defn, anchor, before):
-        return self._send_op('add', {
+    def add_entry(self, module, name, defn, anchor, before):
+        return self._send_op('addEntry', {
             'module': module,
             'name': name,
             'defn': defn,
@@ -157,22 +157,24 @@ class Communicator:
             'newAlias': new_alias
         })
 
-    def delete_import(self, module, imported_as, force):
-        return self._send_op('deleteImport', {
+    def remove_import(self, module, imported_as, force):
+        return self._send_op('removeImport', {
             'module': module,
             'importedAs': imported_as,
             'force': force
         })
 
-    def get_completions(self, module, prefix):
+    def get_completions(self, module, star, prefix):
         return self._send_op('getCompletions', {
             'module': module,
-            'prefix': prefix,
+            'star': star,
+            'prefix': prefix
         })
 
-    def find_references(self, module, name):
+    def find_references(self, module, star, name):
         return self._send_op('findReferences', {
             'module': module,
+            'star': star,
             'name': name
         })
 
@@ -189,6 +191,11 @@ class Communicator:
 
     def refresh_module(self, module):
         return self._send_op('refreshModule', {
+            'module': module
+        })
+
+    def remove_module(self, module):
+        return self._send_op('removeModule', {
             'module': module
         })
 

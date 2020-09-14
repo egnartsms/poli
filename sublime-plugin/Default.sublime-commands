@@ -61,6 +61,10 @@
         "caption": "Poli: Refresh module",
         "command": "poli_refresh_module"
     },
+    {
+        "caption": "Poli: Remove module",
+        "command": "poli_remove_module"
+    },
 
     // Refactoring
     {

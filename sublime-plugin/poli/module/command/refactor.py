@@ -4,7 +4,7 @@ import sublime_plugin
 
 from poli.comm import comm
 from poli.module import operation as op
-from poli.module.command import ModuleTextCommand
+from poli.module.shared import ModuleTextCommand
 
 
 

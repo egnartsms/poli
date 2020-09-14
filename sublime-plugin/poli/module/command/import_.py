@@ -3,11 +3,12 @@ import sublime_plugin
 
 from poli.comm import comm
 from poli.module import operation as op
-from poli.module.command import ModuleTextCommand
+from poli.module.shared import ModuleTextCommand
+from poli.shared.command import WindowCommand
 from poli.sublime.input import ChainableInputHandler
 from poli.sublime.input import chain_input_handlers
 from poli.sublime.input import run_command_thru_palette
-from poli.shared.command import WindowCommand
+from poli.sublime.misc import single_selected_region
 
 
 __all__ = [
@@ -118,7 +119,7 @@ class PoliRenameImport(ModuleTextCommand):
 
 class PoliRenameThisImport(ModuleTextCommand):
     def run(self, edit):
-        reg = op.selected_region(self.view)
+        reg = single_selected_region(self.view)
         rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
         run_command_thru_palette(self.view.window(), 'poli_rename_import', {
@@ -128,8 +129,8 @@ class PoliRenameThisImport(ModuleTextCommand):
 
 class PoliDeleteImport(ModuleTextCommand):
     def run(self, edit, imported_as, force):
-        res = comm.delete_import(op.poli_module_name(self.view), imported_as, force)
-        if not res['deleted']:
+        res = comm.remove_import(op.poli_module_name(self.view), imported_as, force)
+        if not res['removed']:
             assert not force  # otherwise it would have deleted the import
 
             delete_anyway = sublime.ok_cancel_dialog(
@@ -139,7 +140,7 @@ class PoliDeleteImport(ModuleTextCommand):
             if not delete_anyway:
                 return
 
-            res = comm.delete_import(op.poli_module_name(self.view), imported_as, True)
+            res = comm.remove_import(op.poli_module_name(self.view), imported_as, True)
         
         op.replace_import_section(self.view, edit, res['importSection'])
         op.save_module(self.view)
@@ -147,7 +148,7 @@ class PoliDeleteImport(ModuleTextCommand):
 
 class PoliDeleteThisImport(ModuleTextCommand):
     def run(self, edit, force):
-        reg = op.selected_region(self.view)
+        reg = single_selected_region(self.view)
         rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
         self.view.run_command('poli_delete_import', {

@@ -7,8 +7,9 @@ from functools import partial
 from poli.comm import comm
 from poli.common.misc import exc_recorded
 from poli.module import operation as op
-from poli.module.command import ModuleTextCommand
-from poli.shared.command import WindowCommand, StopCommand
+from poli.module.shared import ModuleTextCommand
+from poli.shared.command import StopCommand
+from poli.shared.command import WindowCommand
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.input import ChainableInputHandler
@@ -18,6 +19,7 @@ from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
+from poli.sublime.misc import single_selected_region
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import on_all_views_load
 
@@ -33,7 +35,7 @@ class PoliMoveBy1(ModuleTextCommand):
     def run(self, edit, direction):
         mcont = op.module_contents(self.view)
         loc = mcont.cursor_location_or_stop(
-            op.selected_region(self.view), require_fully_selected=True
+            single_selected_region(self.view), require_fully_selected=True
         )
         comm.move_by_1(op.poli_module_name(self.view), loc.entry.name(), direction)
 

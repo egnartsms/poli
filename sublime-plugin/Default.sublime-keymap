@@ -147,7 +147,7 @@
         ]
     },
     {
-        "keys": ["ctrl+shift+r"],
+        "keys": ["ctrl+shift+g"],
         "command": "poli_goto_entry",
         "context": [
             {"key": "poli_kind", "operand": "module/js"}
