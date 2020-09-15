@@ -3,10 +3,10 @@ import sublime
 
 from poli.comm import comm
 from poli.module import operation as op
+from poli.module.body import module_body
 from poli.module.body import reg_no_trailing_nl
 from poli.module.body import reg_plus_trailing_nl
 from poli.module.body import sel_cursor_location
-from poli.module.body import module_body
 from poli.module.import_section import import_section_region
 from poli.module.shared import ModuleTextCommand
 from poli.sublime.misc import end_strip_region
@@ -53,11 +53,11 @@ class PoliRename(ModuleTextCommand):
 
     def run(self, edit):
         reg = single_selected_region(self.view)
-        if op.import_section_region(self.view).contains(reg):
+        if import_section_region(self.view).contains(reg):
             self.view.run_command('poli_rename_this_import')
             return
 
-        loc = op.module_contents(self.view).cursor_location_or_stop(reg)
+        loc = module_body(self.view).cursor_location_or_stop(reg)
         loc = sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
@@ -205,13 +205,13 @@ class PoliDeleteCascade(ModuleTextCommand):
 
     def run(self, edit):
         reg = single_selected_region(self.view)
-        if op.import_section_region(self.view).contains(reg):
+        if import_section_region(self.view).contains(reg):
             self.view.run_command('poli_delete_this_import', {
                 'force': True
             })
             return
 
-        loc = op.module_contents(self.view).cursor_location_or_stop(
+        loc = module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
         res = comm.delete_cascade(op.poli_module_name(self.view), loc.entry.name())

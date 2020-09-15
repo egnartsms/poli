@@ -74,6 +74,10 @@ class ImportRecord:
     def imported_as(self):
         return self.alias or self.name
 
+    @property
+    def is_star(self):
+        return self.name is None
+
 
 class ImportSection:
     def __init__(self, view, records):

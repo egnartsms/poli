@@ -65,6 +65,13 @@ importFromTo ::= function (donor, name, recp) {
 starImportFromTo ::= function (donor, recp) {
    return $.importFromTo(donor, null, recp);
 }
+entryImportsFromTo ::= function* (donor, recp) {
+   for (let imp of $.imports) {
+      if (imp.donor === donor && imp.recp === recp && imp.name !== null) {
+         yield imp;
+      }
+   }
+}
 recipientsOf ::= function (module, name) {
    let recps = new Set;
    for (let imp of $.importsOf(module, name)) {

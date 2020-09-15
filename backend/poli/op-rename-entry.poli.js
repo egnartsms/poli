@@ -57,7 +57,8 @@ renameRefsIn ::= function (module, renameMap) {
       return [];
    }
 
-   let re = new RegExp(`(?<=\\$\\.)${alts.join('|')}\\b`, 'g');
+   let re = new RegExp(`(?<=\\$\\.)(?:${alts.join('|')})\\b`, 'g');
+   console.log(re);
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
@@ -68,6 +69,7 @@ renameRefsIn ::= function (module, renameMap) {
          continue;
       }
 
+      console.log(newCode);
       let newVal = $.moduleEval(module, newCode);
 
       $.deleteObject(module.defs[entry]);
@@ -148,4 +150,14 @@ renameEntry ::= function (module, oldName, newName) {
    $.rtset(module, oldName, $.delmark);
 
    return modifiedModules;
+}
+replaceUsages ::= function (module, name, newName) {
+   if ($.isNameFree(module, name)) {
+      throw new Error(`Unknown name "${name}" in module ${module.name}`);
+   }
+   if ($.isNameFree(module, newName)) {
+      throw new Error(`Unknown name "${newName}" in module ${module.name}`);
+   }
+
+   return $.renameRefsIn(module, [name, newName]);
 }

@@ -280,7 +280,7 @@ doImport ::= function (imp) {
       $.validateStarImport(imp);
    }
    else {
-      $.validateImport(imp);
+      $.validateEntryImport(imp);
    }
 
    if (imp.name === null) {
@@ -296,7 +296,7 @@ doImport ::= function (imp) {
 
    $.imports.add(imp);
 }
-validateImport ::= function ({recp, donor, name, alias}) {
+validateEntryImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
 
    if (!$.hasOwnProperty(donor.defs, name)) {

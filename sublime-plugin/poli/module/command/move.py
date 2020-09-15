@@ -7,6 +7,9 @@ from functools import partial
 from poli.comm import comm
 from poli.common.misc import exc_recorded
 from poli.module import operation as op
+from poli.module.body import module_body
+from poli.module.body import module_body_start
+from poli.module.body import sel_cursor_location
 from poli.module.shared import ModuleTextCommand
 from poli.shared.command import StopCommand
 from poli.shared.command import WindowCommand
@@ -33,7 +36,7 @@ class PoliMoveBy1(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit, direction):
-        mcont = op.module_contents(self.view)
+        mcont = module_body(self.view)
         loc = mcont.cursor_location_or_stop(
             single_selected_region(self.view), require_fully_selected=True
         )
@@ -100,22 +103,22 @@ class PoliMove(WindowCommand):
 
         def process_source(view, edit):          
             with regedit.region_editing_suppressed(view):
-                entry_obj = op.module_contents(view).entry_by_name(entry)
+                entry_obj = module_body(view).entry_by_name(entry)
                 view.erase(edit, entry_obj.reg_entry_nl)
                 op.save_module(view)
 
         def process_destination(view, edit):
             with regedit.region_editing_suppressed(view):
                 if anchor is None:
-                    insert_at = op.module_body_start(view)
+                    insert_at = module_body_start(view)
                 else:
-                    mcont = op.module_contents(view)
+                    mcont = module_body(view)
                     if anchor is False:
                         insert_at = mcont.entries[0].reg_entry_nl.begin()
                     elif anchor is True:
                         insert_at = mcont.entries[-1].reg_entry_nl.end()
                     else:
-                        entry_obj = op.module_contents(view).entry_by_name(anchor)
+                        entry_obj = module_body(view).entry_by_name(anchor)
 
                         if before:
                             insert_at = entry_obj.reg_entry_nl.begin()
@@ -204,7 +207,7 @@ class PoliMove(WindowCommand):
         """Check that we're not attempting to move an entry which is under edit"""
         src_view = self.window.find_open_file(op.poli_file_name(src_module))
         if src_view is not None and regedit.is_active_in(src_view):
-            entry_obj = op.module_contents(src_view).entry_by_name(entry)
+            entry_obj = module_body(src_view).entry_by_name(entry)
             if entry_obj is None or entry_obj.is_under_edit():
                 sublime.error_message("Source entry is under edit or not found")
                 raise StopCommand
@@ -217,7 +220,7 @@ class PoliMove(WindowCommand):
         dest_view = self.window.find_open_file(op.poli_file_name(dest_module))
         if dest_view is not None and anchor is not None and \
                 regedit.is_active_in(dest_view):
-            mcont = op.module_contents(dest_view)
+            mcont = module_body(dest_view)
             if anchor is True:
                 entry_obj = mcont.entries[-1]
             elif anchor is False:
@@ -307,7 +310,7 @@ class PoliMoveThis(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        loc = sel_cursor_location(self.view, require_fully_selected=True)
         run_command_thru_palette(self.view.window(), 'poli_move', {
             'src_module_entry': [op.poli_module_name(self.view), loc.entry.name()],
         })
@@ -317,7 +320,7 @@ class PoliMoveHere(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit, before):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
+        loc = sel_cursor_location(self.view, require_fully_selected=True)
         run_command_thru_palette(self.view.window(), 'poli_move', {
             'dest_module': op.poli_module_name(self.view),
             'anchor': loc.entry.name(),

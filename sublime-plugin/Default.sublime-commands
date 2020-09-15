@@ -47,6 +47,10 @@
         "caption": "Poli: Rename import",
         "command": "poli_rename_import"
     },
+    {
+        "caption": "Poli: Convert to star imports",
+        "command": "poli_convert_imports_to_star"
+    },
 
     // Modules
     {

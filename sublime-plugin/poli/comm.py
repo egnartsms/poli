@@ -206,5 +206,11 @@ class Communicator:
             'newName': new_name
         })
 
+    def convert_imports_to_star(self, recp_module, donor_module):
+        return self._send_op('convertImportsToStar', {
+            'recp': recp_module,
+            'donor': donor_module
+        })
+
 
 comm = Communicator()

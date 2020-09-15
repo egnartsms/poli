@@ -25,7 +25,6 @@ reference
    isReferredTo
    referrerModules
    resolveReference
-   whereNameCame
 rt-rec
    delmark
    rtset

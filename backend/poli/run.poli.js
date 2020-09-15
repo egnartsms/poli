@@ -2,52 +2,38 @@ bootstrap
    hasOwnProperty
    imports
    moduleEval
-   modules
    saveObject
 common
    dumpImportSection
    dumpImportSections
-   joindot
    moduleByName
+   moduleNames
 img2fs
    flushModule
 import
-   addImport
    deleteImport
    importFor
-   importedAs
    importsOf
    isEntryImportedByAnyone
    recipientsOf
-   starImportsOf
 op-edit
    addEntry
    editEntry
 op-import
-   removeImport
-   removeUnusedImportsInAllModules
-   removeUnusedModuleImports
-   renameImport
+   * as opImport
 op-module
-   addNewModule
-   removeModule
-   renameModule
+   * as opModule
 op-move
-   moveBy1
-   moveEntry
+   * as opMove
 op-query
    * as query
 op-rename-entry
    renameEntry
-   renameRefsIn
+   replaceUsages
 persist
    deleteArrayItem
    deleteObject
    deleteObjectProp
-reference
-   isNameFree
-   resolveReference
-   whereNameCame
 rt-rec
    applyRtDelta
    delmark
@@ -133,15 +119,18 @@ opHandlers ::= ({
    },
 
    getEntries: function () {
-      let res = [];
+      $.opRet($.query.allEntries());
+   },
 
-      for (let module of Object.values($.modules)) {
-         for (let entry of module.entries) {
-            res.push([module.name, entry]);
-         }
-      }
+   getModuleEntries: function ({module: moduleName}) {
+      let module = $.moduleByName(moduleName);
 
-      $.opRet(res);
+      $.opRet(module.entries);
+   },
+
+   getModuleNames: function ({module: moduleName}) {
+      let module = $.moduleByName(moduleName);
+      $.opRet($.moduleNames(module));
    },
 
    getDefinition: function ({module: moduleName, name}) {
@@ -154,10 +143,14 @@ opHandlers ::= ({
       $.opRet(module.defs[name].src);
    },
 
-   getModuleEntries: function ({module: moduleName}) {
+   getCompletions: function ({module: moduleName, star, prefix}) {
       let module = $.moduleByName(moduleName);
+      $.opRet($.query.getCompletions(module, star, prefix));
+   },
 
-      $.opRet(module.entries);
+   getImportables: function ({recp: recpModuleName}) {
+      let recp = $.moduleByName(recpModuleName);
+      $.opRet($.query.importablesInto(recp));
    },
 
    addEntry: function ({module: moduleName, name, defn, anchor, before}) {
@@ -204,7 +197,7 @@ opHandlers ::= ({
 
    moveBy1: function ({module: moduleName, name, direction}) {
       let module = $.moduleByName(moduleName);
-      $.moveBy1(module, name, direction);
+      $.opMove.moveBy1(module, name, direction);
       $.opRet();
    },
 
@@ -217,66 +210,24 @@ opHandlers ::= ({
    }) {
       let srcModule = $.moduleByName(srcModuleName);
       let destModule = $.moduleByName(destModuleName);
-
-      $.opRet($.moveEntry(srcModule, entry, destModule, anchor, before));
-   },
-
-   getImportables: function ({recp: recpModuleName}) {
-      function encodeEntry(moduleName, entry) {
-         return JSON.stringify([moduleName, entry]);
-      }
-
-      function decodeEntry(encoded) {
-         return JSON.parse(encoded);
-      }
-
-      let recp = $.moduleByName(recpModuleName);
-      
-      let importables = new Set;
-
-      for (let moduleName in $.modules) {
-         let module = $.modules[moduleName];
-         if (module === recp) {
-            continue;
-         }
-
-         for (let e of module.entries) {
-            importables.add(encodeEntry(module.name, e));
-         }
-         importables.add(encodeEntry(module.name, null));
-      }
-
-      // Exclude those already imported
-      for (let imp of $.imports) {
-         if (imp.recp === recp) {
-            importables.delete(encodeEntry(imp.donor.name, imp.name));
-         }
-      }
-
-      $.opRet(Array.from(importables, decodeEntry));
-   },
-
-   getModuleNames: function ({module: moduleName}) {
-      let module = $.moduleByName(moduleName);
-
-      $.opRet([...module.entries, ...module.importedNames]);
+      $.opRet($.opMove.moveEntry(srcModule, entry, destModule, anchor, before));
    },
 
    import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
-
-      $.addImport({recp, donor, name: name || null, alias: alias || null});
-
-      $.saveObject(recp.importedNames);
-      $.saveObject($.imports);
-
+      $.opImport.doImport({
+         recp,
+         donor,
+         name: name || null,
+         alias: alias || null
+      });
       $.opRet($.dumpImportSection(recp));
    },
 
    removeUnusedImports: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
-      let removedCount = $.removeUnusedModuleImports(module);
+      let removedCount = $.opImport.removeUnusedModuleImports(module);
 
       $.opRet({
          importSection: removedCount > 0 ? $.dumpImportSection(module) : null,
@@ -285,7 +236,7 @@ opHandlers ::= ({
    },
 
    removeUnusedImportsInAllModules: function () {
-      let {removedCount, affectedModules} = $.removeUnusedImportsInAllModules();
+      let {removedCount, affectedModules} = $.opImport.removeUnusedImportsInAllModules();
 
       $.opRet({
          removedCount,
@@ -311,7 +262,7 @@ opHandlers ::= ({
          return;
       }
 
-      let modifiedEntries = $.renameImport(imp, newAlias);
+      let modifiedEntries = $.opImport.renameImport(imp, newAlias || null);
       $.opRet({
          modifiedEntries: modifiedEntries || [],
          importSection: $.dumpImportSection(module)
@@ -320,7 +271,12 @@ opHandlers ::= ({
 
    removeImport: function ({module: moduleName, importedAs, force}) {
       let module = $.moduleByName(moduleName);
-      let removed = $.removeImport(module, importedAs, force);
+      let imp = $.importFor(module, importedAs);
+      if (!imp) {
+         throw new Error(`Not found imported entry: "${importedAs}"`);
+      }
+
+      let removed = $.opImport.removeImport(imp, force);
       
       if (!removed) {
          $.opRet({
@@ -332,6 +288,23 @@ opHandlers ::= ({
             removed: true,
             importSection: $.dumpImportSection(module)
          });
+      }
+   },
+
+   convertImportsToStar: function ({recp: recpModuleName, donor: donorModuleName}) {
+      let recp = $.moduleByName(recpModuleName);
+      let donor = $.moduleByName(donorModuleName);
+      let modifiedEntries = $.opImport.convertImportsToStar(recp, donor);
+
+      if (modifiedEntries === null) {
+         $.opRet([]);
+      }
+      else {
+         $.opRet([{
+            module: recp.name,
+            modifiedEntries,
+            importSection: $.dumpImportSection(recp)
+         }]);
       }
    },
 
@@ -351,42 +324,14 @@ opHandlers ::= ({
       $.opRet($.serialize(res));
    },
 
-   getCompletions: function ({module: moduleName, star, prefix}) {
-      let module = $.moduleByName(moduleName);
-
-      let targetModule;
-
-      if (star !== null) {
-         let simp = $.importFor(module, star);
-         if (!simp) {
-            $.opRet([]);
-            return;
-         }
-         targetModule = simp.donor;
-      }
-      else {
-         targetModule = module;
-      }
-
-      let res = [];
-
-      for (let name of [...targetModule.entries, ...targetModule.importedNames]) {
-         if (name.startsWith(prefix)) {
-            res.push(name);
-         }
-      }
-
-      $.opRet(res);
-   },
-
    addModule: function ({module: moduleName}) {
-      $.addNewModule(moduleName);
+      $.opModule.addNewModule(moduleName);
       $.opRet();
    },
 
    renameModule: function ({module: moduleName, newName}) {
       let module = $.moduleByName(moduleName);
-      let affectedModules = $.renameModule(module, newName);
+      let affectedModules = $.opModule.renameModule(module, newName);
       $.opRet($.dumpImportSections(affectedModules));
    },
 
@@ -398,48 +343,19 @@ opHandlers ::= ({
 
    removeModule: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
-      $.removeModule(module);
+      $.opModule.removeModule(module);
       $.opRet();
    },
 
    findReferences: function ({module: moduleName, star, name}) {
       let module = $.moduleByName(moduleName);
-      let {
-         found,
-         module: oModule,
-         name: oName
-      } = $.resolveReference(module, star, name);
-
-      if (!found) {
-         $.opRet(null);
-         return;
-      }
-
-      let res = [[oModule.name, oName]];
-
-      for (let imp of $.importsOf(oModule, oName)) {
-         res.push([imp.recp.name, $.importedAs(imp)]);
-      }
-
-      for (let imp of $.starImportsOf(oModule)) {
-         res.push([imp.recp.name, $.joindot(imp.alias, oName)])
-      }
-
-      $.opRet(res);
+      $.opRet($.query.findReferences(module, star, name));
    },
 
    replaceUsages: function ({module: moduleName, name, newName}) {
       let module = $.moduleByName(moduleName);
-
-      if ($.isNameFree(module, name)) {
-         throw new Error(`Unknown name "${name}" in module ${module.name}`);
-      }
-      if ($.isNameFree(module, newName)) {
-         throw new Error(`Unknown name "${newName}" in module ${module.name}`);
-      }
-
-      let modifiedEntries = $.renameRefsIn(module, [name, newName]);
-      return $.opRet({
+      let modifiedEntries = $.replaceUsages(module, name, newName);
+      $.opRet({
          importSection: null,
          modifiedEntries
       });

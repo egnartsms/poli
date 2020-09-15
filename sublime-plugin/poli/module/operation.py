@@ -122,8 +122,7 @@ def save_module(view):
         edit_cxt_for[view].needs_save = True
     else:
         view.run_command('save')
-
-    highlight_unknown_names(view)
+        highlight_unknown_names(view)
 
 
 def replace_import_section_in_modules(window, data):

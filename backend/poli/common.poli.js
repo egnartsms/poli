@@ -40,3 +40,6 @@ propagateValueToRecipients ::= function (module, name) {
       $.rtset(imp.recp, $.importedAs(imp), val);
    }
 }
+moduleNames ::= function (module) {
+   return [...module.entries, ...module.importedNames];
+}
