@@ -9,7 +9,7 @@ from poli.shared.command import WindowCommand
 from poli.sublime.input import ChainableInputHandler
 from poli.sublime.input import chain_input_handlers
 from poli.sublime.input import run_command_thru_palette
-from poli.sublime.misc import single_selected_region
+from poli.shared.misc import single_selected_region
 
 
 __all__ = [

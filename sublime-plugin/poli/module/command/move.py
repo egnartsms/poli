@@ -22,7 +22,7 @@ from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
-from poli.sublime.misc import single_selected_region
+from poli.shared.misc import single_selected_region
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import on_all_views_load
 

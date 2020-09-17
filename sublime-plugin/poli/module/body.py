@@ -2,7 +2,7 @@ import sublime
 
 from poli.shared.command import StopCommand
 from poli.sublime import regedit
-from poli.sublime.misc import single_selected_region
+from poli.shared.misc import single_selected_region
 
 
 def module_body(view):

@@ -1,5 +1,3 @@
-import re
-import sublime
 import sublime_plugin
 
 from poli.comm import comm

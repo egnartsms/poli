@@ -156,19 +156,6 @@ def push_to_jump_history(view):
     get_jump_history_for_view(view).push_selection(view)
 
 
-def single_selected_region(view):
-    """Return a single selection region, or raise StopCommand in other cases.
-    
-    :raises StopCommand: if multiple or 0 regions selected.
-    """
-    if len(view.sel()) != 1:
-        sublime.status_message("No entry under cursor (multiple cursors)")
-        raise StopCommand
-
-    [reg] = view.sel()
-    return reg
-
-
 def match_at(view, ptreg, pattern, flags=0):
     if isinstance(ptreg, sublime.Region):
         begin, end = ptreg.begin(), ptreg.end()

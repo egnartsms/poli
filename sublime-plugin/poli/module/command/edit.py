@@ -13,7 +13,7 @@ from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
-from poli.sublime.misc import single_selected_region
+from poli.shared.misc import single_selected_region
 from poli.sublime.selection import set_selection
 
 

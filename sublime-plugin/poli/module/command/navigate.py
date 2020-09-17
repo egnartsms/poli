@@ -12,7 +12,7 @@ from poli.module.import_section import parse_import_section
 from poli.module.shared import ModuleTextCommand
 from poli.shared.command import WindowCommand
 from poli.sublime.misc import active_view_preserved
-from poli.sublime.misc import single_selected_region
+from poli.shared.misc import single_selected_region
 from poli.sublime.selection import jump
 from poli.sublime.view_dict import on_all_views_load
 
