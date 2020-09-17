@@ -38,14 +38,6 @@ class FreeObj:
         self.__dict__.update(attrs)
 
 
-class SubscriptableProxy:
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __getitem__(self, i):
-        return self.fn(i)
-
-
 def none_if(none_value, value):
     return None if value == none_value else value
 

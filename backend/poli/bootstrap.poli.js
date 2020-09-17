@@ -34,7 +34,7 @@ makeImageByFs ::= function () {
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
    $.obj2id.set($.lobby, $_.LOBBY_OID);
-   $.saveObjectAddCascade($.lobby);
+   $.saveObject($.lobby);
 }
 parseAllModules ::= function () {
    let modulesInfo = [];
@@ -132,7 +132,6 @@ validateModuleEntries ::= function (minfo) {
       for (let {entry, alias} of imports) {
          let importedAs = alias || entry;
          if (entries.has(importedAs)) {
-            console.log("Here!!", entry, alias, minfo);
             throw new Error(
                `Corrupted image: module "${minfo.name}" imports "${importedAs}" from ` +
                `"${donor}" which collides with another module member or import`
@@ -194,7 +193,7 @@ toJson ::= function (obj, objref) {
       return objref(val);
    });
 }
-saveObjectAddCascade ::= function (obj) {
+saveObject ::= function (obj) {
    $.assert($.isObject(obj));
 
    let rec = $.objrefRecorder();
@@ -280,20 +279,32 @@ doImport ::= function (imp) {
       $.validateStarImport(imp);
    }
    else {
-      $.validateImport(imp);
+      $.validateEntryImport(imp);
    }
-   $.effectuateImport(imp);
+
+   if (imp.name === null) {
+      imp.recp.importedNames.add(imp.alias);
+      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
+   }
+   else {
+      let importedAs = imp.alias || imp.name;
+
+      imp.recp.importedNames.add(importedAs);
+      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
+   }
+
+   $.imports.add(imp);
 }
-validateImport ::= function ({recp, donor, name, alias}) {
+validateEntryImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
 
-   if (!(name in donor.defs)) {
+   if (!$.hasOwnProperty(donor.defs, name)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${name}" from "${donor.name}": ` +
          `no such definition`
       );
    }
-   if (importedAs in recp.defs) {
+   if ($.hasOwnProperty(recp.defs, importedAs)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${importedAs}" from the module ` +
          `"${donor.name}": the name collides with own definition`
@@ -307,7 +318,7 @@ validateImport ::= function ({recp, donor, name, alias}) {
    }
 }
 validateStarImport ::= function ({recp, donor, alias}) {
-   if (alias in recp.defs) {
+   if ($.hasOwnProperty(recp.defs, alias)) {
       throw new Error(
          `Module "${recp.name}": cannot import "${donor.name}" as "${alias}": ` +
          `the name collides with own definition`
@@ -319,19 +330,8 @@ validateStarImport ::= function ({recp, donor, alias}) {
       );
    }
 }
-effectuateImport ::= function (imp) {
-   if (imp.name === null) {
-      imp.recp.importedNames.add(imp.alias);
-      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
-   }
-   else {
-      let importedAs = imp.alias || imp.name;
-
-      imp.recp.importedNames.add(importedAs);
-      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
-   }
-
-   $.imports.add(imp);
+hasOwnProperty ::= function (obj, prop) {
+   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
    let fun = new Function('$_, $, $$', `return (${code})`);

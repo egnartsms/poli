@@ -1,13 +1,10 @@
+import re
 import sublime
 import sublime_plugin
 import sys
 
 from poli.comm import comm
-from poli.module.operation import KIND_MODULE
-from poli.module.operation import is_view_poli
-from poli.module.operation import poli_module_name
-from poli.module.operation import set_connected_status
-from poli.module.operation import highlight_unknown_names
+from poli.module import operation as op
 from poli.shared.setting import poli_kind
 
 
@@ -20,30 +17,38 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         # return False
         # Lord, forgive me for doing this..
         view = sys._getframe(1).f_locals.get('view')
-        return view is not None and is_view_poli(view)
+        return view is not None and op.is_view_poli(view)
 
     def on_load(self):
         self.view.set_scratch(True)
         self.view.set_read_only(True)
-        poli_kind[self.view] = KIND_MODULE
-        highlight_unknown_names(self.view)
+        poli_kind[self.view] = op.KIND_MODULE
+        op.highlight_unknown_names(self.view)
 
     def on_activated(self):
-        set_connected_status(self.view, comm.is_connected)
+        op.set_connected_status(self.view, comm.is_connected)
 
     def on_query_completions(self, prefix, locations):
         if len(locations) != 1:
             return None
 
         [pt] = locations
-        dollar_dot = self.view.substr(
-            sublime.Region(pt - len(prefix) - 2, pt - len(prefix))
+        linereg = self.view.line(pt)
+        str_prec = self.view.substr(sublime.Region(linereg.begin(), pt))
+        mtch = re.search(
+            r'^.*?\$(?:\.(?P<star>[a-z0-9_]+))?\.(?P<prefix>[a-z0-9_]+)$',
+            str_prec,
+            re.I
         )
-        if dollar_dot != "$.":
+        if mtch is None:
             return None
 
-        entries = comm.get_completions(poli_module_name(self.view), prefix)
+        entries = comm.get_completions(
+            op.poli_module_name(self.view),
+            mtch.group('star'),
+            mtch.group('prefix')
+        )
         return (
             [(x, x) for x in entries],
-            sublime.INHIBIT_WORD_COMPLETIONS
+            sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS
         )

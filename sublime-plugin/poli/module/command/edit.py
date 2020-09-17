@@ -3,17 +3,23 @@ import sublime
 
 from poli.comm import comm
 from poli.module import operation as op
-from poli.module.command import ModuleTextCommand
+from poli.module.body import module_body
+from poli.module.body import reg_no_trailing_nl
+from poli.module.body import reg_plus_trailing_nl
+from poli.module.body import sel_cursor_location
+from poli.module.import_section import import_section_region
+from poli.module.shared import ModuleTextCommand
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
+from poli.shared.misc import single_selected_region
 from poli.sublime.selection import set_selection
 
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete', 'PoliDeleteCascade'
+    'PoliRemove'
 ]
 
 
@@ -21,7 +27,7 @@ class PoliSelect(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view)
+        loc = sel_cursor_location(self.view)
         set_selection(self.view, to=loc.entry.reg_entry)
 
 
@@ -29,7 +35,7 @@ class PoliEdit(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view)
+        loc = sel_cursor_location(self.view)
         if not loc.is_def_targeted:
             sublime.status_message("Cursor is not placed over definition")
             return
@@ -46,13 +52,13 @@ class PoliRename(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        reg = op.selected_region(self.view)
-        if op.import_section_region(self.view).contains(reg):
+        reg = single_selected_region(self.view)
+        if import_section_region(self.view).contains(reg):
             self.view.run_command('poli_rename_this_import')
             return
 
-        loc = op.module_contents(self.view).cursor_location_or_stop(reg)
-        loc = op.sel_cursor_location(self.view)
+        loc = module_body(self.view).cursor_location_or_stop(reg)
+        loc = sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
             return
@@ -68,7 +74,7 @@ class PoliAdd(ModuleTextCommand):
     def run(self, edit, before):
         def insert_dummy_def(at):
             reg_new = insert_in(self.view, edit, at, "name ::= definition\n")
-            reg_new = op.reg_no_trailing_nl(reg_new)
+            reg_new = reg_no_trailing_nl(reg_new)
             set_selection(self.view, to=reg_new, show=True)
             return reg_new
 
@@ -80,7 +86,7 @@ class PoliAdd(ModuleTextCommand):
                 self.view, reg_new, target='entry', name=None, is_before=None
             )
         else:
-            loc = op.sel_cursor_location(self.view)
+            loc = sel_cursor_location(self.view)
             entry_name = loc.entry.name()
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(
@@ -107,7 +113,7 @@ class PoliCancel(ModuleTextCommand):
                 self.view.replace(edit, reg, cxt.name)
             else:
                 assert cxt.target == 'entry'
-                reg = op.reg_plus_trailing_nl(reg)
+                reg = reg_plus_trailing_nl(reg)
                 self.view.erase(edit, reg)
 
             op.exit_edit_mode(self.view)
@@ -130,13 +136,13 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
             defn = self.view.substr(reg)
-            comm.edit(op.poli_module_name(self.view), cxt.name, defn)
+            comm.edit_entry(op.poli_module_name(self.view), cxt.name, defn)
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
             if not op.is_entry_name_valid(new_name):
                 sublime.status_message("Not a valid name")
                 return
-            res = comm.rename(op.poli_module_name(self.view), cxt.name, new_name)
+            res = comm.rename_entry(op.poli_module_name(self.view), cxt.name, new_name)
             op.modify_and_save_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
@@ -147,7 +153,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Invalid entry definition")
                 return
 
-            comm.add(
+            comm.add_entry(
                 module=op.poli_module_name(self.view),
                 name=mtch.group('name'),
                 defn=mtch.group('defn'),
@@ -165,15 +171,24 @@ class PoliCommit(ModuleTextCommand):
         op.exit_edit_mode(self.view)
 
 
-class PoliDelete(ModuleTextCommand):
+class PoliRemove(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
-        ok = comm.delete(op.poli_module_name(self.view), loc.entry.name())
-        if not ok:
-            sublime.status_message(
-                "Cannot delete \"{}\" as it is imported in other modules".format(
+        reg = single_selected_region(self.view)
+        if import_section_region(self.view).contains(reg):
+            self.view.run_command('poli_remove_this_import', {
+                'force': False
+            })
+            return
+
+        loc = module_body(self.view).cursor_location_or_stop(
+            reg, require_fully_selected=True
+        )
+        modules_data = comm.remove_entry(op.poli_module_name(self.view), loc.entry.name())
+        if modules_data is None:
+            sublime.error_message(
+                "Cannot delete \"{}\" as it is being used by other modules".format(
                     loc.entry.name()
                 )
             )
@@ -181,19 +196,6 @@ class PoliDelete(ModuleTextCommand):
 
         with read_only_set_to(self.view, False):
             self.view.erase(edit, loc.entry.reg_entry_nl)
-
         op.save_module(self.view)
 
-
-class PoliDeleteCascade(ModuleTextCommand):
-    only_in_mode = 'browse'
-
-    def run(self, edit):
-        loc = op.sel_cursor_location(self.view, require_fully_selected=True)
-        res = comm.delete_cascade(op.poli_module_name(self.view), loc.entry.name())
-
-        with read_only_set_to(self.view, False):
-            self.view.erase(edit, loc.entry.reg_entry_nl)
-
-        op.save_module(self.view)
-        op.replace_import_section_in_modules(self.view.window(), res)
+        op.modify_and_save_modules(self.view.window(), modules_data)

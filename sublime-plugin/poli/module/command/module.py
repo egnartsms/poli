@@ -5,12 +5,12 @@ import sublime_plugin
 
 from poli.comm import comm
 from poli.module import operation as op
-from poli.module.command import ModuleTextCommand
+from poli.module.shared import ModuleTextCommand
 from poli.shared.command import ApplicationCommand
 from poli.sublime import regedit
 
 
-__all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule']
+__all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule', 'PoliRemoveModule']
 
 
 class PoliAddNewModule(ApplicationCommand):
@@ -67,3 +67,11 @@ class PoliRefreshModule(ModuleTextCommand):
             op.terminate_edit_mode(self.view)
 
         comm.refresh_module(op.poli_module_name(self.view))
+
+
+class PoliRemoveModule(ModuleTextCommand):
+    def run(self, edit):
+        comm.remove_module(op.poli_module_name(self.view))
+        file_name = self.view.file_name()
+        self.view.close()
+        os.unlink(file_name)

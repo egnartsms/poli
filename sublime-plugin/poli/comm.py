@@ -77,22 +77,22 @@ class Communicator:
             'module': module
         })
 
-    def edit(self, module, name, new_defn):
-        return self._send_op('edit', {
+    def edit_entry(self, module, name, new_defn):
+        return self._send_op('editEntry', {
             'module': module,
             'name': name,
             'newDefn': new_defn
         })
 
-    def rename(self, module, old_name, new_name):
-        return self._send_op('rename', {
+    def rename_entry(self, module, old_name, new_name):
+        return self._send_op('renameEntry', {
             'module': module,
             'oldName': old_name,
             'newName': new_name
         })
 
-    def add(self, module, name, defn, anchor, before):
-        return self._send_op('add', {
+    def add_entry(self, module, name, defn, anchor, before):
+        return self._send_op('addEntry', {
             'module': module,
             'name': name,
             'defn': defn,
@@ -106,14 +106,8 @@ class Communicator:
             'code': code
         })
 
-    def delete(self, module, name):
-        return self._send_op('delete', {
-            'module': module,
-            'name': name
-        })
-
-    def delete_cascade(self, module, name):
-        return self._send_op('deleteCascade', {
+    def remove_entry(self, module, name):
+        return self._send_op('removeEntry', {
             'module': module,
             'name': name
         })
@@ -147,6 +141,9 @@ class Communicator:
             'module': module
         })
 
+    def remove_unused_imports_in_all_modules(self):
+        return self._send_op('removeUnusedImportsInAllModules', {})
+
     def rename_import(self, module, imported_as, new_alias):
         return self._send_op('renameImport', {
             'module': module,
@@ -154,15 +151,24 @@ class Communicator:
             'newAlias': new_alias
         })
 
-    def get_completions(self, module, prefix):
-        return self._send_op('getCompletions', {
+    def remove_import(self, module, imported_as, force):
+        return self._send_op('removeImport', {
             'module': module,
-            'prefix': prefix,
+            'importedAs': imported_as,
+            'force': force
         })
 
-    def find_references(self, module, name):
+    def get_completions(self, module, star, prefix):
+        return self._send_op('getCompletions', {
+            'module': module,
+            'star': star,
+            'prefix': prefix
+        })
+
+    def find_references(self, module, star, name):
         return self._send_op('findReferences', {
             'module': module,
+            'star': star,
             'name': name
         })
 
@@ -180,6 +186,24 @@ class Communicator:
     def refresh_module(self, module):
         return self._send_op('refreshModule', {
             'module': module
+        })
+
+    def remove_module(self, module):
+        return self._send_op('removeModule', {
+            'module': module
+        })
+
+    def replace_usages(self, module, name, new_name):
+        return self._send_op('replaceUsages', {
+            'module': module,
+            'name': name,
+            'newName': new_name
+        })
+
+    def convert_imports_to_star(self, recp_module, donor_module):
+        return self._send_op('convertImportsToStar', {
+            'recp': recp_module,
+            'donor': donor_module
         })
 
 

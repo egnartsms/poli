@@ -116,7 +116,8 @@ class RegEdit:
         Also, we detect insertion of text right before the edit region and right after it,
         and extend the edit region to include what was just inserted.
         """
-        while True:
+        n, N = 0, 50
+        while n < N:
             pre, post, rowcol = self._get_state()
 
             if _log:
@@ -143,8 +144,12 @@ class RegEdit:
                 if _log:
                     print("Undoing")
                 self.view.run_command('undo')
+                n += 1
 
             sublime.status_message("Cannot edit outside the editing region")
+
+        if n == N:
+            print("Too many iterations in undoing loop regedit")
 
     def is_selection_within(self):
         ereg = self.edit_region[self.view]

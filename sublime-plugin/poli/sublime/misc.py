@@ -1,4 +1,5 @@
 import contextlib
+import re
 import sublime
 
 from Default.history_list import get_jump_history_for_view
@@ -153,3 +154,22 @@ def openfile_spec(what, row, col):
 
 def push_to_jump_history(view):
     get_jump_history_for_view(view).push_selection(view)
+
+
+def match_at(view, ptreg, pattern, flags=0):
+    if isinstance(ptreg, sublime.Region):
+        begin, end = ptreg.begin(), ptreg.end()
+    else:
+        begin = end = ptreg
+
+    linereg = view.line(ptreg)
+    begin -= linereg.begin()
+    end -= linereg.begin()
+    line = view.substr(linereg)
+
+    for mtch in re.finditer(pattern, line, flags):
+        mbegin, mend = mtch.span()
+        if mbegin <= begin <= end <= mend:
+            return mtch
+
+    return None

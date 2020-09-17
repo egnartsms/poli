@@ -40,8 +40,16 @@
         "command": "poli_remove_unused_imports"
     },
     {
+        "caption": "Poli: Remove unused imports in all modules",
+        "command": "poli_remove_unused_imports_in_all_modules"
+    },
+    {
         "caption": "Poli: Rename import",
         "command": "poli_rename_import"
+    },
+    {
+        "caption": "Poli: Convert to star imports",
+        "command": "poli_convert_imports_to_star"
     },
 
     // Modules
@@ -56,5 +64,15 @@
     {
         "caption": "Poli: Refresh module",
         "command": "poli_refresh_module"
+    },
+    {
+        "caption": "Poli: Remove module",
+        "command": "poli_remove_module"
+    },
+
+    // Refactoring
+    {
+        "caption": "Poli: Replace usages in module",
+        "command": "poli_replace_usages"
     }
 ]
