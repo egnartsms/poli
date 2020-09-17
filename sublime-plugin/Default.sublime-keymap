@@ -67,7 +67,7 @@
     },
     {
         "keys": ["delete"],
-        "command": "poli_delete",
+        "command": "poli_remove",
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": false}
@@ -75,7 +75,10 @@
     },
     {
         "keys": ["shift+delete"],
-        "command": "poli_delete_cascade",
+        "command": "poli_remove_this_import",
+        "args": {
+            "force": true
+        },
         "context": [
             {"key": "poli_kind", "operand": "module/js"},
             {"key": "poli_regedit", "operand": false}

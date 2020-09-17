@@ -1,18 +1,22 @@
 bootstrap
    hasOwnProperty
+   imports
    moduleEval
    saveObject
 common
    joindot
    propagateValueToRecipients
 import
+   deleteImport
    importsOf
-   referabilityImports
+   referenceImports
 persist
+   deleteArrayItem
    deleteObject
    deleteObjectProp
    setObjectProp
 reference
+   isEntryUsed
    isNameFree
    referrerModules
 rt-rec
@@ -58,7 +62,6 @@ renameRefsIn ::= function (module, renameMap) {
    }
 
    let re = new RegExp(`(?<=\\$\\.)(?:${alts.join('|')})\\b`, 'g');
-   console.log(re);
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
@@ -69,7 +72,6 @@ renameRefsIn ::= function (module, renameMap) {
          continue;
       }
 
-      console.log(newCode);
       let newVal = $.moduleEval(module, newCode);
 
       $.deleteObject(module.defs[entry]);
@@ -92,7 +94,7 @@ modifyRecipientsForRename ::= function (module, oldName, newName) {
 
    for (let referrer of referrers) {
       let rnmap = new Map;
-      let {eimp, simp} = $.referabilityImports(module, oldName, referrer);
+      let {eimp, simp} = $.referenceImports(module, oldName, referrer);
 
       if (eimp) {
          if (eimp.alias === null) {
@@ -160,4 +162,39 @@ replaceUsages ::= function (module, name, newName) {
    }
 
    return $.renameRefsIn(module, [name, newName]);
+}
+removeEntry ::= function (module, name) {
+   if (!$.hasOwnProperty(module.defs, name)) {
+      throw new Error(`Entry named "${name}" does not exist`);
+   }
+
+   if ($.isEntryUsed(module, name)) {
+      return {
+         removed: false
+      }
+   }
+
+   // Delete any entry (direct) imports
+   let imps = Array.from($.importsOf(module, name));
+   let recps = new Set(imps.map(imp => imp.recp));
+
+   if (imps.length > 0) {
+      for (let imp of imps) {
+         $.deleteImport(imp);
+      }      
+      for (let recp of recps) {
+         $.saveObject(recp.importedNames);
+      }
+      $.saveObject($.imports);      
+   }
+
+   $.deleteArrayItem(module.entries, module.entries.indexOf(name));
+   $.deleteObject(module.defs[name]);
+   $.deleteObjectProp(module.defs, name);
+   $.rtset(module, name, $.delmark);
+
+   return {
+      removed: true,
+      affectedModules: recps
+   }
 }

@@ -1,8 +1,6 @@
 bootstrap
    hasOwnProperty
-   imports
    moduleEval
-   saveObject
 common
    dumpImportSection
    dumpImportSections
@@ -11,11 +9,7 @@ common
 img2fs
    flushModule
 import
-   deleteImport
    importFor
-   importsOf
-   isEntryImportedByAnyone
-   recipientsOf
 op-edit
    addEntry
    editEntry
@@ -27,18 +21,11 @@ op-move
    * as opMove
 op-query
    * as query
-op-rename-entry
-   renameEntry
-   replaceUsages
-persist
-   deleteArrayItem
-   deleteObject
-   deleteObjectProp
+op-refactor
+   * as opRefactor
 rt-rec
    applyRtDelta
-   delmark
    discardRtDelta
-   rtset
 -----
 assert ::= $_.require('assert').strict
 WebSocket ::= $_.require('ws')
@@ -84,7 +71,9 @@ handleOperation ::= function (op) {
    })();
 
    try {      
-      $_.db.transaction(() => $.opHandlers[op['op']].call(null, op['args']))();
+      $_.db.transaction(() => {
+         $.operationHandlers[op['op']].call(null, op['args']);
+      })();
       $.applyRtDelta();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
@@ -113,7 +102,7 @@ opRet ::= function (result=null) {
       result: result
    });
 }
-opHandlers ::= ({
+operationHandlers ::= ({
    getModules: function () {
       $.opRet($.query.allModuleNames());
    },
@@ -167,7 +156,7 @@ opHandlers ::= ({
 
    renameEntry: function ({module: moduleName, oldName, newName}) {
       let module = $.moduleByName(moduleName);
-      let modifiedModules = $.renameEntry(module, oldName, newName);
+      let modifiedModules = $.opRefactor.renameEntry(module, oldName, newName);
 
       $.opRet(
          Array.from(
@@ -181,18 +170,20 @@ opHandlers ::= ({
       );
    },
 
-   delete: function ({module: moduleName, name}) {
+   removeEntry: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
-      let deleted = $.deleteEntry(module, name, false);
-      $.opRet(deleted);
-   },
-
-   deleteCascade: function ({module: moduleName, name}) {
-      let module = $.moduleByName(moduleName);
-
-      let recipients = $.recipientsOf(module, name);
-      $.deleteEntry(module, name, true);
-      $.opRet($.dumpImportSections(recipients));
+      let {removed, affectedModules} = $.opRefactor.removeEntry(module, name);
+      
+      if (!removed) {
+         $.opRet(null);
+      }
+      else {
+         $.opRet(Array.from(affectedModules, m => ({
+            module: m.name,
+            modifiedEntries: [],
+            importSection: $.dumpImportSection(m)
+         })));
+      }
    },
 
    moveBy1: function ({module: moduleName, name, direction}) {
@@ -354,7 +345,7 @@ opHandlers ::= ({
 
    replaceUsages: function ({module: moduleName, name, newName}) {
       let module = $.moduleByName(moduleName);
-      let modifiedEntries = $.replaceUsages(module, name, newName);
+      let modifiedEntries = $.opRefactor.replaceUsages(module, name, newName);
       $.opRet({
          importSection: null,
          modifiedEntries
@@ -440,31 +431,4 @@ serialize ::= function (obj) {
    }
 
    return Array.from(serialize(obj, true)).join('');
-}
-deleteEntry ::= function (module, name, cascade) {
-   if (!$.hasOwnProperty(module.defs, name)) {
-      throw new Error(`Entry named "${name}" does not exist`);
-   }
-
-   if ($.isEntryImportedByAnyone(module, name)) {
-      if (!cascade) {
-         return false;
-      }
-
-      let recipients = $.recipientsOf(module, name);
-      for (let imp of [...$.importsOf(module, name)]) {
-         $.deleteImport(imp);
-      }
-      for (let recp of recipients) {
-         $.saveObject(recp.importedNames);
-      }
-      $.saveObject($.imports);
-   }
-
-   $.deleteArrayItem(module.entries, module.entries.indexOf(name));
-   $.deleteObject(module.defs[name]);
-   $.deleteObjectProp(module.defs, name);
-   $.rtset(module, name, $.delmark);
-
-   return true;
 }

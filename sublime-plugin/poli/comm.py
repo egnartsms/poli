@@ -106,14 +106,8 @@ class Communicator:
             'code': code
         })
 
-    def delete(self, module, name):
-        return self._send_op('delete', {
-            'module': module,
-            'name': name
-        })
-
-    def delete_cascade(self, module, name):
-        return self._send_op('deleteCascade', {
+    def remove_entry(self, module, name):
+        return self._send_op('removeEntry', {
             'module': module,
             'name': name
         })

@@ -19,7 +19,7 @@ from poli.sublime.selection import set_selection
 
 __all__ = [
     'PoliSelect', 'PoliEdit', 'PoliAdd', 'PoliRename', 'PoliCancel', 'PoliCommit',
-    'PoliDelete', 'PoliDeleteCascade'
+    'PoliRemove'
 ]
 
 
@@ -171,13 +171,13 @@ class PoliCommit(ModuleTextCommand):
         op.exit_edit_mode(self.view)
 
 
-class PoliDelete(ModuleTextCommand):
+class PoliRemove(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
         reg = single_selected_region(self.view)
         if import_section_region(self.view).contains(reg):
-            self.view.run_command('poli_delete_this_import', {
+            self.view.run_command('poli_remove_this_import', {
                 'force': False
             })
             return
@@ -185,10 +185,10 @@ class PoliDelete(ModuleTextCommand):
         loc = module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
-        ok = comm.delete(op.poli_module_name(self.view), loc.entry.name())
-        if not ok:
-            sublime.status_message(
-                "Cannot delete \"{}\" as it is imported in other modules".format(
+        modules_data = comm.remove_entry(op.poli_module_name(self.view), loc.entry.name())
+        if modules_data is None:
+            sublime.error_message(
+                "Cannot delete \"{}\" as it is being used by other modules".format(
                     loc.entry.name()
                 )
             )
@@ -196,28 +196,6 @@ class PoliDelete(ModuleTextCommand):
 
         with read_only_set_to(self.view, False):
             self.view.erase(edit, loc.entry.reg_entry_nl)
-
         op.save_module(self.view)
 
-
-class PoliDeleteCascade(ModuleTextCommand):
-    only_in_mode = 'browse'
-
-    def run(self, edit):
-        reg = single_selected_region(self.view)
-        if import_section_region(self.view).contains(reg):
-            self.view.run_command('poli_delete_this_import', {
-                'force': True
-            })
-            return
-
-        loc = module_body(self.view).cursor_location_or_stop(
-            reg, require_fully_selected=True
-        )
-        res = comm.delete_cascade(op.poli_module_name(self.view), loc.entry.name())
-
-        with read_only_set_to(self.view, False):
-            self.view.erase(edit, loc.entry.reg_entry_nl)
-
-        op.save_module(self.view)
-        op.replace_import_section_in_modules(self.view.window(), res)
+        op.modify_and_save_modules(self.view.window(), modules_data)

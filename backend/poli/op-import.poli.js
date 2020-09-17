@@ -9,7 +9,7 @@ import
    entryImportsFromTo
    importedAs
    starImportFromTo
-op-rename-entry
+op-refactor
    renameImportedName
    renameRefsIn
 persist

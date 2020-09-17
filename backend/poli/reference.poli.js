@@ -1,15 +1,32 @@
 bootstrap
    hasOwnProperty
+common
+   joindot
 import
    importFor
+   importedAs
    importsOf
+   referenceImports
    starImportsOf
 -----
+assert ::= $_.require('assert').strict
 isNameFree ::= function (module, name) {
    return !($.hasOwnProperty(module.defs, name) || module.importedNames.has(name));
 }
+whereNameCame ::= function (module, name) {
+   if ($.hasOwnProperty(module.defs, name)) {
+      return {module, name};
+   }
+
+   if (module.importedNames.has(name)) {
+      let imp = $.importFor(module, name);
+      return {module: imp.donor, name: imp.name};
+   }
+
+   return {};
+}
 isReferredTo ::= function (module, name, except=null) {
-   let re = new RegExp(`(?<![a-zA-Z_$])\\$\\.${name.replace(/\./g, '\\.')}\\b`);
+   let re = new RegExp(`(?<![a-z_$])\\$\\.${name.replace(/\./g, '\\.')}\\b`, 'i');
 
    for (let entry of module.entries) {
       if (except && entry === except) {
@@ -23,17 +40,37 @@ isReferredTo ::= function (module, name, except=null) {
 
    return false;
 }
-whereNameCame ::= function (module, name) {
-   if ($.hasOwnProperty(module.defs, name)) {
-      return {module, name};
+referrerModules ::= function (module, entry) {
+   let referrers = new Set;
+
+   for (let imp of $.importsOf(module, entry)) {
+      referrers.add(imp.recp);
    }
 
-   if (module.importedNames.has(name)) {
-      let imp = $.importFor(module, name);
-      return {module: imp.donor, name: imp.name};
+   for (let imp of $.starImportsOf(module)) {
+      referrers.add(imp.recp);
    }
 
-   return {};
+   return referrers;
+}
+isEntryUsed ::= function (module, entry) {
+   $.assert($.hasOwnProperty(module.defs, entry));
+
+   if ($.isReferredTo(module, entry, entry)) {
+      return true;
+   }
+
+   for (let recp of $.referrerModules(module, entry)) {
+      let {eimp, simp} = $.referenceImports(module, entry, recp);
+      if (eimp && $.isReferredTo(recp, $.importedAs(eimp))) {
+         return true;
+      }
+      if (simp && $.isReferredTo(recp, $.joindot(simp.alias, entry))) {
+         return true;
+      }
+   }
+
+   return false;
 }
 resolveReference ::= function (module, star, name) {
    if (star !== null) {
@@ -80,32 +117,4 @@ extractRefs ::= function (module, entry) {
    }
 
    return names;
-}
-referrerModules ::= function (module, entry) {
-   let referrers = new Set;
-
-   for (let imp of $.importsOf(module, entry)) {
-      referrers.add(imp.recp);
-   }
-
-   for (let imp of $.starImportsOf(module)) {
-      referrers.add(imp.recp);
-   }
-
-   return referrers;
-}
-anyDefRefersTo ::= function (module, ref, except=null) {
-   let re = new RegExp(`(?<![a-zA-Z_$])\\$\\.${ref}\\b`);
-
-   for (let entry of module.entries) {
-      if (except && entry === except) {
-         continue;
-      }
-
-      if (re.test(module.defs[entry].src)) {
-         return true;
-      }
-   }
-
-   return false;
 }

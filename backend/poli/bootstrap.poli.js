@@ -132,7 +132,6 @@ validateModuleEntries ::= function (minfo) {
       for (let {entry, alias} of imports) {
          let importedAs = alias || entry;
          if (entries.has(importedAs)) {
-            console.log("Here!!", entry, alias, minfo);
             throw new Error(
                `Corrupted image: module "${minfo.name}" imports "${importedAs}" from ` +
                `"${donor}" which collides with another module member or import`

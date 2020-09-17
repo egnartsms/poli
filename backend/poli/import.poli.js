@@ -79,7 +79,7 @@ recipientsOf ::= function (module, name) {
    }
    return Array.from(recps);
 }
-referabilityImports ::= function (donor, entry, recp) {
+referenceImports ::= function (donor, entry, recp) {
    return {
       eimp: $.importFromTo(donor, entry, recp),
       simp: $.starImportFromTo(donor, recp)

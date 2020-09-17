@@ -11,9 +11,9 @@ import
    deleteImport
    importFromTo
    importedAs
-   referabilityImports
+   referenceImports
    starImportFromTo
-op-rename-entry
+op-refactor
    renameRefsIn
 persist
    deleteObject
@@ -231,7 +231,7 @@ computeForwardModificationsOnMoveEntry ::= function (srcModule, entry, destModul
       }
 
       // See whether the entry is already imported directly
-      let {eimp, simp} = $.referabilityImports(oModule, oEntry, destModule);
+      let {eimp, simp} = $.referenceImports(oModule, oEntry, destModule);
 
       if (eimp) {
          rename(ref, $.importedAs(eimp));
@@ -278,7 +278,7 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
    let importSectionAffected = new Set;
 
    for (let recp of referrers) {
-      let {eimp, simp} = $.referabilityImports(srcModule, entry, recp);
+      let {eimp, simp} = $.referenceImports(srcModule, entry, recp);
 
       if (eimp) {
          importsToRemove.push(eimp);
@@ -309,7 +309,7 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
 
    // Examine destModule
    if (destIsReferrerToo) {
-      let {eimp, simp} = $.referabilityImports(srcModule, entry, destModule);
+      let {eimp, simp} = $.referenceImports(srcModule, entry, destModule);
       let rnmap = [];
 
       if (eimp) {
