@@ -1,3 +1,0 @@
------
-partner ::= 'partner'
-anotherPartner ::= 'ap'
