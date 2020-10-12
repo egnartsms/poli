@@ -108,7 +108,7 @@ parseImports ::= function (str) {
    return res;
 }
 moduleNameByFile ::= function (moduleFile) {
-   let mtch = /^(?<module_name>.+?)\.poli\.js$/.exec(moduleFile);
+   let mtch = /^(?<module_name>.+?)\.js$/.exec(moduleFile);
    if (!mtch) {
       return null;
    }
