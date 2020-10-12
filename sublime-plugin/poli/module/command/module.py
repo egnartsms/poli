@@ -16,13 +16,13 @@ __all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule', 'PoliRem
 class PoliAddNewModule(ApplicationCommand):
     def run(self, module_name):
         try:
-            with open(op.poli_file_name(module_name), 'x') as file:
+            with open(op.js_module_filename(module_name), 'x') as file:
                 file.write('-----\n')
         except FileExistsError:
             sublime.error_message("Module file already exists")
 
         comm.add_module(module_name)
-        sublime.active_window().open_file(op.poli_file_name(module_name))
+        sublime.active_window().open_file(op.js_module_filename(module_name))
 
     def input(self, args):
         return ModuleNameInputHandler(comm.get_modules())
@@ -30,8 +30,8 @@ class PoliAddNewModule(ApplicationCommand):
 
 class PoliRenameModule(ModuleTextCommand):
     def run(self, edit, module_name):
-        res = comm.rename_module(op.poli_module_name(self.view), module_name)
-        new_file_name = op.poli_file_name(module_name)
+        res = comm.rename_module(op.js_module_name(self.view), module_name)
+        new_file_name = op.js_module_filename(module_name)
         os.rename(self.view.file_name(), new_file_name)
         self.view.retarget(new_file_name)
         op.replace_import_section_in_modules(self.view.window(), res)
@@ -66,12 +66,12 @@ class PoliRefreshModule(ModuleTextCommand):
                 return
             op.terminate_edit_mode(self.view)
 
-        comm.refresh_module(op.poli_module_name(self.view))
+        comm.refresh_module(op.js_module_name(self.view))
 
 
 class PoliRemoveModule(ModuleTextCommand):
     def run(self, edit):
-        comm.remove_module(op.poli_module_name(self.view))
+        comm.remove_module(op.js_module_name(self.view))
         file_name = self.view.file_name()
         self.view.close()
         os.unlink(file_name)

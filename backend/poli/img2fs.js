@@ -11,7 +11,7 @@ main ::= function () {
 }
 flushModule ::= function (module) {
    let moduleStream = $.fs.createWriteStream(
-      `${$_.SRC_FOLDER}/${module.name}.poli.js`, {
+      `${$_.SRC_FOLDER}/${module.name}.js`, {
          mode: '664'
       }
    );

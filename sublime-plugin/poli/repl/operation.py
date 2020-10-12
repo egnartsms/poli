@@ -1,6 +1,7 @@
 import sublime
 
 from poli.shared.setting import poli_kind
+from poli.shared import const
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.setting import Setting
@@ -17,7 +18,7 @@ def make_repl_view(window):
     view.set_scratch(True)
     poli_kind[view] = REPL_KIND
     poli_cur_module[view] = 'run'
-    view.assign_syntax('Packages/Poli/Poli.REPL.JS.sublime-syntax')
+    view.assign_syntax(const.REPL_JS_SYNTAX_FILE)
 
     call_with_edit(view, lambda edit: insert_prompt_at_end(view, edit))
     
