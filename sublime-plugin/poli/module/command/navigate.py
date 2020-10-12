@@ -35,16 +35,7 @@ class PoliGotoDefinition(ModuleTextCommand):
                 return
 
             star, name = mtch.group('star', 'name')
-            if star is None:
-                reg = find_name_region(self.view, name)
-
-                if reg is not None:              
-                    jump(self.view, to=reg.begin())
-                else:
-                    # Not found among own entries, look for imports
-                    op.goto_donor_entry(self.view, name)
-            else:
-                op.goto_donor_entry(self.view, star, name)
+            op.goto_ref(self.view, star, name)
 
 
 class PoliFindReferences(ModuleTextCommand):
