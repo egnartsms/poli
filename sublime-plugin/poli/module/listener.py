@@ -20,8 +20,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         return view is not None and op.is_view_poli(view)
 
     def on_load(self):
-        if not op.is_js_module_view_initialized(self.view):
-            op.init_js_module_view(self.view)
+        op.init_js_module_view(self.view)
         op.highlight_unknown_names(self.view)
 
     def on_activated(self):

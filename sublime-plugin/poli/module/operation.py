@@ -18,6 +18,7 @@ from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import match_at
+from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import make_view_dict
@@ -47,15 +48,12 @@ def open_js_module(window, module_name):
     return view
 
 
-def is_js_module_view_initialized(view):
-    return poli_kind[view] == KIND_MODULE
-
-
 def init_js_module_view(view):
-    view.assign_syntax(const.JS_SYNTAX_FILE)
-    view.set_scratch(True)
-    view.set_read_only(True)
-    poli_kind[view] = KIND_MODULE
+    if poli_kind[view] is None:
+        view.assign_syntax(const.JS_SYNTAX_FILE)
+        view.set_scratch(True)
+        view.set_read_only(True)
+        poli_kind[view] = KIND_MODULE
 
 
 re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'
@@ -301,11 +299,41 @@ def goto_module_entry(window, module, entry):
         on_view_load(view, on_loaded)
 
 
-def goto_donor_entry(view, imported_as, name=None):
+def goto_ref(view, star, name):
+    if star is None:
+        goto_direct_ref(view, name)
+    else:
+        was_star = goto_star_ref(view, star, name)
+        if not was_star:
+            goto_direct_ref(view, star)
+
+
+def goto_star_ref(view, star, name):
+    impsec = parse_import_section(view)
+    rec = impsec.record_for_imported_name(star)
+    if rec is None or not rec.is_star:
+        return False
+
+    goto_module_entry(view.window(), rec.module_name, name)
+    return True
+
+
+def goto_direct_ref(view, name):
+    reg = find_name_region(view, name)
+
+    if reg is not None:
+        jump(view, to=reg.begin())
+    else:
+        # Not found among own entries, look for imports
+        op.goto_donor_entry(view, name)
+
+
+def goto_donor_entry(view, imported_as):
+    """Goto donor's entry which is imported into 'view' as 'imported_as'"""
     impsec = parse_import_section(view)
     rec = impsec.record_for_imported_name(imported_as)
     if rec is None:
         sublime.status_message("The name \"{}\" is unknown".format(imported_as))
         raise StopCommand
 
-    goto_module_entry(view.window(), rec.module_name, name or rec.name)
+    goto_module_entry(view.window(), rec.module_name, rec.name)
