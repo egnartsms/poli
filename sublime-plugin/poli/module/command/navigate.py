@@ -57,7 +57,7 @@ class PoliFindReferences(ModuleTextCommand):
         else:
             star, name = mtch.group('star', 'name')
 
-        res = comm.find_references(op.poli_module_name(self.view), star, name)
+        res = comm.find_references(op.js_module_name(self.view), star, name)
         if res is None:
             sublime.status_message(
                 "Unknown reference at point: \"{}\"".format(mtch.group())
@@ -66,7 +66,7 @@ class PoliFindReferences(ModuleTextCommand):
 
         with active_view_preserved(self.view.window()):
             all_views = [
-                self.view.window().open_file(op.poli_file_name(module_name))
+                self.view.window().open_file(op.js_module_filename(module_name))
                 for module_name, entry_name in res
             ]
 
@@ -74,7 +74,7 @@ class PoliFindReferences(ModuleTextCommand):
             row, col = view.rowcol(reg.begin())
             return (
                 view.file_name(),
-                "{}.{}".format(op.poli_module_name(view), entry_defn_name),
+                "{}.{}".format(op.js_module_name(view), entry_defn_name),
                 (row + 1, col + 1)
             )
 

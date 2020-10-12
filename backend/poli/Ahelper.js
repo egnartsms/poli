@@ -5,3 +5,5 @@ op-move
 rt-rec
    applyRtDelta
 -----
+partner ::= 'partner'
+anotherPartner ::= 'ap'

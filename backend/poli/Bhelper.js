@@ -5,8 +5,6 @@ op-move
 rt-rec
    applyRtDelta
 -----
-partner ::= 'partner'
-anotherPartner ::= 'ap'
 selfMovingFunc ::= function () {
     $.moveEntry(
         $$,
@@ -14,5 +12,5 @@ selfMovingFunc ::= function () {
         $$.name === 'Ahelper' ? $.moduleByName('Bhelper') : $.moduleByName('Ahelper'),
         true
     )
-    $.applyRtDelta();
+    // $.applyRtDelta();
 }

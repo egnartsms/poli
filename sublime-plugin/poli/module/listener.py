@@ -20,9 +20,8 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         return view is not None and op.is_view_poli(view)
 
     def on_load(self):
-        self.view.set_scratch(True)
-        self.view.set_read_only(True)
-        poli_kind[self.view] = op.KIND_MODULE
+        if not op.is_js_module_view_initialized(self.view):
+            op.init_js_module_view(self.view)
         op.highlight_unknown_names(self.view)
 
     def on_activated(self):
@@ -44,7 +43,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
             return None
 
         entries = comm.get_completions(
-            op.poli_module_name(self.view),
+            op.js_module_name(self.view),
             mtch.group('star'),
             mtch.group('prefix')
         )

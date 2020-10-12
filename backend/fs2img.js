@@ -53,7 +53,7 @@ function parseBody(str) {
 
 
 function makeImage(db) {
-   let contents = fs.readFileSync(`./${SRC_FOLDER}/bootstrap.poli.js`, 'utf8');
+   let contents = fs.readFileSync(`./${SRC_FOLDER}/bootstrap.js`, 'utf8');
    let entries = parseBody(contents);
 
    let $_ = {

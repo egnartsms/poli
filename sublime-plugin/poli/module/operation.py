@@ -10,7 +10,9 @@ from poli.module.body import known_entries
 from poli.module.body import module_body
 from poli.module.body import module_body_start
 from poli.module.import_section import parse_import_section
+from poli.shared import const
 from poli.shared.command import StopCommand
+from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
@@ -31,12 +33,29 @@ def is_view_poli(view):
     return filename and filename.startswith(backend_root)
 
 
-def poli_module_name(view):
-    return re.search(r'/([^/]+)\.poli\.js$', view.file_name()).group(1)
+def js_module_name(view):
+    return re.search(r'/([^/]+)\.js$', view.file_name()).group(1)
 
 
-def poli_file_name(module_name):
-    return os.path.join(backend_root, "{}.poli.js".format(module_name))
+def js_module_filename(module_name):
+    return os.path.join(backend_root, "{}.js".format(module_name))
+
+
+def open_js_module(window, module_name):
+    view = window.open_file(js_module_filename(module_name))
+    init_js_module_view(view)
+    return view
+
+
+def is_js_module_view_initialized(view):
+    return poli_kind[view] == KIND_MODULE
+
+
+def init_js_module_view(view):
+    view.assign_syntax(const.JS_SYNTAX_FILE)
+    view.set_scratch(True)
+    view.set_read_only(True)
+    poli_kind[view] = KIND_MODULE
 
 
 re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'
@@ -129,7 +148,7 @@ def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
         views = [
-            window.open_file(poli_file_name(module_name))
+            window.open_file(js_module_filename(module_name))
             for module_name in data
         ]
 
@@ -175,7 +194,7 @@ def modify_module_entries(view, edit, entries_data):
             if ereg and ereg.intersects(entry.reg_def):
                 raise RuntimeError(
                     "Could not modify module \"{}\": entry under edit".format(
-                        poli_module_name(view)
+                        js_module_name(view)
                     )
                 )
             regs.append(entry.reg_def)
@@ -183,7 +202,7 @@ def modify_module_entries(view, edit, entries_data):
 
     if len(regs) != len(entries_data):
         raise RuntimeError("Could not modify module \"{}\": out of sync".format(
-            poli_module_name(view)
+            js_module_name(view)
         ))
 
     with regedit.region_editing_suppressed(view),\
@@ -204,7 +223,7 @@ def modify_and_save_modules(window, modules_data):
 
     with active_view_preserved(window):
         views = [
-            window.open_file(poli_file_name(d['module']))
+            window.open_file(js_module_filename(d['module']))
             for d in modules_data
         ]
 
@@ -265,7 +284,7 @@ def reference_at(view, ptreg):
 
 def goto_module_entry(window, module, entry):
     old_view = window.active_view()
-    view = window.open_file(poli_file_name(module))
+    view = open_js_module(window, module)
 
     def on_loaded():
         reg = find_name_region(view, entry)
