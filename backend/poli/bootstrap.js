@@ -155,9 +155,6 @@ stmtInsert ::= $_.db.prepare(`
 stmtUpdate ::= $_.db.prepare(`
    UPDATE obj SET val = :val WHERE id = :oid
 `)
-selectAllStmt ::= $_.db.prepare(`
-   SELECT id, val FROM obj ORDER BY id ASC
-`)
 isObject ::= function (obj) {
    return typeof obj === 'object' && obj !== null;
 }
@@ -351,7 +348,7 @@ loadImage ::= function () {
       return $.isObject(x) && x[symPlaceholder];
    }
 
-   let data = $.selectAllStmt.all();
+   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).all();
    let id2obj = new Map();
 
    for (let {id, val} of data) {
