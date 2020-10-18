@@ -113,7 +113,7 @@ moduleNameByFile ::= function (moduleFile) {
       return null;
    }
 
-   return mtch.groups.module_name;
+   return mtch.groups['module_name'];
 }
 validateModuleEntries ::= function (minfo) {
    let entries = new Set(minfo.body.map(([name]) => name));
@@ -141,9 +141,9 @@ validateModuleEntries ::= function (minfo) {
       }
    }
 }
-metaRuntimeKeys ::= '__rtkeys'
-metaRef ::= '__ref'
-metaType ::= '__type'
+skRuntimeKeys ::= '__rtkeys'
+skRef ::= '__ref'
+skType ::= '__type'
 obj2id ::= new Map()
 nextOid ::= 1
 takeNextOid ::= function () {
@@ -161,14 +161,14 @@ isObject ::= function (obj) {
 toJson ::= function (obj, objref) {
    if (obj instanceof Set) {
       return JSON.stringify({
-         [$.metaType]: 'set',
+         [$.skType]: 'set',
          'contents': Array.from(obj, x => {
             return $.isObject(x) ? objref(x) : x;
          })
       });
    }
 
-   let runtimeKeys = obj[$.metaRuntimeKeys] || [];
+   let runtimeKeys = obj[$.skRuntimeKeys] || [];
 
    return JSON.stringify(obj, function (key, val) {
       if (val === obj || this !== obj) {
@@ -183,7 +183,7 @@ toJson ::= function (obj, objref) {
          return val;
       }
 
-      if (key === $.metaRuntimeKeys) {
+      if (key === $.skRuntimeKeys) {
          return val;
       }
 
@@ -215,13 +215,13 @@ objrefRecorder ::= function () {
       if (oid == null) {
          oid = toAdd.get(obj);
          if (oid == null) {
-            oid = $.nextOid++;
+            oid = $.takeNextOid();
             toAdd.set(obj, oid);
          }
       }
 
       return {
-         [$.metaRef]: oid
+         [$.skRef]: oid
       };
    }
 
@@ -251,7 +251,7 @@ makeModule ::= function (name, body) {
    }
 
    let module = {
-      [$.metaRuntimeKeys]: ['rtobj'],
+      [$.skRuntimeKeys]: ['rtobj'],
       name,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(body, ([entry]) => entry),
@@ -337,7 +337,7 @@ moduleEval ::= function (module, code) {
 loadImage ::= function () {
    let symPlaceholder = Symbol('placeholder');
 
-   function refto(refid) {
+   function placeholderFor(refid) {
       return {
          [symPlaceholder]: true,
          refid
@@ -357,16 +357,12 @@ loadImage ::= function () {
             return v;
          }
 
-         if (typeof v[$.metaRef] === 'number') {
-            return refto(v[$.metaRef]);
+         if (typeof v[$.skRef] === 'number') {
+            return placeholderFor(v[$.skRef]);
          }
 
          return v;
       });
-
-      if (obj[$.metaType] === 'set') {
-         obj = new Set(obj['contents']);
-      }
 
       $.obj2id.set(obj, id);
       id2obj.set(id, obj);
@@ -379,7 +375,11 @@ loadImage ::= function () {
 
    function getByRefid(refid) {
       unusedRefids.delete(refid);
-      return id2obj.get(refid);
+      let obj = id2obj.get(refid);
+      if (obj == null) {
+         throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
+      }
+      return obj;
    }
 
    function some(itbl, pred) {
@@ -392,36 +392,39 @@ loadImage ::= function () {
       return false;
    }
 
-   for (let [, obj] of id2obj) {
-      if (obj instanceof Set && some(obj, isPlaceholder)) {
-         let contents = Array.from(obj);
-         obj.clear();
-         for (let x of contents) {
-            if (x[symPlaceholder]) {
-               obj.add(getByRefid(x.refid));
-            }
-            else {
-               obj.add(x);
-            }
-         }
+   for (let obj of $.obj2id.keys()) {
+      let target;
+      if (obj[$.skType] === 'persistent-set') {
+         target = obj['items'];
       }
-      else if (some(Object.values(obj), isPlaceholder)) {
-         let entries = Object.entries(obj).filter(([k, v]) => isPlaceholder(v));
-         for (let [k, ph] of entries) {
-            obj[k] = getByRefid(ph.refid);
-         }
+      else {
+         target = obj;
+      }
+
+      let entries = Object.entries(target).filter(([k, v]) => isPlaceholder(v));
+      for (let [k, ph] of entries) {
+         target[k] = getByRefid(ph.refid);
       }
    }
 
    unusedRefids.delete($_.LOBBY_OID);
    if (unusedRefids.size > 0) {
-      console.warn(`Found ${unusedRefids.size} garbage objects`);
+      console.warn(`Found ${unusedRefids.size} isolated garbage objects`);
       for (let refid of unusedRefids) {
          console.log(
             $.util.inspect(id2obj.get(refid), {
                depth: 1
             })
          );
+      }
+   }
+
+   // Now make real persistent set objects
+   let obj2highlvl = new Map;
+   for (let obj of $.obj2id.keys()) {
+      if (obj[$.skType] === 'persistent-set') {
+         // Continue here...
+         obj
       }
    }
 
@@ -454,4 +457,30 @@ loadImage ::= function () {
    }
 
    return $.modules;
+}
+emptyPersistentSet ::= function () {
+   return {
+      nextid: 1,
+      item2id: new Map
+   }
+}
+persistentSetFromJson ::= function (nextid, items) {
+   let item2id = new Map;
+   for (let [id, item] of Object.entries(items)) {
+      item2id.set(item, id);
+   }
+
+   return {
+      nextid,
+      item2id
+   }
+}
+persistentSetToJson ::= function (pset) {
+   return {
+      [$.skType]: 'persistent-set',
+      nextid: pset.nextid,
+      items: Object.fromEntries(
+         Array.from(pset.item2id, ([item, id]) => [id, item])
+      )
+   }
 }

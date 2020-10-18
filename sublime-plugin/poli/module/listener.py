@@ -3,10 +3,11 @@ import sublime
 import sublime_plugin
 import sys
 
+import poli.config as config
+
 from poli.comm import comm
 from poli.module import operation as op
 from poli.shared.setting import poli_kind
-
 
 __all__ = ['PoliViewListener']
 
@@ -14,7 +15,9 @@ __all__ = ['PoliViewListener']
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):        
-        # return False
+        if not config.enabled:
+            return False
+
         # Lord, forgive me for doing this..
         view = sys._getframe(1).f_locals.get('view')
         return view is not None and op.is_view_poli(view)
