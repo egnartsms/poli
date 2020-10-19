@@ -1,8 +1,7 @@
-import sublime_plugin
-
 import poli.config as config
 from poli.shared.command import WindowCommand
-from poli.module.operation import is_view_poli
+from poli.module import operation as op
+from poli.sublime import regedit
 
 
 __all__ = ['PoliEnableCommand']
@@ -11,20 +10,23 @@ __all__ = ['PoliEnableCommand']
 class PoliEnableCommand(WindowCommand):
     def run(self, enable):
         if config.enabled != enable:
+            if enable:
+                switch_poli_on(self.window)
+            else:
+                switch_poli_off(self.window)
+
             config.enabled = enable
-            reopen_poli_views_in(self.window)
 
 
-def reopen_poli_views_in(window):
-    """Close and re-open Poli views in the given window"""
-    print("Enabled?", config.enabled)
-    active_view = window.active_view()
+def switch_poli_off(window):
     for view in window.views():
-        if is_view_poli(view):
-            fname = view.file_name()
-            view.close()
-            new_view = window.open_file(fname)
-            if view == active_view:
-                active_view = new_view
+        if op.is_view_poli(view):
+            if regedit.is_active_in(view):
+                op.terminate_edit_mode(view)
+            op.teardown_js_module_view(view)
 
-    window.focus_view(active_view)
+
+def switch_poli_on(window):
+    for view in window.views():
+        if op.is_view_poli(view):
+            op.setup_js_module_view(view)
