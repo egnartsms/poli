@@ -173,9 +173,6 @@ skSet ::= '__set'
 skMap ::= '__map'
 skRuntimeKeys ::= '__rtkeys'
 skRef ::= '__ref'
-isRef ::= function (x) {
-   return $.isObject(x) && $.hasOwnProperty(x, $.skRef);
-}
 initObjForPersistence ::= function (obj) {
    if (!(obj instanceof Set)) {
       return;
@@ -358,10 +355,18 @@ moduleEval ::= function (module, code) {
 loadImage ::= function () {
    let obj2id = new Map;
    let id2obj = new Map;
+   let obj2plain = new Map;
+
    let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).raw().all();
 
    for (let [id, val] of data) {
       let obj = JSON.parse(val);
+
+      if (obj[$.skSet]) {
+         let set = new Set;
+         obj2plain.set(set, obj);
+         obj = set;
+      }
 
       obj2id.set(obj, id);
       id2obj.set(id, obj);
@@ -369,48 +374,59 @@ loadImage ::= function () {
 
    $.nextOid = data[data.length - 1].id + 1;
 
-   // 1. Resolve object references
-   function getByRefid(refid) {
-      let obj = id2obj.get(refid);
+   function isref(v) {
+      return $.isObject(v) && $.hasOwnProperty(v, $.skRef);
+   }
+
+   function noref(v) {
+      if (!isref(v)) {
+         return v;
+      }
+
+      let obj = id2obj.get(v[$.skRef]);
       if (obj == null) {
          throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
       }
       return obj;
    }
 
-   for (let obj of obj2id.keys()) {
-      $.patchObjectTree(obj, (v) => {
-         if ($.isRef(v)) {
-            return getByRefid(v[$.skRef]);
+   function patchObject(obj) {
+      for (let [k, v] of Object.entries(obj)) {
+         if (isref(v)) {
+            obj[k] = noref(v);
          }
-      });
+      }
    }
 
-   // // 2. Create high-level objects
-   // let low2high = new Map;
+   for (let obj of obj2id.keys()) {
+      if (obj instanceof Set) {
+         let plain = obj2plain.get(obj);
+         let {nextid, id2item} = plain[$.skSet];
+         let item2id = new Map;
 
-   // for (let obj of obj2id.keys()) {
-   //    if ($.persistentType(obj) === $.persistent.set) {       
-   //       low2high.set(obj, $.psetNew());
-   //    }
-   // }
+         for (let [id, item] of Object.entries(id2item)) {
+            item = noref(item);
+            obj.add(item);
+            item2id.set(item, id);
+         }
+         
+         obj[$.skSet] = {nextid, item2id};
 
-   // // 3. Substitute low-level objects with high-level objects
-   // for (let obj of obj2id.keys()) {
-   //    $.patchObjectTree(obj, v => low2high.get(v));
-   // }
+         for (let [k, v] of Object.entries(plain)) {
+            if (k !== $.skSet) {
+               obj[k] = noref(v);
+            }
+         }
+      }
+      else {
+         patchObject(obj);
+      }
+   }
 
-   // for (let [obj, pset] of low2high) {
-   //    $.psetResetWithLowLevel(pset, obj, low2high);
-   //    let id = obj2id.get(obj);
-   //    obj2id.delete(obj);
-   //    obj2id.set(pset, id);
-   //    id2obj.set(id, pset);
-   // }
-
-   // $.lobby = id2obj.get($_.LOBBY_OID);
-   // $.modules = $.lobby.modules;
-   // $.imports = $.lobby.imports;
+   $.lobby = id2obj.get($_.LOBBY_OID);
+   $.modules = $.lobby.modules;
+   $.imports = $.lobby.imports;
+   $.obj2id = obj2id;
 
    // Initialize module rtobj's
    for (let module of Object.values($.modules)) {
@@ -437,22 +453,4 @@ loadImage ::= function () {
    }
 
    return $.modules;
-}
-patchObjectTree ::= function (obj, patcher) {
-   // obj must not be circular
-   let objs = [obj];
-
-   while (objs.length > 0) {
-      let obj = objs.pop();
-
-      for (let [k, v] of Object.entries(obj)) {
-         let vv = patcher(v);
-         if (vv != null) {
-            obj[k] = vv;
-         }
-         else if ($.isObject(v)) {
-            objs.push(v);
-         }
-      }
-   }
 }
