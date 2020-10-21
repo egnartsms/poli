@@ -78,4 +78,36 @@ jsonPath ::= function (...things) {
    }
 
    return pieces.join('');
+
+   // Sets
+   //psetNew ::= function (items) {
+   //   let pset = {
+   //      [$.skPersistentType]: $.persistentType.set,
+   //      nextid: 1,
+   //      item2id: new Map
+   //   };
+   //
+   //   for (let item of items || []) {
+   //      $.psetAdd(pset, item);
+   //   }
+   //
+   //   return pset;
+   //}
+   //psetHas ::= function (pset, item) {
+   //   return pset.item2id.has(item);
+   //}
+   //psetAdd ::= function (pset, item) {
+   //   if ($.psetHas(pset, item)) {
+   //      return false;
+   //   }
+   //
+   //   pset.item2id.set(item, pset.nextid++);
+   //   return true;
+   //}
+   //psetDelete ::= function (pset, item) {
+   //   return pset.item2id.delete(item);
+   //}
+   //psetIterate ::= function (pset) {
+   //   return pset.item2id.keys();
+   //}
 }

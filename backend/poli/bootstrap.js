@@ -19,10 +19,10 @@ makeImageByFs ::= function () {
       for (let {donor: donorName, asterisk, imports} of minfo.imports) {
          let donor = $.modules[donorName];
          if (asterisk !== null) {
-            $.doImport({recp, donor, name: null, alias: asterisk});
+            $.import({recp, donor, name: null, alias: asterisk});
          }
          for (let {entry, alias} of imports) {
-            $.doImport({recp, donor, name: entry, alias});
+            $.import({recp, donor, name: entry, alias});
          }
       }
    }
@@ -53,8 +53,6 @@ parseAllModules ::= function () {
          imports,
          body
       };
-
-      $.validateModuleEntries(moduleInfo);
 
       modulesInfo.push(moduleInfo);
    }
@@ -115,163 +113,7 @@ moduleNameByFile ::= function (moduleFile) {
 
    return mtch.groups['module_name'];
 }
-validateModuleEntries ::= function (minfo) {
-   let entries = new Set(minfo.body.map(([name]) => name));
-
-   for (let {donor, asterisk, imports} of minfo.imports) {
-      if (asterisk !== null) {
-         if (entries.has(asterisk)) {
-            throw new Error(
-               `Corrupted image: module "${minfo.name}" imports "${donor}" as ` +
-               `"${asterisk}" which collides with another module member or import`
-            );
-         }
-         entries.add(asterisk);
-      }
-
-      for (let {entry, alias} of imports) {
-         let importedAs = alias || entry;
-         if (entries.has(importedAs)) {
-            throw new Error(
-               `Corrupted image: module "${minfo.name}" imports "${importedAs}" from ` +
-               `"${donor}" which collides with another module member or import`
-            );
-         }
-         entries.add(importedAs);
-      }
-   }
-}
-skRuntimeKeys ::= '__rtkeys'
-skRef ::= '__ref'
-skType ::= '__type'
-obj2id ::= new Map()
-nextOid ::= 1
-takeNextOid ::= function () {
-   return $.nextOid++;
-}
-stmtInsert ::= $_.db.prepare(`
-   INSERT INTO obj(id, val) VALUES (:oid, :val)
-`)
-stmtUpdate ::= $_.db.prepare(`
-   UPDATE obj SET val = :val WHERE id = :oid
-`)
-isObject ::= function (obj) {
-   return typeof obj === 'object' && obj !== null;
-}
-toJson ::= function (obj, objref) {
-   if (obj instanceof Set) {
-      return JSON.stringify({
-         [$.skType]: 'set',
-         'contents': Array.from(obj, x => {
-            return $.isObject(x) ? objref(x) : x;
-         })
-      });
-   }
-
-   let runtimeKeys = obj[$.skRuntimeKeys] || [];
-
-   return JSON.stringify(obj, function (key, val) {
-      if (val === obj || this !== obj) {
-         return val;
-      }
-
-      if (runtimeKeys.includes(key)) {
-         return null;
-      }
-
-      if (!$.isObject(val)) {
-         return val;
-      }
-
-      if (key === $.skRuntimeKeys) {
-         return val;
-      }
-
-      return objref(val);
-   });
-}
-saveObject ::= function (obj) {
-   $.assert($.isObject(obj));
-
-   let rec = $.objrefRecorder();
-   let oid = $.obj2id.get(obj);
-   let json = $.toJson(obj, rec.objref);
-   if (oid == null) {
-      oid = $.takeNextOid();
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
-   }
-   else {
-      $.stmtUpdate.run({oid, val: json});
-   }
-
-   $.addRecordedObjects(rec);
-}
-objrefRecorder ::= function () {
-   let toAdd = new Map();
-
-   function objref(obj) {
-      let oid = $.obj2id.get(obj);
-      if (oid == null) {
-         oid = toAdd.get(obj);
-         if (oid == null) {
-            oid = $.takeNextOid();
-            toAdd.set(obj, oid);
-         }
-      }
-
-      return {
-         [$.skRef]: oid
-      };
-   }
-
-   return {toAdd, objref};
-}
-addRecordedObjects ::= function ({toAdd, objref}) {
-   function addObject(obj, oid) {
-      let json = $.toJson(obj, objref);
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
-   }
-
-   while (toAdd.size > 0) {
-      let {value: [obj, oid]} = toAdd.entries().next();
-      addObject(obj, oid);
-      toAdd.delete(obj);
-   }
-}
-makeModule ::= function (name, body) {
-   let defs = {};
-
-   for (let [entry, src] of body) {
-      defs[entry] = {
-         type: 'native',
-         src
-      };
-   }
-
-   let module = {
-      [$.skRuntimeKeys]: ['rtobj'],
-      name,
-      importedNames: new Set(),  // filled in on import resolve
-      entries: Array.from(body, ([entry]) => entry),
-      defs: defs,
-      rtobj: null
-   };
-
-   if (name === $_.BOOTSTRAP_MODULE) {
-      module.rtobj = $;
-   }
-   else {
-      module.rtobj = Object.create(null);
-      for (let [entry, src] of body) {
-         module.rtobj[entry] = $.moduleEval(module, src);
-      }
-   }
-
-   return module;
-}
-doImport ::= function (imp) {
+import ::= function (imp) {
    if (imp.name === null) {
       $.validateStarImport(imp);
    }
@@ -327,54 +169,208 @@ validateStarImport ::= function ({recp, donor, alias}) {
       );
    }
 }
+skSet ::= '__set'
+skMap ::= '__map'
+skRuntimeKeys ::= '__rtkeys'
+skRef ::= '__ref'
+isRef ::= function (x) {
+   return $.isObject(x) && $.hasOwnProperty(x, $.skRef);
+}
+initObjForPersistence ::= function (obj) {
+   if (!(obj instanceof Set)) {
+      return;
+   }
+
+   return $.initSetForPersistence(obj);
+}
+initSetForPersistence ::= function (set) {
+   $.assert(set[$.skSet] == null);
+
+   let nextid = 1;
+   let item2id = new Map;
+   for (let item of set) {
+      item2id.set(item, nextid++);
+   }
+
+   Object.defineProperty(set, $.skSet, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: {nextid, item2id}
+   });   
+}
+obj2id ::= new Map()
+nextOid ::= 1
+takeNextOid ::= function () {
+   return $.nextOid++;
+}
+stmtInsert ::= $_.db.prepare(`
+   INSERT INTO obj(id, val) VALUES (:oid, :val)
+`)
+stmtUpdate ::= $_.db.prepare(`
+   UPDATE obj SET val = :val WHERE id = :oid
+`)
+isObject ::= function (val) {
+   return typeof val === 'object' && val !== null;
+}
+toJson ::= function (obj, ref) { 
+   let runtimeKeys = obj[$.skRuntimeKeys] || [];
+
+   if (obj[$.skSet]) {
+      let {nextid, item2id} = obj[$.skSet];
+
+      obj = {
+         [$.skSet]: {
+            nextid,
+            id2item: Object.fromEntries(
+               function* () {
+                  for (let [item, id] of item2id) {
+                     yield [id, $.isObject(item) ? ref(item) : item];
+                  }
+               }()
+            )
+         },
+         ...obj
+      }
+   } 
+
+   return JSON.stringify(obj, function (key, val) {
+      if (val === obj || this !== obj) {
+         return val;
+      }
+
+      // Special keys should not be touched
+      if (key === $.skRuntimeKeys || key === $.skSet) {
+         return val;
+      }
+
+      if (runtimeKeys.includes(key)) {
+         return null;
+      }
+      
+      return $.isObject(val) ? ref(val) : val;
+   });
+}
+saveObject ::= function (obj) {
+   $.assert($.isObject(obj));
+
+   let oid = $.obj2id.get(obj);
+   let stmt;
+
+   if (oid == null) {
+      $.initObjForPersistence(obj);
+      oid = $.takeNextOid();
+      $.obj2id.set(obj, oid);
+      stmt = $.stmtInsert;
+   }
+   else {
+      stmt = $.stmtUpdate;
+   }
+
+   let rec = $.objrefRecorder();
+
+   stmt.run({
+      oid,
+      val: $.toJson(obj, rec.ref)
+   });
+
+   $.addRecordedObjects(rec);
+}
+objrefRecorder ::= function () {
+   let toAdd = new Map();
+
+   function ref(obj) {
+      $.assert($.isObject(obj));
+
+      let oid = $.obj2id.get(obj);
+      if (oid == null) {
+         oid = toAdd.get(obj);
+         if (oid == null) {
+            oid = $.takeNextOid();
+            toAdd.set(obj, oid);
+         }
+      }
+
+      return {
+         [$.skRef]: oid
+      };
+   }
+
+   return {toAdd, ref};
+}
+addRecordedObjects ::= function ({toAdd, ref}) {
+   function addObject(obj, oid) {
+      $.initObjForPersistence(obj);
+      $.obj2id.set(obj, oid);
+      $.stmtInsert.run({oid, val: $.toJson(obj, ref)});
+   }
+
+   while (toAdd.size > 0) {
+      let {value: [obj, oid]} = toAdd.entries().next();
+      addObject(obj, oid);
+      toAdd.delete(obj);
+   }
+}
+makeModule ::= function (name, body) {
+   let defs = {};
+
+   for (let [entry, src] of body) {
+      defs[entry] = {
+         type: 'native',
+         src
+      };
+   }
+
+   let module = {
+      [$.skRuntimeKeys]: ['rtobj'],
+      name,
+      importedNames: new Set(),  // filled in on import resolve
+      entries: Array.from(body, ([entry]) => entry),
+      defs: defs,
+      rtobj: null
+   };
+
+   if (name === $_.BOOTSTRAP_MODULE) {
+      module.rtobj = $;
+   }
+   else {
+      module.rtobj = Object.create(null);
+      for (let [entry, src] of body) {
+         module.rtobj[entry] = $.moduleEval(module, src);
+      }
+   }
+
+   return module;
+}
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
-   let fun = new Function('$_, $, $$', `return (${code})`);
-   return fun.call(null, $_, module.rtobj, module);
+   try {
+      let fun = new Function('$_, $, $$', `return (${code})`);
+      return fun.call(null, $_, module.rtobj, module);
+   }
+   catch (e) {
+      console.error(`Could not eval: "${code}"`);
+      throw e;
+   }
 }
 loadImage ::= function () {
-   let symPlaceholder = Symbol('placeholder');
+   let obj2id = new Map;
+   let id2obj = new Map;
+   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).raw().all();
 
-   function placeholderFor(refid) {
-      return {
-         [symPlaceholder]: true,
-         refid
-      };
-   }
+   for (let [id, val] of data) {
+      let obj = JSON.parse(val);
 
-   function isPlaceholder(x) {
-      return $.isObject(x) && x[symPlaceholder];
-   }
-
-   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).all();
-   let id2obj = new Map();
-
-   for (let {id, val} of data) {
-      let obj = JSON.parse(val, function (k, v) {
-         if (!$.isObject(v)) {
-            return v;
-         }
-
-         if (typeof v[$.skRef] === 'number') {
-            return placeholderFor(v[$.skRef]);
-         }
-
-         return v;
-      });
-
-      $.obj2id.set(obj, id);
+      obj2id.set(obj, id);
       id2obj.set(id, obj);
    }
 
    $.nextOid = data[data.length - 1].id + 1;
 
-   // Now resolve object references
-   let unusedRefids = new Set(id2obj.keys());
-
+   // 1. Resolve object references
    function getByRefid(refid) {
-      unusedRefids.delete(refid);
       let obj = id2obj.get(refid);
       if (obj == null) {
          throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
@@ -382,55 +378,39 @@ loadImage ::= function () {
       return obj;
    }
 
-   function some(itbl, pred) {
-      for (let x of itbl) {
-         if (pred(x)) {
-            return true;
+   for (let obj of obj2id.keys()) {
+      $.patchObjectTree(obj, (v) => {
+         if ($.isRef(v)) {
+            return getByRefid(v[$.skRef]);
          }
-      }
-
-      return false;
+      });
    }
 
-   for (let obj of $.obj2id.keys()) {
-      let target;
-      if (obj[$.skType] === 'persistent-set') {
-         target = obj['items'];
-      }
-      else {
-         target = obj;
-      }
+   // // 2. Create high-level objects
+   // let low2high = new Map;
 
-      let entries = Object.entries(target).filter(([k, v]) => isPlaceholder(v));
-      for (let [k, ph] of entries) {
-         target[k] = getByRefid(ph.refid);
-      }
-   }
+   // for (let obj of obj2id.keys()) {
+   //    if ($.persistentType(obj) === $.persistent.set) {       
+   //       low2high.set(obj, $.psetNew());
+   //    }
+   // }
 
-   unusedRefids.delete($_.LOBBY_OID);
-   if (unusedRefids.size > 0) {
-      console.warn(`Found ${unusedRefids.size} isolated garbage objects`);
-      for (let refid of unusedRefids) {
-         console.log(
-            $.util.inspect(id2obj.get(refid), {
-               depth: 1
-            })
-         );
-      }
-   }
+   // // 3. Substitute low-level objects with high-level objects
+   // for (let obj of obj2id.keys()) {
+   //    $.patchObjectTree(obj, v => low2high.get(v));
+   // }
 
-   // Now make real persistent set objects
-   let obj2highlvl = new Map;
-   for (let obj of $.obj2id.keys()) {
-      if (obj[$.skType] === 'persistent-set') {
-         // Continue here...
-         obj
-      }
-   }
+   // for (let [obj, pset] of low2high) {
+   //    $.psetResetWithLowLevel(pset, obj, low2high);
+   //    let id = obj2id.get(obj);
+   //    obj2id.delete(obj);
+   //    obj2id.set(pset, id);
+   //    id2obj.set(id, pset);
+   // }
 
-   $.lobby = id2obj.get($_.LOBBY_OID);
-   $.modules = $.lobby.modules;
-   $.imports = $.lobby.imports;
+   // $.lobby = id2obj.get($_.LOBBY_OID);
+   // $.modules = $.lobby.modules;
+   // $.imports = $.lobby.imports;
 
    // Initialize module rtobj's
    for (let module of Object.values($.modules)) {
@@ -458,29 +438,21 @@ loadImage ::= function () {
 
    return $.modules;
 }
-emptyPersistentSet ::= function () {
-   return {
-      nextid: 1,
-      item2id: new Map
-   }
-}
-persistentSetFromJson ::= function (nextid, items) {
-   let item2id = new Map;
-   for (let [id, item] of Object.entries(items)) {
-      item2id.set(item, id);
-   }
+patchObjectTree ::= function (obj, patcher) {
+   // obj must not be circular
+   let objs = [obj];
 
-   return {
-      nextid,
-      item2id
-   }
-}
-persistentSetToJson ::= function (pset) {
-   return {
-      [$.skType]: 'persistent-set',
-      nextid: pset.nextid,
-      items: Object.fromEntries(
-         Array.from(pset.item2id, ([item, id]) => [id, item])
-      )
+   while (objs.length > 0) {
+      let obj = objs.pop();
+
+      for (let [k, v] of Object.entries(obj)) {
+         let vv = patcher(v);
+         if (vv != null) {
+            obj[k] = vv;
+         }
+         else if ($.isObject(v)) {
+            objs.push(v);
+         }
+      }
    }
 }
