@@ -1,29 +1,39 @@
 bootstrap
    imports
+   validateImport
 persist
    deleteObject
+   setAdd
+   setDelete
 rt-rec
    delmark
    rtget
    rtset
-run
-   assert
 -----
-addImport ::= function (imp) {
-   $.assert(!$.imports.has(imp));
+import ::= function (imp) {
+   $.validateImport(imp);
 
    let {recp, donor, alias, name} = imp;
 
    if (name === null) {
-      recp.importedNames.add(alias);
+      $.setAdd(recp.importedNames, alias);
       $.rtset(recp, alias, donor.rtobj);
    }
    else {
-      recp.importedNames.add($.importedAs(imp));
+      $.setAdd(recp.importedNames, $.importedAs(imp));
       $.rtset(recp, $.importedAs(imp), $.rtget(donor, name));
    }
 
-   $.imports.add(imp);
+   $.setAdd($.imports, imp);
+}
+unimport ::= function (imp) {
+   let {recp} = imp;
+
+   $.setDelete(recp.importedNames, $.importedAs(imp));
+   $.setDelete($.imports, imp);
+   $.deleteObject(imp);
+   
+   $.rtset(recp, $.importedAs(imp), $.delmark);
 }
 importedAs ::= function (imp) {
    return imp.alias || imp.name;
@@ -84,13 +94,4 @@ referenceImports ::= function (donor, entry, recp) {
       eimp: $.importFromTo(donor, entry, recp),
       simp: $.starImportFromTo(donor, recp)
    };
-}
-deleteImport ::= function (imp) {
-   let {recp} = imp;
-
-   recp.importedNames.delete($.importedAs(imp));
-   $.imports.delete(imp);
-   $.deleteObject(imp);
-   
-   $.rtset(recp, $.importedAs(imp), $.delmark);
 }

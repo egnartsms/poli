@@ -1,15 +1,3 @@
-bootstrap
-   modules
-   obj2id
-common
-   moduleByName
-op-move
-   moveEntry
-persist
-   deleteObjectProp
-   setObjectProp
-rt-rec
-   applyRtDelta
 -----
-partner ::= 'partner'
+partner ::= 'Fuck it'
 anotherPartner ::= 'ap'

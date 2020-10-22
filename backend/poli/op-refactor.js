@@ -7,9 +7,9 @@ common
    joindot
    propagateValueToRecipients
 import
-   deleteImport
    importsOf
    referenceImports
+   unimport
 persist
    deleteArrayItem
    deleteObject
@@ -178,15 +178,9 @@ removeEntry ::= function (module, name) {
    let imps = Array.from($.importsOf(module, name));
    let recps = new Set(imps.map(imp => imp.recp));
 
-   if (imps.length > 0) {
-      for (let imp of imps) {
-         $.deleteImport(imp);
-      }      
-      for (let recp of recps) {
-         $.saveObject(recp.importedNames);
-      }
-      $.saveObject($.imports);      
-   }
+   for (let imp of imps) {
+      $.unimport(imp);
+   }      
 
    $.deleteArrayItem(module.entries, module.entries.indexOf(name));
    $.deleteObject(module.defs[name]);

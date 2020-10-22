@@ -3,39 +3,53 @@ bootstrap
    isObject
    obj2id
    objrefRecorder
+   skSet
 -----
 assert ::= $_.require('assert').strict
-setObjectProp ::= function (obj, prop, val) {
+stmtSetProp ::= $_.db.prepare(`
+   UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :oid
+`)
+stmtDeleteProp ::= $_.db.prepare(`
+   UPDATE obj SET val = json_remove(val, :path) WHERE id = :oid
+`)
+stmtDelete ::= $_.db.prepare(`
+   DELETE FROM obj WHERE id = :oid
+`)
+dbSetProp ::= function (obj, ...pathvalPairs) {
    $.assert($.obj2id.has(obj));
+   $.assert(pathvalPairs.length % 2 === 0);
 
-   let oid = $.obj2id.get(obj);
+
    let rec = $.objrefRecorder();
-   let json = $.toJsonRef(val, rec.objref);
+   
+   for (let i = 0; i < pathvalPairs.length; i += 2) {
+      let path = pathvalPairs[i];
+      let val = pathvalPairs[i + 1];
 
-   $.stmtSetProp.run({
-      oid,
-      path: $.jsonPath(prop),
-      propval: json
-   });
+      $.stmtSetProp.run({
+         oid: $.obj2id.get(obj),
+         path: $.jsonPath(path),
+         propval: $.toJsonRef(val, rec.ref)
+      });
+   }
 
    $.addRecordedObjects(rec);
-
-   obj[prop] = val;
 }
-deleteObjectProp ::= function (obj, prop) {
+dbDeleteProp ::= function (obj, prop) {
    $.assert($.obj2id.has(obj));
 
    $.stmtDeleteProp.run({
       oid: $.obj2id.get(obj),
       path: $.jsonPath(prop),
    });
-   delete obj[prop];   
 }
-deleteObject ::= function (obj) {
-   $.assert($.obj2id.has(obj));
-
-   $.stmtDelete.run({oid: $.obj2id.get(obj)});
-   $.obj2id.delete(obj);
+setObjectProp ::= function (obj, prop, val) {
+   $.dbSetProp(obj, prop, val);
+   obj[prop] = val;
+}
+deleteObjectProp ::= function (obj, prop) {
+   $.dbDeleteProp(obj, prop);
+   delete obj[prop];
 }
 deleteArrayItem ::= function (ar, i) {
    $.assert($.obj2id.has(ar));
@@ -46,34 +60,64 @@ deleteArrayItem ::= function (ar, i) {
    });
    ar.splice(i, 1);
 }
-stmtSetProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :oid
-`)
-stmtDeleteProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_remove(val, :path) WHERE id = :oid
-`)
-stmtDelete ::= $_.db.prepare(`
-   DELETE FROM obj WHERE id = :oid
-`)
-toJsonRef ::= function (obj, objref) {
+deleteObject ::= function (obj) {
+   $.assert($.obj2id.has(obj));
+
+   $.stmtDelete.run({oid: $.obj2id.get(obj)});
+   $.obj2id.delete(obj);
+}
+setAdd ::= function (set, item) {
+   if (set.has(item)) {
+      return false;
+   }
+   
+   let aux = set[$.skSet];
+   let newid = aux.nextid++;
+   $.dbSetProp(set,
+      [$.skSet, 'id2item', String(newid)], item,
+      [$.skSet, 'nextid'], aux.nextid
+   );
+   aux.item2id.set(item, newid);
+   set.add(item);
+
+   return true;
+}
+setDelete ::= function (set, item) {
+   if (!set.delete(item)) {
+      return false;
+   }
+
+   let aux = set[$.skSet];
+   let id = aux.item2id.get(item);
+   $.dbDeleteProp(set, [$.skSet, 'id2item', String(id)]);
+   aux.item2id.delete(item);
+
+   return true;
+}
+toJsonRef ::= function (obj, ref) {
    // Convert to JSON but use reference even for obj itself
    if ($.isObject(obj)) {
-      obj = objref(obj);
+      obj = ref(obj);
    }
 
    return JSON.stringify(obj);
 }
-jsonPath ::= function (...things) {
+jsonPath ::= function (path) {
+   if (!(path instanceof Array)) {
+      path = [path];
+   }
+
    let pieces = ['$'];
-   for (let thing of things) {
-      if (typeof thing === 'string') {
-         pieces.push('.' + thing);
+
+   for (let step of path) {
+      if (typeof step === 'string') {
+         pieces.push('.' + step);
       }
-      else if (typeof thing === 'number') {
-         pieces.push(`[${thing}]`);
+      else if (typeof step === 'number') {
+         pieces.push(`[${step}]`);
       }
       else {
-         throw new Error(`Invalid JSON path item: ${thing}`);
+         throw new Error(`Invalid JSON path item: ${step}`);
       }
    }
 

@@ -114,12 +114,9 @@ moduleNameByFile ::= function (moduleFile) {
    return mtch.groups['module_name'];
 }
 import ::= function (imp) {
-   if (imp.name === null) {
-      $.validateStarImport(imp);
-   }
-   else {
-      $.validateEntryImport(imp);
-   }
+   // This function is only for use while creating image from files. It's not intended
+   // to be reused in other modules.
+   $.validateImport(imp);
 
    if (imp.name === null) {
       imp.recp.importedNames.add(imp.alias);
@@ -133,6 +130,16 @@ import ::= function (imp) {
    }
 
    $.imports.add(imp);
+}
+validateImport ::= function (imp) {
+   $.assert(!$.imports.has(imp));
+
+   if (imp.name === null) {
+      $.validateStarImport(imp);
+   }
+   else {
+      $.validateEntryImport(imp);
+   }
 }
 validateEntryImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
@@ -174,11 +181,9 @@ skMap ::= '__map'
 skRuntimeKeys ::= '__rtkeys'
 skRef ::= '__ref'
 initObjForPersistence ::= function (obj) {
-   if (!(obj instanceof Set)) {
-      return;
+   if (obj instanceof Set) {
+      $.initSetForPersistence(obj);
    }
-
-   return $.initSetForPersistence(obj);
 }
 initSetForPersistence ::= function (set) {
    $.assert(set[$.skSet] == null);
