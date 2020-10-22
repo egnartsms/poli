@@ -21,6 +21,9 @@ renameImport ::= function (imp, newAlias) {
    let oldName = $.importedAs(imp);
    let newName = newAlias || imp.name;
 
+   if (oldName === newName) {
+      return null;
+   }
    if (imp.name === null && !newAlias) {
       throw new Error(`Module import ("${imp.donor.name}") is left unnamed`);
    }

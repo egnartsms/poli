@@ -159,10 +159,7 @@ def save_module(view):
 def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
-        views = [
-            window.open_file(js_module_filename(module_name))
-            for module_name in data
-        ]
+        views = [open_js_module(window, module_name) for module_name in data]
 
     view_data = ViewDict(zip(views, data.values()))
 
@@ -234,10 +231,7 @@ def modify_and_save_modules(window, modules_data):
         return
 
     with active_view_preserved(window):
-        views = [
-            window.open_file(js_module_filename(d['module']))
-            for d in modules_data
-        ]
+        views = [open_js_module(window, d['module']) for d in modules_data]
 
     def process_1(view, module_data, edit):
         modify_module(view, edit, module_data)

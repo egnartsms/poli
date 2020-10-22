@@ -1,8 +1,6 @@
 bootstrap
    hasOwnProperty
-   imports
    moduleEval
-   saveObject
 common
    joindot
    propagateValueToRecipients
@@ -14,6 +12,8 @@ persist
    deleteArrayItem
    deleteObject
    deleteObjectProp
+   setAdd
+   setDelete
    setObjectProp
 reference
    isEntryUsed
@@ -28,9 +28,8 @@ renameImportedName ::= function (recp, oldName, newName) {
    $.rtset(recp, newName, $.rtget(recp, oldName));
    $.rtset(recp, oldName, $.delmark);
 
-   recp.importedNames.delete(oldName);
-   recp.importedNames.add(newName);
-   $.saveObject(recp.importedNames);
+   $.setDelete(recp.importedNames, oldName);
+   $.setAdd(recp.importedNames, newName);
 }
 offendingModulesOnRename ::= function (module, oldName, newName) {
    let offendingModules = [];

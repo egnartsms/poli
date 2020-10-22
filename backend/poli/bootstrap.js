@@ -377,7 +377,7 @@ loadImage ::= function () {
       id2obj.set(id, obj);
    }
 
-   $.nextOid = data[data.length - 1].id + 1;
+   $.nextOid = data[data.length - 1][0] + 1;
 
    function isref(v) {
       return $.isObject(v) && $.hasOwnProperty(v, $.skRef);
