@@ -9,6 +9,7 @@ common
 img2fs
    flushModule
 import
+   import
    importFor
 op-edit
    addEntry
@@ -207,7 +208,7 @@ operationHandlers ::= ({
    import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
-      $.opImport.doImport({
+      $.import({
          recp,
          donor,
          name: name || null,
@@ -245,18 +246,11 @@ operationHandlers ::= ({
       if (!imp) {
          throw new Error(`Not found imported entry: "${importedAs}"`);
       }
-      if (importedAs === (newAlias || imp.name)) {
-         $.opRet({
-            modifiedEntries: [],
-            importSection: null
-         });
-         return;
-      }
 
       let modifiedEntries = $.opImport.renameImport(imp, newAlias || null);
       $.opRet({
          modifiedEntries: modifiedEntries || [],
-         importSection: $.dumpImportSection(module)
+         importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
       });
    },
 

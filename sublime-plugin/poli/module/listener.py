@@ -3,9 +3,10 @@ import sublime
 import sublime_plugin
 import sys
 
+import poli.config as config
+
 from poli.comm import comm
 from poli.module import operation as op
-from poli.shared.setting import poli_kind
 
 
 __all__ = ['PoliViewListener']
@@ -13,20 +14,24 @@ __all__ = ['PoliViewListener']
 
 class PoliViewListener(sublime_plugin.ViewEventListener):
     @classmethod
-    def is_applicable(cls, settings):        
-        # return False
+    def is_applicable(cls, settings):
         # Lord, forgive me for doing this..
         view = sys._getframe(1).f_locals.get('view')
         return view is not None and op.is_view_poli(view)
 
     def on_load(self):
-        op.init_js_module_view(self.view)
+        if not config.enabled:
+            return
+        op.setup_js_module_view(self.view)
         op.highlight_unknown_names(self.view)
 
     def on_activated(self):
         op.set_connected_status(self.view, comm.is_connected)
 
     def on_query_completions(self, prefix, locations):
+        if not config.enabled:
+            return None
+
         if len(locations) != 1:
             return None
 

@@ -1,19 +1,19 @@
 bootstrap
    hasOwnProperty
-   imports
    moduleEval
-   saveObject
 common
    joindot
    propagateValueToRecipients
 import
-   deleteImport
    importsOf
    referenceImports
+   unimport
 persist
    deleteArrayItem
    deleteObject
    deleteObjectProp
+   setAdd
+   setDelete
    setObjectProp
 reference
    isEntryUsed
@@ -28,9 +28,8 @@ renameImportedName ::= function (recp, oldName, newName) {
    $.rtset(recp, newName, $.rtget(recp, oldName));
    $.rtset(recp, oldName, $.delmark);
 
-   recp.importedNames.delete(oldName);
-   recp.importedNames.add(newName);
-   $.saveObject(recp.importedNames);
+   $.setDelete(recp.importedNames, oldName);
+   $.setAdd(recp.importedNames, newName);
 }
 offendingModulesOnRename ::= function (module, oldName, newName) {
    let offendingModules = [];
@@ -178,15 +177,9 @@ removeEntry ::= function (module, name) {
    let imps = Array.from($.importsOf(module, name));
    let recps = new Set(imps.map(imp => imp.recp));
 
-   if (imps.length > 0) {
-      for (let imp of imps) {
-         $.deleteImport(imp);
-      }      
-      for (let recp of recps) {
-         $.saveObject(recp.importedNames);
-      }
-      $.saveObject($.imports);      
-   }
+   for (let imp of imps) {
+      $.unimport(imp);
+   }      
 
    $.deleteArrayItem(module.entries, module.entries.indexOf(name));
    $.deleteObject(module.defs[name]);

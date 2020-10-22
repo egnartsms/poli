@@ -1,9 +1,3 @@
-common
-   moduleByName
-op-move
-   moveEntry
-rt-rec
-   applyRtDelta
 -----
-partner ::= 'partner'
+partner ::= 'Fuck it'
 anotherPartner ::= 'ap'

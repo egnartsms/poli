@@ -17,6 +17,7 @@ from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
+from poli.sublime.misc import all_views
 from poli.sublime.misc import match_at
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
@@ -44,16 +45,29 @@ def js_module_filename(module_name):
 
 def open_js_module(window, module_name):
     view = window.open_file(js_module_filename(module_name))
-    init_js_module_view(view)
+    setup_js_module_view(view)
     return view
 
 
-def init_js_module_view(view):
+def setup_js_module_view(view):
     if poli_kind[view] is None:
         view.assign_syntax(const.JS_SYNTAX_FILE)
         view.set_scratch(True)
         view.set_read_only(True)
         poli_kind[view] = KIND_MODULE
+
+
+def teardown_js_module_view(view):
+    if poli_kind[view] is not None:
+        view.set_scratch(False)
+        view.set_read_only(False)
+        poli_kind[view] = None
+
+
+def all_poli_views():
+    for view in all_views():
+        if is_view_poli(view):
+            yield view
 
 
 re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'
@@ -145,10 +159,7 @@ def save_module(view):
 def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
-        views = [
-            window.open_file(js_module_filename(module_name))
-            for module_name in data
-        ]
+        views = [open_js_module(window, module_name) for module_name in data]
 
     view_data = ViewDict(zip(views, data.values()))
 
@@ -220,10 +231,7 @@ def modify_and_save_modules(window, modules_data):
         return
 
     with active_view_preserved(window):
-        views = [
-            window.open_file(js_module_filename(d['module']))
-            for d in modules_data
-        ]
+        views = [open_js_module(window, d['module']) for d in modules_data]
 
     def process_1(view, module_data, edit):
         modify_module(view, edit, module_data)
@@ -325,7 +333,7 @@ def goto_direct_ref(view, name):
         jump(view, to=reg.begin())
     else:
         # Not found among own entries, look for imports
-        op.goto_donor_entry(view, name)
+        goto_donor_entry(view, name)
 
 
 def goto_donor_entry(view, imported_as):

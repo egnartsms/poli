@@ -10,23 +10,23 @@ rtget ::= function (module, name) {
    let val = delta[name];
    return val === $.delmark ? undefined : val;
 }
-rtset ::= function (module, prop, val) {
+rtset ::= function (module, name, val) {
    let delta = $.rtdelta.get(module);
    if (!delta) {
       delta = new Object(null);
       $.rtdelta.set(module, delta);
    }
 
-   delta[prop] = val;
+   delta[name] = val;
 }
 applyRtDelta ::= function () {
    for (let [module, delta] of $.rtdelta) {
-      for (let [prop, val] of Object.entries(delta)) {
+      for (let [name, val] of Object.entries(delta)) {
          if (val === $.delmark) {
-            delete module.rtobj[prop];
+            delete module.rtobj[name];
          }
          else {
-            module.rtobj[prop] = val;
+            module.rtobj[name] = val;
          }
       }
    }

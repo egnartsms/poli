@@ -1,21 +1,21 @@
 bootstrap
    hasOwnProperty
-   imports
    moduleEval
    saveObject
 common
    dumpImportSection
    joindot
 import
-   addImport
-   deleteImport
+   import
    importFromTo
    importedAs
    referenceImports
    starImportFromTo
+   unimport
 op-refactor
    renameRefsIn
 persist
+   deleteArrayItem
    deleteObject
    deleteObjectProp
    setObjectProp
@@ -86,8 +86,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    // Stage 1. Delete imports
    for (let imp of bwd.importsToRemove) {
-      $.deleteImport(imp);
-      $.saveObject(imp.recp.importedNames);
+      $.unimport(imp);
    }
 
    // Stage 2. Take out srcModule[entry] definition
@@ -95,8 +94,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    $.deleteObjectProp(srcModule.defs, entry);
    $.rtset(srcModule, entry, $.delmark);
 
-   srcModule.entries.splice(srcModule.entries.indexOf(entry), 1);
-   $.saveObject(srcModule.entries);
+   $.deleteArrayItem(srcModule.entries, srcModule.entries.indexOf(entry));
 
    // Stage 3. Modify modules (do rename in definitions)
    let modifiedModules = new Map;
@@ -155,11 +153,8 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    // Stage 5. Add imports
    for (let imp of [...fwd.importsToAdd, ...bwd.importsToAdd]) {
-      $.addImport(imp);
-      $.saveObject(imp.recp.importedNames);
+      $.import(imp);
    }
-
-   $.saveObject($.imports);
 
    let importSectionAffected = bwd.importSectionAffected;
    if (fwd.importsToAdd.length > 0) {

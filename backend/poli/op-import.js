@@ -1,14 +1,12 @@
 bootstrap
    imports
-   saveObject
 common
    joindot
 import
-   addImport
-   deleteImport
    entryImportsFromTo
    importedAs
    starImportFromTo
+   unimport
 op-refactor
    renameImportedName
    renameRefsIn
@@ -18,16 +16,14 @@ reference
    isNameFree
    isReferredTo
 -----
-doImport ::= function (imp) {
-   $.addImport(imp);
-   $.saveObject(imp.recp.importedNames);
-   $.saveObject($.imports);
-}
 renameImport ::= function (imp, newAlias) {
    let recp = imp.recp;
    let oldName = $.importedAs(imp);
    let newName = newAlias || imp.name;
 
+   if (oldName === newName) {
+      return null;
+   }
    if (imp.name === null && !newAlias) {
       throw new Error(`Module import ("${imp.donor.name}") is left unnamed`);
    }
@@ -47,9 +43,7 @@ removeImport ::= function (imp, force) {
       return false;
    }
 
-   $.deleteImport(imp);
-   $.saveObject(imp.recp.importedNames);
-   $.saveObject($.imports);
+   $.unimport(imp);
 
    return true;
 }
@@ -63,12 +57,7 @@ removeUnusedModuleImports ::= function (module) {
    }
 
    for (let imp of unused) {
-      $.deleteImport(imp);
-   }
-
-   if (unused.length > 0) {
-      $.saveObject(module.importedNames);
-      $.saveObject($.imports);
+      $.unimport(imp);
    }
 
    return unused.length;
@@ -85,14 +74,7 @@ removeUnusedImportsInAllModules ::= function () {
    }
 
    for (let imp of unused) {
-      $.deleteImport(imp);
-   }
-
-   if (unused.length > 0) {
-      for (let recp of recps) {
-         $.saveObject(recp.importedNames);
-      }
-      $.saveObject($.imports);
+      $.unimport(imp);
    }
 
    return {
@@ -119,11 +101,8 @@ convertImportsToStar ::= function (recp, donor) {
 
    let modifiedEntries = $.renameRefsIn(recp, rnmap);
    for (imp of eimps) {
-      $.deleteImport(imp);
+      $.unimport(imp);
    }
-
-   $.saveObject(recp.importedNames);
-   $.saveObject($.imports);
 
    return modifiedEntries;
 }

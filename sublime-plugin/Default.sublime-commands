@@ -1,8 +1,24 @@
 [
+    // General commands
     {
         "caption": "Poli: Reconnect to server",
         "command": "poli_reconnect"
     },
+    {
+        "caption": "Poli: Enable",
+        "command": "poli_enable",
+        "args": {
+            "enable": true
+        }
+    },
+    {
+        "caption": "Poli: Disable",
+        "command": "poli_enable",
+        "args": {
+            "enable": false
+        }
+    },
+
     // Move
     {
         "caption": "Poli: Move",

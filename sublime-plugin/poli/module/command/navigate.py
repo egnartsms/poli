@@ -5,7 +5,6 @@ from poli.comm import comm
 from poli.common.misc import index_where
 from poli.common.misc import last_index_where
 from poli.module import operation as op
-from poli.module.body import find_name_region
 from poli.module.body import name_regions
 from poli.module.import_section import import_section_region
 from poli.module.import_section import parse_import_section

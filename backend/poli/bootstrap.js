@@ -19,10 +19,10 @@ makeImageByFs ::= function () {
       for (let {donor: donorName, asterisk, imports} of minfo.imports) {
          let donor = $.modules[donorName];
          if (asterisk !== null) {
-            $.doImport({recp, donor, name: null, alias: asterisk});
+            $.import({recp, donor, name: null, alias: asterisk});
          }
          for (let {entry, alias} of imports) {
-            $.doImport({recp, donor, name: entry, alias});
+            $.import({recp, donor, name: entry, alias});
          }
       }
    }
@@ -53,8 +53,6 @@ parseAllModules ::= function () {
          imports,
          body
       };
-
-      $.validateModuleEntries(moduleInfo);
 
       modulesInfo.push(moduleInfo);
    }
@@ -113,171 +111,12 @@ moduleNameByFile ::= function (moduleFile) {
       return null;
    }
 
-   return mtch.groups.module_name;
+   return mtch.groups['module_name'];
 }
-validateModuleEntries ::= function (minfo) {
-   let entries = new Set(minfo.body.map(([name]) => name));
-
-   for (let {donor, asterisk, imports} of minfo.imports) {
-      if (asterisk !== null) {
-         if (entries.has(asterisk)) {
-            throw new Error(
-               `Corrupted image: module "${minfo.name}" imports "${donor}" as ` +
-               `"${asterisk}" which collides with another module member or import`
-            );
-         }
-         entries.add(asterisk);
-      }
-
-      for (let {entry, alias} of imports) {
-         let importedAs = alias || entry;
-         if (entries.has(importedAs)) {
-            throw new Error(
-               `Corrupted image: module "${minfo.name}" imports "${importedAs}" from ` +
-               `"${donor}" which collides with another module member or import`
-            );
-         }
-         entries.add(importedAs);
-      }
-   }
-}
-metaRuntimeKeys ::= '__rtkeys'
-metaRef ::= '__ref'
-metaType ::= '__type'
-obj2id ::= new Map()
-nextOid ::= 1
-takeNextOid ::= function () {
-   return $.nextOid++;
-}
-stmtInsert ::= $_.db.prepare(`
-   INSERT INTO obj(id, val) VALUES (:oid, :val)
-`)
-stmtUpdate ::= $_.db.prepare(`
-   UPDATE obj SET val = :val WHERE id = :oid
-`)
-isObject ::= function (obj) {
-   return typeof obj === 'object' && obj !== null;
-}
-toJson ::= function (obj, objref) {
-   if (obj instanceof Set) {
-      return JSON.stringify({
-         [$.metaType]: 'set',
-         'contents': Array.from(obj, x => {
-            return $.isObject(x) ? objref(x) : x;
-         })
-      });
-   }
-
-   let runtimeKeys = obj[$.metaRuntimeKeys] || [];
-
-   return JSON.stringify(obj, function (key, val) {
-      if (val === obj || this !== obj) {
-         return val;
-      }
-
-      if (runtimeKeys.includes(key)) {
-         return null;
-      }
-
-      if (!$.isObject(val)) {
-         return val;
-      }
-
-      if (key === $.metaRuntimeKeys) {
-         return val;
-      }
-
-      return objref(val);
-   });
-}
-saveObject ::= function (obj) {
-   $.assert($.isObject(obj));
-
-   let rec = $.objrefRecorder();
-   let oid = $.obj2id.get(obj);
-   let json = $.toJson(obj, rec.objref);
-   if (oid == null) {
-      oid = $.takeNextOid();
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
-   }
-   else {
-      $.stmtUpdate.run({oid, val: json});
-   }
-
-   $.addRecordedObjects(rec);
-}
-objrefRecorder ::= function () {
-   let toAdd = new Map();
-
-   function objref(obj) {
-      let oid = $.obj2id.get(obj);
-      if (oid == null) {
-         oid = toAdd.get(obj);
-         if (oid == null) {
-            oid = $.nextOid++;
-            toAdd.set(obj, oid);
-         }
-      }
-
-      return {
-         [$.metaRef]: oid
-      };
-   }
-
-   return {toAdd, objref};
-}
-addRecordedObjects ::= function ({toAdd, objref}) {
-   function addObject(obj, oid) {
-      let json = $.toJson(obj, objref);
-      $.stmtInsert.run({oid, val: json});
-      $.obj2id.set(obj, oid);
-   }
-
-   while (toAdd.size > 0) {
-      let {value: [obj, oid]} = toAdd.entries().next();
-      addObject(obj, oid);
-      toAdd.delete(obj);
-   }
-}
-makeModule ::= function (name, body) {
-   let defs = {};
-
-   for (let [entry, src] of body) {
-      defs[entry] = {
-         type: 'native',
-         src
-      };
-   }
-
-   let module = {
-      [$.metaRuntimeKeys]: ['rtobj'],
-      name,
-      importedNames: new Set(),  // filled in on import resolve
-      entries: Array.from(body, ([entry]) => entry),
-      defs: defs,
-      rtobj: null
-   };
-
-   if (name === $_.BOOTSTRAP_MODULE) {
-      module.rtobj = $;
-   }
-   else {
-      module.rtobj = Object.create(null);
-      for (let [entry, src] of body) {
-         module.rtobj[entry] = $.moduleEval(module, src);
-      }
-   }
-
-   return module;
-}
-doImport ::= function (imp) {
-   if (imp.name === null) {
-      $.validateStarImport(imp);
-   }
-   else {
-      $.validateEntryImport(imp);
-   }
+import ::= function (imp) {
+   // This function is only for use while creating image from files. It's not intended
+   // to be reused in other modules.
+   $.validateImport(imp);
 
    if (imp.name === null) {
       imp.recp.importedNames.add(imp.alias);
@@ -291,6 +130,16 @@ doImport ::= function (imp) {
    }
 
    $.imports.add(imp);
+}
+validateImport ::= function (imp) {
+   $.assert(!$.imports.has(imp));
+
+   if (imp.name === null) {
+      $.validateStarImport(imp);
+   }
+   else {
+      $.validateEntryImport(imp);
+   }
 }
 validateEntryImport ::= function ({recp, donor, name, alias}) {
    let importedAs = alias || name;
@@ -327,107 +176,262 @@ validateStarImport ::= function ({recp, donor, alias}) {
       );
    }
 }
+skSet ::= '__set'
+skMap ::= '__map'
+skRuntimeKeys ::= '__rtkeys'
+skRef ::= '__ref'
+initObjForPersistence ::= function (obj) {
+   if (obj instanceof Set) {
+      $.initSetForPersistence(obj);
+   }
+}
+initSetForPersistence ::= function (set) {
+   $.assert(set[$.skSet] == null);
+
+   let nextid = 1;
+   let item2id = new Map;
+   for (let item of set) {
+      item2id.set(item, nextid++);
+   }
+
+   Object.defineProperty(set, $.skSet, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: {nextid, item2id}
+   });   
+}
+obj2id ::= new Map()
+nextOid ::= 1
+takeNextOid ::= function () {
+   return $.nextOid++;
+}
+stmtInsert ::= $_.db.prepare(`
+   INSERT INTO obj(id, val) VALUES (:oid, :val)
+`)
+stmtUpdate ::= $_.db.prepare(`
+   UPDATE obj SET val = :val WHERE id = :oid
+`)
+isObject ::= function (val) {
+   return typeof val === 'object' && val !== null;
+}
+toJson ::= function (obj, ref) { 
+   let runtimeKeys = obj[$.skRuntimeKeys] || [];
+
+   if (obj[$.skSet]) {
+      let {nextid, item2id} = obj[$.skSet];
+
+      obj = {
+         [$.skSet]: {
+            nextid,
+            id2item: Object.fromEntries(
+               function* () {
+                  for (let [item, id] of item2id) {
+                     yield [id, $.isObject(item) ? ref(item) : item];
+                  }
+               }()
+            )
+         },
+         ...obj
+      }
+   } 
+
+   return JSON.stringify(obj, function (key, val) {
+      if (val === obj || this !== obj) {
+         return val;
+      }
+
+      // Special keys should not be touched
+      if (key === $.skRuntimeKeys || key === $.skSet) {
+         return val;
+      }
+
+      if (runtimeKeys.includes(key)) {
+         return null;
+      }
+      
+      return $.isObject(val) ? ref(val) : val;
+   });
+}
+saveObject ::= function (obj) {
+   $.assert($.isObject(obj));
+
+   let oid = $.obj2id.get(obj);
+   let stmt;
+
+   if (oid == null) {
+      $.initObjForPersistence(obj);
+      oid = $.takeNextOid();
+      $.obj2id.set(obj, oid);
+      stmt = $.stmtInsert;
+   }
+   else {
+      stmt = $.stmtUpdate;
+   }
+
+   let rec = $.objrefRecorder();
+
+   stmt.run({
+      oid,
+      val: $.toJson(obj, rec.ref)
+   });
+
+   $.addRecordedObjects(rec);
+}
+objrefRecorder ::= function () {
+   let toAdd = new Map();
+
+   function ref(obj) {
+      $.assert($.isObject(obj));
+
+      let oid = $.obj2id.get(obj);
+      if (oid == null) {
+         oid = toAdd.get(obj);
+         if (oid == null) {
+            oid = $.takeNextOid();
+            toAdd.set(obj, oid);
+         }
+      }
+
+      return {
+         [$.skRef]: oid
+      };
+   }
+
+   return {toAdd, ref};
+}
+addRecordedObjects ::= function ({toAdd, ref}) {
+   function addObject(obj, oid) {
+      $.initObjForPersistence(obj);
+      $.obj2id.set(obj, oid);
+      $.stmtInsert.run({oid, val: $.toJson(obj, ref)});
+   }
+
+   while (toAdd.size > 0) {
+      let {value: [obj, oid]} = toAdd.entries().next();
+      addObject(obj, oid);
+      toAdd.delete(obj);
+   }
+}
+makeModule ::= function (name, body) {
+   let defs = {};
+
+   for (let [entry, src] of body) {
+      defs[entry] = {
+         type: 'native',
+         src
+      };
+   }
+
+   let module = {
+      [$.skRuntimeKeys]: ['rtobj'],
+      name,
+      importedNames: new Set(),  // filled in on import resolve
+      entries: Array.from(body, ([entry]) => entry),
+      defs: defs,
+      rtobj: null
+   };
+
+   if (name === $_.BOOTSTRAP_MODULE) {
+      module.rtobj = $;
+   }
+   else {
+      module.rtobj = Object.create(null);
+      for (let [entry, src] of body) {
+         module.rtobj[entry] = $.moduleEval(module, src);
+      }
+   }
+
+   return module;
+}
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
-   let fun = new Function('$_, $, $$', `return (${code})`);
-   return fun.call(null, $_, module.rtobj, module);
+   try {
+      let fun = new Function('$_, $, $$', `return (${code})`);
+      return fun.call(null, $_, module.rtobj, module);
+   }
+   catch (e) {
+      console.error(`Could not eval: "${code}"`);
+      throw e;
+   }
 }
 loadImage ::= function () {
-   let symPlaceholder = Symbol('placeholder');
+   let obj2id = new Map;
+   let id2obj = new Map;
+   let obj2plain = new Map;
 
-   function refto(refid) {
-      return {
-         [symPlaceholder]: true,
-         refid
-      };
-   }
+   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).raw().all();
 
-   function isPlaceholder(x) {
-      return $.isObject(x) && x[symPlaceholder];
-   }
+   for (let [id, val] of data) {
+      let obj = JSON.parse(val);
 
-   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).all();
-   let id2obj = new Map();
-
-   for (let {id, val} of data) {
-      let obj = JSON.parse(val, function (k, v) {
-         if (!$.isObject(v)) {
-            return v;
-         }
-
-         if (typeof v[$.metaRef] === 'number') {
-            return refto(v[$.metaRef]);
-         }
-
-         return v;
-      });
-
-      if (obj[$.metaType] === 'set') {
-         obj = new Set(obj['contents']);
+      if (obj[$.skSet]) {
+         let set = new Set;
+         obj2plain.set(set, obj);
+         obj = set;
       }
 
-      $.obj2id.set(obj, id);
+      obj2id.set(obj, id);
       id2obj.set(id, obj);
    }
 
-   $.nextOid = data[data.length - 1].id + 1;
+   $.nextOid = data[data.length - 1][0] + 1;
 
-   // Now resolve object references
-   let unusedRefids = new Set(id2obj.keys());
-
-   function getByRefid(refid) {
-      unusedRefids.delete(refid);
-      return id2obj.get(refid);
+   function isref(v) {
+      return $.isObject(v) && $.hasOwnProperty(v, $.skRef);
    }
 
-   function some(itbl, pred) {
-      for (let x of itbl) {
-         if (pred(x)) {
-            return true;
-         }
+   function noref(v) {
+      if (!isref(v)) {
+         return v;
       }
 
-      return false;
+      let obj = id2obj.get(v[$.skRef]);
+      if (obj == null) {
+         throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
+      }
+      return obj;
    }
 
-   for (let [, obj] of id2obj) {
-      if (obj instanceof Set && some(obj, isPlaceholder)) {
-         let contents = Array.from(obj);
-         obj.clear();
-         for (let x of contents) {
-            if (x[symPlaceholder]) {
-               obj.add(getByRefid(x.refid));
+   function patchObject(obj) {
+      for (let [k, v] of Object.entries(obj)) {
+         if (isref(v)) {
+            obj[k] = noref(v);
+         }
+      }
+   }
+
+   for (let obj of obj2id.keys()) {
+      if (obj instanceof Set) {
+         let plain = obj2plain.get(obj);
+         let {nextid, id2item} = plain[$.skSet];
+         let item2id = new Map;
+
+         for (let [id, item] of Object.entries(id2item)) {
+            item = noref(item);
+            obj.add(item);
+            item2id.set(item, id);
+         }
+         
+         obj[$.skSet] = {nextid, item2id};
+
+         for (let [k, v] of Object.entries(plain)) {
+            if (k !== $.skSet) {
+               obj[k] = noref(v);
             }
-            else {
-               obj.add(x);
-            }
          }
       }
-      else if (some(Object.values(obj), isPlaceholder)) {
-         let entries = Object.entries(obj).filter(([k, v]) => isPlaceholder(v));
-         for (let [k, ph] of entries) {
-            obj[k] = getByRefid(ph.refid);
-         }
-      }
-   }
-
-   unusedRefids.delete($_.LOBBY_OID);
-   if (unusedRefids.size > 0) {
-      console.warn(`Found ${unusedRefids.size} garbage objects`);
-      for (let refid of unusedRefids) {
-         console.log(
-            $.util.inspect(id2obj.get(refid), {
-               depth: 1
-            })
-         );
+      else {
+         patchObject(obj);
       }
    }
 
    $.lobby = id2obj.get($_.LOBBY_OID);
    $.modules = $.lobby.modules;
    $.imports = $.lobby.imports;
+   $.obj2id = obj2id;
 
    // Initialize module rtobj's
    for (let module of Object.values($.modules)) {
