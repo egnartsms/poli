@@ -1,0 +1,99 @@
+%YAML 1.2
+---
+name: Poli XS
+scope: source.poli.xs
+hidden: true
+
+variables:
+  atom_char: "[a-zA-Z0-9\\-_~!@$%^&*=+/.?:<>]"
+  atom: "{{atom_char}}+"
+  keyword: "({{atom_char}}*:)(?!{{atom_char}})"
+  number: "[\\-+]?[0-9._]*?[0-9][0-9._]*(?!{{atom_char}})"
+
+contexts:
+  main:
+    - match: ^-+$
+      scope: punctuation.terminator.poli.end-of-imports
+      set: contents
+    - match: ^.*$
+      scope: meta.import.poli.module
+      push: imports
+
+  imports:
+    - match: ^(?=\S)
+      pop: true
+    - match: ^\s+(\*)\s+(as:)\s+({{atom}})\s*$
+      captures:
+        1: meta.import.poli.asterisk
+        2: keyword.other
+        3: meta.import.poli.alias variable.other
+    - match: ^\s+({{atom}})(?:\s+(as:)\s+({{atom}}))?\s*$
+      captures:
+        1: meta.import.poli.entry variable.other
+        2: keyword.other
+        3: meta.import.poli.alias variable.other
+
+  contents:
+    - match: ^({{atom}})\s*
+      captures:
+        1: entity.name.key.poli
+      push: definition
+
+  definition:
+    - meta_content_scope: meta.def.poli
+    - match: ^(?=\S)
+      pop: true
+    - match: "\""
+      scope: punctuation.definition.string.begin
+      push: string
+    - match: "{{number}}"
+      scope: constant.numeric meta.annotation.atom
+    - match: ^\s*
+      push: line-start
+    - match: "{{keyword}}"
+      captures:
+        1: keyword.other meta.annotation.atom
+    - match: \(
+      push: open-paren
+    - match: "{{atom}}"
+      scope: meta.annotation.atom
+
+  line-start:
+    - match: \\\.(?=\s)
+      scope: variable.function meta.annotation.atom.head
+      pop: true
+    - match: \.(?=\s)
+      scope: punctuation.separator.poli.xs.dot
+      pop: true
+    - match: (:)\s+
+      captures:
+        1: punctuation.separator.poli.xs.colon
+      set:
+        - match: "{{atom}}"
+          scope: variable.function meta.annotation.atom.head
+          pop: true
+        - include: pop-if-not-matched-at-cur-pos
+    - include: open-paren
+
+  open-paren:
+    - match: "{{number}}"
+      scope: constant.numeric meta.annotation.atom.head
+      pop: true
+    - match: "{{keyword}}"
+      captures:
+        1: keyword.other meta.annotation.atom.head
+      pop: true
+    - match: "{{atom}}"
+      scope: variable.function meta.annotation.atom.head
+      pop: true
+    - include: pop-if-not-matched-at-cur-pos
+
+  string:
+    - meta_scope: string.quoted meta.annotation.atom
+    - match: "(?<!\\\\)\""
+      scope: punctuation.definition.string.end
+      pop: true
+
+  pop-if-not-matched-at-cur-pos:
+    - match: ""
+      pop: true
