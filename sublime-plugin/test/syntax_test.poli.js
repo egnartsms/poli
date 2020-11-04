@@ -1,4 +1,4 @@
-// SYNTAX TEST "Packages/Poli/Poli.JS.sublime-syntax"
+// SYNTAX TEST "Packages/Poli/JS.sublime-syntax"
 some/nested/module
 // <- meta.import.poli.module
     * as xmod
