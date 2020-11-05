@@ -15,15 +15,15 @@ op-edit
    addEntry
    editEntry
 op-import
-   * as opImport
+   * as: opImport
 op-module
-   * as opModule
+   * as: opModule
 op-move
-   * as opMove
+   * as: opMove
 op-query
-   * as query
+   * as: query
 op-refactor
-   * as opRefactor
+   * as: opRefactor
 rt-rec
    applyRtDelta
    discardRtDelta

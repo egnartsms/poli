@@ -22,23 +22,22 @@ contexts:
   import-entries:
     - match: ^(?=\S)
       pop: true
-    - match: ^\s+(\*)\s+(as)\s+(.+)$
+    - match: ^\s+(\*)\s+(as:)\s+(.+)\s*$
       captures:
         1: meta.import.poli.asterisk
-        2: keyword.control.import-export.poli
-        3: meta.import.poli.alias variable.other.readwrite.poli
-    - match: ^\s+(.*?)(?:\s+(as)\s+(.+))?$
+        2: keyword.other
+        3: meta.import.poli.alias variable.other
+    - match: ^\s+(.*?)(?:\s+(as:)\s+(.+))?\s*$
       captures:
-        1: meta.import.poli.entry variable.other.readwrite.poli
-        2: keyword.control.import-export.poli
-        3: meta.import.poli.alias variable.other.readwrite.poli
+        1: meta.import.poli.entry variable.other
+        2: keyword.other
+        3: meta.import.poli.alias variable.other
 
   contents:
     - match: ^(\S+)\s*(::=)\s*
       captures:
         1: entity.name.key.poli
-        2: punctuation.separator.poli
-      push: Packages/JavaScript/JavaScript.sublime-syntax
-      with_prototype:
-        - match: ^(?=\S+\s*::=)
-          pop: true
+        2: punctuation.separator.poli.defined-as
+      embed: Packages/JavaScript/JavaScript.sublime-syntax
+      escape: ^(?=\S+\s*::=)
+      embed_scope: meta.def.poli

@@ -1,8 +1,12 @@
 import sublime
 
+from .structure import def_regions
+from .structure import name_regions
+from .structure import reg_body
+
 from poli.shared.command import StopCommand
-from poli.sublime import regedit
 from poli.shared.misc import single_selected_region
+from poli.sublime import regedit
 
 
 def module_body(view):
@@ -13,20 +17,7 @@ def module_body(view):
         sublime.error_message("Module names and definitions don't match")
         raise RuntimeError
 
-    return Body(view, names, defs, module_body_start(view))
-
-
-def name_regions(view):
-    return view.find_by_selector('entity.name.key.poli')
-
-
-def def_regions(view):
-    return view.find_by_selector('source.js')
-
-
-def module_body_start(view):
-    [term] = view.find_by_selector('punctuation.terminator.poli.end-of-imports')
-    return term.end() + 1
+    return Body(view, names, defs, reg_body(view).begin())
 
 
 class Body:
@@ -164,7 +155,7 @@ def known_entries(view):
     return {view.substr(reg) for reg in regs}
 
 
-def find_name_region(view, name):
+def reg_entry_name(view, name):
     regs = name_regions(view)
     for reg in regs:
         if view.substr(reg) == name:

@@ -1,5 +1,5 @@
 from poli.common.wrapping_method import aroundmethod
-from poli.module.operation import KIND_MODULE
+from poli.module.op import KIND_MODULE
 from poli.shared.setting import poli_kind
 from poli.sublime import regedit
 from poli.shared.command import StopCommand

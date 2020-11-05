@@ -75,7 +75,7 @@ genModuleImportSection ::= function* (module) {
       yield $.ind;
       yield name === null ? '*' : name;
       if (alias) {
-         yield ` as ${alias}`;
+         yield ` as: ${alias}`;
       }
       yield '\n';
    }
