@@ -2,14 +2,14 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.module import operation as op
-from poli.module.import_section import parse_import_section
-from poli.module.shared import ModuleTextCommand
+from poli.module import op
 from poli.shared.command import WindowCommand
 from poli.sublime.input import ChainableInputHandler
 from poli.sublime.input import chain_input_handlers
 from poli.sublime.input import run_command_thru_palette
 from poli.shared.misc import single_selected_region
+
+from .shared import ModuleTextCommand
 
 
 __all__ = [
@@ -101,7 +101,7 @@ class PoliRenameImport(ModuleTextCommand):
     class ImportedAsInputHandler(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
-            impsec = parse_import_section(view)
+            impsec = op.parse_import_section(view)
             self.imported_names = list(impsec.imported_names())
 
         def list_items(self):
@@ -109,7 +109,7 @@ class PoliRenameImport(ModuleTextCommand):
 
     class NewAliasInputHandler(AliasCommonHandler):
         def __init__(self, view, args, chain_tail):
-            rec = parse_import_section(view).record_for_imported_name(
+            rec = op.parse_import_section(view).record_for_imported_name(
                 args['imported_as']
             )
             if rec is None:
@@ -121,7 +121,7 @@ class PoliRenameImport(ModuleTextCommand):
 class PoliRenameThisImport(ModuleTextCommand):
     def run(self, edit):
         reg = single_selected_region(self.view)
-        rec = parse_import_section(self.view).record_at_or_stop(reg)
+        rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
         run_command_thru_palette(self.view.window(), 'poli_rename_import', {
             'imported_as': rec.imported_as
@@ -150,7 +150,7 @@ class PoliRemoveImport(ModuleTextCommand):
 class PoliRemoveThisImport(ModuleTextCommand):
     def run(self, edit, force):
         reg = single_selected_region(self.view)
-        rec = parse_import_section(self.view).record_at_or_stop(reg)
+        rec = op.parse_import_section(self.view).record_at_or_stop(reg)
 
         self.view.run_command('poli_remove_import', {
             'imported_as': rec.imported_as,

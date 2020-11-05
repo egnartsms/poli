@@ -6,15 +6,6 @@ from poli.common.misc import none_if
 from poli.shared.command import StopCommand
 
 
-def import_section_end(view):
-    [term] = view.find_by_selector('punctuation.terminator.poli.end-of-imports')
-    return term.begin()
-
-
-def import_section_region(view):
-    return sublime.Region(0, import_section_end(view))
-
-
 def parse_import_section(view):
     class Module(FreeObj): pass
     class Entry(FreeObj): pass

@@ -4,10 +4,11 @@ import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.module import operation as op
-from poli.module.shared import ModuleTextCommand
+from poli.module import op
 from poli.shared.command import ApplicationCommand
 from poli.sublime import regedit
+
+from .shared import ModuleTextCommand
 
 
 __all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule', 'PoliRemoveModule']

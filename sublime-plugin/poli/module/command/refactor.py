@@ -1,9 +1,9 @@
 import sublime_plugin
 
+from .shared import ModuleTextCommand
+
 from poli.comm import comm
-from poli.module import operation as op
-from poli.module.shared import ModuleTextCommand
-from poli.module.import_section import parse_import_section
+from poli.module import op
 
 
 __all__ = ['PoliReplaceUsages', 'PoliConvertImportsToStar']
@@ -55,7 +55,7 @@ class PoliConvertImportsToStar(ModuleTextCommand):
 
 class DonorModuleInputHandler(sublime_plugin.ListInputHandler):
     def __init__(self, view):
-        impsec = parse_import_section(view)
+        impsec = op.parse_import_section(view)
         self.items = [rec.module_name for rec in impsec.recs if rec.is_star]
 
     def list_items(self):

@@ -4,16 +4,14 @@ from Default.symbol import navigate_to_symbol
 from poli.comm import comm
 from poli.common.misc import index_where
 from poli.common.misc import last_index_where
-from poli.module import operation as op
-from poli.module.body import name_regions
-from poli.module.import_section import import_section_region
-from poli.module.import_section import parse_import_section
-from poli.module.shared import ModuleTextCommand
+from poli.module import op
 from poli.shared.command import WindowCommand
-from poli.sublime.misc import active_view_preserved
 from poli.shared.misc import single_selected_region
+from poli.sublime.misc import active_view_preserved
 from poli.sublime.selection import jump
 from poli.sublime.view_dict import on_all_views_load
+
+from .shared import ModuleTextCommand
 
 
 __all__ = ['PoliGotoDefinition', 'PoliFindReferences', 'PoliGotoWarning', 'PoliGotoEntry']
@@ -23,8 +21,8 @@ class PoliGotoDefinition(ModuleTextCommand):
     def run(self, edit):
         reg = single_selected_region(self.view)
 
-        if import_section_region(self.view).contains(reg):
-            impsec = parse_import_section(self.view)
+        if op.reg_import_section(self.view).contains(reg):
+            impsec = op.parse_import_section(self.view)
             rec = impsec.record_at_or_stop(reg)
             op.goto_module_entry(self.view.window(), rec.module_name, rec.name)
         else:
@@ -75,7 +73,7 @@ class PoliFindReferences(ModuleTextCommand):
                 # We also track to which definition occurences belong. We do this by
                 # determining what is the key region with max index which is still fully
                 # before the occurence region.
-                regkeys = name_regions(view)
+                regkeys = op.name_regions(view)
                 k = 0
                 entry_defn_name = "(unknown)"
                 regs = view.find_all(

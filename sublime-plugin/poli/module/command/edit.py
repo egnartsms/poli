@@ -2,19 +2,15 @@ import re
 import sublime
 
 from poli.comm import comm
-from poli.module import operation as op
-from poli.module.body import module_body
-from poli.module.body import reg_no_trailing_nl
-from poli.module.body import reg_plus_trailing_nl
-from poli.module.body import sel_cursor_location
-from poli.module.import_section import import_section_region
-from poli.module.shared import ModuleTextCommand
+from poli.module import op
+from poli.shared.misc import single_selected_region
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
-from poli.shared.misc import single_selected_region
 from poli.sublime.selection import set_selection
+
+from .shared import ModuleTextCommand
 
 
 __all__ = [
@@ -27,7 +23,7 @@ class PoliSelect(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = sel_cursor_location(self.view)
+        loc = op.sel_cursor_location(self.view)
         set_selection(self.view, to=loc.entry.reg_entry)
 
 
@@ -35,7 +31,7 @@ class PoliEdit(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit):
-        loc = sel_cursor_location(self.view)
+        loc = op.sel_cursor_location(self.view)
         if not loc.is_def_targeted:
             sublime.status_message("Cursor is not placed over definition")
             return
@@ -53,12 +49,12 @@ class PoliRename(ModuleTextCommand):
 
     def run(self, edit):
         reg = single_selected_region(self.view)
-        if import_section_region(self.view).contains(reg):
+        if op.reg_import_section(self.view).contains(reg):
             self.view.run_command('poli_rename_this_import')
             return
 
-        loc = module_body(self.view).cursor_location_or_stop(reg)
-        loc = sel_cursor_location(self.view)
+        loc = op.module_body(self.view).cursor_location_or_stop(reg)
+        loc = op.sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
             return
@@ -74,7 +70,7 @@ class PoliAdd(ModuleTextCommand):
     def run(self, edit, before):
         def insert_dummy_def(at):
             reg_new = insert_in(self.view, edit, at, "name ::= definition\n")
-            reg_new = reg_no_trailing_nl(reg_new)
+            reg_new = op.reg_no_trailing_nl(reg_new)
             set_selection(self.view, to=reg_new, show=True)
             return reg_new
 
@@ -86,7 +82,7 @@ class PoliAdd(ModuleTextCommand):
                 self.view, reg_new, target='entry', name=None, is_before=None
             )
         else:
-            loc = sel_cursor_location(self.view)
+            loc = op.sel_cursor_location(self.view)
             entry_name = loc.entry.name()
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(
@@ -113,7 +109,7 @@ class PoliCancel(ModuleTextCommand):
                 self.view.replace(edit, reg, cxt.name)
             else:
                 assert cxt.target == 'entry'
-                reg = reg_plus_trailing_nl(reg)
+                reg = op.reg_plus_trailing_nl(reg)
                 self.view.erase(edit, reg)
 
             op.exit_edit_mode(self.view)
@@ -176,13 +172,13 @@ class PoliRemove(ModuleTextCommand):
 
     def run(self, edit):
         reg = single_selected_region(self.view)
-        if import_section_region(self.view).contains(reg):
+        if op.reg_import_section(self.view).contains(reg):
             self.view.run_command('poli_remove_this_import', {
                 'force': False
             })
             return
 
-        loc = module_body(self.view).cursor_location_or_stop(
+        loc = op.module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
         modules_data = comm.remove_entry(op.js_module_name(self.view), loc.entry.name())
