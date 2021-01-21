@@ -24,7 +24,7 @@
   },
   "homepage": "https://github.com/egnartsms/poli#readme",
   "dependencies": {
-    "better-sqlite3": "^7.1.0",
+    "better-sqlite3": "^7.1.1",
     "ws": "^7.3.0"
   }
 }

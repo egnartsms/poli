@@ -108,7 +108,7 @@ class PoliMove(WindowCommand):
         def process_destination(view, edit):
             with regedit.region_editing_suppressed(view):
                 if anchor is None:
-                    insert_at = op.module_body_start(view)
+                    insert_at = op.reg_body(view).begin()
                 else:
                     mcont = op.module_body(view)
                     if anchor is False:
