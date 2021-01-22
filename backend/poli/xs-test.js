@@ -14,5 +14,5 @@ text1 ::= String.raw`
             \ (+ a b) (* c d 3)
 `.slice(1)
 test ::= function () {
-    console.log($.tokenize($.text1));
+   console.log($.tokenize($.text1));
 }
