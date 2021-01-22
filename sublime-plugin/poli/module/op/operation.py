@@ -53,6 +53,9 @@ def setup_js_module_view(view):
         view.assign_syntax(const.JS_SYNTAX_FILE)
         view.set_scratch(True)
         view.set_read_only(True)
+        # This is needed because otherwise Sublime tries to fix ws in non-edit-region
+        # parts of the view which leads to undoing.
+        view.settings().set('trim_automatic_white_space', False)
         poli_kind[view] = KIND_MODULE
 
 
@@ -61,6 +64,7 @@ def teardown_js_module_view(view):
         view.set_scratch(False)
         view.set_read_only(False)
         poli_kind[view] = None
+        view.settings().erase('trim_automatic_white_space')
 
 
 def all_poli_views():
@@ -85,8 +89,6 @@ def maybe_set_connected_status_in_active_view(is_connected):
 
 def set_connected_status(view, is_connected):
     view.set_status('is_connected', "Connected" if is_connected else "Disconnected")
-
-
 
 
 def replace_import_section_in_modules(window, data):

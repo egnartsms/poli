@@ -18,6 +18,7 @@ flushModule ::= function (module) {
 
    $.writingToStream(moduleStream, function* () {
       yield* $.genModuleImportSection(module);
+      yield '-----\n';
 
       // Body
       for (let entry of module.entries) {
@@ -79,6 +80,4 @@ genModuleImportSection ::= function* (module) {
       }
       yield '\n';
    }
-
-   yield '-----\n';
 }

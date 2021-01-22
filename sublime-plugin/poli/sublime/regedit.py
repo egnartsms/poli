@@ -13,7 +13,9 @@ __all__ = ['RegEditListener']
 
 CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
-_log = False
+
+_saved = None
+
 
 class RegEdit:
     """Region edit context.
@@ -120,11 +122,6 @@ class RegEdit:
         while n < N:
             pre, post, rowcol = self._get_state()
 
-            if _log:
-                print("pre/post/rowcol:", pre, post, rowcol)
-                print("remembered: ", self.pre, self.post, self.rowcol)
-                print("sel:", list(self.view.sel()))
-
             if pre == self.pre and post == self.post and rowcol == self.rowcol:
                 break
             elif pre > self.pre and post == self.post and \
@@ -141,8 +138,26 @@ class RegEdit:
                 break
 
             with read_only_set_to(self.view, False):
-                if _log:
-                    print("Undoing")
+                print("Undoing")
+                global _saved
+                _saved = {
+                    'before': self.view.substr(
+                        sublime.Region(
+                            0,
+                            self.edit_region[self.view].begin()
+                        )
+                    ),
+                    'after': self.view.substr(
+                        sublime.Region(
+                            self.edit_region[self.view].end(),
+                            self.view.size()
+                        )
+                    ),
+                    'edit': self.view.substr(self.edit_region[self.view]),
+                    'mem': (self.pre, self.post, self.rowcol),
+                    'now': (pre, post, rowcol)
+                }
+
                 self.view.run_command('undo')
                 n += 1
 
@@ -234,7 +249,6 @@ class RegEditListener(sublime_plugin.EventListener):
 
     def on_modified(self, view):
         if is_active_in(view):
-            # sublime.set_timeout(lambda: self.cb(view), 10)
             regedit_for[view].undo_modifications_outside_edit_region()
 
     def on_selection_modified(self, view):

@@ -75,7 +75,7 @@ class PoliAdd(ModuleTextCommand):
             return reg_new
 
         # In case the module is absolutely empty, take a different approach
-        if op.module_body_start(self.view) == self.view.size():
+        if op.reg_body(self.view).empty():
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(at=self.view.size())
             op.enter_edit_mode(
