@@ -7,14 +7,18 @@ util
    with-file
    * as: f
 -----
-abc 10
-   x 20 :((.x 20)) :(
-10
-20
-30
-         (
+remove-unused-imports-in-all-modules
+   func :()
+      let (<obj> removed-count affected-modules) =
+         op-import.remove-unused-imports-in-all-modules
 
-
-
-20
-30
+      op-ret
+         <obj>
+            removed-count
+            modified-modules:
+               Array.from affected-modules
+                  fn :(module)
+                     <obj>
+                        module: module.name
+                        import-section: (dump-import-section module)
+                        modified-entries: (<arr>)
