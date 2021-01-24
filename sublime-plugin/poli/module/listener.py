@@ -6,7 +6,7 @@ import sys
 import poli.config as config
 
 from poli.comm import comm
-from poli.module import op
+from poli.module import operation as op
 
 
 __all__ = ['PoliViewListener']

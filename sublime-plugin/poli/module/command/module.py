@@ -1,10 +1,10 @@
-import re
 import os
+import re
 import sublime
 import sublime_plugin
 
 from poli.comm import comm
-from poli.module import op
+from poli.module import operation as op
 from poli.shared.command import ApplicationCommand
 from poli.sublime import regedit
 

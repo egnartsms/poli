@@ -1,23 +1,23 @@
 // SYNTAX TEST "Packages/Poli/JS.sublime-syntax"
 some/nested/module
 // <- meta.import.poli.module
-    * as xmod
+    * as: xmod
 //  ^ meta.import.poli.asterisk
-//    ^^ keyword.control.import-export.poli
-//       ^^^^ meta.import.poli.alias
-    hey as my_hey
+//    ^^^ keyword.other
+//        ^^^^ meta.import.poli.alias
+    hey as: my_hey
 //  ^^^ meta.import.poli.entry
-//      ^^ keyword.control.import-export.poli
-//         ^^^^^^ meta.import.poli.alias
+//      ^^ keyword.other
+//          ^^^^^^ meta.import.poli.alias
 -----
 server ::= null
-// <- entity.name.key.poli
-//     ^^^ punctuation.separator.poli
+// <- entity.name.poli
+//     ^^^ punctuation.separator.poli.defined-as
 //         ^^^^ source.js
 
-initDatabase ::=
-// ^^^^^^^^^ entity.name.key.poli
-function () {
+initDatabase ::= function () {
+// ^^^^^^^^^ entity.name.poli
+
 // <- source.js
     console.log("Initialization");
 //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.js

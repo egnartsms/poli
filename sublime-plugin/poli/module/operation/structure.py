@@ -17,7 +17,7 @@ def reg_body(view):
 
 
 def name_regions(view):
-    return view.find_by_selector('entity.name.key.poli')
+    return view.find_by_selector('entity.name.poli')
 
 
 def def_regions(view):

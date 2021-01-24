@@ -1,6 +1,6 @@
 import poli.config as config
 from poli.shared.command import WindowCommand
-from poli.module import op
+from poli.module import operation as op
 from poli.sublime import regedit
 
 

@@ -2,7 +2,7 @@ import re
 import sublime
 
 from poli.comm import comm
-from poli.module import op
+from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
