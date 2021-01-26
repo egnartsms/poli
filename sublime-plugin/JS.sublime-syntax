@@ -22,12 +22,12 @@ contexts:
   module-imports:
     - match: ^(?=\S)
       pop: true
-    - match: "^\\s+(\\*) (as:) (\\S+)$"
+    - match: '^\s+(\*) (as:) (\S+)$'
       captures:
         1: meta.import.poli.asterisk
         2: keyword.other
         3: meta.import.poli.alias variable.other
-    - match: "^\\s+(\\S+)(?: (as:) (\\S+))?$"
+    - match: '^\s+(\S+)(?: (as:) (\S+))?$'
       captures:
         1: meta.import.poli.entry variable.other
         2: keyword.other
@@ -38,8 +38,8 @@ contexts:
   contents:
     - match: "^(\\S+) (::=) "
       captures:
-        1: entity.name.poli
+        1: entity.name.entry meta.entry.name
         2: punctuation.separator.poli.defined-as
       embed: Packages/JavaScript/JavaScript.sublime-syntax
       escape: "^(?=\\S+ ::= )"
-      embed_scope: meta.def.poli
+      embed_scope: meta.entry.def

@@ -11,14 +11,16 @@ some/nested/module
 //          ^^^^^^ meta.import.poli.alias
 -----
 server ::= null
-// <- entity.name.poli
+// <- entity.name.entry
+// <- meta.entry.name
 //     ^^^ punctuation.separator.poli.defined-as
-//         ^^^^ source.js
+//         ^^^^ meta.entry.def source.js
 
 initDatabase ::= function () {
-// ^^^^^^^^^ entity.name.poli
+// ^^^^^^^^^ entity.name.entry
+// ^^^^^^^^^ meta.entry.name
 
-// <- source.js
+// <- meta.entry.def source.js
     console.log("Initialization");
-//  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.js
+//  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ meta.entry.def source.js
 }

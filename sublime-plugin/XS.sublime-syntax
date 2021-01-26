@@ -9,10 +9,10 @@ variables:
   # words
   word_cs: 'a-zA-Z0-9~!@$%^&*\-_+=?/<>.:'
   # terminators make a word stop
-  word_terminator_cs: '() \n"'
+  word_terminator_cs: ' ()"\n'
 
   word_char: '[{{word_cs}}]'
-  word_terminator: '[{{word_terminator_cs}}]'
+  word_break: '(?=[()" ]|$)'
   illegal_word_char: '[^{{word_cs}}{{word_terminator_cs}}]'
   # "extended word", i.e. anything but terminators
   ext_word_char: '[^{{word_terminator_cs}}]'
@@ -21,9 +21,9 @@ variables:
 
 contexts:
   main:
-    - match: ^-+\n
+    - match: ^-+$
       scope: punctuation.terminator.poli.end-of-imports
-      set: body
+      set: contents
     - match: ^.*$
       scope: meta.import.poli.module
       push: module-imports
@@ -31,12 +31,12 @@ contexts:
   module-imports:
     - match: ^(?=\S)
       pop: true
-    - match: "^\\s+(\\*) (as:) (\\S+)$"
+    - match: '^\s+(\*) (as:) (\S+)$'
       captures:
         1: meta.import.poli.asterisk
         2: keyword.other
         3: meta.import.poli.alias variable.other
-    - match: "^\\s+(\\S+)(?: (as:) (\\S+))?$"
+    - match: '^\s+(\S+)(?: (as:) (\S+))?$'
       captures:
         1: meta.import.poli.entry variable.other
         2: keyword.other
@@ -44,7 +44,26 @@ contexts:
     - match: ^.+$
       scope: invalid.illegal
 
-  body:
+  contents:
+    - match: '^({{word_char}}+)\s+(?=\S)'
+      captures:
+        1: entity.name.entry meta.entry.name
+      push:
+        - 
+          - meta_content_scope: meta.entry.def
+          - match: ''
+            pop: true
+        - line
+        - before
+    - match: '^({{word_char}}+)\s*$'
+      captures:
+        1: entity.name.entry meta.entry.name
+      push: multiline-definition
+
+  multiline-definition:
+    - meta_content_scope: meta.entry.def
+    - match: ^(?=\S)
+      pop: true
     - match: '^ *(#;[^ \n].*)$'
       captures:
         1: invalid.illegal.comment
@@ -54,7 +73,7 @@ contexts:
         3: comment.line
       embed: comment
       escape: '^(?! *$|\1 +)'
-    - match: '^ *(?=[^ \n])'
+    - match: '^ +(?=[^ \n])'
       push: [line, line-start]
 
   comment:
@@ -123,13 +142,13 @@ contexts:
       set: word-head
 
   <word>:
-    - match: '[-+]?\.?[0-9]{{word_char}}*(?={{word_terminator}})'
+    - match: '[-+]?\.?[0-9]{{word_char}}*{{word_break}}'
       scope: meta.word constant.numeric
       set: after-thing
-    - match: '{{word_char}}*:(?={{word_terminator}})'
+    - match: '{{word_char}}+:{{word_break}}'
       scope: meta.word keyword.other
       set: after-thing
-    - match: '(").*?(?<!\\)(")(?={{word_terminator}})'
+    - match: '(").*?(?<!\\)(")'
       captures:
         1: punctuation.definition.string.begin
         2: punctuation.definition.string.end
@@ -147,13 +166,13 @@ contexts:
 
   word:
     - include: <word>
-    - match: "{{word_char}}+(?={{word_terminator}})"
+    - match: "{{word_char}}+{{word_break}}"
       scope: meta.word
       set: after-thing
 
   word-head:
     - include: <word>
-    - match: "{{word_char}}+(?={{word_terminator}})"
+    - match: "{{word_char}}+{{word_break}}"
       scope: meta.word variable.function
       set: after-thing
 
@@ -168,7 +187,7 @@ contexts:
       scope: meta.word
     - match: '(?={{illegal_word_char}})'
       set: word-illegal-part
-    - match: '(?={{word_terminator}})'
+    - match: '{{word_break}}'
       set: after-thing
 
   after-thing:
