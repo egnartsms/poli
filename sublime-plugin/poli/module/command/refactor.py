@@ -3,7 +3,7 @@ import sublime_plugin
 from .shared import ModuleTextCommand
 
 from poli.comm import comm
-from poli.module import op
+from poli.module import operation as op
 
 
 __all__ = ['PoliReplaceUsages', 'PoliConvertImportsToStar']

@@ -63,8 +63,8 @@ def teardown_js_module_view(view):
     if poli_kind[view] is not None:
         view.set_scratch(False)
         view.set_read_only(False)
-        poli_kind[view] = None
         view.settings().erase('trim_automatic_white_space')
+        poli_kind[view] = None
 
 
 def all_poli_views():

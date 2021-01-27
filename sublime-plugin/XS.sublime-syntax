@@ -5,10 +5,19 @@ scope: source.poli.xs
 hidden: true
 
 variables:
-  atom_char: "[a-zA-Z0-9\\-_~!@$%^&*=+/.?:<>]"
-  atom: "{{atom_char}}+"
-  keyword: "({{atom_char}}*:)(?!{{atom_char}})"
-  number: "[\\-+]?[0-9._]*?[0-9][0-9._]*(?!{{atom_char}})"
+  # word is an identifier (inc. keyword) or number. Whitespace, strings, comments are not
+  # words
+  word_cs: 'a-zA-Z0-9~!@$%^&*\-_+=?/<>.:'
+  # terminators make a word stop
+  word_terminator_cs: ' ()"\n'
+
+  word_char: '[{{word_cs}}]'
+  word_break: '(?=[()" ]|$)'
+  illegal_word_char: '[^{{word_cs}}{{word_terminator_cs}}]'
+  # "extended word", i.e. anything but terminators
+  ext_word_char: '[^{{word_terminator_cs}}]'
+  
+  before_paren: (?=:\(|\(|\)|\n)
 
 contexts:
   main:
@@ -17,83 +26,190 @@ contexts:
       set: contents
     - match: ^.*$
       scope: meta.import.poli.module
-      push: imports
+      push: module-imports
 
-  imports:
+  module-imports:
     - match: ^(?=\S)
       pop: true
-    - match: ^\s+(\*)\s+(as:)\s+({{atom}})\s*$
+    - match: '^\s+(\*) (as:) (\S+)$'
       captures:
         1: meta.import.poli.asterisk
         2: keyword.other
         3: meta.import.poli.alias variable.other
-    - match: ^\s+({{atom}})(?:\s+(as:)\s+({{atom}}))?\s*$
+    - match: '^\s+(\S+)(?: (as:) (\S+))?$'
       captures:
         1: meta.import.poli.entry variable.other
         2: keyword.other
         3: meta.import.poli.alias variable.other
+    - match: ^.+$
+      scope: invalid.illegal
 
   contents:
-    - match: ^({{atom}})\s*
+    - match: '^({{word_char}}+) (::=) (?=\S)'
       captures:
-        1: entity.name.key.poli
-      push: definition
+        1: entity.name.entry meta.entry.name
+        2: punctuation.separator.poli.defined-as
+      push:
+        - 
+          - meta_content_scope: meta.entry.def
+          - match: \n?
+            scope: meta.entry.def  # terminating \n must also be a part of definition
+            pop: true
+        - line
+        - before
+    - match: '^({{word_char}}+) (::=)\n'
+      captures:
+        1: entity.name.entry meta.entry.name
+        2: punctuation.separator.poli.defined-as
+      push: multiline-definition
 
-  definition:
-    - meta_content_scope: meta.def.poli
+  multiline-definition:
+    - meta_content_scope: meta.entry.def
     - match: ^(?=\S)
       pop: true
-    - match: "\""
-      scope: punctuation.definition.string.begin
-      push: string
-    - match: "{{number}}"
-      scope: constant.numeric meta.annotation.atom
-    - match: ^\s*
-      push: line-start
-    - match: "{{keyword}}"
+    - match: '^ *(#;[^ \n].*)$'
       captures:
-        1: keyword.other meta.annotation.atom
-    - match: \(
-      push: open-paren
-    - match: "{{atom}}"
-      scope: meta.annotation.atom
+        1: invalid.illegal.comment
+    - match: '^( *)(#;)(?: (.*))?$'
+      captures:
+        2: punctuation.definition.comment
+        3: comment.line
+      embed: comment
+      escape: '^(?! *$|\1 +)'
+    - match: '^ +(?=[^ \n])'
+      push: [line, line-start]
+
+  comment:
+    - match: '^ +(.*)$'
+      captures:
+        1: comment.line
 
   line-start:
-    - match: \\\.(?=\s)
-      scope: variable.function meta.annotation.atom.head
-      pop: true
-    - match: \.(?=\s)
-      scope: punctuation.separator.poli.xs.dot
-      pop: true
-    - match: (:)\s+
+    - match: '(\\)( *$)'
       captures:
-        1: punctuation.separator.poli.xs.colon
-      set:
-        - match: "{{atom}}"
-          scope: variable.function meta.annotation.atom.head
-          pop: true
-        - include: pop-if-not-matched-at-cur-pos
-    - include: open-paren
-
-  open-paren:
-    - match: "{{number}}"
-      scope: constant.numeric meta.annotation.atom.head
+        1: punctuation.definition.continuation
+        2: invalid.illegal.excessive-whitespace
       pop: true
-    - match: "{{keyword}}"
+    - match: '(\\)( )'
       captures:
-        1: keyword.other meta.annotation.atom.head
-      pop: true
-    - match: "{{atom}}"
-      scope: variable.function meta.annotation.atom.head
-      pop: true
-    - include: pop-if-not-matched-at-cur-pos
-
-  string:
-    - meta_scope: string.quoted meta.annotation.atom
-    - match: "(?<!\\\\)\""
-      scope: punctuation.definition.string.end
-      pop: true
-
-  pop-if-not-matched-at-cur-pos:
+        1: punctuation.definition.continuation
+      set: before
     - match: ""
+      set: before-head
+
+  line:
+    - match: \)
+      scope: invalid.illegal.stray.paren
+      push: after-thing
+    - match: $
       pop: true
+    - include: compound
+
+  compound:
+    - meta_scope: meta.compound
+    - match: \n
+      scope: invalid.illegal.unclosed-parenthesis
+      pop: true
+    - match: $
+      pop: true
+    - match: (?<=^| |\()\(
+      scope: punctuation.section.compound.begin.paren
+      push: [after-thing, compound, before-head]
+    - match: \(
+      scope: punctuation.section.compound.begin.paren invalid.illegal.not-preceded-by-ws
+      push: [after-thing, compound, before-head]
+    - match: (?<=^| |\():\(
+      scope: punctuation.section.compound.begin.colon-paren
+      push: [after-thing, compound, before]
+    - match: :\(
+      scope: punctuation.section.compound.begin.colon-paren invalid.illegal.not-preceded-by-ws
+      push: [after-thing, compound, before]
+    - match: \)
+      scope: punctuation.section.compound.end
+      pop: true
+
+  <before>:
+    - match: '{{before_paren}}'
+      pop: true
+    - match: ' +'
+      scope: invalid.illegal.excessive-whitespace
+
+  before:
+    - include: <before>
+    - match: ''
+      set: word
+
+  before-head:
+    - include: <before>
+    - match: ''
+      set: word-head
+
+  <word>:
+    - match: '[-+]?\.?[0-9]{{word_char}}*{{word_break}}'
+      scope: meta.word constant.numeric
+      set: after-thing
+    - match: '{{word_char}}+:{{word_break}}'
+      scope: meta.word keyword.other
+      set: after-thing
+    - match: '(").*?(?<!\\)(")'
+      captures:
+        1: punctuation.definition.string.begin
+        2: punctuation.definition.string.end
+      scope: string.quoted.double
+      set: after-thing
+    - match: '(").*(\n)'
+      captures:
+        1: punctuation.definition.string.begin
+        2: invalid.illegal.newline
+      scope: string.quoted.double
+      pop: true
+    - match: '{{word_char}}*(?={{illegal_word_char}})'
+      scope: meta.word
+      set: word-illegal-part
+
+  word:
+    - include: <word>
+    - match: "{{word_char}}+{{word_break}}"
+      scope: meta.word
+      set: after-thing
+
+  word-head:
+    - include: <word>
+    - match: "{{word_char}}+{{word_break}}"
+      scope: meta.word variable.function
+      set: after-thing
+
+  word-illegal-part:
+    - match: '{{illegal_word_char}}+'
+      scope: meta.word invalid.illegal.char
+    - match: ''
+      set: word-continuation
+
+  word-continuation:
+    - match: '{{word_char}}+'
+      scope: meta.word
+    - match: '(?={{illegal_word_char}})'
+      set: word-illegal-part
+    - match: '{{word_break}}'
+      set: after-thing
+
+  after-thing:
+    - match: '(?=[()]|$)'
+      pop: true
+    - match: " +(?=\\)|$)"
+      scope: invalid.illegal.excessive-whitespace
+    - match: " "
+      set: before
+    - match: '(").*?(?<!\\)(")'
+      scope: string.quoted.double invalid.illegal.not-preceded-by-ws
+      captures:
+        1: punctuation.definition.string.begin
+        2: punctuation.definition.string.end
+    - match: '(").*(\n)'
+      scope: string.quoted.double invalid.illegal.not-preceded-by-ws
+      captures:
+        1: punctuation.definition.string.begin
+        2: invalid.illegal.newline
+      pop: true
+    - match: '{{ext_word_char}}+'
+      scope: meta.word invalid.illegal.not-preceded-by-ws

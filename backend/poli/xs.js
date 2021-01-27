@@ -1,7 +1,6 @@
 xs-reader
    makeStream
 -----
-inspect ::= $_.require('util').inspect
 assert ::= $_.require('assert').strict
 sample ::= `
 : a b c

@@ -6,7 +6,7 @@ from functools import partial
 
 from poli.comm import comm
 from poli.common.misc import exc_recorded
-from poli.module import op
+from poli.module import operation as op
 from poli.shared.command import StopCommand
 from poli.shared.command import WindowCommand
 from poli.shared.misc import single_selected_region

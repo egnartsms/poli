@@ -8,7 +8,7 @@ import sublime_plugin
 
 from poli import config
 from poli.comm import comm
-from poli.module import op
+from poli.module import operation as op
 from poli.shared.setting import poli_kind
 from poli.sublime.misc import query_context_matches
 
