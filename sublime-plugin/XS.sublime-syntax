@@ -45,19 +45,22 @@ contexts:
       scope: invalid.illegal
 
   contents:
-    - match: '^({{word_char}}+)\s+(?=\S)'
+    - match: '^({{word_char}}+) (::=) (?=\S)'
       captures:
         1: entity.name.entry meta.entry.name
+        2: punctuation.separator.poli.defined-as
       push:
         - 
           - meta_content_scope: meta.entry.def
-          - match: ''
+          - match: \n?
+            scope: meta.entry.def  # terminating \n must also be a part of definition
             pop: true
         - line
         - before
-    - match: '^({{word_char}}+)\s*$'
+    - match: '^({{word_char}}+) (::=)\n'
       captures:
         1: entity.name.entry meta.entry.name
+        2: punctuation.separator.poli.defined-as
       push: multiline-definition
 
   multiline-definition:
