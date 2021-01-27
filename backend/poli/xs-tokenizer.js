@@ -199,95 +199,94 @@ parseContinuationLine ::= function* (stm) {
    if (stm.nextChar === ' ') {
       $.advanceN(stm, 1);
       yield* $.parseNormalLine(stm);
-      return;
    }
-   
-   throw new Error(`Invalid continuation line`);
-}
-reToken ::= (function () {
-   let typemap = {
-      string: /"(?:\\?.)*?"/,
-      special: /:\(|\(|\)/,
-      word: /[a-zA-Z0-9~!@$%^&*-_+=?/<>.:]+/
-   };
-
-   let parts = [];
-
-   for (let [type, re] of Object.entries(typemap)) {
-      parts.push(`(?<${type}>${re.source})`);
-   }
-
-   return new RegExp(parts.join('|'), 'y');
-})()
-parseNormalLine ::= function* (stm) {
-   let trailingSpaces = /[ ]*$/.exec(stm.line)[0].length;
-   let limitCol = stm.line.length - trailingSpaces;
-
-   let nextGen = $.extractWord(stm);
-
-   while (stm.col < limitCol) {
-      nextGen = yield* nextGen;
+   else {
+      throw new Error(`Invalid continuation line start`);
    }
 }
-extractWord ::= function* (stm, rightAfterOpeningParen=false) {
-   if (stm.nextChar === ' ') {
-      throw new Error(`Excessive whitespace`);
-   }
+consumeToken ::= function (stm) {
+   const re = /(?<str>".*?(?<!\\)")|(?<unstr>".*$)|(?<word>[^ ()"]+)/y;
 
-   let match = $.yExec(stm, $.reToken);
+   let match = $.yExec(stm, re);
    if (!match) {
-      throw new Error(`Invalid character`);
+      throw new Error(`Logic error`);
+   }
+
+   if (match.groups.unstr) {
+      throw new Error(`Unterminated string literal`);
+   }
+
+   if (match.groups.str) {
+      $.advanceMatch(stm, match);
+
+      return {
+         token: 'string',
+         string: JSON.parse(match[0])
+      };
    }
    
-   $.advanceMatch(stm, match);
-   
-   if (match.groups.special != null) {
-      if (match.groups.special === ')' && !rightAfterOpeningParen) {
-         throw new Error(`Unexpected closing parenthesis`);
+   if (match.groups.word) {
+      if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(match.groups.word)) {
+         throw new Error(`Invalid character in the middle of the word`);
       }
 
-      yield {
-         token: match.groups.special
-      };
-      
-      return (
-         match.groups.special === ')' ? $.extractSpace(stm) : $.extractWord(stm, true)
-      );
-   }
-   
-   if (match.groups.word != null) {
-      yield {
+      $.advanceMatch(stm, match);
+
+      return {
          token: 'word',
          word: match.groups.word
       };
-      return $.extractSpace(stm);
-   }
-   
-   if (match.groups.string != null) {
-      yield {
-         token: 'string',
-         string: JSON.parse(match.groups.string)
-      };
-      return $.extractSpace(stm);
    }
    
    throw new Error(`Logic error`);
 }
-extractSpace ::= function* (stm) {
-   if (stm.nextChar === ' ') {
-      $.advanceN(stm, 1);
-      return $.extractWord(stm);
+parseNormalLine ::= function* (stm) {
+   if (stm.line[stm.line.length - 1] === ' ') {
+      throw new Error(`Line ends with trailing spaces`);
    }
-   
-   if (stm.nextChar === ')') {
-      $.advanceN(stm, 1);
-      yield {
-         token: ')'
-      };
-      return $.extractSpace(stm);
+
+   let isAfterOpenParen = false;
+
+   while (!$.isAtEol(stm)) {
+      if (stm.nextChar === ' ') {
+         throw new Error(`Excessive whitespace`);
+      }
+
+      let match = $.yExec(stm, /:?\(/y);
+      if (match) {
+         $.advanceMatch(stm, match);
+         yield {
+            token: match[0]
+         };
+         isAfterOpenParen = true;
+         continue;
+      }
+
+      if (stm.nextChar === ')') {
+         if (!isAfterOpenParen) {
+            throw new Error(`Closing parenthesis preceded by whitespace`);
+         }
+      }
+      else {
+         yield $.consumeToken(stm);
+      }
+      
+      while (stm.nextChar === ')') {
+         $.advanceN(stm, 1);
+         yield {
+            token: ')'
+         };
+      }
+      
+      if (stm.nextChar === '(') {
+         throw new Error(`Missing whitespace before opening parenthesis`);
+      }
+
+      if (stm.nextChar === ' ') {
+         $.advanceN(stm, 1);
+         isAfterOpenParen = false;
+      }
    }
-   
-   throw new Error(`Invalid character`);
 }
 tokenize ::= function (str) {
    return Array.from($.parseStream($.makeParseStream(str)));
