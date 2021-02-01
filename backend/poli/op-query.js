@@ -8,7 +8,6 @@ import
    importFor
    importedAs
    importsOf
-   starImportsOf
 reference
    resolveReference
 -----
@@ -75,7 +74,7 @@ findReferences ::= function (module, star, name) {
       res.push([imp.recp.name, $.importedAs(imp)]);
    }
 
-   for (let imp of $.starImportsOf(oModule)) {
+   for (let imp of $.importsOf(oModule, null)) {
       res.push([imp.recp.name, $.joindot(imp.alias, oName)])
    }
 

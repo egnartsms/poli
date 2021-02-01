@@ -188,9 +188,10 @@ class Communicator:
             'module': module
         })
 
-    def remove_module(self, module):
+    def remove_module(self, module, force):
         return self._send_op('removeModule', {
-            'module': module
+            'module': module,
+            'force': force
         })
 
     def replace_usages(self, module, name, new_name):

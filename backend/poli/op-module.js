@@ -3,12 +3,15 @@ bootstrap
    imports
    makeModule
    modules
+import
+   connectedModulesOf
+   importsFrom
+   importsInto
+   unimport
 persist
    deleteObject
    deleteObjectProp
    setObjectProp
-run
-   opRet
 -----
 addNewModule ::= function (moduleName) {
    if ($.hasOwnProperty($.modules, moduleName)) {
@@ -35,9 +38,19 @@ renameModule ::= function (module, newName) {
 
    return affectedModules;
 }
-removeModule ::= function (module) {
-   if (module.importedNames.size > 0 || module.entries.length > 0) {
-      throw new Error(`Module "${module.name}" is not empty`);
+removeModule ::= function (module, force) {
+   let cnmods = $.connectedModulesOf(module);
+   
+   if (cnmods.size > 0) {
+      if (!force) {
+         return Array.from(cnmods, mod => mod.name);
+      }
+
+      let imports = [...$.importsFrom(module), ...$.importsInto(module)];
+      
+      for (let imp of imports) {
+         $.unimport(imp);
+      }
    }
 
    $.deleteObject(module.importedNames);
@@ -47,5 +60,5 @@ removeModule ::= function (module) {
 
    $.deleteObjectProp($.modules, module.name);
 
-   $.opRet();
+   return true;
 }

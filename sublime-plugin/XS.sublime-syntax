@@ -169,14 +169,16 @@ contexts:
 
   word:
     - include: <word>
-    - match: "{{word_char}}+{{word_break}}"
+    - match: '{{word_char}}+{{word_break}}'
       scope: meta.word
       set: after-thing
 
   word-head:
     - include: <word>
-    - match: "{{word_char}}+{{word_break}}"
-      scope: meta.word variable.function
+    - match: '({{word_char}}*\.)?({{word_char}}+){{word_break}}'
+      scope: meta.word.head
+      captures:
+        2: variable.function
       set: after-thing
 
   word-illegal-part:

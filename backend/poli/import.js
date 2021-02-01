@@ -38,23 +38,26 @@ unimport ::= function (imp) {
 importedAs ::= function (imp) {
    return imp.alias || imp.name;
 }
-importsOf ::= function* (module, name) {
+importsInto ::= function* (module) {
    for (let imp of $.imports) {
-      if (imp.donor === module && imp.name === name) {
+      if (imp.recp === module) {
          yield imp;
       }
    }
 }
-starImportsOf ::= function* (module) {
+importsFrom ::= function* (module) {
    for (let imp of $.imports) {
-      if (imp.donor === module && imp.name === null) {
+      if (imp.donor === module) {
          yield imp;
       }
    }
 }
-isEntryImportedByAnyone ::= function (module, name) {
-   let {done} = $.importsOf(module, name).next();
-   return !done;
+importsOf ::= function* (module, entry) {
+   for (let imp of $.importsFrom(module)) {
+      if (imp.name === entry) {
+         yield imp;
+      }
+   }
 }
 importFor ::= function (module, name) {
    for (let imp of $.imports) {
@@ -64,34 +67,51 @@ importFor ::= function (module, name) {
    }
    return null;
 }
-importFromTo ::= function (donor, name, recp) {
+importsFromTo ::= function* (donor, recp) {
    for (let imp of $.imports) {
-      if (imp.donor === donor && imp.recp === recp && imp.name === name) {
+      if (imp.donor === donor && imp.recp === recp) {
+         yield imp;
+      }
+   }
+}
+entryImportsFromTo ::= function* (donor, recp) {
+   for (let imp of $.importsFromTo(donor, recp)) {
+      if (imp.name !== null) {
+         yield imp;
+      }
+   }
+}
+importFromTo ::= function (donor, entry, recp) {
+   for (let imp of $.importsFromTo(donor, recp)) {
+      if (imp.name === entry) {
          return imp;
       }
    }
    return null;
 }
-starImportFromTo ::= function (donor, recp) {
-   return $.importFromTo(donor, null, recp);
-}
-entryImportsFromTo ::= function* (donor, recp) {
-   for (let imp of $.imports) {
-      if (imp.donor === donor && imp.recp === recp && imp.name !== null) {
-         yield imp;
-      }
-   }
-}
-recipientsOf ::= function (module, name) {
+recipientsOf ::= function (module, entry) {
    let recps = new Set;
-   for (let imp of $.importsOf(module, name)) {
+   for (let imp of $.importsOf(module, entry)) {
       recps.add(imp.recp);
    }
    return Array.from(recps);
 }
+connectedModulesOf ::= function (module) {
+   let modules = new Set;
+   
+   for (let imp of $.importsFrom(module)) {
+      modules.add(imp.recp);
+   }
+   
+   for (let imp of $.importsInto(module)) {
+      modules.add(imp.donor);
+   }
+   
+   return modules;
+}
 referenceImports ::= function (donor, entry, recp) {
    return {
       eimp: $.importFromTo(donor, entry, recp),
-      simp: $.starImportFromTo(donor, recp)
+      simp: $.importFromTo(donor, null, recp)
    };
 }
