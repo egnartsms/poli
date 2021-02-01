@@ -38,7 +38,11 @@ class PoliMoveBy1(ModuleTextCommand):
         loc = mcont.cursor_location_or_stop(
             single_selected_region(self.view), require_fully_selected=True
         )
-        comm.move_by_1(op.js_module_name(self.view), loc.entry.name(), direction)
+        comm.op('moveBy1', {
+            'module': op.js_module_name(self.view),
+            'name': loc.entry.name(),
+            'direction': direction
+        })
 
         # OK, now synchronize the view itself
         i = loc.entry.myindex
@@ -72,13 +76,13 @@ class PoliMove(WindowCommand):
         self._check_src_available(src_module, entry)
         self._check_anchor_available(dest_module, anchor)
 
-        res = comm.move(
-            src_module=src_module,
-            entry=entry,
-            dest_module=dest_module,
-            anchor=anchor,
-            before=before
-        )
+        res = comm.op('move', {
+            'srcModule': src_module,
+            'entry': entry,
+            'destModule': dest_module,
+            'anchor': anchor,
+            'before': before
+        })
 
         if not res['moved']:
             msg = ["Failed to move the entry because:\n"]
@@ -243,7 +247,7 @@ class PoliMove(WindowCommand):
     class SrcModuleEntry(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
-            data = comm.get_entries()
+            data = comm.op('getEntries', {})
             self.items = [
                 ("{} ({})".format(entry, module), [module, entry])
                 for module, entry in data
@@ -258,7 +262,7 @@ class PoliMove(WindowCommand):
     class DestModule(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
-            self.items = comm.get_modules()
+            self.items = comm.op('getModules', {})
             self.items.remove(args['src_module_entry'][0])
 
         def list_items(self):
@@ -274,7 +278,7 @@ class PoliMove(WindowCommand):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
             dest_module = args['dest_module']
-            self.items = comm.get_module_entries(dest_module)
+            self.items = comm.op('getModuleEntries', {'module': dest_module})
 
             src_module, entry = args['src_module_entry']
             if src_module == dest_module:

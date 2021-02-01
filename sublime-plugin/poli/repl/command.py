@@ -59,7 +59,10 @@ class PoliReplSend(ReplTextCommand):
 
         code = self.view.substr(reg)
         try:
-            text = comm.eval(poli_cur_module[self.view], code)
+            text = comm.op('eval', {
+                'module': poli_cur_module[self.view],
+                'code': code
+            })
             success = True
         except ReplEvalError as e:
             text = e.stack
@@ -88,7 +91,7 @@ class PoliReplClear(ReplTextCommand):
 
 class PoliReplSetCurrentModule(ReplInterruptibleTextCommand):
     def run(self, edit, callback):
-        module_names = comm.get_modules()
+        module_names = comm.op('getModules', {})
         self.view.window().show_quick_panel(module_names, callback)
         (idx, ) = yield
 

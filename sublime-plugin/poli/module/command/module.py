@@ -22,23 +22,26 @@ class PoliAddNewModule(ApplicationCommand):
         except FileExistsError:
             sublime.error_message("Module file already exists")
 
-        comm.add_module(module_name)
+        comm.op('addModule', {'module': module_name})
         sublime.active_window().open_file(op.js_module_filename(module_name))
 
     def input(self, args):
-        return ModuleNameInputHandler(comm.get_modules())
+        return ModuleNameInputHandler(comm.op('getModules', {}))
 
 
 class PoliRenameModule(ModuleTextCommand):
     def run(self, edit, module_name):
-        res = comm.rename_module(op.js_module_name(self.view), module_name)
+        res = comm.op('renameModule', {
+            'module': op.js_module_name(self.view),
+            'newName': module_name
+        })
         new_file_name = op.js_module_filename(module_name)
         os.rename(self.view.file_name(), new_file_name)
         self.view.retarget(new_file_name)
         op.replace_import_section_in_modules(self.view.window(), res)
 
     def input(self, args):
-        return ModuleNameInputHandler(comm.get_modules())
+        return ModuleNameInputHandler(comm.op('getModules', {}))
 
 
 class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
@@ -67,7 +70,7 @@ class PoliRefreshModule(ModuleTextCommand):
                 return
             op.terminate_edit_mode(self.view)
 
-        comm.refresh_module(op.js_module_name(self.view))
+        comm.op('refreshModule', {'module': op.js_module_name(self.view)})
 
 
 class PoliRemoveModule(ModuleTextCommand):
@@ -78,7 +81,10 @@ class PoliRemoveModule(ModuleTextCommand):
         if not remove:
             return
 
-        res = comm.remove_module(op.js_module_name(self.view), False)
+        res = comm.op('removeModule', {
+            'module': op.js_module_name(self.view),
+            'force': False
+        })
         if res is not True:
             remove = sublime.ok_cancel_dialog(
                 "Module '{}' is connected with these modules: {}. Force removal?".format(
@@ -87,7 +93,11 @@ class PoliRemoveModule(ModuleTextCommand):
             )
             if not remove:
                 return
-            res = comm.remove_module(op.js_module_name(self.view), True)
+
+            res = comm.op('removeModule', {
+                'module': op.js_module_name(self.view),
+                'force': True
+            })
             if res is not True:
                 sublime.error_message("Could not delete module, returned: {}".format(res))
                 return

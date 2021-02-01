@@ -13,7 +13,11 @@ class PoliReplaceUsages(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit, name, new_name):
-        res = comm.replace_usages(op.js_module_name(self.view), name, new_name)
+        res = comm.op('replaceUsages', {
+            'module': op.js_module_name(self.view),
+            'name': name,
+            'newName': new_name
+        })
         op.modify_module(self.view, edit, res)
         op.save_module(self.view)
 
@@ -24,7 +28,7 @@ class PoliReplaceUsages(ModuleTextCommand):
 class NameInputHandler(sublime_plugin.ListInputHandler):
     def __init__(self, module):
         self.module = module
-        self.names = comm.get_module_names(module)
+        self.names = comm.op('getModuleNames', {'module': module})
 
     def list_items(self):
         return self.names
@@ -43,10 +47,10 @@ class NewNameInputHandler(sublime_plugin.ListInputHandler):
 
 class PoliConvertImportsToStar(ModuleTextCommand):
     def run(self, edit, donor_module):
-        modules_data = comm.convert_imports_to_star(
-            op.js_module_name(self.view),
-            donor_module
-        )
+        modules_data = comm.op('convertImportsToStar', {
+            'recp': op.js_module_name(self.view),
+            'donor': donor_module
+        })
         op.modify_and_save_modules(self.view.window(), modules_data)
 
     def input(self, args):
