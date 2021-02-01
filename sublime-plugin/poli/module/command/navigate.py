@@ -45,7 +45,11 @@ class PoliFindReferences(ModuleTextCommand):
         else:
             star, name = mtch.group('star', 'name')
 
-        res = comm.find_references(op.js_module_name(self.view), star, name)
+        res = comm.op('findReferences', {
+            'module': op.js_module_name(self.view),
+            'star': star,
+            'name': name
+        })
         if res is None:
             sublime.status_message(
                 "Unknown reference at point: \"{}\"".format(mtch.group())
@@ -112,7 +116,7 @@ class PoliGotoWarning(ModuleTextCommand):
 
 class PoliGotoEntry(WindowCommand):
     def run(self):
-        data = comm.get_entries()
+        data = comm.op('getEntries', {})
         
         def proceed(idx):
             if idx == -1:

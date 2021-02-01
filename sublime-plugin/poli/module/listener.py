@@ -46,11 +46,12 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         if mtch is None:
             return None
 
-        entries = comm.get_completions(
-            op.js_module_name(self.view),
-            mtch.group('star'),
-            mtch.group('prefix')
-        )
+        entries = comm.op('getCompletions', {
+            'module': op.js_module_name(self.view),
+            'star': mtch.group('star'),
+            'prefix': mtch.group('prefix')
+        })
+
         return (
             [(x, x) for x in entries],
             sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS

@@ -103,7 +103,10 @@ class PoliCancel(ModuleTextCommand):
 
         with read_only_as_transaction(self.view, False):
             if cxt.target == 'defn':
-                defn = comm.get_defn(op.js_module_name(self.view), cxt.name)
+                defn = comm.op('getDefinition', {
+                    'module': op.js_module_name(self.view),
+                    'name': cxt.name
+                })
                 self.view.replace(edit, reg, defn)
             elif cxt.target == 'name':
                 self.view.replace(edit, reg, cxt.name)
@@ -132,13 +135,21 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
             defn = self.view.substr(reg)
-            comm.edit_entry(op.js_module_name(self.view), cxt.name, defn)
+            comm.op('editEntry', {
+                'module': op.js_module_name(self.view),
+                'name': cxt.name,
+                'newDefn': defn
+            })
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
             if not op.is_entry_name_valid(new_name):
                 sublime.status_message("Not a valid name")
                 return
-            res = comm.rename_entry(op.js_module_name(self.view), cxt.name, new_name)
+            res = comm.op('renameEntry', {
+                'module': op.js_module_name(self.view),
+                'oldName': cxt.name,
+                'newName': new_name
+            })
             op.modify_and_save_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
@@ -149,13 +160,13 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Invalid entry definition")
                 return
 
-            comm.add_entry(
-                module=op.js_module_name(self.view),
-                name=mtch.group('name'),
-                defn=mtch.group('defn'),
-                anchor=cxt.name,
-                before=cxt.is_before
-            )
+            comm.op('addEntry', {
+                'module': op.js_module_name(self.view),
+                'name': mtch.group('name'),
+                'defn': mtch.group('defn'),
+                'anchor': cxt.name,
+                'before': cxt.is_before
+            })
 
         op.save_module(self.view)
 
@@ -181,7 +192,10 @@ class PoliRemove(ModuleTextCommand):
         loc = op.module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
-        modules_data = comm.remove_entry(op.js_module_name(self.view), loc.entry.name())
+        modules_data = comm.op('removeEntry', {
+            'module': op.js_module_name(self.view),
+            'name': loc.entry.name()
+        })
         if modules_data is None:
             sublime.error_message(
                 "Cannot delete \"{}\" as it is being used by other modules".format(
