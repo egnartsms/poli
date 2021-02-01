@@ -4,8 +4,8 @@ common
    joindot
 import
    entryImportsFromTo
+   importFromTo
    importedAs
-   starImportFromTo
    unimport
 op-refactor
    renameImportedName
@@ -83,7 +83,7 @@ removeUnusedImportsInAllModules ::= function () {
    };
 }
 convertImportsToStar ::= function (recp, donor) {
-   let simp = $.starImportFromTo(donor, recp);
+   let simp = $.importFromTo(donor, null, recp);
    if (simp === null) {
       throw new Error(`Module "${recp.name}" is not importing "${donor.name}"`);
    }

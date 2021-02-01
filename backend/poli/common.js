@@ -43,3 +43,7 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
+isSeqNonEmpty ::= function (seq) {
+   let {done} = seq[Symbol.iterator]().next();
+   return !done;
+}

@@ -72,7 +72,26 @@ class PoliRefreshModule(ModuleTextCommand):
 
 class PoliRemoveModule(ModuleTextCommand):
     def run(self, edit):
-        comm.remove_module(op.js_module_name(self.view))
+        remove = sublime.ok_cancel_dialog(
+            "Remove module '{}'?".format(op.js_module_name(self.view))
+        )
+        if not remove:
+            return
+
+        res = comm.remove_module(op.js_module_name(self.view), False)
+        if res is not True:
+            remove = sublime.ok_cancel_dialog(
+                "Module '{}' is connected with these modules: {}. Force removal?".format(
+                    op.js_module_name(self.view), ', '.join(res)
+                )
+            )
+            if not remove:
+                return
+            res = comm.remove_module(op.js_module_name(self.view), True)
+            if res is not True:
+                sublime.error_message("Could not delete module, returned: {}".format(res))
+                return
+
         file_name = self.view.file_name()
         self.view.close()
         os.unlink(file_name)

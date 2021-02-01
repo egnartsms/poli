@@ -7,7 +7,6 @@ import
    importedAs
    importsOf
    referenceImports
-   starImportsOf
 -----
 assert ::= $_.require('assert').strict
 isNameFree ::= function (module, name) {
@@ -47,7 +46,7 @@ referrerModules ::= function (module, entry) {
       referrers.add(imp.recp);
    }
 
-   for (let imp of $.starImportsOf(module)) {
+   for (let imp of $.importsOf(module, null)) {
       referrers.add(imp.recp);
    }
 

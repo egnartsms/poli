@@ -10,7 +10,6 @@ import
    importFromTo
    importedAs
    referenceImports
-   starImportFromTo
    unimport
 op-refactor
    renameRefsIn
@@ -282,7 +281,8 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
       }
 
       if (simp) {
-         let simpd = $.starImportFromTo(destModule, recp);
+         let simpd = $.importFromTo(destModule, null, recp);
+         
          if (simpd) {
             defnRenames.push({
                module: recp,
@@ -327,7 +327,7 @@ computeBackwardModificationsOnMoveEntry ::= function (srcModule, entry, destModu
 
    // Examine srcModule
    if ($.isReferredTo(srcModule, entry, entry)) {
-      let simp = $.starImportFromTo(destModule, srcModule);
+      let simp = $.importFromTo(destModule, null, srcModule);
 
       if (simp) {
          defnRenames.push({

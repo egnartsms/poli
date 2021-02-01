@@ -326,10 +326,11 @@ operationHandlers ::= ({
       $.opRet();
    },
 
-   removeModule: function ({module: moduleName}) {
+   removeModule: function ({module: moduleName, force}) {
       let module = $.moduleByName(moduleName);
-      $.opModule.removeModule(module);
-      $.opRet();
+      let connectedModuleNames = $.opModule.removeModule(module, force);
+
+      $.opRet(connectedModuleNames);
    },
 
    findReferences: function ({module: moduleName, star, name}) {
