@@ -1,18 +1,8 @@
 -----
-assert ::= $_.require('assert').strict
-indlvl ::= 3
-subindlvl ::= 1
-yreExec ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.exec(str);
+tokenizeString ::= function (str) {
+   return $.tokenizeStream($.makeStream(str));
 }
-yreTest ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.test(str);
-}
-makeParseStream ::= function (str) {
+makeStream ::= function (str) {
    let stm = {
       str,
       rowOff: -1,
@@ -27,7 +17,20 @@ makeParseStream ::= function (str) {
    $.nextLine(stm);
    return stm;
 }
-isStreamDone ::= function (stm) {
+assert ::= $_.require('assert').strict
+indlvl ::= 3
+subindlvl ::= 1
+yreExec ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.exec(str);
+}
+yreTest ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.test(str);
+}
+isAtEos ::= function (stm) {
    return stm.line === null;
 }
 isAtEol ::= function (stm) {
@@ -40,7 +43,7 @@ isLookingAt ::= function (stm, re) {
    return $.yreTest(re, stm.col, stm.line);
 }
 nextLine ::= function (stm) {
-   if ($.isStreamDone(stm)) {
+   if ($.isAtEos(stm)) {
       return;
    }
    if (stm.nextRowOff >= stm.str.length) {
@@ -73,8 +76,8 @@ advanceMatch ::= function (stm, match) {
 isLookingAtBlankLine ::= function (stm) {
    return $.isLookingAt(stm, /[ ]*$/y);
 }
-parseStream ::= function* (stm) {
-   while (!$.isStreamDone(stm)) {
+tokenizeStream ::= function* (stm) {
+   while (!$.isAtEos(stm)) {
       yield* $.parseLine(stm);
    }
 }
@@ -153,7 +156,7 @@ parseComment ::= function* (stm) {
       throw new Error(`Invalid comment`);
    }
 
-   while (!$.isStreamDone(stm)) {
+   while (!$.isAtEos(stm)) {
       if ($.isLookingAtBlankLine(stm)) {
          $.nextLine(stm);
          yield {
@@ -280,7 +283,4 @@ parseNormalLine ::= function* (stm) {
          isAfterOpenParen = false;
       }
    }
-}
-tokenize ::= function (str) {
-   return Array.from($.parseStream($.makeParseStream(str)));
 }

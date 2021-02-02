@@ -9,7 +9,6 @@ process-all
             *
                + x y 1
                \ 2
-               \ 30
        else:
          do-3
          define
