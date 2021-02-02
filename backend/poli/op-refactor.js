@@ -143,6 +143,12 @@ renameEntry ::= function (module, oldName, newName) {
       importSectionAffected: false
    });
 
+   // See if the entry was recursive. If yes, then we should refer to it by its new name
+   let ownPair = modifiedEntries.find(([entry, code]) => entry === oldName);
+   if (ownPair != null) {
+      ownPair[0] = newName;
+   }
+
    $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
    $.setObjectProp(module.defs, newName, module.defs[oldName]);
    $.deleteObjectProp(module.defs, oldName);
