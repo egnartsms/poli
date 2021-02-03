@@ -1,18 +1,8 @@
 -----
-assert ::= $_.require('assert').strict
-indlvl ::= 3
-subindlvl ::= 1
-yreExec ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.exec(str);
+tokenizeString ::= function (str) {
+   return $.tokenizeStream($.makeStream(str));
 }
-yreTest ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.test(str);
-}
-makeParseStream ::= function (str) {
+makeStream ::= function (str) {
    let stm = {
       str,
       rowOff: -1,
@@ -27,7 +17,20 @@ makeParseStream ::= function (str) {
    $.nextLine(stm);
    return stm;
 }
-isStreamDone ::= function (stm) {
+assert ::= $_.require('assert').strict
+indlvl ::= 3
+subindlvl ::= 1
+yreExec ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.exec(str);
+}
+yreTest ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.test(str);
+}
+isAtEos ::= function (stm) {
    return stm.line === null;
 }
 isAtEol ::= function (stm) {
@@ -40,7 +43,7 @@ isLookingAt ::= function (stm, re) {
    return $.yreTest(re, stm.col, stm.line);
 }
 nextLine ::= function (stm) {
-   if ($.isStreamDone(stm)) {
+   if ($.isAtEos(stm)) {
       return;
    }
    if (stm.nextRowOff >= stm.str.length) {
@@ -70,16 +73,11 @@ advanceN ::= function (stm, n) {
 advanceMatch ::= function (stm, match) {
    $.advanceN(stm, match[0].length);
 }
-skipSpaces ::= function (stm) {
-   while (!$.isAtEol(stm) && stm.nextChar === ' ') {
-      stm.col += 1;
-   }
-}
 isLookingAtBlankLine ::= function (stm) {
    return $.isLookingAt(stm, /[ ]*$/y);
 }
-parseStream ::= function* (stm) {
-   while (!$.isStreamDone(stm)) {
+tokenizeStream ::= function* (stm) {
+   while (!$.isAtEos(stm)) {
       yield* $.parseLine(stm);
    }
 }
@@ -158,7 +156,7 @@ parseComment ::= function* (stm) {
       throw new Error(`Invalid comment`);
    }
 
-   while (!$.isStreamDone(stm)) {
+   while (!$.isAtEos(stm)) {
       if ($.isLookingAtBlankLine(stm)) {
          $.nextLine(stm);
          yield {
@@ -204,41 +202,39 @@ parseContinuationLine ::= function* (stm) {
       throw new Error(`Invalid continuation line start`);
    }
 }
-consumeToken ::= function (stm) {
-   const re = /(?<str>".*?(?<!\\)")|(?<unstr>".*$)|(?<word>[^ ()"]+)/y;
+consumeString ::= function (stm) {
+   const re = /"(?:\\(?:x\h\h|u\h\h\h\h|.)|[^\\])*?(?<term>"|$)/y;
 
    let match = $.yExec(stm, re);
-   if (!match) {
-      throw new Error(`Logic error`);
-   }
 
-   if (match.groups.unstr) {
+   if (!match.groups.term) {
       throw new Error(`Unterminated string literal`);
    }
 
-   if (match.groups.str) {
-      $.advanceMatch(stm, match);
+   $.advanceMatch(stm, match);
 
-      return {
-         token: 'string',
-         string: JSON.parse(match[0])
-      };
+   return {
+      token: 'string',
+      string: JSON.parse(match[0])
+   };
+}
+consumeToken ::= function (stm) {
+   if (stm.nextChar === '"') {
+      return $.consumeString(stm);
    }
    
-   if (match.groups.word) {
-      if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(match.groups.word)) {
-         throw new Error(`Invalid character in the middle of the word`);
-      }
-
-      $.advanceMatch(stm, match);
-
-      return {
-         token: 'word',
-         word: match.groups.word
-      };
-   }
+   let match = $.yExec(stm, /[^ ()"]+/y);
    
-   throw new Error(`Logic error`);
+   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(match[0])) {
+      throw new Error(`Invalid character in the middle of the word`);
+   }
+
+   $.advanceMatch(stm, match);
+
+   return {
+      token: 'word',
+      word: match[0]
+   };
 }
 parseNormalLine ::= function* (stm) {
    if (stm.line[stm.line.length - 1] === ' ') {
@@ -287,7 +283,4 @@ parseNormalLine ::= function* (stm) {
          isAfterOpenParen = false;
       }
    }
-}
-tokenize ::= function (str) {
-   return Array.from($.parseStream($.makeParseStream(str)));
 }

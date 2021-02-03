@@ -12,7 +12,7 @@ remove-unused-imports-in-all-modules ::=
       return
          + a b
             \ c
-         console.log.get-them-off "Uncontrolled code\" \"clark "
+         console.log.get-them-off "Uncontrolled code\\\" and luck: 20"
          abc :(a b c) 20
          cxt.set-line-dash 30
          cxt.setColor "red"

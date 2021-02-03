@@ -47,3 +47,16 @@ isSeqNonEmpty ::= function (seq) {
    let {done} = seq[Symbol.iterator]().next();
    return !done;
 }
+extendArray ::= function (A, X) {
+   let i = A.length;
+   let j = 0;
+   let len = X.length;
+   
+   A.length += len;
+   
+   while (j < len) {
+      A[i] = X[j];
+      i += 1;
+      j += 1;
+   }
+}

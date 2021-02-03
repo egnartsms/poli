@@ -49,7 +49,7 @@ class PoliImport(ModuleTextCommand):
     def run(self, edit, entry, alias):
         module_name, entry_name = entry
 
-        new_import_section = comm.send_op('import', {
+        new_import_section = comm.op('import', {
             'recp': op.js_module_name(self.view),
             'donor': module_name,
             'name': entry_name,

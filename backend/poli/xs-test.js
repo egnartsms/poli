@@ -1,19 +1,44 @@
+xs-printer
+   serializeSyntax
+xs-reader
+   read1FromString
 xs-tokenizer
-   tokenize
+   tokenizeString
 -----
+assert ::= $_.require('assert').strict
+util ::= $_.require('util')
 text1 ::= String.raw`
-   #;  i don't really ; know
-      what this is all about
-   
-      continuation of the comment 
-   + 1
-      fn :()
-         if (=== this.width 0)
-            console.log "Yes!"
-            
-            \ 30
-            \ (+ a b) (* c d 3)
+square-equation ::=
+   fn :(a b c)
+      let D =
+         -
+            Math.pow b 2
+            * 4 a c
+      
+      cond
+         if: (< D 0)
+            return (<arr>)
+         
+         if: (= D 0)
+            return
+               <arr>
+                  / (- b) (* 2 a)
+         
+         otherwise:
+            return
+               <arr>
+                  /
+                     + (- b) (Math.pow D .5)
+                     * 2 a
+                  /
+                     - (- b) (Math.pow D .5)
+                     * 2 a
 `.slice(1)
 test ::= function () {
-   console.log($.tokenize($.text1));
+   let obj = $.read1FromString($.text1);
+   console.log(`---\n${$.serializeSyntax(obj)}---\n`);
+   //console.log($.util.inspect(obj, {depth: null}));
+}
+test2 ::= function () {
+   console.log(Array.from($.tokenizeString($.text1)));
 }

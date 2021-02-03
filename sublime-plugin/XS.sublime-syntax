@@ -12,7 +12,7 @@ variables:
   word_terminator_cs: ' ()"\n'
 
   word_char: '[{{word_cs}}]'
-  word_break: '(?=[()" ]|$)'
+  word_break: '(?=[ ()"]|$)'
   illegal_word_char: '[^{{word_cs}}{{word_terminator_cs}}]'
   # "extended word", i.e. anything but terminators
   ext_word_char: '[^{{word_terminator_cs}}]'
@@ -151,18 +151,18 @@ contexts:
     - match: '{{word_char}}+:{{word_break}}'
       scope: meta.word keyword.other
       set: after-thing
-    - match: '(").*?(?<!\\)(")'
-      captures:
-        1: punctuation.definition.string.begin
-        2: punctuation.definition.string.end
-      scope: string.quoted.double
-      set: after-thing
-    - match: '(").*(\n)'
-      captures:
-        1: punctuation.definition.string.begin
-        2: invalid.illegal.newline
-      scope: string.quoted.double
-      pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin
+      set:
+        - meta_scope: string.quoted.double
+        - match: '"'
+          scope: punctuation.definition.string.end
+          set: after-thing
+        - match: \n
+          scope: invalid.illegal.newline
+          pop: true
+        - match: \\(?:x\h\h|u\h\h\h\h|.)
+          scope: constant.character.escape
     - match: '{{word_char}}*(?={{illegal_word_char}})'
       scope: meta.word
       set: word-illegal-part
@@ -182,9 +182,8 @@ contexts:
       set: after-thing
 
   word-illegal-part:
-    - match: '{{illegal_word_char}}+'
+    - match: '{{illegal_word_char}}*'
       scope: meta.word invalid.illegal.char
-    - match: ''
       set: word-continuation
 
   word-continuation:
