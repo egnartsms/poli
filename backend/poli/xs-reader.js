@@ -163,32 +163,51 @@ readToEol ::= function (stm) {
    return syntaxes;
 }
 readLineUnit ::= function (stm) {
+   let atom = null;
+
    switch (stm.next.token) {
-      case 'word': {
-         let stx = {
+      case 'word':
+         atom = {
             stx: 'id',
             id: stm.next.word,
             nl: 0
          };
-         $.move(stm);
-         return stx;
-      }
+         break;
       
-      case 'string': {
-         let stx = {
+      case 'string':
+         atom = {
             stx: 'str',
             str: stm.next.string,
             nl: 0
          };
-         $.move(stm);
-         return stx;
-      }
+         break;
       
+      case 'number':
+         atom = {
+            stx: 'num',
+            num: stm.next.number,
+            nl: 0
+         };
+         break;
+
+      case 'keyword':
+         atom = {
+            stx: 'kw',
+            kw: stm.next.word,
+            nl: 0
+         }
+         break;
+
       case ')':
          throw new Error(`Unexpected closing parenthesis`);
       
       default:
          $.assert(stm.next.token === '(' || stm.next.token === ':(');
+   }
+
+   if (atom !== null) {
+      $.move(stm);
+      return atom;
    }
 
    let sub = [];

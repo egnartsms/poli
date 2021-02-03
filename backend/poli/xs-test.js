@@ -16,7 +16,8 @@ square-equation ::=
             * 4 a c
       
       cond
-         if: (< D 0)
+         if:
+               < D 0
             return (<arr>)
          
          if: (= D 0)
@@ -24,9 +25,13 @@ square-equation ::=
                <arr>
                   / (- b) (* 2 a)
          
+         \ 
+         \
+         
          otherwise:
             return
                <arr>
+                     "double indentation"
                   /
                      + (- b) (Math.pow D .5)
                      * 2 a
@@ -34,6 +39,9 @@ square-equation ::=
                      - (- b) (Math.pow D .5)
                      * 2 a
 `.slice(1)
+text2 ::= String.raw`
+fuck-you ::=
+   \ (30 as: 40 50 only-if-greater-than: (get-minimum-width))`.slice(1)
 test ::= function () {
    let obj = $.read1FromString($.text1);
    console.log(`---\n${$.serializeSyntax(obj)}---\n`);
