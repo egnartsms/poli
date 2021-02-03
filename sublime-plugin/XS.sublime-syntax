@@ -12,7 +12,7 @@ variables:
   word_terminator_cs: ' ()"\n'
 
   word_char: '[{{word_cs}}]'
-  word_break: '(?=[ ()"]|$)'
+  word_break: '(?=[ ()"\n])'
   illegal_word_char: '[^{{word_cs}}{{word_terminator_cs}}]'
   # "extended word", i.e. anything but terminators
   ext_word_char: '[^{{word_terminator_cs}}]'
@@ -56,7 +56,7 @@ contexts:
             scope: meta.entry.def  # terminating \n must also be a part of definition
             pop: true
         - line
-        - before
+        - before-word
     - match: '^({{word_char}}+) (::=)\n'
       captures:
         1: entity.name.entry meta.entry.name
@@ -93,9 +93,9 @@ contexts:
     - match: '(\\)( )'
       captures:
         1: punctuation.definition.continuation
-      set: before
-    - match: ""
-      set: before-head
+      set: before-word
+    - match: ''
+      set: before-word-head
 
   line:
     - match: \)
@@ -114,37 +114,37 @@ contexts:
       pop: true
     - match: (?<=^| |\()\(
       scope: punctuation.section.compound.begin.paren
-      push: [after-thing, compound, before-head]
+      push: [after-thing, compound, before-word-head]
     - match: \(
       scope: punctuation.section.compound.begin.paren invalid.illegal.not-preceded-by-ws
-      push: [after-thing, compound, before-head]
+      push: [after-thing, compound, before-word-head]
     - match: (?<=^| |\():\(
       scope: punctuation.section.compound.begin.colon-paren
-      push: [after-thing, compound, before]
+      push: [after-thing, compound, before-word]
     - match: :\(
       scope: punctuation.section.compound.begin.colon-paren invalid.illegal.not-preceded-by-ws
-      push: [after-thing, compound, before]
+      push: [after-thing, compound, before-word]
     - match: \)
       scope: punctuation.section.compound.end
       pop: true
 
-  <before>:
-    - match: '{{before_paren}}'
-      pop: true
-    - match: ' +'
+  before-word:
+    - match: ' *'
       scope: invalid.illegal.excessive-whitespace
-
-  before:
-    - include: <before>
-    - match: ''
       set: word
 
-  before-head:
-    - include: <before>
-    - match: ''
+  before-word-head:
+    - match: ' *'
+      scope: invalid.illegal.excessive-whitespace
       set: word-head
 
   <word>:
+    - match: ' +'
+      scope: invalid.illegal.excessive-whitespace
+      pop: true
+
+    - match: '{{before_paren}}'
+      pop: true
     - match: '[-+]?\.?[0-9]{{word_char}}*{{word_break}}'
       scope: meta.word constant.numeric
       set: after-thing
@@ -197,20 +197,19 @@ contexts:
   after-thing:
     - match: '(?=[()]|$)'
       pop: true
-    - match: " +(?=\\)|$)"
+    - match: ' +(?=\)|$)'
       scope: invalid.illegal.excessive-whitespace
-    - match: " "
-      set: before
-    - match: '(").*?(?<!\\)(")'
-      scope: string.quoted.double invalid.illegal.not-preceded-by-ws
-      captures:
-        1: punctuation.definition.string.begin
-        2: punctuation.definition.string.end
-    - match: '(").*(\n)'
-      scope: string.quoted.double invalid.illegal.not-preceded-by-ws
-      captures:
-        1: punctuation.definition.string.begin
-        2: invalid.illegal.newline
       pop: true
+    - match: ' '
+      set: before-word
+    - match: '"'
+      set:
+        - meta_scope: string.quoted.double invalid.illegal.not-preceded-by-ws
+        - match: '"'
+          set: after-thing
+        - match: \n
+          scope: invalid.illegal.newline
+          pop: true
+        - match: \\(?:x\h\h|u\h\h\h\h|.)
     - match: '{{ext_word_char}}+'
       scope: meta.word invalid.illegal.not-preceded-by-ws

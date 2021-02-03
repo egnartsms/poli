@@ -102,9 +102,15 @@ dumpInline ::= function* (stx) {
          yield JSON.stringify(stx.str);
          break;
       
+      case 'kw':
+         yield stx.kw;
+         break;
+      
+      case 'num':
+         yield stx.num;
+         break;
+      
       default:
          throw new Error(`Unexpected syntax object: ${stx.stx}`);
-
-      // future things: keyword, number
    }
 }

@@ -202,40 +202,6 @@ parseContinuationLine ::= function* (stm) {
       throw new Error(`Invalid continuation line start`);
    }
 }
-consumeString ::= function (stm) {
-   const re = /"(?:\\(?:x\h\h|u\h\h\h\h|.)|[^\\])*?(?<term>"|$)/y;
-
-   let match = $.yExec(stm, re);
-
-   if (!match.groups.term) {
-      throw new Error(`Unterminated string literal`);
-   }
-
-   $.advanceMatch(stm, match);
-
-   return {
-      token: 'string',
-      string: JSON.parse(match[0])
-   };
-}
-consumeToken ::= function (stm) {
-   if (stm.nextChar === '"') {
-      return $.consumeString(stm);
-   }
-   
-   let match = $.yExec(stm, /[^ ()"]+/y);
-   
-   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(match[0])) {
-      throw new Error(`Invalid character in the middle of the word`);
-   }
-
-   $.advanceMatch(stm, match);
-
-   return {
-      token: 'word',
-      word: match[0]
-   };
-}
 parseNormalLine ::= function* (stm) {
    if (stm.line[stm.line.length - 1] === ' ') {
       throw new Error(`Line ends with trailing spaces`);
@@ -284,3 +250,74 @@ parseNormalLine ::= function* (stm) {
       }
    }
 }
+consumeString ::= function (stm) {
+   const re = /"(?:\\(?:x\h\h|u\h\h\h\h|.)|[^\\])*?(?<term>"|$)/y;
+
+   let match = $.yExec(stm, re);
+
+   if (!match.groups.term) {
+      throw new Error(`Unterminated string literal`);
+   }
+
+   $.advanceMatch(stm, match);
+
+   return {
+      token: 'string',
+      string: JSON.parse(match[0])
+   };
+}
+consumeToken ::= function (stm) {
+   if (stm.nextChar === '"') {
+      return $.consumeString(stm);
+   }
+   
+   let match = $.yExec(stm, /[^ ()"]+/y);
+   let word = match[0];
+
+   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(word)) {
+      throw new Error(`Invalid character in the middle of the word`);
+   }
+
+   $.advanceMatch(stm, match);
+   
+   if (/^[-+]?\.?[0-9]/.test(word)) {
+      if ($.numberValue(word) === null) {
+         throw new Error(`Invalid numeric literal: ${word}`);
+      }
+
+      return {
+         token: 'number',
+         number: word
+      }
+   }
+
+   if (word[word.length - 1] === ':') {
+      return {
+         token: 'keyword',
+         word: word
+      }
+   }
+
+   return {
+      token: 'word',
+      word: word
+   };
+}
+numberValue ::= function (number) {
+   let value;
+   
+   try {
+      value = $.gEval(number);
+   }
+   catch (e) {
+      return null;
+   }
+   
+   if (typeof value === 'number' || typeof value === 'bigint') {
+      return value;
+   }
+   else {
+      return null;
+   }
+}
+gEval ::= global.eval
