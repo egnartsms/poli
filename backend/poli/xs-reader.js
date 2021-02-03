@@ -3,6 +3,20 @@ common
 xs-tokenizer
    tokenizeString
 -----
+read1FromString ::= function (str) {
+   let stm = $.makeTokenStream(str);
+
+   $.move(stm);
+
+   $.assert(stm.next.token === 'indent');
+   $.assert(stm.next.level === 0);
+
+   $.move(stm);
+   
+   let stx = $.readMultilined(stm, 0);
+   stx.nl = 1;
+   return stx;
+}
 assert ::= $_.require('assert').strict
 makeTokenStream ::= function (str) {
    let gtor = $.tokenizeString(str);
@@ -74,7 +88,8 @@ readMultilined ::= function (stm, mylevel) {
       
       for (let i = 0; i < stm.nblanks; i += 1) {
          sub.push({
-            stx: 'nl'
+            stx: 'nl',
+            nl: level - mylevel
          });
       }
 
@@ -85,43 +100,62 @@ readMultilined ::= function (stm, mylevel) {
 
          if (stm.next.token === 'nl') {
             sub.push({
-               stx: '\\nl'
+               stx: '\\nl',
+               nl: -(level - mylevel)
             });
             $.move(stm);
          }
          else {
             let continuationLine = $.readToEol(stm);
+            continuationLine[0].nl = -(level - mylevel);
             $.extendArray(sub, continuationLine);
          }
       }
+      else if (stm.next.token === 'comment-line') {
+         let comment = $.readComment(stm);
+         comment.nl = level - mylevel;
+         sub.push(comment);
+      }
       else {
-         let child = $.readMultilined(stm, level);
-         sub.push(child);
+         let nested = $.readMultilined(stm, level);
+         nested.nl = level - mylevel;
+         sub.push(nested);
       }
    }
    
    return {
       stx: '()',
+      nl: 0,   // that will be fixed up at the call site
       sub: sub,
-      nl: true
+   };
+}
+readComment ::= function (stm) {
+   let lines = [];
+   
+   while (!$.isAtEos(stm) && stm.next.token === 'comment-line') {
+      lines.push(stm.next.line);
+      $.move(stm);
+   }
+   
+   // See if there are any trailing empty comment lines. If yes, they become blank lines
+   // for the purpose of further parsing.
+   let k = lines.length - 1;
+   while (k > 0 && lines[k] === '') {
+      k -= 1;
+   }
+   
+   stm.nblanks = lines.length - (k + 1);
+   return {
+      stx: 'comment',
+      nl: 1,
+      lines: lines.slice(0, k + 1)
    };
 }
 readToEol ::= function (stm) {
    let syntaxes = [];
-   let first = true;
 
    while (!$.isAtEol(stm)) {
-      let unit = $.readLineUnit(stm);
-
-      if (first) {
-         unit.nl = (unit.stx === '()') ? '\\' : true;
-         first = false;
-      }
-      else {
-         unit.nl = false;
-      }
-
-      syntaxes.push(unit);
+      syntaxes.push($.readLineUnit(stm));
    }
    
    $.move(stm);
@@ -133,7 +167,8 @@ readLineUnit ::= function (stm) {
       case 'word': {
          let stx = {
             stx: 'id',
-            id: stm.next.word
+            id: stm.next.word,
+            nl: 0
          };
          $.move(stm);
          return stx;
@@ -142,7 +177,8 @@ readLineUnit ::= function (stm) {
       case 'string': {
          let stx = {
             stx: 'str',
-            str: stm.next.string
+            str: stm.next.string,
+            nl: 0
          };
          $.move(stm);
          return stx;
@@ -160,7 +196,8 @@ readLineUnit ::= function (stm) {
    if (stm.next.token === ':(') {
       sub.push({
          stx: 'id',
-         id: ':'
+         id: ':',
+         nl: 0
       });
    }
 
@@ -178,6 +215,7 @@ readLineUnit ::= function (stm) {
    
    return {
       stx: '()',
-      sub: sub
+      nl: 0,
+      sub: sub,
    }
 }
