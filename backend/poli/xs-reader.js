@@ -61,9 +61,11 @@ isAtEol ::= function (stm) {
    return stm.next.token === 'nl';
 }
 readMultilined ::= function (stm, mylevel) {
-   let sub = $.readToEol(stm);
-   
-   $.assert(sub.length > 0);
+   let children = $.readToEol(stm);
+
+   $.assert(children.length > 0);
+
+   let sink = children;
 
    for (;;) {
       if ($.isAtEos(stm)) {
@@ -73,60 +75,91 @@ readMultilined ::= function (stm, mylevel) {
       $.assert(stm.next.token === 'indent');
 
       let {level, full} = stm.next;
+      let lvlshift = level - mylevel;
 
-      if (full !== true) {
-         throw new Error(`Not supporting partial indents yet`);
-      }
-
-      if (level <= mylevel) {
+      if (lvlshift <= 0) {
          break;
       }
       
-      if (level > mylevel + 2) {
+      if (lvlshift > 2 || (lvlshift === 2 && !full)) {
          throw new Error(`Too much of an indentation`);
       }
       
       for (let i = 0; i < stm.nblanks; i += 1) {
-         sub.push({
+         // If the current line is partially indented, then we shove all the preceding
+         // blank lines into the 'children' array rather than 'sink' which may be a
+         // container for preceding keyworded body.
+         (full ? sink : children).push({
             stx: 'nl',
-            nl: level - mylevel
+            nl: lvlshift
          });
       }
 
       $.move(stm);
 
-      if (stm.next.token === '\\') {
-         $.move(stm);
-
-         if (stm.next.token === 'nl') {
-            sub.push({
-               stx: '\\nl',
-               nl: -(level - mylevel)
-            });
+      if (full) {
+         if (stm.next.token === '\\') {
             $.move(stm);
+
+            if (stm.next.token === 'nl') {
+               sink.push({
+                  stx: '\\nl',
+                  nl: -lvlshift
+               });
+               $.move(stm);
+            }
+            else {
+               let continuationLine = $.readToEol(stm);
+               continuationLine[0].nl = -lvlshift;
+               $.extendArray(sink, continuationLine);
+            }
+         }
+         else if (stm.next.token === 'comment-line') {
+            let comment = $.readComment(stm);
+            comment.nl = lvlshift;
+            sink.push(comment);
          }
          else {
-            let continuationLine = $.readToEol(stm);
-            continuationLine[0].nl = -(level - mylevel);
-            $.extendArray(sub, continuationLine);
+            let nested = $.readMultilined(stm, level);
+            nested.nl = lvlshift;
+            sink.push(nested);
          }
       }
-      else if (stm.next.token === 'comment-line') {
-         let comment = $.readComment(stm);
-         comment.nl = level - mylevel;
-         sub.push(comment);
-      }
       else {
-         let nested = $.readMultilined(stm, level);
-         nested.nl = level - mylevel;
-         sub.push(nested);
+         $.assert(lvlshift === 1);
+
+         if (stm.next.token !== 'keyword') {
+            throw new Error(`Expected a keyword at partially indented position, found ` +
+                            `'${stm.next.token}'`);
+         }
+         let keyword = stm.next.word;
+
+         $.move(stm);
+         if (stm.next.token !== 'nl') {
+            throw new Error(`Expected a linebreak after a keyword at partially ` +
+                            `indented position, found '${stm.next.token}'`);
+         }
+         $.move(stm);
+         
+         let compound = {
+            stx: '()',
+            nl: .5,  // yes, seriously
+            sub: [{
+               stx: 'kw',
+               kw: keyword,
+               nl: 0
+            }]
+         };
+
+         children.push(compound);
+         sink = compound.sub;
       }
    }
    
    return {
       stx: '()',
       nl: 0,   // that will be fixed up at the call site
-      sub: sub,
+      sub: children,
    };
 }
 readComment ::= function (stm) {

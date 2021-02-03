@@ -16,6 +16,7 @@ square-equation ::=
             * 4 a c
       
       cond
+       default-body:
          if:
                < D 0
             return (<arr>)
@@ -41,11 +42,23 @@ square-equation ::=
 `.slice(1)
 text2 ::= String.raw`
 fuck-you ::=
-   \ (30 as: 40 50 only-if-greater-than: (get-minimum-width))`.slice(1)
+   test (=== x y)
+    if-1:
+      
+      \
+
+      #; Some comment
+
+    if-2:
+    if-true:
+      \ console.log "They are"
+    otherwise:
+      console.log "Not quite"
+`.slice(1)
 test ::= function () {
-   let obj = $.read1FromString($.text1);
+   let obj = $.read1FromString($.text2);
    console.log(`---\n${$.serializeSyntax(obj)}---\n`);
-   //console.log($.util.inspect(obj, {depth: null}));
+   // console.log($.util.inspect(obj, {depth: null}));
 }
 test2 ::= function () {
    console.log(Array.from($.tokenizeString($.text1)));

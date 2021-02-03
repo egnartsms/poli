@@ -18,8 +18,8 @@ makeStream ::= function (str) {
    return stm;
 }
 assert ::= $_.require('assert').strict
-indlvl ::= 3
-subindlvl ::= 1
+indSpaces ::= 3
+partialIndSpaces ::= 1
 yreExec ::= function (re, offset, str) {
    $.assert(re.sticky);
    re.lastIndex = offset;
@@ -114,19 +114,19 @@ parseLine ::= function* (stm) {
 }
 parseIndentation ::= function (stm) {
    let nspaces = $.numSpacesAhead(stm);
-   let rem = nspaces % $.indlvl;
+   let rem = nspaces % $.indSpaces;
 
    if (rem === 0) {
       $.advanceN(stm, nspaces);
       return {
-         level: Math.trunc(nspaces / $.indlvl),
+         level: Math.trunc(nspaces / $.indSpaces),
          full: true
       }
    }
-   else if (rem === $.subindlvl) {
+   else if (rem === $.partialIndSpaces) {
       $.advanceN(stm, nspaces);
       return {
-         level: Math.trunc(nspaces / $.indlvl) + 1,
+         level: Math.trunc(nspaces / $.indSpaces) + 1,
          full: false
       }
    }
@@ -136,7 +136,7 @@ parseIndentation ::= function (stm) {
 }
 parseComment ::= function* (stm) {
    let myindent = stm.col;
-   let commentIndent = myindent + $.indlvl;
+   let commentIndent = myindent + $.indSpaces;
 
    $.advanceN(stm, '#;'.length);
 

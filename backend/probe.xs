@@ -28,6 +28,15 @@ solve-square-equation ::=
             Math.pow b 2
             * 4 a c
       
+      test
+            even? pieces.length
+
+       if-true:
+         console.log "Are even"
+
+       if-false:
+         console.log "Not even"
+
       cond
          if:
                < D 0
