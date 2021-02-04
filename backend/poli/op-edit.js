@@ -36,10 +36,7 @@ addEntry ::= function (module, name, defn, anchor, before) {
    }
 
    $.saveObject(module.entries);
-   $.setObjectProp(module.defs, name, {
-      type: 'js',
-      src: defn
-   });
+   $.setObjectProp(module.defs, name, defn);
 }
 editEntry ::= function (module, name, newDefn) {
    if (!$.hasOwnProperty(module.defs, name)) {
@@ -48,12 +45,7 @@ editEntry ::= function (module, name, newDefn) {
 
    let newVal = $.moduleEval(module, newDefn);
 
-   $.deleteObject(module.defs[name]);
-   $.setObjectProp(module.defs, name, {
-      type: 'js',
-      src: newDefn
-   });
-
+   $.setObjectProp(module.defs, name, newDefn);
    $.rtset(module, name, newVal);
    $.propagateValueToRecipients(module, name);
 }

@@ -89,10 +89,10 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    }
 
    // Stage 2. Take out srcModule[entry] definition
-   let defn = srcModule.defs[entry];
+   let oldCode = srcModule.defs[entry];
+
    $.deleteObjectProp(srcModule.defs, entry);
    $.rtset(srcModule, entry, $.delmark);
-
    $.deleteArrayItem(srcModule.entries, srcModule.entries.indexOf(entry));
 
    // Stage 3. Modify modules (do rename in definitions)
@@ -114,22 +114,16 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
       let sre = `(?<=\\$\\.)${alts}`;
       let re = new RegExp(sre, 'g');
 
-      newCode = defn.src.replace(re, ref => fwd.renameMap.get(ref));
+      newCode = oldCode.replace(re, ref => fwd.renameMap.get(ref));
    }
    else {
-      newCode = defn.src;
+      newCode = oldCode;
    }
 
    let newVal = $.moduleEval(destModule, newCode);
+
+   $.setObjectProp(destModule.defs, entry, newCode);
    $.rtset(destModule, entry, newVal);
-   if (newCode !== defn.src) {
-      $.deleteObject(defn);
-      defn = {
-         type: 'js',
-         src: newCode
-      };
-   }
-   $.setObjectProp(destModule.defs, entry, defn);
 
    let iAnchor;
 

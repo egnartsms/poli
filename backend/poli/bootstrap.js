@@ -118,16 +118,19 @@ import ::= function (imp) {
    // to be reused in other modules.
    $.validateImport(imp);
 
+   let name, value;
+
    if (imp.name === null) {
-      imp.recp.importedNames.add(imp.alias);
-      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
+      name = imp.alias;
+      value = imp.donor.rtobj;
    }
    else {
-      let importedAs = imp.alias || imp.name;
-
-      imp.recp.importedNames.add(importedAs);
-      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
+      name = imp.alias || imp.name;
+      value = imp.donor.rtobj[imp.name];
    }
+   
+   imp.recp.importedNames.add(name);
+   imp.recp.rtobj[name] = value;
 
    $.imports.add(imp);
 }
@@ -186,7 +189,7 @@ initObjForPersistence ::= function (obj) {
    }
 }
 initSetForPersistence ::= function (set) {
-   $.assert(set[$.skSet] == null);
+   $.assert(!($.skSet in set));
 
    let nextid = 1;
    let item2id = new Map;
@@ -272,7 +275,7 @@ saveObject ::= function (obj) {
    let rec = $.objrefRecorder();
 
    stmt.run({
-      oid,
+      oid: oid,
       val: $.toJson(obj, rec.ref)
    });
 
@@ -314,22 +317,13 @@ addRecordedObjects ::= function ({toAdd, ref}) {
    }
 }
 makeJsModule ::= function (name, body) {
-   let defs = {};
-
-   for (let [entry, src] of body) {
-      defs[entry] = {
-         type: 'js',
-         src: src
-      };
-   }
-
    let module = {
       [$.skRuntimeKeys]: ['rtobj'],
       lang: 'js',
       name: name,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(body, ([entry]) => entry),
-      defs: defs,
+      defs: Object.fromEntries(body),
       rtobj: null
    };
 
@@ -434,7 +428,7 @@ loadImage ::= function () {
    $.imports = $.lobby.imports;
    $.obj2id = obj2id;
 
-   // Initialize module rtobj's
+   // Initialize modules' rtobj's
    for (let module of Object.values($.modules)) {
       if (module.name === $_.BOOTSTRAP_MODULE) {
          module.rtobj = $;
@@ -442,13 +436,8 @@ loadImage ::= function () {
       else {
          module.rtobj = Object.create(null);
 
-         for (let entry of module.entries) {
-            let def = module.defs[entry];
-            if (def.type !== 'js') {
-               throw new Error(`Unrecognized entry type: ${def.type}`);
-            }
-
-            module.rtobj[entry] = $.moduleEval(module, def.src);
+         for (let [entry, src] of Object.entries(module.defs)) {
+            module.rtobj[entry] = $.moduleEval(module, src);
          }
       }
    }

@@ -24,7 +24,7 @@ flushModule ::= function (module) {
       for (let entry of module.entries) {
          yield entry;
          yield ' ::= ';
-         yield module.defs[entry].src;
+         yield module.defs[entry];
          yield '\n';
       }
    });

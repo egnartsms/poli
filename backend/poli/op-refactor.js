@@ -64,7 +64,7 @@ renameRefsIn ::= function (module, renameMap) {
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
-      let oldCode = module.defs[entry].src;
+      let oldCode = module.defs[entry];
       let newCode = oldCode.replace(re, ref => renameMap.get(ref));
       
       if (oldCode === newCode) {
@@ -73,12 +73,7 @@ renameRefsIn ::= function (module, renameMap) {
 
       let newVal = $.moduleEval(module, newCode);
 
-      $.deleteObject(module.defs[entry]);
-      $.setObjectProp(module.defs, entry, {
-         type: 'js',
-         src: newCode
-      });
-
+      $.setObjectProp(module.defs, entry, newCode);
       $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry);
 
