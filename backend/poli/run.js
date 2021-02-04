@@ -24,7 +24,7 @@ op-query
    * as: query
 op-refactor
    * as: opRefactor
-rt-rec
+rtrec
    applyRtDelta
    discardRtDelta
 -----
@@ -309,8 +309,12 @@ operationHandlers ::= ({
       $.opRet($.serialize(res));
    },
 
-   addModule: function ({module: moduleName}) {
-      $.opModule.addNewModule(moduleName);
+   addModule: function ({module: moduleName, lang}) {
+      if (typeof lang !== 'string' || !['xs', 'js'].includes(lang)) {
+         throw new Error(`Invalid module lang`);
+      }
+
+      $.opModule.addNewModule(moduleName, lang);
       $.opRet();
    },
 

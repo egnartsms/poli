@@ -84,7 +84,7 @@ def known_names(view):
 def highlight_unknown_names(view):
     k_names = known_names(view)
     result = sublime_api.view_find_all_with_contents(
-        view.view_id, r'(?<![a-z_$])\$\.([a-z0-9_]+)', sublime.IGNORECASE, '\\1'
+        view.view_id, r'(?<![\w$])\$\.(\w+)', 0, '\\1'
     )
     warning_regs = [reg for reg, name in result if name not in k_names]
     add_warnings(view, warning_regs)

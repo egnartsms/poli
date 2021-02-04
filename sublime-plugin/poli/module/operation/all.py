@@ -5,9 +5,9 @@ import sublime
 
 from .body import module_body
 from .body import reg_entry_name
+from .edit_mode import save_module
 from .import_section import parse_import_section
 from .structure import reg_import_section
-from .edit_mode import save_module
 
 from poli.config import backend_root
 from poli.shared import const
@@ -38,12 +38,12 @@ def js_module_name(view):
     return re.search(r'/([^/]+)\.js$', view.file_name()).group(1)
 
 
-def js_module_filename(module_name):
-    return os.path.join(backend_root, "{}.js".format(module_name))
+def module_filename(module_name, lang):
+    return os.path.join(backend_root, "{}.{}".format(module_name, lang))
 
 
 def open_js_module(window, module_name):
-    view = window.open_file(js_module_filename(module_name))
+    view = window.open_file(module_filename(module_name, 'js'))
     setup_js_module_view(view)
     return view
 
@@ -190,12 +190,7 @@ def word_at(view, reg):
 
 
 def reference_at(view, ptreg):
-    return match_at(
-        view,
-        ptreg,
-        r'(?<![a-z_$])\$(?:\.(?P<star>[a-z0-9_]+))?\.(?P<name>[a-z0-9_]+)\b',
-        re.I
-    )
+    return match_at(view, ptreg, r'(?<![\w$])\$(?:\.(?P<star>\w+))?\.(?P<name>\w+)\b')
 
 
 def goto_module_entry(window, module, entry):

@@ -7,6 +7,8 @@ from poli.comm import comm
 from poli.module import operation as op
 from poli.shared.command import ApplicationCommand
 from poli.sublime import regedit
+from poli.sublime.input import ChainableInputHandler
+from poli.sublime.input import chain_input_handlers
 
 from .shared import ModuleTextCommand
 
@@ -15,18 +17,24 @@ __all__ = ['PoliAddNewModule', 'PoliRenameModule', 'PoliRefreshModule', 'PoliRem
 
 
 class PoliAddNewModule(ApplicationCommand):
-    def run(self, module_name):
+    def run(self, module_name, lang):
         try:
-            with open(op.js_module_filename(module_name), 'x') as file:
+            with open(op.module_filename(module_name, lang), 'x') as file:
                 file.write('-----\n')
         except FileExistsError:
             sublime.error_message("Module file already exists")
 
-        comm.op('addModule', {'module': module_name})
-        sublime.active_window().open_file(op.js_module_filename(module_name))
+        comm.op('addModule', {
+            'module': module_name,
+            'lang': lang
+        })
+        sublime.active_window().open_file(op.module_filename(module_name, lang))
 
     def input(self, args):
-        return ModuleNameInputHandler(comm.op('getModules', {}))
+        return chain_input_handlers(None, args, [
+            ModuleNameInputHandler,
+            LangInputHandler
+        ])
 
 
 class PoliRenameModule(ModuleTextCommand):
@@ -35,7 +43,7 @@ class PoliRenameModule(ModuleTextCommand):
             'module': op.js_module_name(self.view),
             'newName': module_name
         })
-        new_file_name = op.js_module_filename(module_name)
+        new_file_name = op.module_filename(module_name, 'js')
         os.rename(self.view.file_name(), new_file_name)
         self.view.retarget(new_file_name)
         op.replace_import_section_in_modules(self.view.window(), res)
@@ -44,9 +52,10 @@ class PoliRenameModule(ModuleTextCommand):
         return ModuleNameInputHandler(comm.op('getModules', {}))
 
 
-class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
-    def __init__(self, existing_module_names):
-        self.existing_module_names = existing_module_names
+class ModuleNameInputHandler(ChainableInputHandler, sublime_plugin.TextInputHandler):
+    def __init__(self, view, args, chain_tail):
+        super().__init__(view, chain_tail)
+        self.existing_module_names = comm.op('getModules', {})
 
     def preview(self, value):
         valid = re.search(r'^[a-zA-Z-][0-9a-zA-Z-]*$', value) is not None
@@ -60,6 +69,14 @@ class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
 
     def validate(self, value):
         return self.preview(value) is None
+
+
+class LangInputHandler(ChainableInputHandler, sublime_plugin.ListInputHandler):
+    def __init__(self, view, args, chain_tail):
+        super().__init__(view, chain_tail)
+
+    def list_items(self):
+        return [('JS', 'js'), ('XS', 'xs')]
 
 
 class PoliRefreshModule(ModuleTextCommand):
