@@ -25,7 +25,7 @@ whereNameCame ::= function (module, name) {
    return {};
 }
 isReferredTo ::= function (module, name, except=null) {
-   let re = new RegExp(`\\b\\$\\.${name.replace(/\./g, '\\.')}\\b`);
+   let re = new RegExp(`\\B\\$\\.${name.replace(/\./g, '\\.')}\\b`);
 
    for (let entry of module.entries) {
       if (except && entry === except) {
