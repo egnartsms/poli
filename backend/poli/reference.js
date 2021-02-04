@@ -25,7 +25,7 @@ whereNameCame ::= function (module, name) {
    return {};
 }
 isReferredTo ::= function (module, name, except=null) {
-   let re = new RegExp(`\\B\\$\\.${name.replace(/\./g, '\\.')}\\b`);
+   let re = new RegExp(`(?<![\\w$])\\$\\.${name.replace(/\./g, '\\.')}\\b`);
 
    for (let entry of module.entries) {
       if (except && entry === except) {
@@ -109,7 +109,7 @@ resolveReference ::= function (module, star, name) {
 }
 extractRefs ::= function (module, entry) {
    let names = new Set();
-   let re = /(?<![a-z_$])\$\.([0-9a-z_]+(?:\.[0-9a-z_]+)?)\b/gi;
+   let re = /(?<![\w$])\$\.(\w+(?:\.\w+)?)\b/gi;
 
    for (let [, ref] of module.defs[entry].src.matchAll(re)) {
       names.add(ref);

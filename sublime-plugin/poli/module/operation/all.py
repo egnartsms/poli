@@ -190,12 +190,7 @@ def word_at(view, reg):
 
 
 def reference_at(view, ptreg):
-    return match_at(
-        view,
-        ptreg,
-        r'(?<![a-z_$])\$(?:\.(?P<star>[a-z0-9_]+))?\.(?P<name>[a-z0-9_]+)\b',
-        re.I
-    )
+    return match_at(view, ptreg, r'(?<![\w$])\$(?:\.(?P<star>\w+))?\.(?P<name>\w+)\b')
 
 
 def goto_module_entry(window, module, entry):

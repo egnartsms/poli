@@ -80,10 +80,7 @@ class PoliFindReferences(ModuleTextCommand):
                 regkeys = op.name_regions(view)
                 k = 0
                 entry_defn_name = "(unknown)"
-                regs = view.find_all(
-                    r'(?<![a-z_$])\$\.{}\b'.format(entry_name),
-                    sublime.IGNORECASE
-                )
+                regs = view.find_all(r'(?<![\w$])\$\.{}\b'.format(entry_name))
 
                 for reg in regs:
                     while k < len(regkeys) and regkeys[k].end() < reg.begin():
