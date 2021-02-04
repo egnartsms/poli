@@ -43,7 +43,7 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 
 
 function parseBody(str) {
-   const re = /^(\S+?)\s*::=/gm;
+   const re = /^(\S+?) ::= /gm;
 
    return Array.from(
       matchAllHeaderBodyPairs(str, re),

@@ -1,13 +1,11 @@
 xs-printer
-   serializeSyntax
+   syntax2str
 xs-reader
    read1FromString
-xs-tokenizer
-   tokenizeString
 -----
 assert ::= $_.require('assert').strict
 util ::= $_.require('util')
-text1 ::= String.raw`
+text ::= String.raw`
 square-equation ::=
    fn :(a b c)
       let D =
@@ -16,6 +14,10 @@ square-equation ::=
             * 4 a c
       
       cond
+            extra-indented-stuff
+         normally-indented-stuff
+         and-more
+         
        default-body:
          if:
                < D 0
@@ -27,7 +29,7 @@ square-equation ::=
                   / (- b) (* 2 a)
          
          \ 
-         \
+         \ 
          
          otherwise:
             return
@@ -40,26 +42,10 @@ square-equation ::=
                      - (- b) (Math.pow D .5)
                      * 2 a
 `.slice(1)
-text2 ::= String.raw`
-fuck-you ::=
-   test (=== x y)
-    if-1:
-      
-      \
-
-      #; Some comment
-
-    if-2:
-    if-true:
-      \ console.log "They are"
-    otherwise:
-      console.log "Not quite"
-`.slice(1)
+text1 ::= 'that will be set at runtime'
 test ::= function () {
-   let obj = $.read1FromString($.text2);
-   console.log(`---\n${$.serializeSyntax(obj)}---\n`);
-   // console.log($.util.inspect(obj, {depth: null}));
-}
-test2 ::= function () {
-   console.log(Array.from($.tokenizeString($.text1)));
+   let obj1 = $.read1FromString($.text);
+   $.text1 = $.syntax2str(obj1);
+   
+   console.log("$.text1 === $.text", $.text1 === $.text);
 }
