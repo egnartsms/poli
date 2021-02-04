@@ -24,7 +24,7 @@ reference
    isReferredTo
    referrerModules
    resolveReference
-rt-rec
+rtrec
    delmark
    rtset
 -----
@@ -125,7 +125,7 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    if (newCode !== defn.src) {
       $.deleteObject(defn);
       defn = {
-         type: 'native',
+         type: 'js',
          src: newCode
       };
    }

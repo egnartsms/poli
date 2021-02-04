@@ -11,7 +11,7 @@ makeImageByFs ::= function () {
 
    let modulesInfo = $.parseAllModules();
    for (let {name, body} of modulesInfo) {
-      $.modules[name] = $.makeModule(name, body);
+      $.modules[name] = $.makeJsModule(name, body);
    }
 
    for (let minfo of modulesInfo) {
@@ -313,19 +313,20 @@ addRecordedObjects ::= function ({toAdd, ref}) {
       toAdd.delete(obj);
    }
 }
-makeModule ::= function (name, body) {
+makeJsModule ::= function (name, body) {
    let defs = {};
 
    for (let [entry, src] of body) {
       defs[entry] = {
-         type: 'native',
-         src
+         type: 'js',
+         src: src
       };
    }
 
    let module = {
       [$.skRuntimeKeys]: ['rtobj'],
-      name,
+      lang: 'js',
+      name: name,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
@@ -443,7 +444,7 @@ loadImage ::= function () {
 
          for (let entry of module.entries) {
             let def = module.defs[entry];
-            if (def.type !== 'native') {
+            if (def.type !== 'js') {
                throw new Error(`Unrecognized entry type: ${def.type}`);
             }
 

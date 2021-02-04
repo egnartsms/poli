@@ -1,42 +1,49 @@
 bootstrap
    hasOwnProperty
    imports
-   makeModule
+   makeJsModule
    modules
+   skRuntimeKeys
 import
    connectedModulesOf
    importsFrom
    importsInto
+   moduleRevDepsOf
    unimport
 persist
    deleteObject
    deleteObjectProp
    setObjectProp
 -----
-addNewModule ::= function (moduleName) {
+addNewModule ::= function (moduleName, lang) {
    if ($.hasOwnProperty($.modules, moduleName)) {
       throw new Error(`Module with the name "${moduleName}" already exists`);
    }
+   
+   let module;
 
-   $.setObjectProp($.modules, moduleName, $.makeModule(moduleName, []));
+   if (lang === 'js') {
+      module = $.makeJsModule(moduleName, []);
+   }
+   else if (lang === 'xs') {
+      module = $.makeFreshXsModule(moduleName);
+   }
+   else {
+      throw new Error(`Invalid lang: ${lang}`);
+   }
+
+   $.setObjectProp($.modules, moduleName, module);
 }
 renameModule ::= function (module, newName) {
    if ($.hasOwnProperty($.modules, newName)) {
-      throw new Error(`Module with the name "${module.anem}" already exists`);
+      throw new Error(`Module with the name "${newName}" already exists`);
    }
 
    $.setObjectProp($.modules, newName, module);
    $.deleteObjectProp($.modules, module.name);
    $.setObjectProp(module, 'name', newName);
 
-   let affectedModules = new Set;
-   for (let imp of $.imports) {
-      if (imp.donor === module) {
-         affectedModules.add(imp.recp);
-      }
-   }
-
-   return affectedModules;
+   return $.moduleRevDepsOf(module);
 }
 removeModule ::= function (module, force) {
    let cnmods = $.connectedModulesOf(module);
@@ -61,4 +68,15 @@ removeModule ::= function (module, force) {
    $.deleteObjectProp($.modules, module.name);
 
    return true;
+}
+makeFreshXsModule ::= function (moduleName) {
+   return {
+      [$.skRuntimeKeys]: ['rtobj'],
+      name: moduleName,
+      lang: 'xs',
+      importedNames: new Set(),
+      entries: [],
+      defs: {},
+      rtobj: null
+   }
 }

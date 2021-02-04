@@ -19,7 +19,7 @@ reference
    isEntryUsed
    isNameFree
    referrerModules
-rt-rec
+rtrec
    delmark
    rtget
    rtset
@@ -75,7 +75,7 @@ renameRefsIn ::= function (module, renameMap) {
 
       $.deleteObject(module.defs[entry]);
       $.setObjectProp(module.defs, entry, {
-         type: 'native',
+         type: 'js',
          src: newCode
       });
 

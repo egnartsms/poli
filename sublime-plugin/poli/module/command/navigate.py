@@ -58,7 +58,7 @@ class PoliFindReferences(ModuleTextCommand):
 
         with active_view_preserved(self.view.window()):
             all_views = [
-                self.view.window().open_file(op.js_module_filename(module_name))
+                self.view.window().open_file(op.module_filename(module_name, 'js'))
                 for module_name, entry_name in res
             ]
 

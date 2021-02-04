@@ -9,7 +9,7 @@ persist
    setObjectProp
 reference
    isNameFree
-rt-rec
+rtrec
    rtset
 -----
 addEntry ::= function (module, name, defn, anchor, before) {
@@ -37,7 +37,7 @@ addEntry ::= function (module, name, defn, anchor, before) {
 
    $.saveObject(module.entries);
    $.setObjectProp(module.defs, name, {
-      type: 'native',
+      type: 'js',
       src: defn
    });
 }
@@ -50,7 +50,7 @@ editEntry ::= function (module, name, newDefn) {
 
    $.deleteObject(module.defs[name]);
    $.setObjectProp(module.defs, name, {
-      type: 'native',
+      type: 'js',
       src: newDefn
    });
 

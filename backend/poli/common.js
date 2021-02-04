@@ -5,7 +5,7 @@ img2fs
 import
    importedAs
    importsOf
-rt-rec
+rtrec
    rtget
    rtset
 -----
