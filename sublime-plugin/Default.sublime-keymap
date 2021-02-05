@@ -3,7 +3,7 @@
         "keys": ["ctrl+s"],
         "command": "noop",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"}
+            {"key": "poli_kind", "operand": "module"}
         ]
     },
     // Editing
@@ -27,7 +27,7 @@
         "keys": ["e"],
         "command": "poli_edit",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
@@ -53,7 +53,7 @@
         "keys": ["alt+escape"],
         "command": "poli_cancel",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": true}
         ]
     },
@@ -61,7 +61,7 @@
         "keys": ["ctrl+enter"],
         "command": "poli_commit",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": true}
         ]
     },

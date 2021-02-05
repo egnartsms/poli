@@ -193,10 +193,10 @@ class PoliMove(WindowCommand):
                 sublime.status_message("Move succeeded!")
 
         with active_view_preserved(self.window):
-            src_view = self.window.open_file(op.module_filename(src_module, 'js'))
-            dest_view = self.window.open_file(op.module_filename(dest_module, 'js'))
+            src_view = self.window.open_file(op.module_filename(src_module))
+            dest_view = self.window.open_file(op.module_filename(dest_module))
             other_views = [
-                self.window.open_file(op.module_filename(d['module'], 'js'))
+                self.window.open_file(op.module_filename(d['module']))
                 for d in res['modifiedModules']
             ]
 
@@ -207,7 +207,7 @@ class PoliMove(WindowCommand):
 
     def _check_src_available(self, src_module, entry):
         """Check that we're not attempting to move an entry which is under edit"""
-        src_view = self.window.find_open_file(op.module_filename(src_module, 'js'))
+        src_view = self.window.find_open_file(op.module_filename(src_module))
         if src_view is not None and regedit.is_active_in(src_view):
             entry_obj = op.module_body(src_view).entry_by_name(entry)
             if entry_obj is None or entry_obj.is_under_edit():
@@ -219,7 +219,7 @@ class PoliMove(WindowCommand):
         
         Other kinds of editing might fool the Sublime parser (e.g. ongoing renaming)
         """
-        dest_view = self.window.find_open_file(op.module_filename(dest_module, 'js'))
+        dest_view = self.window.find_open_file(op.module_filename(dest_module))
         if dest_view is not None and anchor is not None and \
                 regedit.is_active_in(dest_view):
             mcont = op.module_body(dest_view)
