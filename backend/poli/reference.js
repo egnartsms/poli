@@ -32,7 +32,7 @@ isReferredTo ::= function (module, name, except=null) {
          continue;
       }
 
-      if (re.test(module.defs[entry].src)) {
+      if (re.test(module.defs[entry])) {
          return true;
       }
    }
@@ -111,7 +111,7 @@ extractRefs ::= function (module, entry) {
    let names = new Set();
    let re = /(?<![\w$])\$\.(\w+(?:\.\w+)?)\b/gi;
 
-   for (let [, ref] of module.defs[entry].src.matchAll(re)) {
+   for (let [, ref] of module.defs[entry].matchAll(re)) {
       names.add(ref);
    }
 

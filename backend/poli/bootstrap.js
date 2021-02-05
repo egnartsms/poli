@@ -10,11 +10,14 @@ makeImageByFs ::= function () {
    $.imports = new Set();
 
    let modulesInfo = $.parseAllModules();
-   for (let {name, body} of modulesInfo) {
+   let jsModulesInfo = modulesInfo.filter(mi => mi.lang === 'js');
+
+   // Phase 0: make JS modules and fully prepare them to operate
+   for (let {name, body} of jsModulesInfo) {
       $.modules[name] = $.makeJsModule(name, body);
    }
 
-   for (let minfo of modulesInfo) {
+   for (let minfo of jsModulesInfo) {
       let recp = $.modules[minfo.name];
       for (let {donor: donorName, asterisk, imports} of minfo.imports) {
          let donor = $.modules[donorName];
@@ -26,8 +29,15 @@ makeImageByFs ::= function () {
          }
       }
    }
+   
+   $.effectuateAllImports();
 
-   // Lobby exists in the DB but is empty at this point
+   // Phase 1: make XS modules
+   let xsModulesInfo = modulesInfo.filter(mi => mi.lang === 'xs');
+   $.modules['xs-bootstrap'].rtobj['makeModulesByInfo'](xsModulesInfo);
+   
+   // Phase 2: save the whole object graph to the persistent storage
+   // (Lobby exists in the DB but is empty at this point)
    $.lobby = {
       modules: $.modules,
       imports: $.imports,
@@ -40,18 +50,20 @@ parseAllModules ::= function () {
    let modulesInfo = [];
 
    for (let moduleFile of $.fs.readdirSync($_.SRC_FOLDER)) {
-      let moduleName = $.moduleNameByFile(moduleFile);
-      if (moduleName === null) {
+      let res = $.parseModuleFile(moduleFile);
+      if (res === null) {
          console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
          continue;
       }
-
+      
+      let {name, lang} = res;
       let contents = $.fs.readFileSync(`./${$_.SRC_FOLDER}/${moduleFile}`, 'utf8');
       let {imports, body} = $.parseModule(contents);
       let moduleInfo = {
-         name: moduleName,
-         imports,
-         body
+         name: name,
+         lang: lang,
+         imports: imports,
+         body: body
       };
 
       modulesInfo.push(moduleInfo);
@@ -105,30 +117,56 @@ parseImports ::= function (str) {
 
    return res;
 }
-moduleNameByFile ::= function (moduleFile) {
-   let mtch = /^(?<module_name>.+?)\.js$/.exec(moduleFile);
+parseModuleFile ::= function (moduleFile) {
+   let mtch = /^(?<name>.+)\.(?<lang>js|xs)$/.exec(moduleFile);
    if (!mtch) {
       return null;
    }
 
-   return mtch.groups['module_name'];
+   return {
+      name: mtch.groups.name,
+      lang: mtch.groups.lang,
+   };
+}
+makeJsModule ::= function (name, body) {
+   let module = {
+      [$.skRuntimeKeys]: ['rtobj'],
+      lang: 'js',
+      name: name,
+      importedNames: new Set(),  // filled in on import resolve
+      entries: Array.from(body, ([entry]) => entry),
+      // in JS, trim entry src definitions
+      defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
+      rtobj: null
+   };
+   
+   $.evalJsModuleDefinitions(module);
+
+   return module;
+}
+evalJsModuleDefinitions ::= function (module) {
+   $.assert(module.lang === 'js');
+   $.assert(module.rtobj === null);
+   
+   if (module.name === $_.BOOTSTRAP_MODULE) {
+      module.rtobj = $;
+   }
+   else {
+      module.rtobj = Object.create(null);
+      for (let entry of module.entries) {
+         module.rtobj[entry] = $.moduleEval(module, module.defs[entry]);
+      }
+   }
 }
 import ::= function (imp) {
    // This function is only for use while creating image from files. It's not intended
    // to be reused in other modules.
+   //
+   // Perform import 'imp' but don't touch modules' rtobjs. That will be done separately.
+
    $.validateImport(imp);
-
-   if (imp.name === null) {
-      imp.recp.importedNames.add(imp.alias);
-      imp.recp.rtobj[imp.alias] = imp.donor.rtobj;
-   }
-   else {
-      let importedAs = imp.alias || imp.name;
-
-      imp.recp.importedNames.add(importedAs);
-      imp.recp.rtobj[importedAs] = imp.donor.rtobj[imp.name];
-   }
-
+   
+   imp.recp.importedNames.add(imp.alias || imp.name);
    $.imports.add(imp);
 }
 validateImport ::= function (imp) {
@@ -176,6 +214,11 @@ validateStarImport ::= function ({recp, donor, alias}) {
       );
    }
 }
+effectuateAllImports ::= function () {
+   for (let {recp, donor, name, alias} of $.imports) {
+      recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
+   }
+}
 skSet ::= '__set'
 skMap ::= '__map'
 skRuntimeKeys ::= '__rtkeys'
@@ -186,7 +229,7 @@ initObjForPersistence ::= function (obj) {
    }
 }
 initSetForPersistence ::= function (set) {
-   $.assert(set[$.skSet] == null);
+   $.assert(!($.skSet in set));
 
    let nextid = 1;
    let item2id = new Map;
@@ -272,7 +315,7 @@ saveObject ::= function (obj) {
    let rec = $.objrefRecorder();
 
    stmt.run({
-      oid,
+      oid: oid,
       val: $.toJson(obj, rec.ref)
    });
 
@@ -312,38 +355,6 @@ addRecordedObjects ::= function ({toAdd, ref}) {
       addObject(obj, oid);
       toAdd.delete(obj);
    }
-}
-makeJsModule ::= function (name, body) {
-   let defs = {};
-
-   for (let [entry, src] of body) {
-      defs[entry] = {
-         type: 'js',
-         src: src
-      };
-   }
-
-   let module = {
-      [$.skRuntimeKeys]: ['rtobj'],
-      lang: 'js',
-      name: name,
-      importedNames: new Set(),  // filled in on import resolve
-      entries: Array.from(body, ([entry]) => entry),
-      defs: defs,
-      rtobj: null
-   };
-
-   if (name === $_.BOOTSTRAP_MODULE) {
-      module.rtobj = $;
-   }
-   else {
-      module.rtobj = Object.create(null);
-      for (let [entry, src] of body) {
-         module.rtobj[entry] = $.moduleEval(module, src);
-      }
-   }
-
-   return module;
 }
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
@@ -434,29 +445,14 @@ loadImage ::= function () {
    $.imports = $.lobby.imports;
    $.obj2id = obj2id;
 
-   // Initialize module rtobj's
+   // Initialize modules' rtobj's
    for (let module of Object.values($.modules)) {
-      if (module.name === $_.BOOTSTRAP_MODULE) {
-         module.rtobj = $;
-      }
-      else {
-         module.rtobj = Object.create(null);
-
-         for (let entry of module.entries) {
-            let def = module.defs[entry];
-            if (def.type !== 'js') {
-               throw new Error(`Unrecognized entry type: ${def.type}`);
-            }
-
-            module.rtobj[entry] = $.moduleEval(module, def.src);
-         }
+      if (module.lang === 'js') {
+         $.evalJsModuleDefinitions(module);
       }
    }
 
-   // Now perform the imports
-   for (let {recp, donor, name, alias} of $.imports) {
-      recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
-   }
+   $.effectuateAllImports();
 
    return $.modules;
 }

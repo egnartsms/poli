@@ -6,7 +6,7 @@ xs-reader
 assert ::= $_.require('assert').strict
 util ::= $_.require('util')
 text ::= String.raw`
-square-equation ::=
+square-equation ::=$
    fn :(a b c)
       let D =
          -
@@ -45,7 +45,7 @@ square-equation ::=
 text1 ::= 'that will be set at runtime'
 test ::= function () {
    let obj1 = $.read1FromString($.text);
-   $.text1 = $.syntax2str(obj1);
+   $.text1 = $.syntax2str(obj1) + '\n';
    
    console.log("$.text1 === $.text", $.text1 === $.text);
 }

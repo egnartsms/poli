@@ -6,8 +6,6 @@ xs-tokenizer
 read1FromString ::= function (str) {
    let stm = $.makeTokenStream(str);
 
-   $.move(stm);
-
    $.assert(stm.next.token === 'indent');
    $.assert(stm.next.level === 0);
 
@@ -17,15 +15,38 @@ read1FromString ::= function (str) {
    stx.nl = 1;
    return stx;
 }
+readEntryDefinition ::= function (src) {
+   let augmSrc = 'fake-header' + src;  // src is not left-trimmed of spaces
+   let stm = $.makeTokenStream(augmSrc);
+   
+   $.assert(stm.next.token === 'indent');
+   $.assert(stm.next.level === 0);
+   
+   $.move(stm);
+
+   let stx = $.readMultilined(stm, 0);
+   
+   if (stx.sub.length !== 2) {
+      throw new Error(`Invalid definition: expected just 1 object, got ` +
+                      `${stx.sub.length - 1}`);
+   }
+   
+   stx = stx.sub[1];
+   
+   return stx;
+}
 assert ::= $_.require('assert').strict
 makeTokenStream ::= function (str) {
    let gtor = $.tokenizeString(str);
-    
-   return {
+   let stm = {
       gtor: gtor,
       next: null,
       nblanks: 0
-   }
+   };
+
+   $.move(stm);
+
+   return stm;
 }
 move ::= function (stm) {
    let nblanks = 0;

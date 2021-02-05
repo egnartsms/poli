@@ -130,7 +130,7 @@ operationHandlers ::= ({
          throw new Error(`Member "${name}" not found in module "${moduleName}"`);
       }
 
-      $.opRet(module.defs[name].src);
+      $.opRet(module.defs[name]);
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
