@@ -10,11 +10,14 @@ makeImageByFs ::= function () {
    $.imports = new Set();
 
    let modulesInfo = $.parseAllModules();
-   for (let {name, body} of modulesInfo) {
+   let jsModulesInfo = modulesInfo.filter(mi => mi.lang === 'js');
+
+   // Phase 0: make JS modules and fully prepare them to operate
+   for (let {name, body} of jsModulesInfo) {
       $.modules[name] = $.makeJsModule(name, body);
    }
 
-   for (let minfo of modulesInfo) {
+   for (let minfo of jsModulesInfo) {
       let recp = $.modules[minfo.name];
       for (let {donor: donorName, asterisk, imports} of minfo.imports) {
          let donor = $.modules[donorName];
@@ -29,7 +32,12 @@ makeImageByFs ::= function () {
    
    $.effectuateAllImports();
 
-   // Lobby exists in the DB but is empty at this point
+   // Phase 1: make XS modules
+   let xsModulesInfo = modulesInfo.filter(mi => mi.lang === 'xs');
+   $.modules['xs-bootstrap'].rtobj['makeModulesByInfo'](xsModulesInfo);
+   
+   // Phase 2: save the whole object graph to the persistent storage
+   // (Lobby exists in the DB but is empty at this point)
    $.lobby = {
       modules: $.modules,
       imports: $.imports,
@@ -42,18 +50,20 @@ parseAllModules ::= function () {
    let modulesInfo = [];
 
    for (let moduleFile of $.fs.readdirSync($_.SRC_FOLDER)) {
-      let moduleName = $.moduleNameByFile(moduleFile);
-      if (moduleName === null) {
+      let res = $.parseModuleFile(moduleFile);
+      if (res === null) {
          console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
          continue;
       }
-
+      
+      let {name, lang} = res;
       let contents = $.fs.readFileSync(`./${$_.SRC_FOLDER}/${moduleFile}`, 'utf8');
       let {imports, body} = $.parseModule(contents);
       let moduleInfo = {
-         name: moduleName,
-         imports,
-         body
+         name: name,
+         lang: lang,
+         imports: imports,
+         body: body
       };
 
       modulesInfo.push(moduleInfo);
@@ -107,13 +117,16 @@ parseImports ::= function (str) {
 
    return res;
 }
-moduleNameByFile ::= function (moduleFile) {
-   let mtch = /^(?<module_name>.+?)\.js$/.exec(moduleFile);
+parseModuleFile ::= function (moduleFile) {
+   let mtch = /^(?<name>.+)\.(?<lang>js|xs)$/.exec(moduleFile);
    if (!mtch) {
       return null;
    }
 
-   return mtch.groups['module_name'];
+   return {
+      name: mtch.groups.name,
+      lang: mtch.groups.lang,
+   };
 }
 makeJsModule ::= function (name, body) {
    let module = {
@@ -122,7 +135,8 @@ makeJsModule ::= function (name, body) {
       name: name,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(body, ([entry]) => entry),
-      defs: Object.fromEntries(body),
+      // in JS, trim entry src definitions
+      defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
       rtobj: null
    };
    
@@ -433,7 +447,9 @@ loadImage ::= function () {
 
    // Initialize modules' rtobj's
    for (let module of Object.values($.modules)) {
-      $.evalJsModuleDefinitions(module);
+      if (module.lang === 'js') {
+         $.evalJsModuleDefinitions(module);
+      }
    }
 
    $.effectuateAllImports();

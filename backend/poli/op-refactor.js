@@ -183,7 +183,6 @@ removeEntry ::= function (module, name) {
    }      
 
    $.deleteArrayItem(module.entries, module.entries.indexOf(name));
-   $.deleteObject(module.defs[name]);
    $.deleteObjectProp(module.defs, name);
    $.rtset(module, name, $.delmark);
 

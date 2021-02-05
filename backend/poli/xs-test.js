@@ -6,7 +6,7 @@ xs-reader
 assert ::= $_.require('assert').strict
 util ::= $_.require('util')
 text ::= String.raw`
-square-equation ::=
+square-equation ::=$
    fn :(a b c)
       let D =
          -

@@ -20,7 +20,7 @@ const {
  * Parse any kind of text separated with headers into header/body pairs:
       HEADER ... HEADER ... HEADER ...
 
-   Everything following a header before the next header of the end of string is considered
+   Everything following a header before the next header or the end of string is considered
    a body that belongs to that header.
 */
 function* matchAllHeaderBodyPairs(str, reHeader) {
@@ -43,12 +43,9 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 
 
 function parseBody(str) {
-   const re = /^(\S+?) ::= /gm;
+   const re = /^(\S+?) ::=(?=\s)/gm;
 
-   return Array.from(
-      matchAllHeaderBodyPairs(str, re),
-      ([mtch, def]) => [mtch[1], def.trim()]
-   );
+   return Array.from(matchAllHeaderBodyPairs(str, re), ([mtch, def]) => [mtch[1], def]);
 }
 
 
@@ -85,7 +82,7 @@ function makeEmptyImage() {
    ensureImageFileUnlinked();
 
    let db = new Database(IMAGE_PATH, {
-      verbose: console.log
+      verbose: null, // console.log
    });
 
    db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
