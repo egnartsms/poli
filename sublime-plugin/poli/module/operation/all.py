@@ -5,14 +5,16 @@ import sublime
 
 from .body import module_body
 from .body import reg_entry_name
+from .edit_mode import highlight_unknown_names
 from .edit_mode import save_module
 from .import_section import parse_import_section
 from .structure import reg_import_section
 
 from poli.config import backend_root
-from poli.shared import const
 from poli.shared.command import StopCommand
-from poli.shared.setting import poli_kind
+from poli.shared.misc import Kind
+from poli.shared.misc import LANG_SUBLIME_SYNTAX
+from poli.shared.misc import poli_info
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
@@ -34,37 +36,65 @@ def is_view_poli(view):
     return filename and filename.startswith(backend_root)
 
 
-def js_module_name(view):
-    return re.search(r'/([^/]+)\.js$', view.file_name()).group(1)
+def view_lang(view):
+    if view.file_name().endswith('.js'):
+        return 'js'
+    if view.file_name().endswith('.xs'):
+        return 'xs'
+
+    raise RuntimeError
 
 
-def module_filename(module_name, lang):
-    return os.path.join(backend_root, "{}.{}".format(module_name, lang))
+def view_module_name(view):
+    return re.search(r'/([^/]+)\.(js|xs)$', view.file_name()).group(1)
 
 
-def open_js_module(window, module_name):
-    view = window.open_file(module_filename(module_name, 'js'))
-    setup_js_module_view(view)
+def module_filename(module_name):
+    """Get module absolute file name by the module name
+
+    Since modules of different langs share the same namespace, the lang is not needed.
+    Instead, we try each lang in turn.
+    """
+    for lang in LANG_SUBLIME_SYNTAX:
+        filename = os.path.join(backend_root, "{}.{}".format(module_name, lang))
+        if os.path.exists(filename):
+            return filename
+
+
+def open_module(window, module_name):
+    view = window.open_file(module_filename(module_name))
+    setup_module_view(view)
     return view
 
 
-def setup_js_module_view(view):
-    if poli_kind[view] is None:
-        view.assign_syntax(const.JS_SYNTAX_FILE)
-        view.set_scratch(True)
-        view.set_read_only(True)
-        # This is needed because otherwise Sublime tries to fix ws in non-edit-region
-        # parts of the view which leads to undoing.
-        view.settings().set('trim_automatic_white_space', False)
-        poli_kind[view] = KIND_MODULE
+def setup_module_view(view):
+    if poli_info[view] is not None:
+        return
+
+    lang = view_lang(view)
+    view.assign_syntax(LANG_SUBLIME_SYNTAX[lang])
+    view.set_scratch(True)
+    view.set_read_only(True)
+    # This is needed because otherwise Sublime tries to fix ws in non-edit-region
+    # parts of the view which leads to undoing.
+    view.settings().set('trim_automatic_white_space', False)
+    poli_info[view] = {
+        'kind': Kind.module,
+        'lang': lang
+    }
+
+    if lang == 'js':
+        highlight_unknown_names(view)
 
 
-def teardown_js_module_view(view):
-    if poli_kind[view] is not None:
-        view.set_scratch(False)
-        view.set_read_only(False)
-        view.settings().erase('trim_automatic_white_space')
-        poli_kind[view] = None
+def teardown_module_view(view):
+    if poli_info[view] is None:
+        return
+
+    view.set_scratch(False)
+    view.set_read_only(False)
+    view.settings().erase('trim_automatic_white_space')
+    poli_info[view] = None
 
 
 def all_poli_views():
@@ -94,7 +124,7 @@ def set_connected_status(view, is_connected):
 def replace_import_section_in_modules(window, data):
     """data = {module_name: section_text}"""
     with active_view_preserved(window):
-        views = [open_js_module(window, module_name) for module_name in data]
+        views = [open_module(window, module_name) for module_name in data]
 
     view_data = ViewDict(zip(views, data.values()))
 
@@ -138,7 +168,7 @@ def modify_module_entries(view, edit, entries_data):
             if ereg and ereg.intersects(entry.reg_def):
                 raise RuntimeError(
                     "Could not modify module \"{}\": entry under edit".format(
-                        js_module_name(view)
+                        view_module_name(view)
                     )
                 )
             regs.append(entry.reg_def)
@@ -146,7 +176,7 @@ def modify_module_entries(view, edit, entries_data):
 
     if len(regs) != len(entries_data):
         raise RuntimeError("Could not modify module \"{}\": out of sync".format(
-            js_module_name(view)
+            view_module_name(view)
         ))
 
     with regedit.region_editing_suppressed(view),\
@@ -166,7 +196,7 @@ def modify_and_save_modules(window, modules_data):
         return
 
     with active_view_preserved(window):
-        views = [open_js_module(window, d['module']) for d in modules_data]
+        views = [open_module(window, d['module']) for d in modules_data]
 
     def process_1(view, module_data, edit):
         modify_module(view, edit, module_data)
@@ -195,7 +225,7 @@ def reference_at(view, ptreg):
 
 def goto_module_entry(window, module, entry):
     old_view = window.active_view()
-    view = open_js_module(window, module)
+    view = open_module(window, module)
 
     def on_loaded():
         reg = reg_entry_name(view, entry)

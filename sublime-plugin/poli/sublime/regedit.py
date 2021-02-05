@@ -257,6 +257,6 @@ class RegEditListener(sublime_plugin.EventListener):
 
     def on_query_context(self, view, key, operator, operand, match_all):
         if key == 'poli_regedit':
-            return query_context_matches(is_active_in(view), operator, operand)
+            return query_context_matches(operator, is_active_in(view) == operand)
 
         return False

@@ -46,7 +46,7 @@ class PoliFindReferences(ModuleTextCommand):
             star, name = mtch.group('star', 'name')
 
         res = comm.op('findReferences', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'star': star,
             'name': name
         })
@@ -66,7 +66,7 @@ class PoliFindReferences(ModuleTextCommand):
             row, col = view.rowcol(reg.begin())
             return (
                 view.file_name(),
-                "{}.{}".format(op.js_module_name(view), entry_defn_name),
+                "{}.{}".format(op.view_module_name(view), entry_defn_name),
                 (row + 1, col + 1)
             )
 

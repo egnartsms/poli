@@ -50,7 +50,7 @@ class PoliImport(ModuleTextCommand):
         module_name, entry_name = entry
 
         new_import_section = comm.op('import', {
-            'recp': op.js_module_name(self.view),
+            'recp': op.view_module_name(self.view),
             'donor': module_name,
             'name': entry_name,
             'alias': alias,
@@ -68,7 +68,7 @@ class PoliImport(ModuleTextCommand):
     class EntryInputHandler(ChainableInputHandler, sublime_plugin.ListInputHandler):
         def __init__(self, view, args, chain_tail):
             super().__init__(view, chain_tail)
-            res = comm.op('getImportables', {'recp': op.js_module_name(view)})
+            res = comm.op('getImportables', {'recp': op.view_module_name(view)})
             self.items = [
                 ("{} ({})".format(entry or '*', module), [module, entry])
                 for module, entry in res
@@ -81,7 +81,7 @@ class PoliImport(ModuleTextCommand):
         def __init__(self, view, args, chain_tail):
             module_name, entry = args['entry']
             disallowed_names = comm.op('getModuleNames', {
-                'module': op.js_module_name(view)
+                'module': op.view_module_name(view)
             })
             super().__init__(view, chain_tail, entry, disallowed_names)
 
@@ -89,7 +89,7 @@ class PoliImport(ModuleTextCommand):
 class PoliRenameImport(ModuleTextCommand):
     def run(self, edit, imported_as, new_alias):
         data = comm.op('renameImport', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'importedAs': imported_as,
             'newAlias': new_alias
         })
@@ -135,7 +135,7 @@ class PoliRenameThisImport(ModuleTextCommand):
 class PoliRemoveImport(ModuleTextCommand):
     def run(self, edit, imported_as, force):
         res = comm.op('removeImport', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'importedAs': imported_as,
             'force': force
         })
@@ -150,7 +150,7 @@ class PoliRemoveImport(ModuleTextCommand):
                 return
 
             res = comm.op('removeImport', {
-                'module': op.js_module_name(self.view),
+                'module': op.view_module_name(self.view),
                 'importedAs': imported_as,
                 'force': True
             })
@@ -173,7 +173,7 @@ class PoliRemoveThisImport(ModuleTextCommand):
 class PoliRemoveUnusedImports(ModuleTextCommand):
     def run(self, edit):
         res = comm.op('removeUnusedImports', {
-            'module': op.js_module_name(self.view)
+            'module': op.view_module_name(self.view)
         })
 
         new_import_section = res['importSection']

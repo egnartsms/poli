@@ -9,14 +9,14 @@ import sublime_plugin
 from poli import config
 from poli.comm import comm
 from poli.module import operation as op
-from poli.shared.setting import poli_kind
+from poli.shared.misc import poli_info
 from poli.sublime.misc import query_context_matches
 
 
 def plugin_loaded():
     if config.enabled:
         for view in op.all_poli_views():
-            op.setup_js_module_view(view)
+            op.setup_module_view(view)
     comm.on_status_changed = op.maybe_set_connected_status_in_active_view
     comm.reconnect()
     print("Loaded Poli")
@@ -24,7 +24,7 @@ def plugin_loaded():
 
 def plugin_unloaded():
     for view in op.all_poli_views():
-        op.teardown_js_module_view(view)
+        op.teardown_module_view(view)
     comm.disconnect()
     print("Unloaded Poli")
 
@@ -43,6 +43,14 @@ class PoliReconnect(sublime_plugin.ApplicationCommand):
 class PoliViewContext(sublime_plugin.EventListener):
     def on_query_context(self, view, key, operator, operand, match_all):
         if key == 'poli_kind':
-            return query_context_matches(poli_kind[view], operator, operand)
+            info = poli_info[view]
+
+            if info is None:
+                return False
+
+            kind, lang = operand.split('/')
+            test = kind == info['kind'] and lang == info['lang']
+
+            return query_context_matches(operator, test)
 
         return False

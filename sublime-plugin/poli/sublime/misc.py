@@ -10,11 +10,11 @@ def all_views():
         yield from wnd.views()
 
 
-def query_context_matches(value, operator, operand):
+def query_context_matches(operator, test):
     if operator == sublime.OP_EQUAL:
-        return value == operand
+        return test
     elif operator == sublime.OP_NOT_EQUAL:
-        return value != operand
+        return not test
     else:
         raise RuntimeError("Unexpected operator: {}".format(operator))
 

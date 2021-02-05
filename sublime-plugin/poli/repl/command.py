@@ -4,16 +4,16 @@ import sublime_plugin
 from poli.comm import comm
 from poli.exc import ReplEvalError
 from poli.repl.operation import History
-from poli.repl.operation import REPL_KIND
 from poli.repl.operation import active_prompt_reg
 from poli.repl.operation import current_prompt
 from poli.repl.operation import insert_prompt_at_end
 from poli.repl.operation import make_repl_view
 from poli.repl.operation import poli_cur_module
-from poli.shared.setting import poli_kind
-from poli.sublime import regedit
 from poli.shared.command import InterruptibleTextCommand
 from poli.shared.command import TextCommand
+from poli.shared.misc import Kind
+from poli.shared.misc import poli_info
+from poli.sublime import regedit
 from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.view_dict import make_view_dict
@@ -27,12 +27,14 @@ __all__ = [
 
 class ReplTextCommand(TextCommand):
     def is_enabled(self):
-        return poli_kind[self.view] == REPL_KIND
+        info = poli_info[self.view]
+        return info is not None and info['kind'] == Kind.repl
 
 
 class ReplInterruptibleTextCommand(InterruptibleTextCommand):
     def is_enabled(self):
-        return poli_kind[self.view] == REPL_KIND
+        info = poli_info[self.view]
+        return info is not None and info['kind'] == Kind.repl
 
 
 class PoliReplOpen(sublime_plugin.WindowCommand):

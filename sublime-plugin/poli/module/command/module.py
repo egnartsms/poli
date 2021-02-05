@@ -40,7 +40,7 @@ class PoliAddNewModule(ApplicationCommand):
 class PoliRenameModule(ModuleTextCommand):
     def run(self, edit, module_name):
         res = comm.op('renameModule', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'newName': module_name
         })
         new_file_name = op.module_filename(module_name, 'js')
@@ -87,32 +87,32 @@ class PoliRefreshModule(ModuleTextCommand):
                 return
             op.terminate_edit_mode(self.view)
 
-        comm.op('refreshModule', {'module': op.js_module_name(self.view)})
+        comm.op('refreshModule', {'module': op.view_module_name(self.view)})
 
 
 class PoliRemoveModule(ModuleTextCommand):
     def run(self, edit):
         remove = sublime.ok_cancel_dialog(
-            "Remove module '{}'?".format(op.js_module_name(self.view))
+            "Remove module '{}'?".format(op.view_module_name(self.view))
         )
         if not remove:
             return
 
         res = comm.op('removeModule', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'force': False
         })
         if res is not True:
             remove = sublime.ok_cancel_dialog(
                 "Module '{}' is connected with these modules: {}. Force removal?".format(
-                    op.js_module_name(self.view), ', '.join(res)
+                    op.view_module_name(self.view), ', '.join(res)
                 )
             )
             if not remove:
                 return
 
             res = comm.op('removeModule', {
-                'module': op.js_module_name(self.view),
+                'module': op.view_module_name(self.view),
                 'force': True
             })
             if res is not True:

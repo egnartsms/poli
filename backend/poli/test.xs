@@ -1,3 +1,5 @@
+bootstrap
+   lobby
 xs-printer
    dumpsNext
 -----
@@ -10,7 +12,6 @@ test3 ::=
       #; This is a comment
          
          with some in-mixed newlines
-      *
-         r 2 10
-         
-         R 30
+      func :(r)
+         * Math.PI
+            * r 2.

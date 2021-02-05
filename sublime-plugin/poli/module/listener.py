@@ -22,8 +22,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
     def on_load(self):
         if not config.enabled:
             return
-        op.setup_js_module_view(self.view)
-        op.highlight_unknown_names(self.view)
+        op.setup_module_view(self.view)
 
     def on_activated(self):
         op.set_connected_status(self.view, comm.is_connected)
@@ -47,7 +46,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
             return None
 
         entries = comm.op('getCompletions', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'star': mtch.group('star'),
             'prefix': mtch.group('prefix')
         })

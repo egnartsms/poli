@@ -39,7 +39,7 @@ class PoliMoveBy1(ModuleTextCommand):
             single_selected_region(self.view), require_fully_selected=True
         )
         comm.op('moveBy1', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'name': loc.entry.name(),
             'direction': direction
         })
@@ -155,14 +155,14 @@ class PoliMove(WindowCommand):
                     )
 
             fmodules = {
-                op.js_module_name(view)
+                op.view_module_name(view)
                 for exc, view in zip(exc_others, other_views)
                 if exc
             }
             if exc_src:
-                fmodules.add(op.js_module_name(src_view))
+                fmodules.add(op.view_module_name(src_view))
             if exc_dest:
-                fmodules.add(op.js_module_name(dest_view))
+                fmodules.add(op.view_module_name(dest_view))
 
             if fmodules:
                 sublime.error_message(
@@ -180,7 +180,7 @@ class PoliMove(WindowCommand):
                     if not exc:
                         continue
                     print("Modified module \"{}\" updating failed:".format(
-                        op.js_module_name(view)
+                        op.view_module_name(view)
                     ))
                     traceback.print_exception(type(exc.exc), exc.exc, None)
             elif res['danglingRefs']:
@@ -314,7 +314,7 @@ class PoliMoveThis(ModuleTextCommand):
     def run(self, edit):
         loc = op.sel_cursor_location(self.view, require_fully_selected=True)
         run_command_thru_palette(self.view.window(), 'poli_move', {
-            'src_module_entry': [op.js_module_name(self.view), loc.entry.name()],
+            'src_module_entry': [op.view_module_name(self.view), loc.entry.name()],
         })
 
 
@@ -324,7 +324,7 @@ class PoliMoveHere(ModuleTextCommand):
     def run(self, edit, before):
         loc = op.sel_cursor_location(self.view, require_fully_selected=True)
         run_command_thru_palette(self.view.window(), 'poli_move', {
-            'dest_module': op.js_module_name(self.view),
+            'dest_module': op.view_module_name(self.view),
             'anchor': loc.entry.name(),
             'before': before
         })
@@ -333,5 +333,5 @@ class PoliMoveHere(ModuleTextCommand):
 class PoliMoveToThisModule(ModuleTextCommand):
     def run(self, edit):
         run_command_thru_palette(self.view.window(), 'poli_move', {
-            'dest_module': op.js_module_name(self.view)
+            'dest_module': op.view_module_name(self.view)
         })

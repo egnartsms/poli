@@ -23,10 +23,10 @@ def switch_poli_off(window):
         if op.is_view_poli(view):
             if regedit.is_active_in(view):
                 op.terminate_edit_mode(view)
-            op.teardown_js_module_view(view)
+            op.teardown_module_view(view)
 
 
 def switch_poli_on(window):
     for view in window.views():
         if op.is_view_poli(view):
-            op.setup_js_module_view(view)
+            op.setup_module_view(view)
