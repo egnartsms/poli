@@ -5,8 +5,6 @@ xs-reader
    readEntryDefinition
 -----
 makeModulesByInfo ::= function (modulesInfo) {
-   console.dir(modulesInfo, {depth: 3});
-   
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeXsModule(name, body);
    }
@@ -16,9 +14,6 @@ makeXsModule ::= function (name, body) {
 
    for (let [entry, src] of body) {
       let stx = $.readEntryDefinition(src);
-
-      console.log(entry);
-      console.dir(stx, {depth: 8});
 
       defs[entry] = {
          stx: stx

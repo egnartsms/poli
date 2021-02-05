@@ -82,7 +82,7 @@ function makeEmptyImage() {
    ensureImageFileUnlinked();
 
    let db = new Database(IMAGE_PATH, {
-      verbose: null, // console.log
+      verbose: null
    });
 
    db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
