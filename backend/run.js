@@ -16,7 +16,7 @@ function loadImage() {
    }
 
    let db = new Database(IMAGE_PATH, {
-      verbose: console.log
+      verbose: null, // console.log
    });
    let $_ = {
       db,
@@ -35,7 +35,10 @@ function loadImage() {
       $[entry] = moduleEval(src);
    }
 
-   return $['loadImage']();
+   console.time('Load image');
+   let modules = $['loadImage']();
+   console.timeEnd('Load image');
+   return modules;
 }
 
 

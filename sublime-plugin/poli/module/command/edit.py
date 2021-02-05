@@ -130,16 +130,21 @@ class PoliCommit(ModuleTextCommand):
         original_reg = reg
 
         if cxt.target == 'defn':
-            reg = end_strip_region(self.view, reg)
-            if reg.empty():
-                sublime.status_message("Empty definition not allowed")
-                return
+            # TODO: abstract this away neatly
+            if op.view_lang(self.view) == 'js':
+                reg = end_strip_region(self.view, reg)
+                if reg.empty():
+                    sublime.status_message("Empty definition not allowed")
+                    return
             defn = self.view.substr(reg)
-            comm.op('editEntry', {
+            res = comm.op('editEntry', {
                 'module': op.view_module_name(self.view),
                 'name': cxt.name,
                 'newDefn': defn
             })
+            if res['normalizedDefn']:
+                assert not self.view.is_read_only()
+                self.view.replace(edit, reg, res['normalizedDefn'])
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
             if not op.is_entry_name_valid(new_name):

@@ -153,8 +153,11 @@ operationHandlers ::= ({
 
    editEntry: function ({module: moduleName, name, newDefn}) {
       let module = $.moduleByName(moduleName);
-      $.editEntry(module, name, newDefn);
-      $.opRet();
+      let normalizedDefn = $.editEntry(module, name, newDefn);
+
+      $.opRet({
+         normalizedDefn: normalizedDefn
+      });
    },
 
    renameEntry: function ({module: moduleName, oldName, newName}) {

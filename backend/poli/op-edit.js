@@ -11,6 +11,10 @@ reference
    isNameFree
 rtrec
    rtset
+xs-printer
+   dumpsNext
+xs-reader
+   readEntryDefinition
 -----
 addEntry ::= function (module, name, defn, anchor, before) {
    if (!$.isNameFree(module, name)) {
@@ -40,12 +44,30 @@ addEntry ::= function (module, name, defn, anchor, before) {
 }
 editEntry ::= function (module, name, newDefn) {
    if (!$.hasOwnProperty(module.defs, name)) {
-      throw new Error(`Not found entry "${name}" in module "${moduleName}"`);
+      throw new Error(`Not found entry "${name}" in module "${module.name}"`);
    }
 
-   let newVal = $.moduleEval(module, newDefn);
+   // TODO: correct that when you have an XS compiler
+   if (module.lang === 'js') {
+      let newVal = $.moduleEval(module, newDefn);
 
-   $.setObjectProp(module.defs, name, newDefn);
-   $.rtset(module, name, newVal);
-   $.propagateValueToRecipients(module, name);
+      $.setObjectProp(module.defs, name, newDefn);
+      $.rtset(module, name, newVal);
+      $.propagateValueToRecipients(module, name);
+      
+      return null;
+   }
+   else if (module.lang === 'xs') {
+      let stx = $.readEntryDefinition(newDefn);
+      $.deleteObject(module.defs[name]);
+      $.setObjectProp(module.defs, name, {
+         stx: stx
+      });
+      
+      return $.dumpsNext(stx, 0);
+   }
+   else {
+      throw new Error;
+   }
+
 }
