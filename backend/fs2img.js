@@ -53,9 +53,6 @@ function parseBody(str) {
 
 
 function makeImage(db) {
-   let contents = fs.readFileSync(`./${SRC_FOLDER}/bootstrap.js`, 'utf8');
-   let entries = parseBody(contents);
-
    let $_ = {
       require,
       db,
@@ -73,11 +70,14 @@ function makeImage(db) {
       return fun.call(null, $_, $);
    }
 
+   let contents = fs.readFileSync(`./${SRC_FOLDER}/${BOOTSTRAP_MODULE}.js`, 'utf8');
+   let entries = parseBody(contents);
+
    for (let [name, code] of entries) {
       $[name] = moduleEval(code);
    }
 
-   db.transaction($['makeImageByFs'])();
+   $['makeImageByFs']();
 }
 
 
