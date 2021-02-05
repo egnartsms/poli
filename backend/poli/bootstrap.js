@@ -18,19 +18,10 @@ makeImageByFs ::= function () {
    }
 
    for (let minfo of jsModulesInfo) {
-      let recp = $.modules[minfo.name];
-      for (let {donor: donorName, asterisk, imports} of minfo.imports) {
-         let donor = $.modules[donorName];
-         if (asterisk !== null) {
-            $.import({recp, donor, name: null, alias: asterisk});
-         }
-         for (let {entry, alias} of imports) {
-            $.import({recp, donor, name: entry, alias});
-         }
-      }
+      $.addModuleInfoImports(minfo);
    }
    
-   $.effectuateAllImports();
+   $.effectuateImports('js');
 
    // Phase 1: make XS modules
    let xsModulesInfo = modulesInfo.filter(mi => mi.lang === 'xs');
@@ -158,6 +149,18 @@ evalJsModuleDefinitions ::= function (module) {
       }
    }
 }
+addModuleInfoImports ::= function ({name, imports}) {
+   let recp = $.modules[name];
+   for (let {donor: donorName, asterisk, imports: importrecs} of imports) {
+      let donor = $.modules[donorName];
+      if (asterisk !== null) {
+         $.import({recp, donor, name: null, alias: asterisk});
+      }
+      for (let {entry, alias} of importrecs) {
+         $.import({recp, donor, name: entry, alias});
+      }
+   }
+}
 import ::= function (imp) {
    // This function is only for use while creating image from files. It's not intended
    // to be reused in other modules.
@@ -214,8 +217,11 @@ validateStarImport ::= function ({recp, donor, alias}) {
       );
    }
 }
-effectuateAllImports ::= function () {
+effectuateImports ::= function (inLang) {
    for (let {recp, donor, name, alias} of $.imports) {
+      if (inLang && recp.lang !== inLang) {
+         continue;
+      }
       recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
    }
 }
@@ -445,14 +451,17 @@ loadImage ::= function () {
    $.imports = $.lobby.imports;
    $.obj2id = obj2id;
 
-   // Initialize modules' rtobj's
+   $.animateJsModules();
+   $.effectuateImports('js');
+   $.modules['xs-bootstrap'].rtobj['animateXsModules']();
+
+   return $.modules;
+}
+animateJsModules ::= function () {
+   // Initialize JS modules' rtobj's
    for (let module of Object.values($.modules)) {
       if (module.lang === 'js') {
          $.evalJsModuleDefinitions(module);
       }
-   }
-
-   $.effectuateAllImports();
-
-   return $.modules;
+   }   
 }
