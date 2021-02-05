@@ -1,4 +1,6 @@
 bootstrap
+   addModuleInfoImports
+   effectuateImports
    modules
    skRuntimeKeys
 xs-reader
@@ -8,6 +10,12 @@ makeModulesByInfo ::= function (modulesInfo) {
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeXsModule(name, body);
    }
+   
+   for (let minfo of modulesInfo) {
+      $.addModuleInfoImports(minfo);
+   }
+   
+   $.effectuateImports('xs');
 }
 makeXsModule ::= function (name, body) {
    let defs = {};
