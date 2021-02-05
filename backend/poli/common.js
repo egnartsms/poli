@@ -1,7 +1,7 @@
 bootstrap
    modules
 img2fs
-   genModuleImportSection
+   dumpModuleImportSection
 import
    importedAs
    importsOf
@@ -21,7 +21,7 @@ joindot ::= function (starName, entryName) {
 }
 dumpImportSection ::= function (module) {
    let pieces = [];
-   for (let piece of $.genModuleImportSection(module)) {
+   for (let piece of $.dumpModuleImportSection(module)) {
       pieces.push(piece);
    }
 

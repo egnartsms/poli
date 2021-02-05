@@ -1,6 +1,8 @@
 bootstrap
    imports
    modules
+xs-printer
+   dumpsNext
 -----
 fs ::= $_.require('fs')
 ind ::= '   '
@@ -17,14 +19,14 @@ flushModule ::= function (module) {
    );
 
    $.writingToStream(moduleStream, function* () {
-      yield* $.genModuleImportSection(module);
+      yield* $.dumpModuleImportSection(module);
       yield '-----\n';
 
       // Body
       for (let entry of module.entries) {
          yield entry;
-         yield ' ::= ';
-         yield module.defs[entry];
+         yield ' ::=';
+         yield* $.dumpDef(module.lang, module.defs[entry]);
          yield '\n';
       }
    });
@@ -35,6 +37,37 @@ writingToStream ::= function (stream, generatorFunc) {
    }
 
    stream.end();
+}
+dumpDef ::= function* (lang, def) {
+   if (lang === 'js') {
+      yield ' ';
+      yield def;
+   }
+   else if (lang === 'xs') {
+      yield* $.dumpsNext(def.stx, 0);
+   }
+   else {
+      throw new Error;
+   }
+}
+dumpModuleImportSection ::= function* (module) {
+   let imports = $.sortedImportsInto(module);
+   let curDonorName = null;
+
+   for (let {recp, donor, name, alias} of imports) {
+      if (donor.name !== curDonorName) {
+         curDonorName = donor.name;
+         yield curDonorName;
+         yield '\n';
+      }
+
+      yield $.ind;
+      yield name === null ? '*' : name;
+      if (alias) {
+         yield ` as: ${alias}`;
+      }
+      yield '\n';
+   }
 }
 sortedImportsInto ::= function (recp) {
    let imports = [];
@@ -61,23 +94,4 @@ compareImports ::= function (i1, i2) {
    }
 
    return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
-}
-genModuleImportSection ::= function* (module) {
-   let imports = $.sortedImportsInto(module);
-   let curDonorName = null;
-
-   for (let {recp, donor, name, alias} of imports) {
-      if (donor.name !== curDonorName) {
-         curDonorName = donor.name;
-         yield curDonorName;
-         yield '\n';
-      }
-
-      yield $.ind;
-      yield name === null ? '*' : name;
-      if (alias) {
-         yield ` as: ${alias}`;
-      }
-      yield '\n';
-   }
 }

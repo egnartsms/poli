@@ -4,9 +4,10 @@ xs-tokenizer
 -----
 assert ::= $_.require('assert').strict
 syntax2str ::= function (stx) {
-   let ar = Array.from($.dumpMultilined(stx, 0));
-   ar.push('\n')
-   return ar.join('');
+   return Array.from($.dumpMultilined(stx, 0)).join('');
+}
+dumpsNext ::= function (stx, level) {
+   return Array.from($.dumpNext(stx, level)).join('');
 }
 dumpMultilined ::= function* (stx, level) {
    switch (stx.stx) {
@@ -27,34 +28,38 @@ dumpMultilined ::= function* (stx, level) {
          throw new Error(`Invalid syntax object: ${stx.stx}`);
    }
    
-   let amPartial = !Number.isInteger(level);
-   let indent = amPartial ? Math.floor(level) : level;
-
    yield* $.dumpInline(stx.sub[0]);
    
    for (let i = 1; i < stx.sub.length; i += 1) {
-      let sub = stx.sub[i];
-      
-      if (sub.nl === 0) {
-         yield ' ';
-         yield* $.dumpInline(sub);
-      }
-      else if (sub.nl < 0) {
-         yield '\n';
-         yield* $.dumpIndentation(indent - sub.nl);
-         yield '\\ ';
-         yield* $.dumpInline(sub);
-      }
-      else {
-         if (amPartial && sub.nl === .5) {
-            throw new Error(`Invalid syntax object: nested keyword-labeled bodies`);
-         }
-         
-         yield '\n';
-         yield* $.dumpIndentation(indent + sub.nl);
-         yield* $.dumpMultilined(sub, level + sub.nl);
-      }
+      yield* $.dumpNext(stx.sub[i], level);
    }
+}
+dumpNext ::= function* (stx, level) {
+   if (stx.nl === 0) {
+      yield ' ';
+      yield* $.dumpInline(stx);
+      return;
+   }
+
+   let isFull = Number.isInteger(level);
+   let indent = isFull ? level : Math.floor(level);
+   
+   if (stx.nl < 0) {
+      yield '\n';
+      yield* $.dumpIndentation(indent + (-stx.nl));
+      yield '\\ ';
+      yield* $.dumpInline(stx);
+
+      return;
+   }
+
+   if (!isFull && stx.nl === .5) {
+      throw new Error(`Invalid syntax object: nested keyword-labeled bodies`);
+   }
+   
+   yield '\n';
+   yield* $.dumpIndentation(indent + stx.nl);
+   yield* $.dumpMultilined(stx, level + stx.nl);
 }
 dumpComment ::= function* (comment, level) {
    yield '#;';
