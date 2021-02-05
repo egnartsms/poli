@@ -1,5 +1,5 @@
 xs-printer
-    dumpsNext
+   dumpsNext
 -----
 test1 ::= "test1"
 test2 ::=
