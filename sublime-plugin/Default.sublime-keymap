@@ -11,7 +11,7 @@
         "keys": ["s"],
         "command": "poli_select",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },

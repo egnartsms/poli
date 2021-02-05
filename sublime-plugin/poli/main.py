@@ -48,8 +48,15 @@ class PoliViewContext(sublime_plugin.EventListener):
             if info is None:
                 return False
 
-            kind, lang = operand.split('/')
-            test = kind == info['kind'] and lang == info['lang']
+            parts = operand.split('/')
+            if len(parts) == 2:
+                kind, lang = parts
+                test = kind == info['kind'] and lang == info['lang']
+            elif len(parts) == 1:
+                (kind, ) = parts
+                test = kind == info['kind']
+            else:
+                return False
 
             return query_context_matches(operator, test)
 

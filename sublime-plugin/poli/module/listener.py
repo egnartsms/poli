@@ -37,11 +37,7 @@ class PoliViewListener(sublime_plugin.ViewEventListener):
         [pt] = locations
         linereg = self.view.line(pt)
         str_prec = self.view.substr(sublime.Region(linereg.begin(), pt))
-        mtch = re.search(
-            r'^.*?\$(?:\.(?P<star>[a-z0-9_]+))?\.(?P<prefix>[a-z0-9_]+)$',
-            str_prec,
-            re.I
-        )
+        mtch = re.search(r'^.*?\$(?:\.(?P<star>\w+))?\.(?P<prefix>\w+)$', str_prec)
         if mtch is None:
             return None
 
