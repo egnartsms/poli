@@ -6,6 +6,7 @@ bootstrap
 xs-reader
    readEntryDefinition
 -----
+assert ::= $_.require('assert').strict
 makeModulesByInfo ::= function (modulesInfo) {
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeXsModule(name, body);
@@ -28,14 +29,33 @@ makeXsModule ::= function (name, body) {
       };
    }
    
-   return {
+   let module = {
       [$.skRuntimeKeys]: ['rtobj'],
       lang: 'xs',
       name: name,
       importedNames: new Set(),  // filled in on import resolve
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
-      // TODO: this needs a compiler
       rtobj: null
    };
+
+   $.evalXsModuleDefinitions(module);
+
+   return module;
+}
+evalXsModuleDefinitions ::= function (module) {
+   $.assert(module.lang === 'xs');
+   $.assert(module.rtobj === null);
+
+   // TODO: this needs a compiler
+   module.rtobj = Object.create(null);
+}
+animateXsModules ::= function () {
+   for (let module of Object.values($.modules)) {
+      if (module.lang === 'xs') {
+         $.evalXsModuleDefinitions(module);
+      }
+   }
+
+   $.effectuateImports('xs');
 }

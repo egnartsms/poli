@@ -451,14 +451,17 @@ loadImage ::= function () {
    $.imports = $.lobby.imports;
    $.obj2id = obj2id;
 
-   // Initialize modules' rtobj's
+   $.animateJsModules();
+   $.effectuateImports('js');
+   $.modules['xs-bootstrap'].rtobj['animateXsModules']();
+
+   return $.modules;
+}
+animateJsModules ::= function () {
+   // Initialize JS modules' rtobj's
    for (let module of Object.values($.modules)) {
       if (module.lang === 'js') {
          $.evalJsModuleDefinitions(module);
       }
-   }
-
-   $.effectuateImports();
-
-   return $.modules;
+   }   
 }
