@@ -13,7 +13,7 @@ main ::= function () {
 }
 flushModule ::= function (module) {
    let moduleStream = $.fs.createWriteStream(
-      `${$_.SRC_FOLDER}/${module.name}.js`, {
+      `${$_.SRC_FOLDER}/${module.name}.${module.lang}`, {
          mode: '664'
       }
    );
