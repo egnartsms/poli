@@ -1,6 +1,23 @@
 import sublime
 
 from poli.shared.command import StopCommand
+from poli.sublime.setting import Setting
+
+
+poli_info = Setting('poli_info')
+
+
+class Kind:
+    module = 'module'
+    repl = 'repl'
+
+
+LANG_SUBLIME_SYNTAX = {
+    'js': 'Packages/Poli/JS.sublime-syntax',
+    'xs': 'Packages/Poli/XS.sublime-syntax',
+}
+
+REPL_JS_SYNTAX_FILE = 'Packages/Poli/REPL.JS.sublime-syntax'
 
 
 def single_selected_region(view):

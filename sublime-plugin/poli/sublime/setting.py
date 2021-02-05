@@ -17,3 +17,6 @@ class Setting:
 
     def __setitem__(self, vs, value):
         _get_settings(vs).set(self.name, value)
+
+    def __delitem__(self, vs):
+        _get_settings(vs).erase(self.name)

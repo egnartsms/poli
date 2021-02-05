@@ -1,13 +1,12 @@
 import sublime
 
-from poli.shared.setting import poli_kind
-from poli.shared import const
+from poli.shared.misc import Kind
+from poli.shared.misc import REPL_JS_SYNTAX_FILE
+from poli.shared.misc import poli_info
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.setting import Setting
 
-
-REPL_KIND = 'repl/js'
 
 poli_cur_module = Setting('poli_cur_module')
 
@@ -16,9 +15,12 @@ def make_repl_view(window):
     view = window.new_file()
     view.set_name('Poli: REPL JS')
     view.set_scratch(True)
-    poli_kind[view] = REPL_KIND
+    poli_info[view] = {
+        'kind': Kind.repl,
+        'lang': 'js'
+    }
     poli_cur_module[view] = 'run'
-    view.assign_syntax(const.REPL_JS_SYNTAX_FILE)
+    view.assign_syntax(REPL_JS_SYNTAX_FILE)
 
     call_with_edit(view, lambda edit: insert_prompt_at_end(view, edit))
     

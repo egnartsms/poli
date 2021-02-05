@@ -104,7 +104,7 @@ class PoliCancel(ModuleTextCommand):
         with read_only_as_transaction(self.view, False):
             if cxt.target == 'defn':
                 defn = comm.op('getDefinition', {
-                    'module': op.js_module_name(self.view),
+                    'module': op.view_module_name(self.view),
                     'name': cxt.name
                 })
                 self.view.replace(edit, reg, defn)
@@ -136,7 +136,7 @@ class PoliCommit(ModuleTextCommand):
                 return
             defn = self.view.substr(reg)
             comm.op('editEntry', {
-                'module': op.js_module_name(self.view),
+                'module': op.view_module_name(self.view),
                 'name': cxt.name,
                 'newDefn': defn
             })
@@ -146,7 +146,7 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
             res = comm.op('renameEntry', {
-                'module': op.js_module_name(self.view),
+                'module': op.view_module_name(self.view),
                 'oldName': cxt.name,
                 'newName': new_name
             })
@@ -161,7 +161,7 @@ class PoliCommit(ModuleTextCommand):
                 return
 
             comm.op('addEntry', {
-                'module': op.js_module_name(self.view),
+                'module': op.view_module_name(self.view),
                 'name': mtch.group('name'),
                 'defn': mtch.group('defn'),
                 'anchor': cxt.name,
@@ -193,7 +193,7 @@ class PoliRemove(ModuleTextCommand):
             reg, require_fully_selected=True
         )
         modules_data = comm.op('removeEntry', {
-            'module': op.js_module_name(self.view),
+            'module': op.view_module_name(self.view),
             'name': loc.entry.name()
         })
         if modules_data is None:
