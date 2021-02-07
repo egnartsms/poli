@@ -12,7 +12,9 @@ const {
    SCHEMA_PATH,
    SRC_FOLDER,
    LOBBY_OID,
-   BOOTSTRAP_MODULE
+   BOOTSTRAP_MODULE,
+
+   makeDb
 } = require('./common');
 
 
@@ -81,10 +83,7 @@ function makeImage(db) {
 function makeEmptyImage() {
    ensureImageFileUnlinked();
 
-   let db = new Database(IMAGE_PATH, {
-      verbose: null
-   });
-
+   let db = makeDb(IMAGE_PATH);
    db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
 
    return db;

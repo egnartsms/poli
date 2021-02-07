@@ -5,19 +5,18 @@ const {
    BOOTSTRAP_MODULE,
    RUN_MODULE,
    SRC_FOLDER,
-   LOBBY_OID
+   LOBBY_OID,
+
+   makeDb
 } = require('./common');
 
 
-function loadImage() {
+function loadImage(db) {
    function moduleEval(code) {
       let fun = new Function('$_, $', `return (${code})`);
       return fun.call(null, $_, $);
    }
 
-   let db = new Database(IMAGE_PATH, {
-      verbose: null, // console.log
-   });
    let $_ = {
       db,
       require,
@@ -43,8 +42,15 @@ function loadImage() {
 
 
 function main() {
-   let modules = loadImage();
+   let db = makeDb(IMAGE_PATH);
+   let modules = loadImage(db);
+   
    modules[RUN_MODULE].rtobj['main']();
+
+   process.on('SIGINT', () => {
+      db.close();
+      process.exit(2);
+   });
 }
 
 
