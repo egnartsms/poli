@@ -10,7 +10,6 @@ import
    unimport
 persist
    deleteArrayItem
-   deleteObject
    deleteObjectProp
    setAdd
    setDelete

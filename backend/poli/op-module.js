@@ -11,9 +11,10 @@ import
    moduleRevDepsOf
    unimport
 persist
-   deleteObject
    deleteObjectProp
    setObjectProp
+xs-bootstrap
+   makeXsModule
 -----
 addNewModule ::= function (moduleName, lang) {
    if ($.hasOwnProperty($.modules, moduleName)) {
@@ -26,7 +27,7 @@ addNewModule ::= function (moduleName, lang) {
       module = $.makeJsModule(moduleName, []);
    }
    else if (lang === 'xs') {
-      module = $.makeFreshXsModule(moduleName);
+      module = $.makeXsModule(moduleName, []);
    }
    else {
       throw new Error(`Invalid lang: ${lang}`);
@@ -60,23 +61,7 @@ removeModule ::= function (module, force) {
       }
    }
 
-   $.deleteObject(module.importedNames);
-   $.deleteObject(module.entries);
-   $.deleteObject(module.defs);
-   $.deleteObject(module);
-
    $.deleteObjectProp($.modules, module.name);
 
    return true;
-}
-makeFreshXsModule ::= function (moduleName) {
-   return {
-      [$.skRuntimeKeys]: ['rtobj'],
-      name: moduleName,
-      lang: 'xs',
-      importedNames: new Set(),
-      entries: [],
-      defs: {},
-      rtobj: null
-   }
 }

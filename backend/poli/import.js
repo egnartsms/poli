@@ -2,7 +2,6 @@ bootstrap
    imports
    validateImport
 persist
-   deleteObject
    setAdd
    setDelete
 rtrec
@@ -31,7 +30,6 @@ unimport ::= function (imp) {
 
    $.setDelete(recp.importedNames, $.importedAs(imp));
    $.setDelete($.imports, imp);
-   $.deleteObject(imp);
    
    $.rtset(recp, $.importedAs(imp), $.delmark);
 }

@@ -49,16 +49,21 @@ def view_module_name(view):
     return re.search(r'/([^/]+)\.(js|xs)$', view.file_name()).group(1)
 
 
-def module_filename(module_name):
+def module_filename(module_name, lang=None):
     """Get module absolute file name by the module name
 
-    Since modules of different langs share the same namespace, the lang is not needed.
-    Instead, we try each lang in turn.
+    If lang is provided, it is used to determine file extension. If not, then we try each
+    lang in turn and see whether the respective file exists on disk.    
     """
+    if lang is not None:
+        return os.path.join(backend_root, "{}.{}".format(module_name, lang))
+
     for lang in LANG_SUBLIME_SYNTAX:
         filename = os.path.join(backend_root, "{}.{}".format(module_name, lang))
         if os.path.exists(filename):
             return filename
+
+    raise RuntimeError
 
 
 def open_module(window, module_name):

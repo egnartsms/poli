@@ -45,7 +45,7 @@ contexts:
       scope: invalid.illegal
 
   contents:
-    - match: '^({{word_char}}+) (::=) (?=\S)'
+    - match: '^({{word_char}}+) (::=)(?= \S)'
       captures:
         1: entity.name.entry meta.entry.name
         2: punctuation.separator.poli.defined-as
@@ -56,8 +56,8 @@ contexts:
             scope: meta.entry.def  # terminating \n must also be a part of definition
             pop: true
         - line
-        - before-word
-    - match: '^({{word_char}}+) (::=)\n'
+        - after-thing
+    - match: '^({{word_char}}+) (::=)$'
       captures:
         1: entity.name.entry meta.entry.name
         2: punctuation.separator.poli.defined-as
@@ -70,10 +70,10 @@ contexts:
     - match: '^ *(#;[^ \n].*)$'
       captures:
         1: invalid.illegal.comment
-    - match: '^( *)(#;)(?: (.*))?$'
+    - match: '^( *)((#;)(?: .*)?)$'
       captures:
-        2: punctuation.definition.comment
-        3: comment.line
+        2: comment.line
+        3: punctuation.definition.comment
       embed: comment
       escape: '^(?! *$|\1 +)'
     - match: '^ +(?=[^ \n])'
@@ -81,8 +81,7 @@ contexts:
 
   comment:
     - match: '^ +(.*)$'
-      captures:
-        1: comment.line
+      scope: comment.line
 
   line-start:
     - match: '(\\)( *$)'

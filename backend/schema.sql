@@ -4,6 +4,10 @@ create table obj(
 );
 
 
+-- Lobby object is always there
+insert into obj(id, val) values (0, '{}');
+
+
 -- This is just to expose the 'bootstrap.js' members in a convenient form.  These entries
 -- are needed to bootstrap the image loading procedure.
 create view bootstrap_entries as
@@ -20,6 +24,3 @@ create view bootstrap_entries as
        )
     )) as def_json
 ;
-
--- Lobby object is always there
-insert into obj(id, val) values (0, '{}');

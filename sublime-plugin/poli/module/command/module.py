@@ -43,7 +43,7 @@ class PoliRenameModule(ModuleTextCommand):
             'module': op.view_module_name(self.view),
             'newName': module_name
         })
-        new_file_name = op.module_filename(module_name, 'js')
+        new_file_name = op.module_filename(module_name)
         os.rename(self.view.file_name(), new_file_name)
         self.view.retarget(new_file_name)
         op.replace_import_section_in_modules(self.view.window(), res)

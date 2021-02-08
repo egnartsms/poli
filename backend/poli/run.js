@@ -11,6 +11,8 @@ img2fs
 import
    import
    importFor
+module
+   entryTextDef
 op-edit
    addEntry
    editEntry
@@ -130,7 +132,7 @@ operationHandlers ::= ({
          throw new Error(`Member "${name}" not found in module "${moduleName}"`);
       }
 
-      $.opRet(module.defs[name]);
+      $.opRet($.entryTextDef(module, name));
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
@@ -151,8 +153,11 @@ operationHandlers ::= ({
 
    editEntry: function ({module: moduleName, name, newDefn}) {
       let module = $.moduleByName(moduleName);
-      $.editEntry(module, name, newDefn);
-      $.opRet();
+      let normalizedDefn = $.editEntry(module, name, newDefn);
+
+      $.opRet({
+         normalizedDefn: normalizedDefn
+      });
    },
 
    renameEntry: function ({module: moduleName, oldName, newName}) {

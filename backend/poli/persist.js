@@ -7,13 +7,10 @@ bootstrap
 -----
 assert ::= $_.require('assert').strict
 stmtSetProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :oid
+   UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :id
 `)
 stmtDeleteProp ::= $_.db.prepare(`
-   UPDATE obj SET val = json_remove(val, :path) WHERE id = :oid
-`)
-stmtDelete ::= $_.db.prepare(`
-   DELETE FROM obj WHERE id = :oid
+   UPDATE obj SET val = json_remove(val, :path) WHERE id = :id
 `)
 dbSetProp ::= function (obj, ...pathvalPairs) {
    $.assert($.obj2id.has(obj));
@@ -26,7 +23,7 @@ dbSetProp ::= function (obj, ...pathvalPairs) {
       let val = pathvalPairs[i + 1];
 
       $.stmtSetProp.run({
-         oid: $.obj2id.get(obj),
+         id: $.obj2id.get(obj),
          path: $.jsonPath(path),
          propval: $.toJsonRef(val, rec.ref)
       });
@@ -38,7 +35,7 @@ dbDeleteProp ::= function (obj, prop) {
    $.assert($.obj2id.has(obj));
 
    $.stmtDeleteProp.run({
-      oid: $.obj2id.get(obj),
+      id: $.obj2id.get(obj),
       path: $.jsonPath(prop),
    });
 }
@@ -54,16 +51,10 @@ deleteArrayItem ::= function (ar, i) {
    $.assert($.obj2id.has(ar));
 
    $.stmtDeleteProp.run({
-      oid: $.obj2id.get(ar),
+      id: $.obj2id.get(ar),
       path: $.jsonPath(i),
    });
    ar.splice(i, 1);
-}
-deleteObject ::= function (obj) {
-   $.assert($.obj2id.has(obj));
-
-   $.stmtDelete.run({oid: $.obj2id.get(obj)});
-   $.obj2id.delete(obj);
 }
 setAdd ::= function (set, item) {
    if (set.has(item)) {
