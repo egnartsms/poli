@@ -24,16 +24,3 @@ create view bootstrap_entries as
        )
     )) as def_json
 ;
-
-create view live_obj(id) as
-    with recursive
-        live(id) AS (
-            values (0)
-            union
-            select json_tree.atom
-            from live join obj on obj.id = live.id,
-              json_tree(obj.val)
-            where json_tree.key = '__ref'
-        )
-    select id from live
-;

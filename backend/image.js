@@ -1,4 +1,4 @@
-const {recreateImage, runImage, dumpImage} = require('./script/op');
+const {recreateImage, runImage, dumpImage, compactImage} = require('./script/op');
 
 
 const HELP_TEXT = `
@@ -47,7 +47,7 @@ function main() {
       break;
 
       case 'compact':
-         console.log("Not implemented yet!");
+         compactImage();
       break;
 
       case 'help':

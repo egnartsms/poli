@@ -187,9 +187,83 @@ function dumpImage() {
 }
 
 
+const SQL_IMAGE_GC = `
+   with recursive
+      live(id) AS (
+         values (${LOBBY_OID})
+         union
+         select json_tree.atom
+         from live join obj on obj.id = live.id,
+             json_tree(obj.val)
+         where json_tree.key = '__ref'
+      )
+   delete from obj where id not in live;
+`;
+
+
+function compactImage() {
+   let db = makeDb(IMAGE_PATH);
+   
+   console.log("GC...");
+   console.time('gc');
+   let {changes} = db.prepare(SQL_IMAGE_GC).run();
+   console.log(`GC done (${changes} object identified as garbage)`);
+   console.timeEnd('gc');
+
+   if (changes === 0) {
+      return;
+   }
+
+   console.log("Renumerating objects...");
+   console.time('renumerate');
+   db.transaction(renumerateObjects)(db);
+   console.timeEnd('renumerate');
+   console.log("Renumeration done");
+
+   console.log("Vacuuming...");
+   db.exec('vacuum');
+   console.log("Vacuuming done");
+}
+
+
+function renumerateObjects(db) {
+   let maxId = db.prepare(`select max(id) from obj`).pluck().get();
+   let nIds = db.prepare(`select count(*) from obj`).pluck().get();
+
+   const SQL_GET_ALL_IDS = `select id from obj order by id asc`;
+
+   let old2new = new Map;
+   let newid = 0;
+
+   for (let oldid of db.prepare(SQL_GET_ALL_IDS).pluck().all()) {
+      old2new.set(oldid, newid);
+      newid += 1;
+   }
+
+   let stmtGetVal = db.prepare(`select val from obj where id = :id`).pluck();
+   let stmtPutVal = db.prepare(`update obj set val = :val where id = :id`);
+   let stmtPutKey = db.prepare(`update obj set id = :newid where id = :id`);
+   
+   for (let [oldid, newid] of old2new) {
+      let oldval = stmtGetVal.get({id: oldid});
+      let newval = JSON.stringify(
+         JSON.parse(oldval, function (key, val) {
+            return (key === '__ref') ? old2new.get(val) : val;
+         })
+      );
+
+      stmtPutVal.run({id: oldid, val: newval});
+      if (oldid !== newid) {
+         stmtPutKey.run({id: oldid, newid: newid});
+      }
+   }
+}
+
+
 Object.assign(exports, {
    recreateImage,
    loadImage,
    runImage,
-   dumpImage
+   dumpImage,
+   compactImage
 });
