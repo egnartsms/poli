@@ -46,26 +46,28 @@ editEntry ::= function (module, name, newDefn) {
       throw new Error(`Not found entry "${name}" in module "${module.name}"`);
    }
 
-   // TODO: correct that when you have an XS compiler
    if (module.lang === 'js') {
-      let newVal = $.moduleEval(module, newDefn);
+      // For JS, we can (and should) trim the definition
+      let newSrc = newDefn.trim();
+      let newVal = $.moduleEval(module, newSrc);
 
-      $.setObjectProp(module.defs, name, newDefn);
+      $.setObjectProp(module.defs, name, newSrc);
       $.rtset(module, name, newVal);
       $.propagateValueToRecipients(module, name);
       
-      return null;
+      return newSrc;
    }
    else if (module.lang === 'xs') {
       let stx = $.readEntryDefinition(newDefn);
+
       $.setObjectProp(module.defs, name, {
          stx: stx
       });
+      // TODO: compute the value when you finally have XS compiler
       
       return $.dumpsNext(stx, 0);
    }
    else {
       throw new Error;
    }
-
 }
