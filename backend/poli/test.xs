@@ -9,6 +9,12 @@ test2 ::=
       console.log "Finally you're getting to implement what you dreamt of"
       
       Furnicle? "Uncle"
+      
+      if (really-you?)
+       then:
+         console.log "Serhio"
+       else:
+         console.log "Ramos"
 test3 ::=
    func :(src-module entry dest-module)
       let refs = (extract-refs src-module entry)

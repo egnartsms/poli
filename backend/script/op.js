@@ -4,18 +4,17 @@
 
 const fs = require('fs');
 const assert = require('assert').strict;
+const Database = require('better-sqlite3');
 
-const {
-   IMAGE_PATH,
-   SCHEMA_PATH,
-   SRC_FOLDER,
-   LOBBY_OID,
-   BOOTSTRAP_MODULE,
-   RUN_MODULE,
-   IMG2FS_MODULE,
 
-   makeDb
-} = require('./common');
+const
+   IMAGE_PATH = 'poli.image',
+   SCHEMA_PATH = 'schema.sql',
+   SRC_FOLDER = 'poli',
+   IMG2FS_MODULE = 'img2fs',
+   BOOTSTRAP_MODULE = 'bootstrap',
+   RUN_MODULE = 'run',
+   LOBBY_OID = 0;
 
 
 function recreateImage() {
@@ -30,6 +29,17 @@ function recreateImage() {
       ensureImageFileUnlinked();
       throw e;
    }
+}
+
+
+function makeDb(image) {
+   let db = new Database(image, {
+      verbose: null, // console.log
+   });
+
+   db.pragma('journal_mode = wal');
+
+   return db;
 }
 
 
@@ -160,7 +170,7 @@ function runImage() {
 
 
 function dumpImage() {
-   let db = makeDb();
+   let db = makeDb(IMAGE_PATH);
 
    try {
       let modules = loadImage(db);
@@ -180,5 +190,6 @@ function dumpImage() {
 Object.assign(exports, {
    recreateImage,
    loadImage,
-   runImage
+   runImage,
+   dumpImage
 });
