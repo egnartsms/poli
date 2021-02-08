@@ -15,7 +15,6 @@ op-refactor
    renameRefsIn
 persist
    deleteArrayItem
-   deleteObject
    deleteObjectProp
    setObjectProp
 reference

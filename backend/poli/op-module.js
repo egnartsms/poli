@@ -11,7 +11,6 @@ import
    moduleRevDepsOf
    unimport
 persist
-   deleteObject
    deleteObjectProp
    setObjectProp
 xs-bootstrap
@@ -61,11 +60,6 @@ removeModule ::= function (module, force) {
          $.unimport(imp);
       }
    }
-
-   $.deleteObject(module.importedNames);
-   $.deleteObject(module.entries);
-   $.deleteObject(module.defs);
-   $.deleteObject(module);
 
    $.deleteObjectProp($.modules, module.name);
 

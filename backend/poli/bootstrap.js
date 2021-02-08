@@ -34,7 +34,7 @@ makeImageByFs ::= function () {
       imports: $.imports,
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
-   $.obj2id.set($.lobby, $_.LOBBY_OID);
+   $.obj2id = new WeakMap([[$.lobby, $_.LOBBY_OID]]);
    $.saveObject($.lobby);
 }
 parseAllModules ::= function () {
@@ -250,16 +250,16 @@ initSetForPersistence ::= function (set) {
       value: {nextid, item2id}
    });   
 }
-obj2id ::= new Map()
+obj2id ::= null
 nextOid ::= 1
 takeNextOid ::= function () {
    return $.nextOid++;
 }
 stmtInsert ::= $_.db.prepare(`
-   INSERT INTO obj(id, val) VALUES (:oid, :val)
+   INSERT INTO obj(id, val) VALUES (:id, :val)
 `)
 stmtUpdate ::= $_.db.prepare(`
-   UPDATE obj SET val = :val WHERE id = :oid
+   UPDATE obj SET val = :val WHERE id = :id
 `)
 isObject ::= function (val) {
    return typeof val === 'object' && val !== null;
@@ -321,7 +321,7 @@ saveObject ::= function (obj) {
    let rec = $.objrefRecorder();
 
    stmt.run({
-      oid: oid,
+      id: oid,
       val: $.toJson(obj, rec.ref)
    });
 
@@ -353,7 +353,10 @@ addRecordedObjects ::= function ({toAdd, ref}) {
    function addObject(obj, oid) {
       $.initObjForPersistence(obj);
       $.obj2id.set(obj, oid);
-      $.stmtInsert.run({oid, val: $.toJson(obj, ref)});
+      $.stmtInsert.run({
+         id: oid,
+         val: $.toJson(obj, ref)
+      });
    }
 
    while (toAdd.size > 0) {
@@ -410,6 +413,7 @@ loadImage ::= function () {
       if (obj == null) {
          throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
       }
+
       return obj;
    }
 
@@ -449,7 +453,7 @@ loadImage ::= function () {
    $.lobby = id2obj.get($_.LOBBY_OID);
    $.modules = $.lobby.modules;
    $.imports = $.lobby.imports;
-   $.obj2id = obj2id;
+   $.obj2id = new WeakMap(obj2id);
 
    $.animateJsModules();
    $.effectuateImports('js');

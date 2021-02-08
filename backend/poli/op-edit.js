@@ -5,7 +5,6 @@ bootstrap
 common
    propagateValueToRecipients
 persist
-   deleteObject
    setObjectProp
 reference
    isNameFree
@@ -59,7 +58,6 @@ editEntry ::= function (module, name, newDefn) {
    }
    else if (module.lang === 'xs') {
       let stx = $.readEntryDefinition(newDefn);
-      $.deleteObject(module.defs[name]);
       $.setObjectProp(module.defs, name, {
          stx: stx
       });
