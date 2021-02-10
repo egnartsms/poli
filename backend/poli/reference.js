@@ -6,7 +6,8 @@ import
    importFor
    importedAs
    importsOf
-   referenceImports
+   referrerImportsFromTo
+   referrersOf
 -----
 assert ::= $_.require('assert').strict
 isNameFree ::= function (module, name) {
@@ -39,7 +40,7 @@ isReferredTo ::= function (module, name, except=null) {
 
    return false;
 }
-referrerModules ::= function (module, entry) {
+referrerModules1 ::= function (module, entry) {
    let referrers = new Set;
 
    for (let imp of $.importsOf(module, entry)) {
@@ -59,8 +60,8 @@ isEntryUsed ::= function (module, entry) {
       return true;
    }
 
-   for (let recp of $.referrerModules(module, entry)) {
-      let {eimp, simp} = $.referenceImports(module, entry, recp);
+   for (let recp of $.referrersOf(module, entry)) {
+      let {eimp, simp} = $.referrerImportsFromTo(module, entry, recp);
       if (eimp && $.isReferredTo(recp, $.importedAs(eimp))) {
          return true;
       }

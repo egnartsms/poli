@@ -6,7 +6,8 @@ common
    propagateValueToRecipients
 import
    importsOf
-   referenceImports
+   referrerImportsFromTo
+   referrersOf
    unimport
 persist
    deleteArrayItem
@@ -17,7 +18,6 @@ persist
 reference
    isEntryUsed
    isNameFree
-   referrerModules
 rtrec
    delmark
    rtget
@@ -42,6 +42,11 @@ offendingModulesOnRename ::= function (module, oldName, newName) {
    return offendingModules;
 }
 renameRefsIn ::= function (module, renameMap) {
+   // TODO: implement reference renaming for XS
+   if (module.lang === 'xs') {
+      return [];
+   }
+
    function escape(ref) {
       return ref.replace(/\./g, '\\.');
    }
@@ -63,31 +68,31 @@ renameRefsIn ::= function (module, renameMap) {
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
-      let oldCode = module.defs[entry];
-      let newCode = oldCode.replace(re, ref => renameMap.get(ref));
+      let oldSource = module.defs[entry];
+      let newSource = oldSource.replace(re, ref => renameMap.get(ref));
       
-      if (oldCode === newCode) {
+      if (oldSource === newSource) {
          continue;
       }
 
-      let newVal = $.moduleEval(module, newCode);
+      let newVal = $.moduleEval(module, newSource);
 
-      $.setObjectProp(module.defs, entry, newCode);
+      $.setObjectProp(module.defs, entry, newSource);
       $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry);
 
-      modifiedEntries.push([entry, newCode]);
+      modifiedEntries.push([entry, newSource]);
    }
 
    return modifiedEntries;
 }
 modifyRecipientsForRename ::= function (module, oldName, newName) {
-   let referrers = $.referrerModules(module, oldName);
+   let referrers = $.referrersOf(module, oldName);
    let modifiedModules = [];
 
    for (let referrer of referrers) {
       let rnmap = new Map;
-      let {eimp, simp} = $.referenceImports(module, oldName, referrer);
+      let {eimp, simp} = $.referrerImportsFromTo(module, oldName, referrer);
 
       if (eimp) {
          if (eimp.alias === null) {
@@ -120,15 +125,6 @@ renameEntry ::= function (module, oldName, newName) {
    if (!$.isNameFree(module, newName)) {
       throw new Error(`Cannot rename to "${newName}": such an entry already ` +
                       `exists or imported`);
-   }
-
-   // TODO: change this XS/JS handling logic
-   if (module.lang === 'xs') {
-      $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
-      $.setObjectProp(module.defs, newName, module.defs[oldName]);
-      $.deleteObjectProp(module.defs, oldName);
-      
-      return [];
    }
 
    let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
