@@ -3,6 +3,39 @@ bootstrap
 xs-printer
    dumpsNext
 -----
+name ::=
+   \ definition
+mem30 ::= 30
+zip ::=
+   func* :(seq1 seq2)
+      let it1 = ((@ seq1 Symbol.iterator))
+      let it2 = ((@ seq2 Symbol.iterator))
+      
+      forever
+         let (-obj- value: item1 done: done1) = (it1.next)
+         let (-obj- value: item2 done: done2) = (it2.next)
+         
+         if (&& done1 done2)
+            break
+         
+         if done1
+            = item1 null
+         
+         yield (-arr- item1 item2)
+mem40 ::=
+   \ 40
+reverse ::=
+   func :(arr)
+      let i = 0
+      let j = (- arr.length 1)
+      
+      while (< i j)
+         =
+            -arr- (@ arr i) (@ arr j)
+            -arr- (@ arr j 2) (@ arr i)
+         
+         = i (+ i 1)
+         = j (- j 1)
 test1 ::= "test1"
 test2 ::=
    func :()
@@ -18,11 +51,12 @@ test2 ::=
 test3 ::=
    func :(src-module entry dest-module)
       let refs = (extract-refs src-module entry)
+      \ 
       
-      let offending-refs = (<arr>)
-      let dangling-refs = (<arr>)
+      let offending-refs = (-arr-)
+      let dangling-refs = (-arr-)
       let rename-map = (new Map)
-      let imports-to-add = (<arr>)
+      let imports-to-add = (-arr-)
       
       func rename :(from to)
          if (!== from to)
@@ -37,10 +71,10 @@ test3 ::=
          
          return pref
       
-      for (ref of: refs)
-         let (<arr> ref-star ref-name) = (split-ref ref)
+      for :(ref refs)
+         let (-arr- ref-star ref-name) = (split-ref ref)
          let
-            <obj>
+            -obj-
                \ found
                module: o-module
                name: o-entry
@@ -62,7 +96,7 @@ test3 ::=
             continue
          
          #; See whether the entry is already imported directly
-         let (<obj> eimp simp) =
+         let (-obj- eimp simp) =
             reference-imports o-module o-entry dest-module
          
          if eimp
@@ -78,17 +112,47 @@ test3 ::=
          if (is-name-free? dest-module ref-name)
           then:
             imports-to-add.push
-               <obj>
-                  recp: dest-module
-                  donor: o-module
-                  name: o-entry
-                  alias: (?: (=== ref-name o-entry) null ref-name)
+               -obj-
+                  \ recp: dest-module
+                  \ donor: o-module
+                  \ name: o-entry
+                  \ alias:
+                  ?
+                     === ref-name o-entry
+                     \ null
+                     \ ref-name
           else:
             offending-refs.push ref
          
          return
-            <obj>
+            -obj-
                \ offending-refs
                \ dangling-refs
                \ rename-map
                \ imports-to-add
+funk ::=
+   func :()
+      ...
+      -arr-
+         \ 10
+         \ 20
+         \ 30
+         \ 40
+      
+      -obj-
+         \ name: 30
+         \ surname: "Vashua"
+      
+      window.set-timeout
+         fn :()
+            let
+                  :
+                     : (-obj- (employee-name: name)) X
+                     : i 0
+                     : j (+ i 1)
+               console.log i j
+            let tmp = (-arr-)
+            render
+               h unwrapper (-arr- 1 2 3)
+               \ document.body
+         2000

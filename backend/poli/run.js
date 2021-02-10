@@ -147,8 +147,11 @@ operationHandlers ::= ({
 
    addEntry: function ({module: moduleName, name, defn, anchor, before}) {
       let module = $.moduleByName(moduleName);
-      $.addEntry(module, name, defn, anchor, before);
-      $.opRet();
+      let normalizedSource = $.addEntry(module, name, defn, anchor, before);
+
+      $.opRet({
+         normalizedSource: normalizedSource
+      });
    },
 
    editEntry: function ({module: moduleName, name, newDefn}) {

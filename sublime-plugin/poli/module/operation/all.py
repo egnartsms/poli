@@ -108,6 +108,18 @@ def all_poli_views():
             yield view
 
 
+RE_FULL_ENTRY = {
+    # the DOTALL is assumed to be on
+    'js': r'^(?P<name>\w[\d\w]*) ::= (?P<defn>.+)$',
+    'xs': r'^(?P<name>[a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]+) ::=(?P<defn>.+)$'
+}
+
+TEMPLATE_FULL_ENTRY = {
+    'js': '{name} ::= {defn}',
+    'xs': '{name} ::={defn}'
+}
+
+
 re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'
 re_is_entry_name = r'^{}$'.format(re_entry_name)
 
