@@ -19,7 +19,7 @@
         "keys": ["r"],
         "command": "poli_rename",
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },

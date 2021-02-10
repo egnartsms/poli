@@ -122,6 +122,15 @@ renameEntry ::= function (module, oldName, newName) {
                       `exists or imported`);
    }
 
+   // TODO: change this XS/JS handling logic
+   if (module.lang === 'xs') {
+      $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
+      $.setObjectProp(module.defs, newName, module.defs[oldName]);
+      $.deleteObjectProp(module.defs, oldName);
+      
+      return [];
+   }
+
    let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
    if (offendingModules.length > 0) {
       throw new Error(`Cannot rename to "${newName}": cannot rename imports in ` +

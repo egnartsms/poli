@@ -126,7 +126,7 @@ test3 ::=
                \ dangling-refs
                \ rename-map
                \ imports-to-add
-funk ::=
+%delay_24 ::=
    func :()
       ...
       -arr-
