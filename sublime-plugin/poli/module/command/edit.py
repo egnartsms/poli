@@ -129,19 +129,19 @@ class PoliCommit(ModuleTextCommand):
         reg = op.edit_region_for[self.view]
 
         if cxt.target == 'defn':
-            new_defn = self.view.substr(reg)
-            if new_defn.isspace():
+            new_src = self.view.substr(reg)
+            if new_src.isspace():
                 sublime.status_message("Empty definition not allowed")
                 return
 
             res = comm.op('editEntry', {
                 'module': op.view_module_name(self.view),
                 'name': cxt.name,
-                'newDefn': new_defn
+                'newSource': new_src
             })
 
             self.view.set_read_only(False)
-            self.view.replace(edit, reg, res['normalizedDefn'])
+            self.view.replace(edit, reg, res['normalizedSource'])
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
             if not op.is_entry_name_valid(new_name):
@@ -158,6 +158,7 @@ class PoliCommit(ModuleTextCommand):
             
             templ = op.RE_FULL_ENTRY[op.view_lang(self.view)]
             mtch = re.search(templ, self.view.substr(reg), re.DOTALL)
+
             if mtch is None:
                 sublime.status_message("Invalid entry definition")
                 return
@@ -168,7 +169,7 @@ class PoliCommit(ModuleTextCommand):
             res = comm.op('addEntry', {
                 'module': op.view_module_name(self.view),
                 'name': mtch.group('name'),
-                'defn': mtch.group('defn'),
+                'source': mtch.group('defn'),
                 'anchor': cxt.name,
                 'before': cxt.is_before
             })

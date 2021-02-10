@@ -28,9 +28,6 @@ from poli.sublime.view_dict import on_all_views_load
 from poli.sublime.view_dict import on_view_load
 
 
-KIND_MODULE = 'module/js'
-
-
 def is_view_poli(view):
     filename = view.file_name()
     return filename and filename.startswith(backend_root)

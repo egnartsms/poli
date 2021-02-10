@@ -11,7 +11,7 @@ xs-reader
    readEntryDefinition
 -----
 assert ::= $_.require('assert').strict
-entryTextDef ::= function (module, entry) {
+entrySource ::= function (module, entry) {
    if (module.lang === 'js') {
       return module.defs[entry];
    }

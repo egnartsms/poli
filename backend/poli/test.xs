@@ -1,7 +1,3 @@
-bootstrap
-   lobby
-xs-printer
-   dumpsNext
 -----
 name ::=
    \ definition
