@@ -36,7 +36,7 @@
         "command": "poli_add",
         "args": {"before": true},
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
@@ -45,7 +45,7 @@
         "command": "poli_add",
         "args": {"before": false},
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },

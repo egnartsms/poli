@@ -28,9 +28,6 @@ from poli.sublime.view_dict import on_all_views_load
 from poli.sublime.view_dict import on_view_load
 
 
-KIND_MODULE = 'module/js'
-
-
 def is_view_poli(view):
     filename = view.file_name()
     return filename and filename.startswith(backend_root)
@@ -106,6 +103,18 @@ def all_poli_views():
     for view in all_views():
         if is_view_poli(view):
             yield view
+
+
+RE_FULL_ENTRY = {
+    # the DOTALL is assumed to be on
+    'js': r'^(?P<name>\w[\d\w]*) ::= (?P<defn>.+)$',
+    'xs': r'^(?P<name>[a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]+) ::=(?P<defn>.+)$'
+}
+
+TEMPLATE_FULL_ENTRY = {
+    'js': '{name} ::= {defn}',
+    'xs': '{name} ::={defn}'
+}
 
 
 re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'

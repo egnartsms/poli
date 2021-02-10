@@ -10,8 +10,9 @@ from poli.sublime.view_dict import make_view_dict
 
 class EditRegion(regedit.EditRegion):
     def __setitem__(self, view, reg):
-        view.add_regions(self.KEY, [reg], 'region.bluish poli.edit', '',
-                         sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
+        view.add_regions(
+            self.KEY, [reg], 'poli.edit', '', sublime.DRAW_EMPTY | sublime.DRAW_NO_FILL
+        )
 
 
 edit_region_for = EditRegion()

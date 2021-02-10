@@ -12,7 +12,7 @@ import
    import
    importFor
 module
-   entryTextDef
+   entrySource
 op-edit
    addEntry
    editEntry
@@ -132,7 +132,7 @@ operationHandlers ::= ({
          throw new Error(`Member "${name}" not found in module "${moduleName}"`);
       }
 
-      $.opRet($.entryTextDef(module, name));
+      $.opRet($.entrySource(module, name));
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
@@ -145,18 +145,21 @@ operationHandlers ::= ({
       $.opRet($.query.importablesInto(recp));
    },
 
-   addEntry: function ({module: moduleName, name, defn, anchor, before}) {
+   addEntry: function ({module: moduleName, name, source, anchor, before}) {
       let module = $.moduleByName(moduleName);
-      $.addEntry(module, name, defn, anchor, before);
-      $.opRet();
-   },
-
-   editEntry: function ({module: moduleName, name, newDefn}) {
-      let module = $.moduleByName(moduleName);
-      let normalizedDefn = $.editEntry(module, name, newDefn);
+      let normalizedSource = $.addEntry(module, name, source, anchor, before);
 
       $.opRet({
-         normalizedDefn: normalizedDefn
+         normalizedSource: normalizedSource
+      });
+   },
+
+   editEntry: function ({module: moduleName, name, newSource}) {
+      let module = $.moduleByName(moduleName);
+      let normalizedSource = $.editEntry(module, name, newSource);
+
+      $.opRet({
+         normalizedSource: normalizedSource
       });
    },
 

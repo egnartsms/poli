@@ -1,9 +1,10 @@
 bootstrap
    hasOwnProperty
    moduleEval
-   saveObject
 common
    propagateValueToRecipients
+module
+   * as: module
 persist
    setObjectProp
 reference
@@ -15,18 +16,19 @@ xs-printer
 xs-reader
    readEntryDefinition
 -----
-addEntry ::= function (module, name, defn, anchor, before) {
+addEntry ::= function (module, name, source, anchor, before) {
    if (!$.isNameFree(module, name)) {
       throw new Error(`"${name}" already defined or imported`);
    }
+
+   let targetIndex;
 
    if (anchor === null) {
       if (module.entries.length > 0) {
          throw new Error(`Anchor entry not provided`);
       }
 
-      $.rtset(module, name, $.moduleEval(module, defn));
-      module.entries.push(name);
+      targetIndex = 0;
    }
    else {
       let idx = module.entries.indexOf(anchor);
@@ -34,40 +36,40 @@ addEntry ::= function (module, name, defn, anchor, before) {
          throw new Error(`Not found an entry "${anchor}"`);
       }
 
-      $.rtset(module, name, $.moduleEval(module, defn));
-      module.entries.splice(before ? idx : idx + 1, 0, name);
+      targetIndex = before ? idx : idx + 1;
    }
 
-   $.saveObject(module.entries);
-   $.setObjectProp(module.defs, name, defn);
+   return $.module.addEntry(module, name, source, targetIndex);
 }
-editEntry ::= function (module, name, newDefn) {
+editEntry ::= function (module, name, newSource) {
    if (!$.hasOwnProperty(module.defs, name)) {
       throw new Error(`Not found entry "${name}" in module "${module.name}"`);
    }
 
+   let normalizedSource;
+
    if (module.lang === 'js') {
       // For JS, we can (and should) trim the definition
-      let newSrc = newDefn.trim();
-      let newVal = $.moduleEval(module, newSrc);
+      normalizedSource = newSource.trim();
+      let newVal = $.moduleEval(module, normalizedSource);
 
-      $.setObjectProp(module.defs, name, newSrc);
+      $.setObjectProp(module.defs, name, normalizedSource);
       $.rtset(module, name, newVal);
       $.propagateValueToRecipients(module, name);
-      
-      return newSrc;
    }
    else if (module.lang === 'xs') {
-      let stx = $.readEntryDefinition(newDefn);
+      let stx = $.readEntryDefinition(newSource);
 
+      // TODO: compute the value when you finally have XS compiler
+      
       $.setObjectProp(module.defs, name, {
          stx: stx
       });
-      // TODO: compute the value when you finally have XS compiler
-      
-      return $.dumpsNext(stx, 0);
+      normalizedSource = $.dumpsNext(stx, 0);
    }
    else {
       throw new Error;
    }
+   
+   return normalizedSource;
 }

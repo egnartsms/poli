@@ -7,7 +7,7 @@ hidden: true
 variables:
   # word is an identifier (inc. keyword) or number. Whitespace, strings, comments are not
   # words
-  word_cs: 'a-zA-Z0-9~!@$%^&*\-_+=?/<>.:'
+  word_cs: 'a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|'
   # terminators make a word stop
   word_terminator_cs: ' ()"\n'
 
@@ -84,7 +84,7 @@ contexts:
       scope: comment.line
 
   line-start:
-    - match: '(\\)( *$)'
+    - match: '(\\) ?( *$)'  #  1 whitespace after \ is inserted by the printer
       captures:
         1: punctuation.definition.continuation
         2: invalid.illegal.excessive-whitespace
@@ -138,10 +138,6 @@ contexts:
       set: word-head
 
   <word>:
-    - match: ' +'
-      scope: invalid.illegal.excessive-whitespace
-      pop: true
-
     - match: '{{before_paren}}'
       pop: true
     - match: '[-+]?\.?[0-9]{{word_char}}*{{word_break}}'
@@ -174,10 +170,13 @@ contexts:
 
   word-head:
     - include: <word>
-    - match: '({{word_char}}*\.)?({{word_char}}+){{word_break}}'
+    - match: '({{word_char}}*\.)?({{word_char}}*)(?<!\.){{word_break}}'
       scope: meta.word.head
       captures:
         2: variable.function
+      set: after-thing
+    - match: '{{word_char}}+{{word_break}}'
+      scope: meta.word.head variable.function
       set: after-thing
 
   word-illegal-part:
