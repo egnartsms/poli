@@ -1,5 +1,3 @@
-test
-   reverse
 -----
 use-reverse ::=
    func :()

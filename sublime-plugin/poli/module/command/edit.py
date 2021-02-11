@@ -202,20 +202,30 @@ class PoliRemove(ModuleTextCommand):
         loc = op.module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
-        modules_data = comm.op('removeEntry', {
+        res = comm.op('removeEntry', {
             'module': op.view_module_name(self.view),
-            'name': loc.entry.name()
+            'entry': loc.entry.name(),
+            'force': False
         })
-        if modules_data is None:
-            sublime.error_message(
-                "Cannot delete \"{}\" as it is being used by other modules".format(
+        if not res['removed']:
+            remove_anyway = sublime.ok_cancel_dialog(
+                "Entry \"{}\" is being referred to. Remove it anyway?".format(
                     loc.entry.name()
                 )
             )
-            return
+            if not remove_anyway:
+                return
+            res = comm.op('removeEntry', {
+                'module': op.view_module_name(self.view),
+                'entry': loc.entry.name(),
+                'force': True
+            })
+
+        if not res['removed']:
+            raise RuntimeError
 
         with read_only_set_to(self.view, False):
             self.view.erase(edit, loc.entry.reg_entry_nl)
-        op.save_module(self.view)
 
-        op.modify_and_save_modules(self.view.window(), modules_data)
+        op.save_module(self.view)
+        op.modify_and_save_modules(self.view.window(), res['modifiedModules'])

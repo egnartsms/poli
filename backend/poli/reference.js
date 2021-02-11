@@ -26,10 +26,16 @@ whereNameCame ::= function (module, name) {
    return {};
 }
 isReferredTo ::= function (module, name, except=null) {
+   // TODO: implement for XS. For now, we don't know how to check for identifier
+   // bindings, so we assume that nothing is referred to.
+   if (module.lang === 'xs') {
+      return false;
+   }
+
    let re = new RegExp(`(?<![\\w$])\\$\\.${name.replace(/\./g, '\\.')}\\b`);
 
    for (let entry of module.entries) {
-      if (except && entry === except) {
+      if (entry === except) {
          continue;
       }
 
