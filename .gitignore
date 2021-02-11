@@ -1,3 +1,5 @@
 /backend/*.image
+/backend/*.image-shm
+/backend/*.image-wal
 /backend/node_modules/
 __pycache__/

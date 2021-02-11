@@ -274,7 +274,7 @@ consumeToken ::= function (stm) {
    let match = $.yExec(stm, /[^ ()"]+/y);
    let word = match[0];
 
-   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:]/.test(word)) {
+   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]/.test(word)) {
       throw new Error(`Invalid character in the middle of the word`);
    }
 

@@ -4,7 +4,6 @@ import sublime
 from poli.comm import comm
 from poli.module import operation as op
 from poli.shared.misc import single_selected_region
-from poli.sublime.misc import end_strip_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
@@ -112,8 +111,7 @@ class PoliCancel(ModuleTextCommand):
                 self.view.replace(edit, reg, cxt.name)
             else:
                 assert cxt.target == 'entry'
-                reg = op.reg_plus_trailing_nl(reg)
-                self.view.erase(edit, reg)
+                self.view.erase(edit, op.reg_plus_trailing_nl(reg))
 
             op.exit_edit_mode(self.view)
 
@@ -144,9 +142,11 @@ class PoliCommit(ModuleTextCommand):
             self.view.replace(edit, reg, res['normalizedSource'])
         elif cxt.target == 'name':
             new_name = self.view.substr(reg)
-            if not op.is_entry_name_valid(new_name):
+
+            if not re.search(op.RE_ENTRY_NAME[op.view_lang(self.view)], new_name):
                 sublime.status_message("Not a valid name")
                 return
+
             res = comm.op('renameEntry', {
                 'module': op.view_module_name(self.view),
                 'oldName': cxt.name,
@@ -202,20 +202,30 @@ class PoliRemove(ModuleTextCommand):
         loc = op.module_body(self.view).cursor_location_or_stop(
             reg, require_fully_selected=True
         )
-        modules_data = comm.op('removeEntry', {
+        res = comm.op('removeEntry', {
             'module': op.view_module_name(self.view),
-            'name': loc.entry.name()
+            'entry': loc.entry.name(),
+            'force': False
         })
-        if modules_data is None:
-            sublime.error_message(
-                "Cannot delete \"{}\" as it is being used by other modules".format(
+        if not res['removed']:
+            remove_anyway = sublime.ok_cancel_dialog(
+                "Entry \"{}\" is being referred to. Remove it anyway?".format(
                     loc.entry.name()
                 )
             )
-            return
+            if not remove_anyway:
+                return
+            res = comm.op('removeEntry', {
+                'module': op.view_module_name(self.view),
+                'entry': loc.entry.name(),
+                'force': True
+            })
+
+        if not res['removed']:
+            raise RuntimeError
 
         with read_only_set_to(self.view, False):
             self.view.erase(edit, loc.entry.reg_entry_nl)
-        op.save_module(self.view)
 
-        op.modify_and_save_modules(self.view.window(), modules_data)
+        op.save_module(self.view)
+        op.modify_and_save_modules(self.view.window(), res['modifiedModules'])

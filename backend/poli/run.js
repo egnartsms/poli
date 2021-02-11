@@ -179,19 +179,24 @@ operationHandlers ::= ({
       );
    },
 
-   removeEntry: function ({module: moduleName, name}) {
+   removeEntry: function ({module: moduleName, entry, force}) {
       let module = $.moduleByName(moduleName);
-      let {removed, affectedModules} = $.opRefactor.removeEntry(module, name);
+      let {removed, affectedModules} = $.opRefactor.removeEntry(module, entry, force);
       
       if (!removed) {
-         $.opRet(null);
+         $.opRet({
+            removed: false
+         });
       }
       else {
-         $.opRet(Array.from(affectedModules, m => ({
-            module: m.name,
-            modifiedEntries: [],
-            importSection: $.dumpImportSection(m)
-         })));
+         $.opRet({
+            removed: true,
+            modifiedModules: Array.from(affectedModules, m => ({
+               module: m.name,
+               importSection: $.dumpImportSection(m),
+               modifiedEntries: [],
+            }))
+         });
       }
    },
 

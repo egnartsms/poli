@@ -105,10 +105,12 @@ def all_poli_views():
             yield view
 
 
+XS_WORD_CHAR = r'[a-zA-Z_\-0-9~!@$%^&*+=?/<>.:|]'
+
 RE_FULL_ENTRY = {
     # the DOTALL is assumed to be on
     'js': r'^(?P<name>\w[\d\w]*) ::= (?P<defn>.+)$',
-    'xs': r'^(?P<name>[a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]+) ::=(?P<defn>.+)$'
+    'xs': r'^(?P<name>{XS_WORD_CHAR}+) ::=(?P<defn>.+)$'.format(**globals())
 }
 
 TEMPLATE_FULL_ENTRY = {
@@ -116,13 +118,15 @@ TEMPLATE_FULL_ENTRY = {
     'xs': '{name} ::={defn}'
 }
 
-
-re_entry_name = r'(?P<entry_name>[a-zA-Z_][0-9a-zA-Z_]*)'
-re_is_entry_name = r'^{}$'.format(re_entry_name)
+RE_ENTRY_NAME = {
+    'js': r'^(?:\w[\d\w]*)$',
+    'xs': r'^(?![-+]?\.?\d)(?:{XS_WORD_CHAR}+)$'.format(**globals())
+}
 
 
 def is_entry_name_valid(name):
-    return bool(re.search(re_is_entry_name, name))
+    # TODO: refactor this func
+    return bool(re.search(RE_ENTRY_NAME['js'], name))
 
 
 def maybe_set_connected_status_in_active_view(is_connected):

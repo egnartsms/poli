@@ -6,7 +6,8 @@ common
    propagateValueToRecipients
 import
    importsOf
-   referenceImports
+   referrerImportsFromTo
+   referrersOf
    unimport
 persist
    deleteArrayItem
@@ -17,7 +18,6 @@ persist
 reference
    isEntryUsed
    isNameFree
-   referrerModules
 rtrec
    delmark
    rtget
@@ -42,6 +42,11 @@ offendingModulesOnRename ::= function (module, oldName, newName) {
    return offendingModules;
 }
 renameRefsIn ::= function (module, renameMap) {
+   // TODO: implement reference renaming for XS
+   if (module.lang === 'xs') {
+      return [];
+   }
+
    function escape(ref) {
       return ref.replace(/\./g, '\\.');
    }
@@ -63,31 +68,31 @@ renameRefsIn ::= function (module, renameMap) {
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
-      let oldCode = module.defs[entry];
-      let newCode = oldCode.replace(re, ref => renameMap.get(ref));
+      let oldSource = module.defs[entry];
+      let newSource = oldSource.replace(re, ref => renameMap.get(ref));
       
-      if (oldCode === newCode) {
+      if (oldSource === newSource) {
          continue;
       }
 
-      let newVal = $.moduleEval(module, newCode);
+      let newVal = $.moduleEval(module, newSource);
 
-      $.setObjectProp(module.defs, entry, newCode);
+      $.setObjectProp(module.defs, entry, newSource);
       $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry);
 
-      modifiedEntries.push([entry, newCode]);
+      modifiedEntries.push([entry, newSource]);
    }
 
    return modifiedEntries;
 }
 modifyRecipientsForRename ::= function (module, oldName, newName) {
-   let referrers = $.referrerModules(module, oldName);
+   let referrers = $.referrersOf(module, oldName);
    let modifiedModules = [];
 
    for (let referrer of referrers) {
       let rnmap = new Map;
-      let {eimp, simp} = $.referenceImports(module, oldName, referrer);
+      let {eimp, simp} = $.referrerImportsFromTo(module, oldName, referrer);
 
       if (eimp) {
          if (eimp.alias === null) {
@@ -162,28 +167,28 @@ replaceUsages ::= function (module, name, newName) {
 
    return $.renameRefsIn(module, [name, newName]);
 }
-removeEntry ::= function (module, name) {
-   if (!$.hasOwnProperty(module.defs, name)) {
-      throw new Error(`Entry named "${name}" does not exist`);
+removeEntry ::= function (module, entry, force) {
+   if (!$.hasOwnProperty(module.defs, entry)) {
+      throw new Error(`Entry named "${entry}" does not exist`);
    }
 
-   if ($.isEntryUsed(module, name)) {
+   if (!force && $.isEntryUsed(module, entry)) {
       return {
          removed: false
       }
    }
 
    // Delete any entry (direct) imports
-   let imps = Array.from($.importsOf(module, name));
+   let imps = Array.from($.importsOf(module, entry));
    let recps = new Set(imps.map(imp => imp.recp));
 
    for (let imp of imps) {
       $.unimport(imp);
    }      
 
-   $.deleteArrayItem(module.entries, module.entries.indexOf(name));
-   $.deleteObjectProp(module.defs, name);
-   $.rtset(module, name, $.delmark);
+   $.deleteArrayItem(module.entries, module.entries.indexOf(entry));
+   $.deleteObjectProp(module.defs, entry);
+   $.rtset(module, entry, $.delmark);
 
    return {
       removed: true,

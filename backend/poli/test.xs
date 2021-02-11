@@ -1,15 +1,14 @@
 -----
-name ::=
-   \ definition
-mem30 ::= 30
 zip ::=
    func* :(seq1 seq2)
-      let it1 = ((@ seq1 Symbol.iterator))
-      let it2 = ((@ seq2 Symbol.iterator))
+      let it1 =
+         call| (@ seq1 Symbol.iterator)
+      let it2 =
+         call| (@ seq2 Symbol.iterator)
       
       forever
-         let (-obj- value: item1 done: done1) = (it1.next)
-         let (-obj- value: item2 done: done2) = (it2.next)
+         let (o| value: item1 done: done1) = (it1.next)
+         let (o| value: item2 done: done2) = (it2.next)
          
          if (&& done1 done2)
             break
@@ -17,21 +16,80 @@ zip ::=
          if done1
             = item1 null
          
-         yield (-arr- item1 item2)
-mem40 ::=
-   \ 40
+         yield (a| item1 item2)
 reverse ::=
    func :(arr)
       let i = 0
       let j = (- arr.length 1)
       
       while (< i j)
-         =
-            -arr- (@ arr i) (@ arr j)
-            -arr- (@ arr j 2) (@ arr i)
+         = (a| arr@i arr@j) (a| arr@j arr@i)
          
          = i (+ i 1)
          = j (- j 1)
+      
+      = (@ arr (+ i 1)) 0
+      =
+         @ arr (+ i 1)
+         \ 0
+      
+      -->
+         $ ".item .nested-basket"
+         .closest
+         .select "..."
+      
+      console.log A@i
+      console.log (@i A)
+      console.log (A@ i)
+      console.log (@ A i)
+      
+      console.log (A@handler process env)
+      #; The following is the same but does not pass A as this
+      console.log ((@ A handler) process env)
+      console.log (@ A (handler process env))
+      
+      console.log A@i@j
+      console.log (A@i@ j)
+      console.log (@i@i A)
+      console.log (@ (@ A i) j)
+      console.log (@ A i j)
+      
+      #; obj.meth1(a11, a12).meth2(a21, a22).meth3(a31, a32)
+      console.log (. (. (. obj (meth1 a11 a12)) (meth2 a21 a22)) (meth3 a31 a32))
+      console.log (. obj (meth1 a11 a12) (meth2 a21 a22) (meth3 a31 a32))
+      console.log
+         . obj
+            meth1 a11 a12
+            meth2 a21 a22
+            meth3 a31 a32
+      
+      #; A[x][y][z]
+      console.log A@x@y@z
+      console.log (@ A x y z)
+      console.log (@ (@ (@ A x) y) z)
+      
+      #; A[handler]
+      (@ obj handler)
+      #; A[getHandler()]
+      (@ obj (get-handler))
+      #; A[handler]()
+      c| (@ obj handler)
+      #; A[getHandler()]()
+      +
+         c| (@ A (get-before-handler))
+         c| (@ A (get-after-handler))
+         c| (@ A (get-cleanup-handler))
+
+      . obj (meth 1 2 3)
+      pc| (. obj meth) 1 2 3
+
+      (@ A (get-prop)) arg1 arg2
+      (A@ (get-prop)) arg1 arg2
+      
+      
+      console.log
+         \ obj.prop (. obj prop) (.prop obj)
+         \ (obj.meth a1 a2) (. obj (meth a1 a2))
 test1 ::= "test1"
 test2 ::=
    func :()
@@ -49,10 +107,10 @@ test3 ::=
       let refs = (extract-refs src-module entry)
       \ 
       
-      let offending-refs = (-arr-)
-      let dangling-refs = (-arr-)
+      let offending-refs = (arr|)
+      let dangling-refs = (arr|)
       let rename-map = (new Map)
-      let imports-to-add = (-arr-)
+      let imports-to-add = (arr|)
       
       func rename :(from to)
          if (!== from to)
@@ -70,7 +128,7 @@ test3 ::=
       for :(ref refs)
          let (-arr- ref-star ref-name) = (split-ref ref)
          let
-            -obj-
+            obj|
                \ found
                module: o-module
                name: o-entry
@@ -108,15 +166,15 @@ test3 ::=
          if (is-name-free? dest-module ref-name)
           then:
             imports-to-add.push
-               -obj-
+               obj|
                   \ recp: dest-module
                   \ donor: o-module
                   \ name: o-entry
-                  \ alias:
-                  ?
-                     === ref-name o-entry
-                     \ null
-                     \ ref-name
+                  alias:
+                     ?
+                        === ref-name o-entry
+                        \ null
+                        \ ref-name
           else:
             offending-refs.push ref
          
@@ -126,7 +184,7 @@ test3 ::=
                \ dangling-refs
                \ rename-map
                \ imports-to-add
-funk ::=
+%delay_24 ::=
    func :()
       ...
       -arr-

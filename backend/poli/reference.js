@@ -6,7 +6,8 @@ import
    importFor
    importedAs
    importsOf
-   referenceImports
+   referrerImportsFromTo
+   referrersOf
 -----
 assert ::= $_.require('assert').strict
 isNameFree ::= function (module, name) {
@@ -25,10 +26,16 @@ whereNameCame ::= function (module, name) {
    return {};
 }
 isReferredTo ::= function (module, name, except=null) {
+   // TODO: implement for XS. For now, we don't know how to check for identifier
+   // bindings, so we assume that nothing is referred to.
+   if (module.lang === 'xs') {
+      return false;
+   }
+
    let re = new RegExp(`(?<![\\w$])\\$\\.${name.replace(/\./g, '\\.')}\\b`);
 
    for (let entry of module.entries) {
-      if (except && entry === except) {
+      if (entry === except) {
          continue;
       }
 
@@ -39,7 +46,7 @@ isReferredTo ::= function (module, name, except=null) {
 
    return false;
 }
-referrerModules ::= function (module, entry) {
+referrerModules1 ::= function (module, entry) {
    let referrers = new Set;
 
    for (let imp of $.importsOf(module, entry)) {
@@ -59,8 +66,8 @@ isEntryUsed ::= function (module, entry) {
       return true;
    }
 
-   for (let recp of $.referrerModules(module, entry)) {
-      let {eimp, simp} = $.referenceImports(module, entry, recp);
+   for (let recp of $.referrersOf(module, entry)) {
+      let {eimp, simp} = $.referrerImportsFromTo(module, entry, recp);
       if (eimp && $.isReferredTo(recp, $.importedAs(eimp))) {
          return true;
       }

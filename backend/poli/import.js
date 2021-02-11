@@ -79,6 +79,13 @@ importsOf ::= function* (module, entry) {
       }
    }
 }
+referrerImportsOf ::= function* (module, entry) {
+   for (let imp of $.importsFrom(module)) {
+      if (imp.name === entry || imp.name === null) {
+         yield imp;
+      }
+   }
+}
 importFor ::= function (module, name) {
    for (let imp of $.imports) {
       if (imp.recp === module && $.importedAs(imp) === name) {
@@ -114,14 +121,16 @@ connectedModulesOf ::= function (module) {
    
    return modules;
 }
-recipientsOf ::= function (module, entry) {
+referrersOf ::= function (module, entry) {
    let recps = new Set;
-   for (let imp of $.importsOf(module, entry)) {
+
+   for (let imp of $.referrerImportsOf(module, entry)) {
       recps.add(imp.recp);
    }
-   return Array.from(recps);
+
+   return recps;
 }
-referenceImports ::= function (donor, entry, recp) {
+referrerImportsFromTo ::= function (donor, entry, recp) {
    return {
       eimp: $.importFromTo(donor, entry, recp),
       simp: $.importFromTo(donor, null, recp)
