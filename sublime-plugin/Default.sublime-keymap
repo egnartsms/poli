@@ -93,7 +93,7 @@
             "direction": "up"
         },
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
@@ -104,7 +104,7 @@
             "direction": "down"
         },
         "context": [
-            {"key": "poli_kind", "operand": "module/js"},
+            {"key": "poli_kind", "operand": "module"},
             {"key": "poli_regedit", "operand": false}
         ]
     },
