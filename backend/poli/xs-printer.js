@@ -59,7 +59,7 @@ dumpNext ::= function* (stx, level) {
    
    yield '\n';
    yield* $.dumpIndentation(indent + stx.nl);
-   yield* $.dumpMultilined(stx, level + stx.nl);
+   yield* $.dumpMultilined(stx, indent + stx.nl);
 }
 dumpComment ::= function* (comment, level) {
    yield '#;';
