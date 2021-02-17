@@ -2,6 +2,7 @@ import re
 import sublime
 
 from poli.comm import comm
+from poli.exc import XsTokenizeError
 from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import insert_in
@@ -116,9 +117,6 @@ class PoliCancel(ModuleTextCommand):
             op.exit_edit_mode(self.view)
 
 
-RE_DEFN = r'^(?P<name>[a-zA-Z_][0-9a-zA-Z_]*) ::= (?P<defn>.+)$'
-
-
 class PoliCommit(ModuleTextCommand):
     only_in_mode = 'edit'
 
@@ -132,11 +130,18 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
 
-            res = comm.op('editEntry', {
-                'module': op.view_module_name(self.view),
-                'name': cxt.name,
-                'newSource': new_src
-            })
+            try:
+                res = comm.op('editEntry', {
+                    'module': op.view_module_name(self.view),
+                    'name': cxt.name,
+                    'newSource': new_src
+                })
+            except XsTokenizeError as e:
+                row0, col0 = self.view.rowcol(reg.begin())
+                error_point = self.view.text_point(row0 + e.row, e.col)
+                set_selection(self.view, to=error_point)
+                sublime.status_message(e.message)
+                return
 
             self.view.set_read_only(False)
             self.view.replace(edit, reg, res['normalizedSource'])

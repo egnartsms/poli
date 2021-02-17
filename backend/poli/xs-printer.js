@@ -2,7 +2,6 @@ xs-tokenizer
    indSpaces
    partialIndSpaces
 -----
-assert ::= $_.require('assert').strict
 syntax2str ::= function (stx) {
    return Array.from($.dumpMultilined(stx, 0)).join('');
 }

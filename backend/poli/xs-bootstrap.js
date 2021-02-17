@@ -1,12 +1,12 @@
 bootstrap
    addModuleInfoImports
+   assert
    effectuateImports
    modules
    skRuntimeKeys
 xs-reader
    readEntryDefinition
 -----
-assert ::= $_.require('assert').strict
 makeModulesByInfo ::= function (modulesInfo) {
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeXsModule(name, body);

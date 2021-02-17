@@ -1,3 +1,10 @@
+bootstrap
+   assert
+common
+   yreExec
+   yreTest
+exc
+   throwApiError
 -----
 tokenizeString ::= function (str) {
    return $.tokenizeStream($.makeStream(str));
@@ -17,19 +24,15 @@ makeStream ::= function (str) {
    $.nextLine(stm);
    return stm;
 }
-assert ::= $_.require('assert').strict
+throwTokenizeError ::= function (stm, message) {
+   $.throwApiError('xs-tokenize', {
+      message: message,
+      row: stm.row,
+      col: stm.col
+   });
+}
 indSpaces ::= 3
 partialIndSpaces ::= 1
-yreExec ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.exec(str);
-}
-yreTest ::= function (re, offset, str) {
-   $.assert(re.sticky);
-   re.lastIndex = offset;
-   return re.test(str);
-}
 isAtEos ::= function (stm) {
    return stm.line === null;
 }
@@ -131,7 +134,7 @@ parseIndentation ::= function (stm) {
       }
    }
    else {
-      throw new Error(`Incorrect indentation of ${nspaces} spaces`);
+      $.throwTokenizeError(stm, `Incorrect indentation`);
    }
 }
 parseComment ::= function* (stm) {
@@ -153,7 +156,7 @@ parseComment ::= function* (stm) {
       };
    }
    else {
-      throw new Error(`Invalid comment`);
+      $.throwTokenizeError(stm, `Invalid comment`);
    }
 
    while (!$.isAtEos(stm)) {
@@ -171,7 +174,7 @@ parseComment ::= function* (stm) {
          break;
       }
       if (nspaces < commentIndent) {
-         throw new Error(`Insufficient indentation for a comment`);
+         $.throwTokenizeError(stm, `Insufficient indentation for a comment`);
       }
 
       $.advanceN(stm, commentIndent);
@@ -199,19 +202,22 @@ parseContinuationLine ::= function* (stm) {
       yield* $.parseNormalLine(stm);
    }
    else {
-      throw new Error(`Invalid continuation line start`);
+      $.throwTokenizeError(stm, `Invalid continuation line start`);
    }
 }
 parseNormalLine ::= function* (stm) {
-   if (stm.line[stm.line.length - 1] === ' ') {
-      throw new Error(`Line ends with trailing spaces`);
+   let trailingSpacesMatch = /\x20+$/.exec(stm.line);
+   
+   if (trailingSpacesMatch) {
+      stm.col = trailingSpacesMatch.index;
+      $.throwTokenizeError(stm, `Line ends with trailing spaces`);
    }
 
    let isAfterOpenParen = false;
 
    while (!$.isAtEol(stm)) {
       if (stm.nextChar === ' ') {
-         throw new Error(`Excessive whitespace`);
+         $.throwTokenizeError(stm, `Excessive whitespace`);
       }
 
       let match = $.yExec(stm, /:?\(/y);
@@ -226,7 +232,7 @@ parseNormalLine ::= function* (stm) {
 
       if (stm.nextChar === ')') {
          if (!isAfterOpenParen) {
-            throw new Error(`Closing parenthesis preceded by whitespace`);
+            $.throwTokenizeError(stm, `Closing parenthesis preceded by whitespace`);
          }
       }
       else {
@@ -241,7 +247,7 @@ parseNormalLine ::= function* (stm) {
       }
       
       if (stm.nextChar === '(') {
-         throw new Error(`Missing whitespace before opening parenthesis`);
+         $.throwTokenizeError(stm, `Missing whitespace before opening parenthesis`);
       }
 
       if (stm.nextChar === ' ') {
@@ -256,7 +262,7 @@ consumeString ::= function (stm) {
    let match = $.yExec(stm, re);
 
    if (!match.groups.term) {
-      throw new Error(`Unterminated string literal`);
+      $.throwTokenizeError(stm, `Unterminated string literal`);
    }
 
    $.advanceMatch(stm, match);
@@ -274,22 +280,26 @@ consumeToken ::= function (stm) {
    let match = $.yExec(stm, /[^ ()"]+/y);
    let word = match[0];
 
-   if (/[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]/.test(word)) {
-      throw new Error(`Invalid character in the middle of the word`);
+   let invCharMatch = /[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]/.exec(word);
+   if (invCharMatch) {
+      $.advanceN(stm, invCharMatch.index);
+      $.throwTokenizeError(stm, `Invalid character in the middle of the word`);
    }
-
-   $.advanceMatch(stm, match);
    
    if (/^[-+]?\.?[0-9]/.test(word)) {
       if ($.numberValue(word) === null) {
-         throw new Error(`Invalid numeric literal: ${word}`);
+         $.throwTokenizeError(stm, `Invalid numeric literal`)
       }
-
+      
+      $.advanceMatch(stm, match);
+      
       return {
          token: 'number',
          number: word
       }
    }
+
+   $.advanceMatch(stm, match);
 
    if (word[word.length - 1] === ':') {
       return {

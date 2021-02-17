@@ -2,6 +2,10 @@ import re
 
 
 class BackendError(Exception):
+    def __init__(self, message, **kws):
+        super().__init__(message)
+        self.message = message
+
     @classmethod
     def make(cls, info):
         def camel_to_underscore(s):
@@ -13,14 +17,26 @@ class BackendError(Exception):
 class GenericError(BackendError):
     name = 'generic'
 
-    def __init__(self, stack, message):
-        super().__init__()
+    def __init__(self, stack, **kws):
+        super().__init__(**kws)
         self.stack = stack
-        self.message = message
 
 
-class ReplEvalError(GenericError):
-    name = 'replEval'
+class ReplEvalError(BackendError):
+    name = 'repl-eval'
+
+    def __init__(self, stack, **kws):
+        super().__init__(**kws)
+        self.stack = stack
+
+
+class XsTokenizeError(BackendError):
+    name = 'xs-tokenize'
+
+    def __init__(self, row, col, **kws):
+        super().__init__(**kws)
+        self.row = row
+        self.col = col
 
 
 def descendant_classes_of(cls):

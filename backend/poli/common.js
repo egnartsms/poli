@@ -1,4 +1,5 @@
 bootstrap
+   assert
    modules
 img2fs
    dumpModuleImportSection
@@ -59,4 +60,14 @@ extendArray ::= function (A, X) {
       i += 1;
       j += 1;
    }
+}
+yreExec ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.exec(str);
+}
+yreTest ::= function (re, offset, str) {
+   $.assert(re.sticky);
+   re.lastIndex = offset;
+   return re.test(str);
 }

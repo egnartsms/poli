@@ -1,3 +1,5 @@
+bootstrap
+   assert
 common
    extendArray
 xs-tokenizer
@@ -35,7 +37,6 @@ readEntryDefinition ::= function (src) {
    
    return stx;
 }
-assert ::= $_.require('assert').strict
 makeTokenStream ::= function (str) {
    let gtor = $.tokenizeString(str);
    let stm = {

@@ -3,7 +3,6 @@ xs-printer
 xs-reader
    read1FromString
 -----
-assert ::= $_.require('assert').strict
 util ::= $_.require('util')
 text ::= String.raw`
 square-equation ::=$
