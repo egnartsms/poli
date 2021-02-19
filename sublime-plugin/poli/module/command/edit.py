@@ -2,7 +2,7 @@ import re
 import sublime
 
 from poli.comm import comm
-from poli.exc import XsTokenizeError
+from poli.exc import CodeError
 from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import insert_in
@@ -136,7 +136,7 @@ class PoliCommit(ModuleTextCommand):
                     'name': cxt.name,
                     'newSource': new_src
                 })
-            except XsTokenizeError as e:
+            except CodeError as e:
                 row0, col0 = self.view.rowcol(reg.begin())
                 error_point = self.view.text_point(row0 + e.row, e.col)
                 set_selection(self.view, to=error_point)

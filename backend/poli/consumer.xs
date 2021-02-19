@@ -1,13 +1,14 @@
 -----
 use-reverse ::=
    func :()
-      reverse "Hey there"
+      reverse "Hey there" fu?ck
 gcd ::=
    func :((obj| (module: module-name) lang))
       if
             ||
                !== (typeof lang) "string"
                not (. (arr| "xs" "js") (includes lang))
+         ()
          throw (new Error "Invalid module lang")
       
       op-module/add-new-module module-name lang

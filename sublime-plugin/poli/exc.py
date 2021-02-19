@@ -30,8 +30,8 @@ class ReplEvalError(BackendError):
         self.stack = stack
 
 
-class XsTokenizeError(BackendError):
-    name = 'xs-tokenize'
+class CodeError(BackendError):
+    name = 'code'
 
     def __init__(self, row, col, **kws):
         super().__init__(**kws)

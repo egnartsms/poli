@@ -2,8 +2,11 @@ bootstrap
    assert
 common
    extendArray
+exc
+   throwApiError
 xs-tokenizer
-   tokenizeString
+   makeStream
+   tokenizeStream
 -----
 read1FromString ::= function (str) {
    let stm = $.makeTokenStream(str);
@@ -29,8 +32,12 @@ readEntryDefinition ::= function (src) {
    let stx = $.readMultilined(stm, 0);
    
    if (stx.sub.length !== 2) {
-      throw new Error(`Invalid definition: expected just 1 object, got ` +
-                      `${stx.sub.length - 1}`);
+      $.throwApiError('code', {
+         message: `Invalid definition: expected just 1 object, got ` +
+                  `${stx.sub.length - 1}`,
+         row: 0,
+         col: 0
+      });
    }
    
    stx = stx.sub[1];
@@ -38,10 +45,17 @@ readEntryDefinition ::= function (src) {
    return stx;
 }
 makeTokenStream ::= function (str) {
-   let gtor = $.tokenizeString(str);
+   let sourceStream = $.makeStream(str);
+   let gtor = $.tokenizeStream(sourceStream);
+   
    let stm = {
-      gtor: gtor,
+      sourceStream,
+      gtor,
       next: null,
+      pos: {
+         row: sourceStream.row,
+         col: sourceStream.col
+      },
       nblanks: 0
    };
 
@@ -55,6 +69,9 @@ move ::= function (stm) {
    
    for (;;) {
       let done;
+      
+      stm.pos.row = stm.sourceStream.row;
+      stm.pos.col = stm.sourceStream.col;
       
       ({done, value: next} = stm.gtor.next());
       
@@ -75,6 +92,13 @@ move ::= function (stm) {
    stm.nblanks = nblanks;
    
    return next;
+}
+raise ::= function (stm, message) {
+   $.throwApiError('code', {
+      message: message,
+      row: stm.pos.row,
+      col: stm.pos.col
+   });
 }
 isAtEos ::= function (stm) {
    return stm.next === null;
@@ -104,7 +128,7 @@ readMultilined ::= function (stm, mylevel) {
       }
       
       if (lvlshift > 2 || (lvlshift === 2 && !full)) {
-         throw new Error(`Too much of an indentation`);
+         $.raise(stm, `Too much of an indentation`);
       }
       
       for (let i = 0; i < stm.nblanks; i += 1) {
@@ -151,15 +175,15 @@ readMultilined ::= function (stm, mylevel) {
          $.assert(lvlshift === 1);
 
          if (stm.next.token !== 'keyword') {
-            throw new Error(`Expected a keyword at partially indented position, found ` +
-                            `'${stm.next.token}'`);
+            $.raise(stm, `Expected a keyword at partially indented position, found ` +
+                         `'${stm.next.token}'`);
          }
          let keyword = stm.next.word;
 
          $.move(stm);
          if (stm.next.token !== 'nl') {
-            throw new Error(`Expected a linebreak after a keyword at partially ` +
-                            `indented position, found '${stm.next.token}'`);
+            $.raise(stm, `Expected a linebreak after a keyword at partially ` +
+                         `indented position, found '${stm.next.token}'`)
          }
          $.move(stm);
          
@@ -254,7 +278,7 @@ readLineUnit ::= function (stm) {
          break;
 
       case ')':
-         throw new Error(`Unexpected closing parenthesis`);
+         $.raise(stm, `Unexpected closing parenthesis`);
       
       default:
          $.assert(stm.next.token === '(' || stm.next.token === ':(');
@@ -282,7 +306,7 @@ readLineUnit ::= function (stm) {
    }
    
    if (stm.next.token === 'nl') {
-      throw new Error(`Unclosed parenthesis`);
+      $.raise(stm, `Unclosed parenthesis`);
    }
    
    $.move(stm);
