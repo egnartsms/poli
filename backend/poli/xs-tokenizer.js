@@ -79,43 +79,36 @@ advanceMatch ::= function (stm, match) {
 isLookingAtBlankLine ::= function (stm) {
    return $.isLookingAt(stm, /[ ]*$/y);
 }
-withSource ::= function (stm, callback) {
+sourceSpan ::= function (stm, callback) {
    let row = stm.row;
    let col = stm.col;
    let maxcol = stm.line.length;
    
-   let token = callback();
+   callback();
    
    $.assert(stm.row === row || stm.row === row + 1);
    
-   token.row = row;
-   token.col = col;
-   token.span = (stm.row === row ? stm.col : maxcol) - col;
-   
-   return token;
+   return {
+      row,
+      col,
+      span: (stm.row === row ? stm.col : maxcol) - col
+   };
 }
 tokenizeStream ::= function* (stm) {
    while (!$.isAtEos(stm)) {
-      for (let callback of $.parseLine(stm)) {
-         yield $.withSource(stm, callback);
-      }
+      yield* $.parseLine(stm);
    }
 }
 parseLine ::= function* (stm) {
    if ($.isLookingAtBlankLine(stm)) {
-      yield () => {
-         $.nextLine(stm);
-         return {
-            token: 'blank'
-         }
+      yield {
+         token: 'blank',
+         ...$.sourceSpan(stm, () => $.nextLine(stm))
       };
       return;
    }
 
-   yield () => ({
-      token: 'indent',
-      ...$.parseIndentation(stm)
-   });
+   yield $.parseIndentation(stm);
    
    if ($.isLookingAt(stm, /#;/y)) {
       yield* $.parseComment(stm);
@@ -129,11 +122,9 @@ parseLine ::= function* (stm) {
       yield* $.parseNormalLine(stm);
    }
    
-   yield () => {
-      $.nextLine(stm);
-      return {
-         token: 'nl'
-      };
+   yield {
+      token: 'nl',
+      ...$.sourceSpan(stm, () => $.nextLine(stm))
    };
 }
 parseIndentation ::= function (stm) {
@@ -141,17 +132,19 @@ parseIndentation ::= function (stm) {
    let rem = nspaces % $.indSpaces;
 
    if (rem === 0) {
-      $.advanceN(stm, nspaces);
       return {
+         token: 'indent',
          level: Math.trunc(nspaces / $.indSpaces),
-         full: true
+         full: true,
+         ...$.sourceSpan(stm, () => $.advanceN(stm, nspaces))
       }
    }
    else if (rem === $.partialIndSpaces) {
-      $.advanceN(stm, nspaces);
       return {
+         token: 'indent',
          level: Math.trunc(nspaces / $.indSpaces) + 1,
-         full: false
+         full: false,
+         ...$.sourceSpan(stm, () => $.advanceN(stm, nspaces))
       }
    }
    else {
@@ -170,12 +163,10 @@ parseComment ::= function* (stm) {
    else if (stm.nextChar === ' ') {
       $.advanceN(stm, 1);
       let line = $.isLookingAtBlankLine(stm) ? '' : $.restOfLine(stm);
-      yield () => {
-         $.nextLine(stm);
-         return {
-            token: 'comment-line',
-            line: line
-         }
+      yield {
+         token: 'comment-line',
+         line: line,
+         ...$.sourceSpan(stm, () => $.nextLine(stm))
       };
    }
    else {
@@ -184,12 +175,10 @@ parseComment ::= function* (stm) {
 
    while (!$.isAtEos(stm)) {
       if ($.isLookingAtBlankLine(stm)) {
-         yield () => {
-            $.nextLine(stm);
-            return {
-               token: 'comment-line',
-               line: ''
-            };
+         yield {
+            token: 'comment-line',
+            line: '',
+            ...$.sourceSpan(stm, () => $.nextLine(stm))
          };
          continue;
       }
@@ -204,22 +193,17 @@ parseComment ::= function* (stm) {
 
       $.advanceN(stm, commentIndent);
 
-      let line = $.restOfLine(stm);
-      yield () => {
-         $.nextLine(stm);
-         return {
-            token: 'comment-line',
-            line: line
-         };
-      };
+      yield {
+         token: 'comment-line',
+         line: $.restOfLine(stm),
+         ...$.sourceSpan(stm, () => $.nextLine(stm))
+      }
    }
 }
 parseContinuationLine ::= function* (stm) {
-   yield () => {
-      $.advanceN(stm, 1);
-      return {
-         token: '\\'
-      }
+   yield {
+      token: '\\',
+      ...$.sourceSpan(stm, () => $.advanceN(stm, 1))
    };
    
    if ($.isLookingAtBlankLine(stm)) {
@@ -250,11 +234,9 @@ parseNormalLine ::= function* (stm) {
 
       let match = $.yExec(stm, /:?\(/y);
       if (match) {
-         yield () => {
-            $.advanceMatch(stm, match);
-            return {
-               token: match[0]
-            };
+         yield {
+            token: match[0],
+            ...$.sourceSpan(stm, () => $.advanceMatch(stm, match))
          };
          isAfterOpenParen = true;
          continue;
@@ -266,15 +248,13 @@ parseNormalLine ::= function* (stm) {
          }
       }
       else {
-         yield* $.consumeToken(stm);
+         yield $.consumeToken(stm);
       }
       
       while (stm.nextChar === ')') {
-         yield () => {
-            $.advanceN(stm, 1);
-            return {
-               token: ')'
-            };
+         yield {
+            token: ')',
+            ...$.sourceSpan(stm, () => $.advanceN(stm, 1))
          };
       }
       
@@ -288,7 +268,7 @@ parseNormalLine ::= function* (stm) {
       }
    }
 }
-consumeString ::= function* (stm) {
+consumeString ::= function (stm) {
    const re = /"(?:\\(?:x\h\h|u\h\h\h\h|.)|[^\\])*?(?<term>"|$)/y;
 
    let match = $.yExec(stm, re);
@@ -297,18 +277,15 @@ consumeString ::= function* (stm) {
       $.raise(stm, `Unterminated string literal`);
    }
 
-   yield () => {
-      $.advanceMatch(stm, match);
-      return {
-         token: 'string',
-         string: JSON.parse(match[0])
-      };
+   return {
+      token: 'string',
+      string: JSON.parse(match[0]),
+      ...$.sourceSpan(stm, () => $.advanceMatch(stm, match))
    };
 }
-consumeToken ::= function* (stm) {
+consumeToken ::= function (stm) {
    if (stm.nextChar === '"') {
-      yield* $.consumeString(stm);
-      return;
+      return $.consumeString(stm);
    }
    
    let match = $.yExec(stm, /[^ ()"]+/y);
@@ -325,23 +302,19 @@ consumeToken ::= function* (stm) {
          $.raise(stm, `Invalid numeric literal`)
       }
       
-      yield () => {
-         $.advanceMatch(stm, match);
-         return {
-            token: 'number',
-            number: word
-         };
+      return {
+         token: 'number',
+         number: word,
+         ...$.sourceSpan(stm, () => $.advanceMatch(stm, match))
       };
-      return;
    }
-   
-   yield () => {
-      $.advanceMatch(stm, match);
+   else {
       return {
          token: word[word.length - 1] === ':' ? 'keyword' : 'word',
-         word: word
-      }
-   };
+         word: word,
+         ...$.sourceSpan(stm, () => $.advanceMatch(stm, match))
+      };
+   }
 }
 numberValue ::= function (number) {
    let value;
