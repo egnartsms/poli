@@ -6,6 +6,9 @@ common
    dumpImportSections
    moduleByName
    moduleNames
+exc
+   ApiError
+   throwApiError
 img2fs
    flushModule
 import
@@ -30,7 +33,6 @@ rtrec
    applyRtDelta
    discardRtDelta
 -----
-assert ::= $_.require('assert').strict
 WebSocket ::= $_.require('ws')
 port ::= 8080
 server ::= null
@@ -83,9 +85,25 @@ handleOperation ::= function (op) {
    catch (e) {
       // Remember that we don't yet have a normal rolling back, so after a failure
       // things in memory will most likely be corrupted.
-      $.discardRtDelta();
       console.error(e);
-      $.opExc('generic', {stack: e.stack, message: e.message});
+
+      $.discardRtDelta();
+
+      let error, info;
+      
+      if (e instanceof $.ApiError) {
+         error = e.error;
+         info = e.info;
+      }
+      else {
+         error = 'generic';
+         info = {
+            stack: e.stack,
+            message: e.message
+         };
+      }
+
+      $.opExc(error, info);
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
@@ -315,8 +333,10 @@ operationHandlers ::= ({
          res = $.moduleEval(module, code);
       }
       catch (e) {
-         $.opExc('replEval', {stack: e.stack, message: e.message});
-         return;
+         $.throwApiError('repl-eval', {
+            message: e.message,
+            stack: e.stack,
+         });
       }
 
       $.opRet($.serialize(res));

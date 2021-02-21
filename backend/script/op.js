@@ -240,21 +240,21 @@ function renumerateObjects(db) {
       newid += 1;
    }
 
-   let stmtGetVal = db.prepare(`select val from obj where id = :id`).pluck();
-   let stmtPutVal = db.prepare(`update obj set val = :val where id = :id`);
-   let stmtPutKey = db.prepare(`update obj set id = :newid where id = :id`);
+   let stmtGetVal = db.prepare(`select val from obj where id = ?`).pluck();
+   let stmtPutVal = db.prepare(`update obj set val = ? where id = ?`);
+   let stmtPutKey = db.prepare(`update obj set id = ? where id = ?`);
    
    for (let [oldid, newid] of old2new) {
-      let oldval = stmtGetVal.get({id: oldid});
+      let oldval = stmtGetVal.get(oldid);
       let newval = JSON.stringify(
          JSON.parse(oldval, function (key, val) {
             return (key === '__ref') ? old2new.get(val) : val;
          })
       );
 
-      stmtPutVal.run({id: oldid, val: newval});
+      stmtPutVal.run(newval, oldid);
       if (oldid !== newid) {
-         stmtPutKey.run({id: oldid, newid: newid});
+         stmtPutKey.run(newid, oldid);
       }
    }
 }

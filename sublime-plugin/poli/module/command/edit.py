@@ -116,9 +116,6 @@ class PoliCancel(ModuleTextCommand):
             op.exit_edit_mode(self.view)
 
 
-RE_DEFN = r'^(?P<name>[a-zA-Z_][0-9a-zA-Z_]*) ::= (?P<defn>.+)$'
-
-
 class PoliCommit(ModuleTextCommand):
     only_in_mode = 'edit'
 
@@ -132,11 +129,12 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
 
-            res = comm.op('editEntry', {
-                'module': op.view_module_name(self.view),
-                'name': cxt.name,
-                'newSource': new_src
-            })
+            with op.code_error_source_indication(self.view, reg.begin()):
+                res = comm.op('editEntry', {
+                    'module': op.view_module_name(self.view),
+                    'name': cxt.name,
+                    'newSource': new_src
+                })
 
             self.view.set_read_only(False)
             self.view.replace(edit, reg, res['normalizedSource'])
@@ -166,13 +164,15 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
 
-            res = comm.op('addEntry', {
-                'module': op.view_module_name(self.view),
-                'name': mtch.group('name'),
-                'source': mtch.group('defn'),
-                'anchor': cxt.name,
-                'before': cxt.is_before
-            })
+            defn_start = reg.begin() + mtch.start('defn')
+            with op.code_error_source_indication(self.view, defn_start):
+                res = comm.op('addEntry', {
+                    'module': op.view_module_name(self.view),
+                    'name': mtch.group('name'),
+                    'source': mtch.group('defn'),
+                    'anchor': cxt.name,
+                    'before': cxt.is_before
+                })
 
             self.view.set_read_only(False)
             self.view.replace(

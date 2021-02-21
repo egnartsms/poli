@@ -2,8 +2,9 @@ xs-printer
    syntax2str
 xs-reader
    read1FromString
+xs-tokenizer
+   makeStream
 -----
-assert ::= $_.require('assert').strict
 util ::= $_.require('util')
 text ::= String.raw`
 square-equation ::=$
@@ -43,6 +44,15 @@ square-equation ::=$
                      * 2 a
 `.slice(1)
 text1 ::= 'that will be set at runtime'
+testTok ::= function () {
+   console.time();
+   for (let i = 0; i < 10_000; i += 1) {
+      let stm = $.makeStream($.text);
+      let gtor = $.tokenizeStream(stm);
+      let arr = Array.from(gtor);
+   }
+   console.timeEnd();
+}
 test ::= function () {
    let obj1 = $.read1FromString($.text);
    $.text1 = $.syntax2str(obj1) + '\n';

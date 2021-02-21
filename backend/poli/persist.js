@@ -1,11 +1,11 @@
 bootstrap
    addRecordedObjects
+   assert
    isObject
    obj2id
    objrefRecorder
    skSet
 -----
-assert ::= $_.require('assert').strict
 stmtSetProp ::= $_.db.prepare(`
    UPDATE obj SET val = json_set(val, :path, json(:propval)) WHERE id = :id
 `)

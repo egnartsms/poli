@@ -2,7 +2,6 @@ xs-tokenizer
    indSpaces
    partialIndSpaces
 -----
-assert ::= $_.require('assert').strict
 syntax2str ::= function (stx) {
    return Array.from($.dumpMultilined(stx, 0)).join('');
 }
@@ -59,7 +58,7 @@ dumpNext ::= function* (stx, level) {
    
    yield '\n';
    yield* $.dumpIndentation(indent + stx.nl);
-   yield* $.dumpMultilined(stx, level + stx.nl);
+   yield* $.dumpMultilined(stx, indent + stx.nl);
 }
 dumpComment ::= function* (comment, level) {
    yield '#;';

@@ -5,6 +5,7 @@ from poli.sublime import *
 
 import sublime
 import sublime_plugin
+from contextlib import contextmanager
 
 from poli import config
 from poli.comm import comm
@@ -13,6 +14,32 @@ from poli.shared.misc import poli_info
 from poli.sublime.misc import query_context_matches
 
 
+@contextmanager
+def our_view_event_listener_classes_removed():
+    """Temporarily remove all our classes from sublime_plugin.view_event_listener_classes.
+    
+    At the time `plugin_loaded` is called, ViewEventListeners are not yet instantiated,
+    and as soon as we assign to view.settings() they will get created by means of
+    `sublime_plugin.check_view_event_listeners()`. And then they will get created second
+    time when we return from `plugin_loaded`. So we will end up with double listener
+    instances. That's why we temporarily remove our VEL classes from that global list.
+    """
+    num = sum(
+        1
+        for key, val in globals().items()
+        if isinstance(val, type) and issubclass(val, sublime_plugin.ViewEventListener)
+    )
+
+    retained = sublime_plugin.view_event_listener_classes[-num:]
+    del sublime_plugin.view_event_listener_classes[-num:]
+
+    try:
+        yield
+    finally:
+        sublime_plugin.view_event_listener_classes += retained
+
+
+@our_view_event_listener_classes_removed()
 def plugin_loaded():
     if config.enabled:
         for view in op.all_poli_views():

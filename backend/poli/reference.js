@@ -1,4 +1,5 @@
 bootstrap
+   assert
    hasOwnProperty
 common
    joindot
@@ -9,7 +10,6 @@ import
    referrerImportsFromTo
    referrersOf
 -----
-assert ::= $_.require('assert').strict
 isNameFree ::= function (module, name) {
    return !($.hasOwnProperty(module.defs, name) || module.importedNames.has(name));
 }
