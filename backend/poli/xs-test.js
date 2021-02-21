@@ -4,7 +4,6 @@ xs-reader
    read1FromString
 xs-tokenizer
    makeStream
-   tokenizeStream
 -----
 util ::= $_.require('util')
 text ::= String.raw`
@@ -30,9 +29,9 @@ square-equation ::=$
                <arr>
                   / (- b) (* 2 a)
          
-         \
-         \
-      
+         \ 
+         \ 
+         
          otherwise:
             return
                <arr>

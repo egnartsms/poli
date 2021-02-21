@@ -2,7 +2,6 @@ import re
 import sublime
 
 from poli.comm import comm
-from poli.exc import CodeError
 from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import insert_in
@@ -130,18 +129,12 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
 
-            try:
+            with op.code_error_source_indication(self.view, reg.begin()):
                 res = comm.op('editEntry', {
                     'module': op.view_module_name(self.view),
                     'name': cxt.name,
                     'newSource': new_src
                 })
-            except CodeError as e:
-                row0, col0 = self.view.rowcol(reg.begin())
-                error_point = self.view.text_point(row0 + e.row, e.col)
-                set_selection(self.view, to=error_point)
-                sublime.status_message(e.message)
-                return
 
             self.view.set_read_only(False)
             self.view.replace(edit, reg, res['normalizedSource'])
@@ -171,13 +164,15 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Empty definition not allowed")
                 return
 
-            res = comm.op('addEntry', {
-                'module': op.view_module_name(self.view),
-                'name': mtch.group('name'),
-                'source': mtch.group('defn'),
-                'anchor': cxt.name,
-                'before': cxt.is_before
-            })
+            defn_start = reg.begin() + mtch.start('defn')
+            with op.code_error_source_indication(self.view, defn_start):
+                res = comm.op('addEntry', {
+                    'module': op.view_module_name(self.view),
+                    'name': mtch.group('name'),
+                    'source': mtch.group('defn'),
+                    'anchor': cxt.name,
+                    'before': cxt.is_before
+                })
 
             self.view.set_read_only(False)
             self.view.replace(

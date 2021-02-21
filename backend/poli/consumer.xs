@@ -1,7 +1,6 @@
 -----
-use-reverse ::=
-   func :()
-      reverse "Hey there" fu?ck
+a ::= 34
+use-reverse ::= (falsy? val)
 gcd ::=
    func :((obj| (module: module-name) lang))
       if

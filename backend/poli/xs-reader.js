@@ -5,11 +5,11 @@ common
 exc
    throwApiError
 xs-tokenizer
-   makeStream
-   tokenizeStream
+   tokenizeEntryDefinition
+   tokenizeMultilined
 -----
 read1FromString ::= function (str) {
-   let stm = $.makeTokenStream(str);
+   let stm = $.makeStream(str);
 
    $.assert(stm.next.token === 'indent');
    $.assert(stm.next.level === 0);
@@ -20,42 +20,10 @@ read1FromString ::= function (str) {
    stx.nl = 1;
    return stx;
 }
-readEntryDefinition ::= function (src) {
-   let augmSrc = 'fake-header' + src;  // src is not left-trimmed of spaces
-   let stm = $.makeTokenStream(augmSrc);
-   
-   $.assert(stm.next.token === 'indent');
-   $.assert(stm.next.level === 0);
-   
-   $.move(stm);
-
-   let stx = $.readMultilined(stm, 0);
-   
-   if (stx.sub.length !== 2) {
-      $.throwApiError('code', {
-         message: `Invalid definition: expected just 1 object, got ` +
-                  `${stx.sub.length - 1}`,
-         row: 0,
-         col: 0
-      });
-   }
-   
-   stx = stx.sub[1];
-   
-   return stx;
-}
-makeTokenStream ::= function (str) {
-   let sourceStream = $.makeStream(str);
-   let gtor = $.tokenizeStream(sourceStream);
-   
+makeStream ::= function (gtor) {
    let stm = {
-      sourceStream,
       gtor,
       next: null,
-      pos: {
-         row: sourceStream.row,
-         col: sourceStream.col
-      },
       nblanks: 0
    };
 
@@ -69,9 +37,6 @@ move ::= function (stm) {
    
    for (;;) {
       let done;
-      
-      stm.pos.row = stm.sourceStream.row;
-      stm.pos.col = stm.sourceStream.col;
       
       ({done, value: next} = stm.gtor.next());
       
@@ -96,8 +61,8 @@ move ::= function (stm) {
 raise ::= function (stm, message) {
    $.throwApiError('code', {
       message: message,
-      row: stm.pos.row,
-      col: stm.pos.col
+      row: stm.next.row,
+      col: stm.next.col,
    });
 }
 isAtEos ::= function (stm) {
@@ -106,6 +71,79 @@ isAtEos ::= function (stm) {
 isAtEol ::= function (stm) {
    return stm.next.token === 'nl';
 }
+readEntryDefinition ::= function (src) {
+   let stm = $.makeStream($.tokenizeEntryDefinition(src));
+   let stx;
+   
+   if ($.isAtEol(stm)) {
+      stx = $.readMultilinedEntryDefinition(stm);
+   }
+   else {
+      stx = $.readLineUnit(stm);
+      $.checkTerminalNewline(stm);
+   }
+   
+   return stx;
+}
+readMultilinedEntryDefinition ::= function (stm) {
+   // Initial state is: looking at EOL in 'entry-name ::='
+   $.move(stm);
+   
+   if (stm.nblanks > 0) {
+      $.raise(stm, `Blank line at the entry definition level`);
+   }
+   
+   $.assert(stm.next.token === 'indent');
+   
+   if (stm.next.level !== 1) {
+      $.raise(stm, `Invalid indentation level (expected 1)`);
+   }
+   if (!stm.next.full) {
+      $.raise(stm, `Partial indentation at the entry definition level`);
+   }
+   
+   $.move(stm);
+   
+   if (stm.next.token === '\\') {
+      $.move(stm);
+      
+      if ($.isAtEol(stm)) {
+         $.raise(stm, `Empty continuation line at the entry definition level`);
+      }
+      
+      let stx = $.readLineUnit(stm);
+      stx.nl = -1;
+      
+      $.checkTerminalNewline(stm);
+      
+      return stx;
+   }
+   else if (stm.next.token === 'comment-line') {
+      $.raise(stm, `Comment at the entry definition level`);
+   }
+   else {
+      let stx = $.readMultilined(stm, 1);
+      stx.nl = 1;
+      
+      if (!$.isAtEos(stm)) {
+         $.raise(stm, `Entry definition consists of >1 items`);
+      }
+      
+      return stx;
+   }
+}
+checkTerminalNewline ::= function (stm) {
+   let ok = false;
+
+   if ($.isAtEol(stm)) {
+      $.move(stm);
+      ok = $.isAtEos(stm);
+   }
+   
+   if (!ok) {
+      $.raise(stm, `Entry definition consists of >1 items`);
+   }
+}
 readMultilined ::= function (stm, mylevel) {
    let children = $.readToEol(stm);
 
@@ -113,11 +151,7 @@ readMultilined ::= function (stm, mylevel) {
 
    let sink = children;
 
-   for (;;) {
-      if ($.isAtEos(stm)) {
-         break;
-      }
-
+   while (!$.isAtEos(stm)) {
       $.assert(stm.next.token === 'indent');
 
       let {level, full} = stm.next;

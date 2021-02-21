@@ -1,10 +1,14 @@
+import contextlib
 import sublime
 import sublime_api
 
 from .body import known_entries
 from .import_section import parse_import_section
 
+from poli.exc import CodeError
+from poli.shared.command import StopCommand
 from poli.sublime import regedit
+from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import make_view_dict
 
 
@@ -100,3 +104,17 @@ def add_warnings(view, regs):
 
 def get_warnings(view):
     return view.get_regions('warnings')
+
+
+@contextlib.contextmanager
+def code_error_source_indication(view, begin_pt):
+    try:
+        yield
+    except CodeError as e:
+        row0, col0 = view.rowcol(begin_pt)
+        rowe = row0 + e.row
+        cole = col0 + e.col if e.row == 0 else e.col
+        error_point = view.text_point(rowe, cole)
+        set_selection(view, to=error_point)
+        sublime.status_message(e.message)
+        raise StopCommand
