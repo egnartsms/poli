@@ -79,10 +79,10 @@ reverse ::=
          c| (@ A (get-before-handler))
          c| (@ A (get-after-handler))
          c| (@ A (get-cleanup-handler))
-
+      
       . obj (meth 1 2 3)
       pc| (. obj meth) 1 2 3
-
+      
       (@ A (get-prop)) arg1 arg2
       (A@ (get-prop)) arg1 arg2
       

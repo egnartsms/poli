@@ -10,11 +10,7 @@ import
    referrersOf
    unimport
 persist
-   deleteArrayItem
-   deleteObjectProp
-   setAdd
-   setDelete
-   setObjectProp
+   markAsDirty
 reference
    isEntryUsed
    isNameFree
@@ -27,8 +23,9 @@ renameImportedName ::= function (recp, oldName, newName) {
    $.rtset(recp, newName, $.rtget(recp, oldName));
    $.rtset(recp, oldName, $.delmark);
 
-   $.setDelete(recp.importedNames, oldName);
-   $.setAdd(recp.importedNames, newName);
+   $.markAsDirty(recp.importedNames);
+   recp.importedNames.delete(oldName);
+   recp.importedNames.add(newName);
 }
 offendingModulesOnRename ::= function (module, oldName, newName) {
    let offendingModules = [];
@@ -77,7 +74,8 @@ renameRefsIn ::= function (module, renameMap) {
 
       let newVal = $.moduleEval(module, newSource);
 
-      $.setObjectProp(module.defs, entry, newSource);
+      $.markAsDirty(module.defs);
+      module.defs[entry] = newSource;
       $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry);
 
@@ -99,7 +97,8 @@ modifyRecipientsForRename ::= function (module, oldName, newName) {
             $.renameImportedName(eimp.recp, oldName, newName);
             rnmap.set(oldName, newName);
          }
-         $.setObjectProp(eimp, 'name', newName);
+         $.markAsDirty(eimp);
+         eimp.name = newName;
       }
       if (simp) {
          rnmap.set($.joindot(simp.alias, oldName), $.joindot(simp.alias, newName));
@@ -148,9 +147,11 @@ renameEntry ::= function (module, oldName, newName) {
       ownPair[0] = newName;
    }
 
-   $.setObjectProp(module.entries, module.entries.indexOf(oldName), newName);
-   $.setObjectProp(module.defs, newName, module.defs[oldName]);
-   $.deleteObjectProp(module.defs, oldName);
+   $.markAsDirty(module.entries);
+   $.markAsDirty(module.defs);
+   module.entries[module.entries.indexOf(oldName)] = newName;
+   module.defs[newName] = module.defs[oldName];
+   delete module.defs[oldName];
 
    $.rtset(module, newName, $.rtget(module, oldName));
    $.rtset(module, oldName, $.delmark);
@@ -186,8 +187,10 @@ removeEntry ::= function (module, entry, force) {
       $.unimport(imp);
    }      
 
-   $.deleteArrayItem(module.entries, module.entries.indexOf(entry));
-   $.deleteObjectProp(module.defs, entry);
+   $.markAsDirty(module.entries);
+   module.entries.splice(module.entries.indexOf(entry), 1);
+   $.markAsDirty(module.defs);
+   delete module.defs[entry];
    $.rtset(module, entry, $.delmark);
 
    return {

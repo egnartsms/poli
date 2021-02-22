@@ -2,8 +2,7 @@ bootstrap
    imports
    validateImport
 persist
-   setAdd
-   setDelete
+   markAsDirty
 rtrec
    delmark
    rtget
@@ -14,22 +13,26 @@ import ::= function (imp) {
 
    let {recp, donor, alias, name} = imp;
 
+   $.markAsDirty(recp.importedNames);
    if (name === null) {
-      $.setAdd(recp.importedNames, alias);
+      recp.importedNames.add(alias);
       $.rtset(recp, alias, donor.rtobj);
    }
    else {
-      $.setAdd(recp.importedNames, $.importedAs(imp));
+      recp.importedNames.add($.importedAs(imp));
       $.rtset(recp, $.importedAs(imp), $.rtget(donor, name));
    }
 
-   $.setAdd($.imports, imp);
+   $.markAsDirty($.imports);
+   $.imports.add(imp);   
 }
 unimport ::= function (imp) {
    let {recp} = imp;
 
-   $.setDelete(recp.importedNames, $.importedAs(imp));
-   $.setDelete($.imports, imp);
+   $.markAsDirty(recp.importedNames);
+   recp.importedNames.delete($.importedAs(imp));
+   $.markAsDirty($.imports);
+   $.imports.delete(imp);
    
    $.rtset(recp, $.importedAs(imp), $.delmark);
 }

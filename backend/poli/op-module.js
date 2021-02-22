@@ -9,8 +9,7 @@ import
    moduleRevDepsOf
    unimport
 persist
-   deleteObjectProp
-   setObjectProp
+   markAsDirty
 xs-bootstrap
    makeXsModule
 -----
@@ -31,16 +30,20 @@ addNewModule ::= function (moduleName, lang) {
       throw new Error(`Invalid lang: ${lang}`);
    }
 
-   $.setObjectProp($.modules, moduleName, module);
+   $.markAsDirty($.modules);
+   $.modules[moduleName] = module;
 }
 renameModule ::= function (module, newName) {
    if ($.hasOwnProperty($.modules, newName)) {
       throw new Error(`Module with the name "${newName}" already exists`);
    }
 
-   $.setObjectProp($.modules, newName, module);
-   $.deleteObjectProp($.modules, module.name);
-   $.setObjectProp(module, 'name', newName);
+   $.markAsDirty($.modules);
+   $.modules[newName] = module;
+   delete $.modules[module.name];
+
+   $.markAsDirty(module);
+   module.name = newName;
 
    return $.moduleRevDepsOf(module);
 }
@@ -59,7 +62,8 @@ removeModule ::= function (module, force) {
       }
    }
 
-   $.deleteObjectProp($.modules, module.name);
+   $.markAsDirty($.modules);
+   delete $.modules[module.name];
 
    return true;
 }

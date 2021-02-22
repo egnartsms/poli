@@ -4,6 +4,7 @@ xs-reader
    read1FromString
 xs-tokenizer
    makeStream
+   tokenizeFromNewline
 -----
 util ::= $_.require('util')
 text ::= String.raw`
@@ -47,9 +48,11 @@ text1 ::= 'that will be set at runtime'
 testTok ::= function () {
    console.time();
    for (let i = 0; i < 10_000; i += 1) {
-      let stm = $.makeStream($.text);
-      let gtor = $.tokenizeStream(stm);
+      let gtor = $.tokenizeFromNewline($.text);
       let arr = Array.from(gtor);
+      if (arr.length > 1_000_000) {
+         console.log("I will never be reached!")
+      }
    }
    console.timeEnd();
 }

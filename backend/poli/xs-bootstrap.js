@@ -56,6 +56,4 @@ animateXsModules ::= function () {
          $.evalXsModuleDefinitions(module);
       }
    }
-
-   $.effectuateImports('xs');
 }

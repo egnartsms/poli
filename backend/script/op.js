@@ -14,7 +14,7 @@ const
    IMG2FS_MODULE = 'img2fs',
    BOOTSTRAP_MODULE = 'bootstrap',
    RUN_MODULE = 'run',
-   LOBBY_OID = 0;
+   LOBBY_OID = 1;
 
 
 function recreateImage() {
