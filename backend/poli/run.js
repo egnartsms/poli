@@ -10,7 +10,7 @@ exc
    ApiError
    throwApiError
 img2fs
-   flushModule
+   dumpModule
 import
    import
    importFor
@@ -362,7 +362,7 @@ operationHandlers ::= ({
 
    refreshModule: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
-      $.flushModule(module);
+      $.dumpModule(module);
       $.opRet();
    },
 

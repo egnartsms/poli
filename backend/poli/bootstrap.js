@@ -4,10 +4,8 @@ fs ::= $_.require('fs')
 assert ::= $_.require('assert').strict
 lobby ::= null
 modules ::= null
-imports ::= null
 makeImageByFs ::= function () {
    $.modules = {};
-   $.imports = new Set();
 
    let modulesInfo = $.parseAllModules();
    let jsModulesInfo = modulesInfo.filter(mi => mi.lang === 'js');
@@ -31,7 +29,6 @@ makeImageByFs ::= function () {
    // (Lobby exists in the DB but is empty at this point)
    $.lobby = {
       modules: $.modules,
-      imports: $.imports,
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
    $.obj2id = new WeakMap([[$.lobby, $_.LOBBY_OID]]);
@@ -127,10 +124,16 @@ makeJsModule ::= function (name, body) {
       [$.skRuntimeKeys]: ['rtobj'],
       lang: 'js',
       name: name,
-      importedNames: new Set(),  // filled in on import resolve
+
+      // Import/export information is filled later
+      imports: new Set(),
+      exports: new Set(),
+      importedNames: new Set(),
+      
       entries: Array.from(body, ([entry]) => entry),
       // in JS, trim entry src definitions
       defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
+
       rtobj: null
    };
    
@@ -164,6 +167,9 @@ addModuleInfoImports ::= function ({name, imports}) {
       }
    }
 }
+importedAs ::= function (imp) {
+   return imp.alias || imp.name;
+}
 import ::= function (imp) {
    // This function is only for use while creating image from files. It's not intended
    // to be reused in other modules.
@@ -172,11 +178,13 @@ import ::= function (imp) {
 
    $.validateImport(imp);
    
-   imp.recp.importedNames.add(imp.alias || imp.name);
-   $.imports.add(imp);
+   imp.recp.importedNames.add($.importedAs(imp));
+   imp.recp.imports.add(imp);
+   imp.donor.exports.add(imp);
 }
 validateImport ::= function (imp) {
-   $.assert(!$.imports.has(imp));
+   $.assert(!imp.recp.imports.has(imp));
+   $.assert(!imp.donor.exports.has(imp));
 
    if (imp.name === null) {
       $.validateStarImport(imp);
@@ -221,11 +229,15 @@ validateStarImport ::= function ({recp, donor, alias}) {
    }
 }
 effectuateImports ::= function (inLang) {
-   for (let {recp, donor, name, alias} of $.imports) {
+   for (let recp of Object.values($.modules)) {
       if (inLang && recp.lang !== inLang) {
          continue;
       }
-      recp.rtobj[alias || name] = (name === null ? donor.rtobj : donor.rtobj[name]);
+
+      for (let imp of recp.imports) {
+         recp.rtobj[$.importedAs(imp)] =
+            imp.name === null ? imp.donor.rtobj : imp.donor.rtobj[imp.name];
+      }
    }
 }
 skSet ::= '__set'
@@ -416,7 +428,6 @@ loadImage ::= function () {
 
    $.lobby = id2obj.get($_.LOBBY_OID);
    $.modules = $.lobby.modules;
-   $.imports = $.lobby.imports;
    $.obj2id = new WeakMap(obj2id);
 
    $.animateJsModules();

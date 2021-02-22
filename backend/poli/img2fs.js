@@ -1,5 +1,4 @@
 bootstrap
-   imports
    modules
 xs-printer
    dumpsNext
@@ -8,10 +7,10 @@ fs ::= $_.require('fs')
 ind ::= '   '
 main ::= function () {
    for (let moduleName in $.modules) {
-      $.flushModule($.modules[moduleName]);
+      $.dumpModule($.modules[moduleName]);
    }
 }
-flushModule ::= function (module) {
+dumpModule ::= function (module) {
    let moduleStream = $.fs.createWriteStream(
       `${$_.SRC_FOLDER}/${module.name}.${module.lang}`, {
          mode: '664'
@@ -70,15 +69,8 @@ dumpModuleImportSection ::= function* (module) {
    }
 }
 sortedImportsInto ::= function (recp) {
-   let imports = [];
-   for (let imp of $.imports) {
-      if (imp.recp === recp) {
-         imports.push(imp);
-      }
-   }
-
+   let imports = Array.from(recp.imports);
    imports.sort($.compareImports);
-
    return imports;
 }
 compareImports ::= function (i1, i2) {

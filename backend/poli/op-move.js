@@ -1,5 +1,6 @@
 bootstrap
    hasOwnProperty
+   importedAs
    moduleEval
    saveObject
 common
@@ -8,7 +9,6 @@ common
 import
    import
    importFromTo
-   importedAs
    referrerImportsFromTo
    referrersOf
    unimport
