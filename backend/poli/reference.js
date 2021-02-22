@@ -1,11 +1,11 @@
 bootstrap
    assert
+   importedAs
    hasOwnProperty
 common
    joindot
 import
    importFor
-   importedAs
    importsOf
    referrerImportsFromTo
    referrersOf

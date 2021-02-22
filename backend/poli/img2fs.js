@@ -1,5 +1,4 @@
 bootstrap
-   imports
    modules
 xs-printer
    dumpsNext
@@ -70,15 +69,8 @@ dumpModuleImportSection ::= function* (module) {
    }
 }
 sortedImportsInto ::= function (recp) {
-   let imports = [];
-   for (let imp of $.imports) {
-      if (imp.recp === recp) {
-         imports.push(imp);
-      }
-   }
-
+   let imports = Array.from(recp.imports);
    imports.sort($.compareImports);
-
    return imports;
 }
 compareImports ::= function (i1, i2) {

@@ -4,8 +4,6 @@ bootstrap
    modules
 import
    connectedModulesOf
-   importsFrom
-   importsInto
    moduleRevDepsOf
    unimport
 persist
@@ -55,9 +53,9 @@ removeModule ::= function (module, force) {
          return Array.from(cnmods, mod => mod.name);
       }
 
-      let imports = [...$.importsFrom(module), ...$.importsInto(module)];
+      let imps = [...module.imports, ...module.exports];
       
-      for (let imp of imports) {
+      for (let imp of imps) {
          $.unimport(imp);
       }
    }

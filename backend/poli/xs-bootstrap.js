@@ -33,7 +33,11 @@ makeXsModule ::= function (name, body) {
       [$.skRuntimeKeys]: ['rtobj'],
       lang: 'xs',
       name: name,
+      
+      imports: new Set(),
+      exports: new Set(),
       importedNames: new Set(),
+
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
       rtobj: null

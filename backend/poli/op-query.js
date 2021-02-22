@@ -1,12 +1,11 @@
 bootstrap
-   imports
+   importedAs
    modules
 common
    joindot
    moduleNames
 import
    importFor
-   importedAs
    importsOf
 reference
    resolveReference
@@ -49,10 +48,8 @@ importablesInto ::= function (recp) {
    }
 
    // Exclude those already imported
-   for (let imp of $.imports) {
-      if (imp.recp === recp) {
-         importables.delete(encodeEntry(imp.donor.name, imp.name));
-      }
+   for (let imp of recp.imports) {
+      importables.delete(encodeEntry(imp.donor.name, imp.name));
    }
 
    return Array.from(importables, decodeEntry);

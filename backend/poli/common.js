@@ -1,10 +1,10 @@
 bootstrap
    assert
    modules
+   importedAs
 img2fs
    dumpModuleImportSection
 import
-   importedAs
    importsOf
 rtrec
    rtget

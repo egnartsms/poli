@@ -1,11 +1,11 @@
 bootstrap
-   imports
+   modules
+   importedAs
 common
    joindot
 import
    entryImportsFromTo
    importFromTo
-   importedAs
    unimport
 op-refactor
    renameImportedName
@@ -51,8 +51,8 @@ removeImport ::= function (imp, force) {
 removeUnusedModuleImports ::= function (module) {
    let unused = [];
 
-   for (let imp of $.imports) {
-      if (imp.recp === module && !$.isReferredTo(module, $.importedAs(imp))) {
+   for (let imp of module.imports) {
+      if (!$.isReferredTo(module, $.importedAs(imp))) {
          unused.push(imp);
       }
    }
@@ -67,10 +67,12 @@ removeUnusedImportsInAllModules ::= function () {
    let unused = [];
    let recps = new Set;
 
-   for (let imp of $.imports) {
-      if (!$.isReferredTo(imp.recp, $.importedAs(imp))) {
-         unused.push(imp);
-         recps.add(imp.recp);
+   for (let module of Object.values($.modules)) {
+      for (let imp of module.imports) {
+         if (!$.isReferredTo(module, $.importedAs(imp))) {
+            unused.push(imp);
+            recps.add(module);
+         }
       }
    }
 

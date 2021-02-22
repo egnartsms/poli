@@ -1,5 +1,5 @@
 bootstrap
-   imports
+   importedAs
    validateImport
 persist
    markAsDirty
@@ -11,51 +11,42 @@ rtrec
 import ::= function (imp) {
    $.validateImport(imp);
 
-   let {recp, donor, alias, name} = imp;
+   let {recp, donor} = imp;
 
    $.markAsDirty(recp.importedNames);
-   if (name === null) {
-      recp.importedNames.add(alias);
-      $.rtset(recp, alias, donor.rtobj);
-   }
-   else {
-      recp.importedNames.add($.importedAs(imp));
-      $.rtset(recp, $.importedAs(imp), $.rtget(donor, name));
-   }
+   recp.importedNames.add($.importedAs(imp));
 
-   $.markAsDirty($.imports);
-   $.imports.add(imp);   
+   $.markAsDirty(recp.imports);
+   recp.imports.add(imp);
+
+   $.markAsDirty(donor.exports);
+   donor.exports.add(imp);
+
+   $.rtset(
+      recp,
+      $.importedAs(imp),
+      imp.name === null ? donor.rtobj : $.rtget(donor, imp.name)
+   );
 }
 unimport ::= function (imp) {
-   let {recp} = imp;
+   let {recp, donor} = imp;
 
    $.markAsDirty(recp.importedNames);
    recp.importedNames.delete($.importedAs(imp));
-   $.markAsDirty($.imports);
-   $.imports.delete(imp);
+   
+   $.markAsDirty(recp.imports);
+   $.assert(recp.imports.has(imp));
+   recp.imports.delete(imp);
+
+   $.markAsDirty(donor.exports);
+   $.assert(donor.exports.has(imp));
+   donor.exports.delete(imp);
    
    $.rtset(recp, $.importedAs(imp), $.delmark);
 }
-importedAs ::= function (imp) {
-   return imp.alias || imp.name;
-}
-importsInto ::= function* (module) {
-   for (let imp of $.imports) {
-      if (imp.recp === module) {
-         yield imp;
-      }
-   }
-}
-importsFrom ::= function* (module) {
-   for (let imp of $.imports) {
-      if (imp.donor === module) {
-         yield imp;
-      }
-   }
-}
 importsFromTo ::= function* (donor, recp) {
-   for (let imp of $.imports) {
-      if (imp.donor === donor && imp.recp === recp) {
+   for (let imp of donor.exports) {
+      if (imp.recp === recp) {
          yield imp;
       }
    }
@@ -76,21 +67,21 @@ importFromTo ::= function (donor, entry, recp) {
    return null;
 }
 importsOf ::= function* (module, entry) {
-   for (let imp of $.importsFrom(module)) {
+   for (let imp of module.exports) {
       if (imp.name === entry) {
          yield imp;
       }
    }
 }
 referrerImportsOf ::= function* (module, entry) {
-   for (let imp of $.importsFrom(module)) {
+   for (let imp of module.exports) {
       if (imp.name === entry || imp.name === null) {
          yield imp;
       }
    }
 }
 importFor ::= function (module, name) {
-   for (let imp of $.imports) {
+   for (let imp of module.imports) {
       if (imp.recp === module && $.importedAs(imp) === name) {
          return imp;
       }
@@ -99,14 +90,14 @@ importFor ::= function (module, name) {
 }
 moduleDepsOf ::= function (module) {
    let deps = new Set;
-   for (let imp of $.importsInto(module)) {
+   for (let imp of module.imports) {
       deps.add(imp.donor);
    }
    return deps;
 }
 moduleRevDepsOf ::= function (module) {
    let revdeps = new Set;
-   for (let imp of $.importsFrom(module)) {
+   for (let imp of module.exports) {
       revdeps.add(imp.recp);
    }
    return revdeps;
