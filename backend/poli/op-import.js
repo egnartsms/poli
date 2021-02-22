@@ -1,6 +1,6 @@
 bootstrap
-   modules
    importedAs
+   modules
 common
    joindot
 import

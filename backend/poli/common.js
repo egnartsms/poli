@@ -1,7 +1,7 @@
 bootstrap
    assert
-   modules
    importedAs
+   modules
 img2fs
    dumpModuleImportSection
 import

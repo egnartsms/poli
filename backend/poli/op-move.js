@@ -1,6 +1,6 @@
 bootstrap
-   importedAs
    hasOwnProperty
+   importedAs
    moduleEval
    saveObject
 common

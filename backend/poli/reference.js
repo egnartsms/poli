@@ -1,7 +1,7 @@
 bootstrap
    assert
-   importedAs
    hasOwnProperty
+   importedAs
 common
    joindot
 import
