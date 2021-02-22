@@ -7,10 +7,10 @@ fs ::= $_.require('fs')
 ind ::= '   '
 main ::= function () {
    for (let moduleName in $.modules) {
-      $.flushModule($.modules[moduleName]);
+      $.dumpModule($.modules[moduleName]);
    }
 }
-flushModule ::= function (module) {
+dumpModule ::= function (module) {
    let moduleStream = $.fs.createWriteStream(
       `${$_.SRC_FOLDER}/${module.name}.${module.lang}`, {
          mode: '664'
