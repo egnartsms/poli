@@ -1,4 +1,5 @@
 bootstrap
+   assert
    importedAs
    validateImport
 persist
@@ -45,9 +46,18 @@ unimport ::= function (imp) {
    $.rtset(recp, $.importedAs(imp), $.delmark);
 }
 importsFromTo ::= function* (donor, recp) {
-   for (let imp of donor.exports) {
-      if (imp.recp === recp) {
-         yield imp;
+   if (donor.exports.size < recp.imports.size) {
+      for (let imp of donor.exports) {
+         if (imp.recp === recp) {
+            yield imp;
+         }
+      }
+   }
+   else {
+      for (let imp of recp.imports) {
+         if (imp.donor === donor) {
+            yield imp;
+         }
       }
    }
 }
