@@ -2,7 +2,7 @@ bootstrap
    moduleEval
    saveObject
 persist
-   setObjectProp
+   markAsDirty
 rtrec
    rtset
 xs-printer
@@ -41,9 +41,10 @@ addEntry ::= function (module, name, source, idx) {
    else
       throw new Error;
    
+   $.markAsDirty(module.entries);
    module.entries.splice(idx, 0, name);
-   $.saveObject(module.entries);
-   $.setObjectProp(module.defs, name, defn);
+   $.markAsDirty(module.defs);
+   module.defs[name] = defn;
 
    return normalizedSource;
 }

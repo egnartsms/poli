@@ -11,7 +11,7 @@ op-refactor
    renameImportedName
    renameRefsIn
 persist
-   setObjectProp
+   markAsDirty
 reference
    isNameFree
    isReferredTo
@@ -32,7 +32,8 @@ renameImport ::= function (imp, newAlias) {
    }
 
    $.renameImportedName(recp, oldName, newName);
-   $.setObjectProp(imp, 'alias', newAlias);
+   $.markAsDirty(imp);
+   imp.alias = newAlias;
 
    return $.renameRefsIn(recp, [oldName, newName]);
 }

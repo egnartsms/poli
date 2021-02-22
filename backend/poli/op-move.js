@@ -15,9 +15,7 @@ import
 op-refactor
    renameRefsIn
 persist
-   deleteArrayItem
-   deleteObjectProp
-   setObjectProp
+   markAsDirty
 reference
    extractRefs
    isNameFree
@@ -90,9 +88,11 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    // Stage 2. Take out srcModule[entry] definition
    let oldCode = srcModule.defs[entry];
 
-   $.deleteObjectProp(srcModule.defs, entry);
+   $.markAsDirty(srcModule.defs);
+   $.markAsDirty(srcModule.entries);
+   delete srcModule.defs[entry];
    $.rtset(srcModule, entry, $.delmark);
-   $.deleteArrayItem(srcModule.entries, srcModule.entries.indexOf(entry));
+   srcModule.entries.splice(srcModule.entries.indexOf(entry), 1);
 
    // Stage 3. Modify modules (do rename in definitions)
    let modifiedModules = new Map;
@@ -121,7 +121,8 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    let newVal = $.moduleEval(destModule, newCode);
 
-   $.setObjectProp(destModule.defs, entry, newCode);
+   $.markAsDirty(destModule.defs);
+   destModule.defs[entry] = newCode;
    $.rtset(destModule, entry, newVal);
 
    let iAnchor;

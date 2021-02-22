@@ -5,7 +5,7 @@ create table obj(
 
 
 -- Lobby object is always there
-insert into obj(id, val) values (0, '{}');
+insert into obj(id, val) values (1, '{}');
 
 
 -- This is just to expose the 'bootstrap.js' members in a convenient form.  These entries
@@ -20,7 +20,7 @@ create view bootstrap_entries as
        where id = (
           select json_extract(val, '$.bootstrapDefs.__ref')
           from obj
-          where id = 0
+          where id = 1
        )
     )) as def_json
 ;

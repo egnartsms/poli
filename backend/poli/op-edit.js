@@ -6,7 +6,7 @@ common
 module
    * as: module
 persist
-   setObjectProp
+   markAsDirty
 reference
    isNameFree
 rtrec
@@ -53,7 +53,8 @@ editEntry ::= function (module, name, newSource) {
       normalizedSource = newSource.trim();
       let newVal = $.moduleEval(module, normalizedSource);
 
-      $.setObjectProp(module.defs, name, normalizedSource);
+      $.markAsDirty(module.defs);
+      module.defs[name] = normalizedSource;
       $.rtset(module, name, newVal);
       $.propagateValueToRecipients(module, name);
    }
@@ -61,10 +62,10 @@ editEntry ::= function (module, name, newSource) {
       let stx = $.readEntryDefinition(newSource);
 
       // TODO: compute the value when you finally have XS compiler
-      
-      $.setObjectProp(module.defs, name, {
+      $.markAsDirty(module.defs);
+      module.defs[name] = {
          stx: stx
-      });
+      };
       normalizedSource = $.dumpsNext(stx, 0);
    }
    else {

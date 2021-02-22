@@ -35,7 +35,10 @@ makeImageByFs ::= function () {
       bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
    };
    $.obj2id = new WeakMap([[$.lobby, $_.LOBBY_OID]]);
-   $.saveObject($.lobby);
+   
+   let uow = $.makeUow();
+   $.saveObject($.lobby, uow);
+   $.flushUow(uow);
 }
 parseAllModules ::= function () {
    let modulesInfo = [];
@@ -229,65 +232,82 @@ skSet ::= '__set'
 skMap ::= '__map'
 skRuntimeKeys ::= '__rtkeys'
 skRef ::= '__ref'
-initObjForPersistence ::= function (obj) {
-   if (obj instanceof Set) {
-      $.initSetForPersistence(obj);
-   }
-}
-initSetForPersistence ::= function (set) {
-   $.assert(!($.skSet in set));
-
-   let nextid = 1;
-   let item2id = new Map;
-   for (let item of set) {
-      item2id.set(item, nextid++);
-   }
-
-   Object.defineProperty(set, $.skSet, {
-      configurable: true,
-      enumerable: false,
-      writable: true,
-      value: {nextid, item2id}
-   });   
-}
 obj2id ::= null
-nextOid ::= 1
+nextOid ::= $_.LOBBY_OID + 1
 takeNextOid ::= function () {
    return $.nextOid++;
 }
-stmtInsert ::= $_.db.prepare(`
-   INSERT INTO obj(id, val) VALUES (:id, :val)
-`)
-stmtUpdate ::= $_.db.prepare(`
-   UPDATE obj SET val = :val WHERE id = :id
+stmtReplace ::= $_.db.prepare(`
+   INSERT OR REPLACE INTO obj(id, val) VALUES (?, ?)
 `)
 isObject ::= function (val) {
    return typeof val === 'object' && val !== null;
 }
-toJson ::= function (obj, ref) { 
+makeUow ::= function () {
+   return {
+      newobj2id: new Map,  // new objects (not already on $.obj2id)
+      savelist: [],    // [[oid, "serialized to JSON"], ...]
+      discovered: [],  // new objects waiting to be further examined
+   }
+}
+uowoid ::= function (uow, obj) {
+   $.assert($.isObject(obj));
+
+   let oid = $.obj2id.get(obj);
+   if (!oid) {
+      oid = uow.newobj2id.get(obj);
+      if (!oid) {
+         oid = $.takeNextOid();
+         uow.newobj2id.set(obj, oid);
+         uow.discovered.push(obj);
+      }
+   }
+
+   return oid;
+}
+saveObject ::= function (obj, uow) {
+   $.assert($.isObject(obj));
+
+   let oid = $.obj2id.get(obj);
+
+   if (oid) {
+      uow.savelist.push([oid, $.toJson(obj, uow)]);
+   }
+   else {
+      $.uowoid(uow, obj);
+   }   
+
+   while (uow.discovered.length > 0) {
+      let obj = uow.discovered.pop();
+      uow.savelist.push([uow.newobj2id.get(obj), $.toJson(obj, uow)]);
+   }
+}
+toJson ::= function (obj, uow) { 
    let runtimeKeys = obj[$.skRuntimeKeys] || [];
 
-   if (obj[$.skSet]) {
-      let {nextid, item2id} = obj[$.skSet];
-
+   if (obj instanceof Set) {
       obj = {
-         [$.skSet]: {
-            nextid,
-            id2item: Object.fromEntries(
-               function* () {
-                  for (let [item, id] of item2id) {
-                     yield [id, $.isObject(item) ? ref(item) : item];
-                  }
-               }()
-            )
-         },
+         [$.skSet]: Array.from(obj),
          ...obj
       }
-   } 
+   }
+
+   function ref(val) {
+      return (
+         $.isObject(val) ? {
+            [$.skRef]: $.uowoid(uow, val)
+         } : val
+      );      
+   }
 
    return JSON.stringify(obj, function (key, val) {
-      if (val === obj || this !== obj) {
+      if (val === obj) {
          return val;
+      }
+
+      if (this !== obj) {
+         // We are at some nested level (e.g. [$.skSet]: [item, ...])
+         return ref(val);
       }
 
       // Special keys should not be touched
@@ -299,71 +319,18 @@ toJson ::= function (obj, ref) {
          return null;
       }
       
-      return $.isObject(val) ? ref(val) : val;
+      return ref(val);
    });
 }
-saveObject ::= function (obj) {
-   $.assert($.isObject(obj));
+flushUow ::= function (uow) {
+   $.assert(uow.discovered.length === 0);
 
-   let oid = $.obj2id.get(obj);
-   let stmt;
-
-   if (oid == null) {
-      $.initObjForPersistence(obj);
-      oid = $.takeNextOid();
-      $.obj2id.set(obj, oid);
-      stmt = $.stmtInsert;
-   }
-   else {
-      stmt = $.stmtUpdate;
+   for (let pair of uow.savelist) {
+      $.stmtReplace.run(pair);
    }
 
-   let rec = $.objrefRecorder();
-
-   stmt.run({
-      id: oid,
-      val: $.toJson(obj, rec.ref)
-   });
-
-   $.addRecordedObjects(rec);
-}
-objrefRecorder ::= function () {
-   let toAdd = new Map();
-
-   function ref(obj) {
-      $.assert($.isObject(obj));
-
-      let oid = $.obj2id.get(obj);
-      if (oid == null) {
-         oid = toAdd.get(obj);
-         if (oid == null) {
-            oid = $.takeNextOid();
-            toAdd.set(obj, oid);
-         }
-      }
-
-      return {
-         [$.skRef]: oid
-      };
-   }
-
-   return {toAdd, ref};
-}
-addRecordedObjects ::= function ({toAdd, ref}) {
-   function addObject(obj, oid) {
-      $.initObjForPersistence(obj);
-      $.obj2id.set(obj, oid);
-      $.stmtInsert.run({
-         id: oid,
-         val: $.toJson(obj, ref)
-      });
-   }
-
-   while (toAdd.size > 0) {
-      let {value: [obj, oid]} = toAdd.entries().next();
-      addObject(obj, oid);
-      toAdd.delete(obj);
-   }
+   uow.savelist.length = 0;
+   uow.newobj2id.clear();
 }
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
@@ -386,12 +353,15 @@ loadImage ::= function () {
    let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).raw().all();
 
    for (let [id, val] of data) {
-      let obj = JSON.parse(val);
+      let plain = JSON.parse(val);
+      let obj;
 
-      if (obj[$.skSet]) {
-         let set = new Set;
-         obj2plain.set(set, obj);
-         obj = set;
+      if (plain[$.skSet]) {
+         obj = new Set;
+         obj2plain.set(obj, plain);
+      }
+      else {
+         obj = plain;
       }
 
       obj2id.set(obj, id);
@@ -410,14 +380,14 @@ loadImage ::= function () {
       }
 
       let obj = id2obj.get(v[$.skRef]);
-      if (obj == null) {
+      if (!obj) {
          throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
       }
 
       return obj;
    }
 
-   function patchObject(obj) {
+   function derefObject(obj) {
       for (let [k, v] of Object.entries(obj)) {
          if (isref(v)) {
             obj[k] = noref(v);
@@ -428,16 +398,10 @@ loadImage ::= function () {
    for (let obj of obj2id.keys()) {
       if (obj instanceof Set) {
          let plain = obj2plain.get(obj);
-         let {nextid, id2item} = plain[$.skSet];
-         let item2id = new Map;
-
-         for (let [id, item] of Object.entries(id2item)) {
-            item = noref(item);
-            obj.add(item);
-            item2id.set(item, id);
-         }
          
-         obj[$.skSet] = {nextid, item2id};
+         for (let item of plain[$.skSet]) {
+            obj.add(noref(item));
+         }
 
          for (let [k, v] of Object.entries(plain)) {
             if (k !== $.skSet) {
@@ -446,7 +410,7 @@ loadImage ::= function () {
          }
       }
       else {
-         patchObject(obj);
+         derefObject(obj);
       }
    }
 
@@ -458,6 +422,7 @@ loadImage ::= function () {
    $.animateJsModules();
    $.effectuateImports('js');
    $.modules['xs-bootstrap'].rtobj['animateXsModules']();
+   $.effectuateImports('xs');
 
    return $.modules;
 }

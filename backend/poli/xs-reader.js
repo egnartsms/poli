@@ -6,7 +6,7 @@ exc
    throwApiError
 xs-tokenizer
    tokenizeEntryDefinition
-   tokenizeMultilined
+   tokenizeFromNewline
 -----
 read1FromString ::= function (str) {
    let stm = $.makeStream(str);

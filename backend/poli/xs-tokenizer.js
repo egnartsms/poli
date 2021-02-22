@@ -76,7 +76,7 @@ advanceMatch ::= function (stm, match) {
 isLookingAtBlankLine ::= function (stm) {
    return $.isLookingAt(stm, /[ ]*$/y);
 }
-tokenizeMultilined ::= function* (str) {
+tokenizeFromNewline ::= function* (str) {
    let stm = $.makeStream(str);
 
    while (!$.isAtEos(stm)) {
