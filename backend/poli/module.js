@@ -1,6 +1,7 @@
 bootstrap
    moduleEval
-   saveObject
+exc
+   rethrowCodeErrorsOn
 persist
    markAsDirty
 rtrec
@@ -30,7 +31,7 @@ addEntry ::= function (module, name, source, idx) {
       $.rtset(module, name, $.moduleEval(module, source));
    }
    else if (module.lang === 'xs') {
-      let stx = $.readEntryDefinition(source);
+      let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
       defn = {
          stx: stx
       };

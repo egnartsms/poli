@@ -3,7 +3,6 @@ xs-printer
 xs-reader
    read1FromString
 xs-tokenizer
-   makeStream
    tokenizeFromNewline
 -----
 util ::= $_.require('util')

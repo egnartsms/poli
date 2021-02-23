@@ -2,7 +2,6 @@ bootstrap
    hasOwnProperty
    importedAs
    moduleEval
-   saveObject
 common
    dumpImportSection
    joindot
@@ -39,9 +38,9 @@ moveBy1 ::= function (module, name, direction) {
             (i === 0 ? module.entries.length - 1 : i - 1) :
             (i === module.entries.length - 1 ? 0 : i + 1);
 
+   $.markAsDirty(module.entries);
    module.entries.splice(i, 1);
    module.entries.splice(j, 0, name);
-   $.saveObject(module.entries);
 }
 moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    if (srcModule === destModule) {
@@ -141,8 +140,8 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
       iAnchor = before ? iAnchor : iAnchor + 1;
    }
    
+   $.markAsDirty(destModule.entries);
    destModule.entries.splice(iAnchor, 0, entry);
-   $.saveObject(destModule.entries);
 
    // Stage 5. Add imports
    for (let imp of [...fwd.importsToAdd, ...bwd.importsToAdd]) {

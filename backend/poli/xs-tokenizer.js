@@ -3,8 +3,6 @@ bootstrap
 common
    yreExec
    yreTest
-exc
-   throwApiError
 -----
 makeStream ::= function (str) {
    let stm = {
@@ -21,12 +19,14 @@ makeStream ::= function (str) {
    $.nextLine(stm);
    return stm;
 }
-raise ::= function (stm, message) {
-   $.throwApiError('code', {
-      message: message,
-      row: stm.row,
-      col: stm.col
-   });
+TokenizerError ::= class extends Error {
+   constructor(stm, message) {
+      super();
+      this.str = stm.str;
+      this.row = stm.row;
+      this.col = stm.col;
+      this.message = message;
+   }
 }
 indSpaces ::= 3
 partialIndSpaces ::= 1
@@ -94,7 +94,9 @@ tokenizeEntryDefinition ::= function* (src) {
       yield* $.parseNormalLine(stm);
    }
    else {
-      $.raise(stm, `Entry definition starts with neither space nor newline`);
+      throw new $.TokenizerError(
+         stm, `Entry definition starts with neither space nor newline`
+      );
    }
    
    yield $.consumeNewline(stm);
@@ -173,7 +175,7 @@ parseIndentation ::= function (stm) {
       };
    }
    else {
-      $.raise(stm, `Incorrect indentation`);
+      throw new $.TokenizerError(stm, `Incorrect indentation`);
    }
    
    $.advanceN(stm, nspaces)
@@ -202,7 +204,7 @@ parseComment ::= function* (stm) {
       yield token;
    }
    else {
-      $.raise(stm, `Invalid comment`);
+      throw new $.TokenizerError(stm, `Invalid comment`);
    }
 
    while (!$.isAtEos(stm)) {
@@ -223,7 +225,7 @@ parseComment ::= function* (stm) {
          break;
       }
       if (nspaces < commentIndent) {
-         $.raise(stm, `Insufficient indentation for a comment`);
+         throw new $.TokenizerError(stm, `Insufficient indentation for a comment`);
       }
       
       $.advanceN(stm, commentIndent);
@@ -256,14 +258,14 @@ parseContinuationLine ::= function* (stm) {
       yield* $.parseNormalLine(stm);
    }
    else {
-      $.raise(stm, `Invalid continuation line start`);
+      throw new $.TokenizerError(stm, `Invalid continuation line start`);
    }
 }
 parseNormalLine ::= function* (stm) {
    let spaceIndex = /\x20*$/.exec(stm.line).index;
    if (spaceIndex < stm.line.length) {
       stm.col = spaceIndex;
-      $.raise(stm, `Line ends with trailing spaces`);
+      throw new $.TokenizerError(stm, `Line ends with trailing spaces`);
    }
    
    let isAfterOpenParen = false;
@@ -271,7 +273,7 @@ parseNormalLine ::= function* (stm) {
 
    while (!$.isAtEol(stm)) {
       if (stm.nextChar === ' ') {
-         $.raise(stm, `Excessive whitespace`);
+         throw new $.TokenizerError(stm, `Excessive whitespace`);
       }
 
       let match = $.yExec(stm, /:?\(/y);
@@ -290,7 +292,9 @@ parseNormalLine ::= function* (stm) {
 
       if (stm.nextChar === ')') {
          if (!isAfterOpenParen) {
-            $.raise(stm, `Closing parenthesis preceded by whitespace`);
+            throw new $.TokenizerError(
+               stm, `Closing parenthesis preceded by whitespace`
+            );
          }
       }
       else {
@@ -308,7 +312,9 @@ parseNormalLine ::= function* (stm) {
       }
       
       if (stm.nextChar === '(') {
-         $.raise(stm, `Missing whitespace before opening parenthesis`);
+         throw new $.TokenizerError(
+            stm, `Missing whitespace before opening parenthesis`
+         );
       }
 
       if (stm.nextChar === ' ') {
@@ -323,7 +329,7 @@ consumeString ::= function (stm) {
    let match = $.yExec(stm, re);
 
    if (!match.groups.term) {
-      $.raise(stm, `Unterminated string literal`);
+      throw new $.TokenizerError(stm, `Unterminated string literal`);
    }
 
    let token = {
@@ -346,14 +352,14 @@ consumeToken ::= function (stm) {
    let invCharMatch = /[^a-zA-Z0-9~!@$%^&*\-_+=?/<>.:|]/.exec(word);
    if (invCharMatch) {
       $.advanceN(stm, invCharMatch.index);
-      $.raise(stm, `Invalid character in the middle of the word`);
+      throw new $.TokenizerError(stm, `Invalid character in the middle of the word`);
    }
    
    let token;
    
    if (/^[-+]?\.?[0-9]/.test(word)) {
       if ($.numberValue(word) === null) {
-         $.raise(stm, `Invalid numeric literal`)
+         throw new $.TokenizerError(stm, `Invalid numeric literal`)
       }
       
       token = {

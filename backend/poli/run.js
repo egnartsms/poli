@@ -8,7 +8,6 @@ common
    moduleNames
 exc
    ApiError
-   throwApiError
 img2fs
    dumpModule
 import
@@ -336,7 +335,7 @@ operationHandlers ::= ({
          res = $.moduleEval(module, code);
       }
       catch (e) {
-         $.throwApiError('repl-eval', {
+         throw new $.ApiError('repl-eval', {
             message: e.message,
             stack: e.stack,
          });

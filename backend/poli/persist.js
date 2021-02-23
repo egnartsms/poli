@@ -1,11 +1,7 @@
 bootstrap
-   assert
    flushUow
-   isObject
    makeUow
-   obj2id
    saveObject
-   skSet
 -----
 dirties ::= new Set
 markAsDirty ::= function (obj) {

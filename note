@@ -16,65 +16,51 @@ Name mangling
 : O
 
 
-======
-module entries:
+Syntax objects
+-----
 
 {
-    type: "native",
-    value: <object>|<array>|<function>|<regexp>
+   stx: 'nl',
+   nl: 1
 }
 
-where:
-
-<object> ::=
 {
-    type: "obj",
-    contents: [
-        {
-            name: "prop1",
-            value: <any>
-        },
-        ...
-    ]
+   stx: '\\nl',
+   nl: 1
 }
 
-
-<array> ::=
 {
-    type: "arr",
-    contents: [<any> ...]
+   stx: 'comment',
+   lines: ['line-1', 'line-2', ...],
+   nl: 1
 }
 
-
-<function> ::=
 {
-    type: "fun",
-    src: "..."
+   stx: 'id',
+   id: ...,
+   nl: 0
 }
 
-
-<regexp> ::=
 {
-    type: "regexp",
-    src: "...",
-    flags: "..."
+   stx: 'str',
+   str: "....",
+   nl: 0
 }
 
+{
+   stx: 'num',
+   num: 345,
+   nl: 0
+}
 
+{
+   stx: 'kw',
+   kw: 'if-not:',
+   nl: 0
+}
 
-Data flow:
-
-Load image: Image -> Memory
-Dump image: Image -> Files
-Make image: Files -> Image
-Normal work: Memory -> Image (modifications)
-
-
-
-
-extra-syntactic items:
-  - comment: pseudo syntax unit.
-  - blank line: pseudo syntax unit.
-  - split down after N first subunits: pseudo syntax unit, exact same as above. In future: autoformatting. Depends on the max column setting and the spec of the syntactic form.
-  - extra indented syntax unit: property of the unit itself. In future: based on specification of the syntactic form itself (e.g. if), that is, autoformatting.
-
+{
+   stx: '()',
+   nl: 0,
+   sub: [...]
+}
