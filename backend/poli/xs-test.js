@@ -1,3 +1,7 @@
+bootstrap
+   modules
+xs-compiler
+   compileModuleEntry
 xs-printer
    syntax2str
 xs-reader
@@ -55,9 +59,12 @@ testTok ::= function () {
    }
    console.timeEnd();
 }
-test ::= function () {
+testReader ::= function () {
    let obj1 = $.read1FromString($.text);
    $.text1 = $.syntax2str(obj1) + '\n';
    
    console.log("$.text1 === $.text", $.text1 === $.text);
+}
+testCompiler ::= function () {
+   console.log($.compileModuleEntry($.modules['consumer'], 'use-reverse'));
 }

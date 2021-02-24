@@ -12,7 +12,7 @@ ApiError ::= class extends Error {
 }
 rethrowCodeErrorsOn ::= function (source, callback) {
    try {
-       return callback();
+      return callback();
    }
    catch (e) {
       if (e instanceof $.ReaderError && e.str === source ||
@@ -24,7 +24,7 @@ rethrowCodeErrorsOn ::= function (source, callback) {
          });
       }
       else {
-          throw e;
+         throw e;
       }
    }
 }

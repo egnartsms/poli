@@ -6,18 +6,6 @@ xs-tokenizer
    tokenizeEntryDefinition
    tokenizeFromNewline
 -----
-read1FromString ::= function (str) {
-   let stm = $.makeStream(str, $.tokenizeFromNewline(str));
-
-   $.assert(stm.next.token === 'indent');
-   $.assert(stm.next.level === 0);
-
-   $.move(stm);
-   
-   let stx = $.readMultilined(stm, 0);
-   stx.nl = 1;
-   return stx;
-}
 makeStream ::= function (str, gtor) {
    let stm = {
       str,  // just to know what we're crunching on, not really functionally used
@@ -71,6 +59,18 @@ isAtEos ::= function (stm) {
 }
 isAtEol ::= function (stm) {
    return stm.next.token === 'nl';
+}
+read1FromString ::= function (str) {
+   let stm = $.makeStream(str, $.tokenizeFromNewline(str));
+
+   $.assert(stm.next.token === 'indent');
+   $.assert(stm.next.level === 0);
+
+   $.move(stm);
+   
+   let stx = $.readMultilined(stm, 0);
+   stx.nl = 1;
+   return stx;
 }
 readEntryDefinition ::= function (src) {
    let stm = $.makeStream(src, $.tokenizeEntryDefinition(src));

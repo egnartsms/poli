@@ -1,19 +1,34 @@
 =====
 Name mangling
 
-- M
+- M (or capitalization of the following char)
+~ I
+! X
+@ T
+% R
+^ C
+& S
+* A
+_ (remains the same)
 + P
 = E
-/ S
 ? Q
 < L
 > G
-% R
-^ C
-* A
-@ T
-! X
 : O
+
+
+Mangling examples:
+
+set-border-color -> setBorderColor
+set-border-color! -> setBorderColor_X
+falsy? -> falsy_Q
+<interface> -> _Linterface_G
+calm-- -> calm_M_M
+calm-X -> calm_MX
+calm-x -> calmX
+
+
 
 
 Syntax objects

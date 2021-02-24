@@ -1,6 +1,9 @@
 -----
 a ::= 34
-use-reverse ::= (falsy? val)
+use-reverse ::=
+   func :(arr)
+      let len = (console console arr)
+      console arr len (len arr "literal")
 gcd ::=
    func :((obj| (module: module-name) lang))
       if
@@ -9,6 +12,13 @@ gcd ::=
                not (. (arr| "xs" "js") (includes lang))
          ()
          throw (new Error "Invalid module lang")
+      
+      block|
+         let counter = 0
+         
+         = driver.increase
+            func :()
+               += counter 1
       
       op-module/add-new-module module-name lang
       op-ret
@@ -135,50 +145,3 @@ update ::=
             geo/clamp-magnitude
                vec-add-mult man.v dt acc
                \ man.max-speed
-update-pos ::=
-   func :(man dt)
-      let newpos = (vec-add-mult man.pos dt man.v)
-      let deflected = false
-      
-      func face-line-bump :(line-x)
-         const vy = man.v.y
-         = man.pos (geo/Vec line-x (+ man.pos.y (* vy dt)))
-         = man.v (geo/Vec 0 vy)
-      
-      func side-line-bump :(line-y)
-         const vx = man.v.x
-         = man.pos (geo/Vec (+ man.pos.x (* vx dt)) line-y)
-         = man.v (geo/Vec vx 0)
-      
-      cond
-         if: (<= newpos.x rink/*left-rx*)
-            cond
-               if: (< newpos.x *min-x*)
-                  face-line-bump *min-x*
-                  = deflected true
-               if: (>= newpos.y rink/*upper-ry*)
-                  = deflected
-                     check-bump-arc man newpos dt rink/*c-left-upper*
-               if: (<= newpos.y rink/*lower-ry*)
-                  = deflected
-                     check-bump-arc man newpos dt rink/*c-left-lower*
-         if: (>= newpos.x rink/*right-rx*)
-            cond
-               if: (> newpos.x *max-x*)
-                  face-line-bump *max-x*
-                  = deflected true
-               if: (>= newpos.y rink/*upper-ry*)
-                  = deflected
-                     check-bump-arc man newpos dt rink/*c-right-upper*
-               if: (<= newpos.y rink/*lower-ry*)
-                  = deflected
-                     check-bump-arc man newpos dt rink/*c-right-lower*
-         if: (< newpos.y *min-y*)
-            side-line-bump *min-y*
-            = deflected true
-         if: (> newpos.y *max-y*)
-            side-line-bump *max-y*
-            = deflected true
-      
-      if (! deflected)
-         = man.pos newpos
