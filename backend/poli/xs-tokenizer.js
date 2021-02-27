@@ -208,24 +208,42 @@ parseComment ::= function* (stm) {
    }
 
    while (!$.isAtEos(stm)) {
-      if ($.isLookingAtBlankLine(stm)) {
-         token = {
-            token: 'comment-line',
-            line: '',
-            row: stm.row,
-            col: stm.col,
-         };
-         $.nextLine(stm);
-         yield token;
-         continue;
-      }
+      let nblanks = 0;
+      let blanksRow = stm.row;
 
+      while (!$.isAtEos(stm) && $.isLookingAtBlankLine(stm)) {
+         nblanks += 1;
+         $.nextLine(stm);
+      }
+      
       let nspaces = $.numSpacesAhead(stm);
       if (nspaces <= myindent) {
+         while (nblanks > 0) {
+            yield {
+               token: 'blank',
+               row: blanksRow,
+               col: 0
+            };
+            nblanks -= 1;
+            blanksRow += 1;
+         }
+
          break;
       }
+
       if (nspaces < commentIndent) {
          throw new $.TokenizerError(stm, `Insufficient indentation for a comment`);
+      }
+      
+      while (nblanks > 0) {
+         yield {
+            token: 'comment-line',
+            line: '',
+            row: blanksRow,
+            col: 0
+         };
+         nblanks -= 1;
+         blanksRow += 1;
       }
       
       $.advanceN(stm, commentIndent);
@@ -369,9 +387,17 @@ consumeToken ::= function (stm) {
          col: stm.col,
       };
    }
+   else if (word[word.length - 1] === ':') {
+      token = {
+         token: 'keyword',
+         word: word.slice(0, -1),
+         row: stm.row,
+         col: stm.col,
+      };
+   }
    else {
       token = {
-         token: word[word.length - 1] === ':' ? 'keyword' : 'word',
+         token: 'word',
          word: word,
          row: stm.row,
          col: stm.col,

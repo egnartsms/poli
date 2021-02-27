@@ -9,127 +9,128 @@ dumpsNext ::= function (stx, level) {
    return Array.from($.dumpNext(stx, level)).join('');
 }
 dumpMultilined ::= function* (stx, level) {
-   switch (stx.stx) {
-      case 'nl':
-         return;
-      
-      case 'comment':
-         yield* $.dumpComment(stx, level);
-         return;
-      
-      case '()':
-         if (stx.sub.length === 0) {
-            throw new Error(`Invalid syntax object: multilined compound is empty`);
-         }
-         break;
-      
-      default:
-         throw new Error(`Invalid syntax object: ${stx.stx}`);
+   if (stx.blank === '\n') {
+      return;
    }
    
-   yield* $.dumpInline(stx.sub[0]);
+   if (stx.commentLines !== undefined) {
+      yield* $.dumpComment(stx, level);
+      return;
+   }
    
-   for (let i = 1; i < stx.sub.length; i += 1) {
-      yield* $.dumpNext(stx.sub[i], level);
+   if (stx.head === null) {
+      throw new Error(`Invalid syntax object: multilined compound is empty`);
+   }
+   
+   if (stx.head === undefined) {
+      throw new Error(`Invalid syntax object: ${stx}`);  // TODO: don't dump whole stx
+   }
+   
+   yield* $.dumpInline(stx.head);
+   
+   for (let sub of stx.body) {
+      yield* $.dumpNext(sub, level);
+   }
+   
+   if (stx.keyed !== undefined) {
+      for (let {key, body} of stx.keyed) {
+         yield '\n';
+         yield* $.partIndent(level);
+         yield key;
+         yield ':';
+         
+         for (let sub of body) {
+            yield* $.dumpNext(sub, level);
+         }
+      }
    }
 }
 dumpNext ::= function* (stx, level) {
    if (stx.nl === 0) {
       yield ' ';
       yield* $.dumpInline(stx);
-      return;
    }
-
-   let isFull = Number.isInteger(level);
-   let indent = isFull ? level : Math.floor(level);
-   
-   if (stx.nl < 0) {
+   else if (stx.nl < 0) {
       yield '\n';
-      yield* $.dumpIndentation(indent + (-stx.nl));
+      yield* $.indent(level + (-stx.nl));
       yield '\\ ';
       yield* $.dumpInline(stx);
-
-      return;
-   }
-
-   if (!isFull && stx.nl === .5) {
-      throw new Error(`Invalid syntax object: nested keyword-labeled bodies`);
-   }
-   
-   yield '\n';
-   yield* $.dumpIndentation(indent + stx.nl);
-   yield* $.dumpMultilined(stx, indent + stx.nl);
-}
-dumpComment ::= function* (comment, level) {
-   yield '#;';
-   if (comment.lines[0]) {
-      yield ' ';
-      yield comment.lines[0];
-   }
-   
-   for (let i = 1; i < comment.lines.length; i += 1) {
-      yield '\n';
-      yield* $.dumpIndentation(level + 1);
-      yield comment.lines[i];
-   }
-}
-dumpIndentation ::= function* (level) {
-   if (Number.isInteger(level)) {
-      yield ' '.repeat($.indSpaces).repeat(level);
    }
    else {
-      yield ' '.repeat($.indSpaces).repeat(Math.floor(level));
-      yield ' '.repeat($.partialIndSpaces);
+      yield '\n';
+      yield* $.indent(level + stx.nl);
+      yield* $.dumpMultilined(stx, level + stx.nl);
    }
 }
+dumpComment ::= function* (comment, level) {
+   let commentLines = comment.commentLines;
+
+   yield '#;';
+   if (commentLines[0]) {
+      yield ' ';
+      yield commentLines[0];
+   }
+   
+   for (let i = 1; i < commentLines.length; i += 1) {
+      yield '\n';
+      yield* $.indent(level + 1);
+      yield commentLines[i];
+   }
+}
+indent ::= function* (level) {
+   yield ' '.repeat($.indSpaces).repeat(level);
+}
+partIndent ::= function* (level) {
+   yield ' '.repeat($.indSpaces).repeat(level);
+   yield ' '.repeat($.partialIndSpaces);
+}
 dumpInline ::= function* (stx) {
-   switch (stx.stx) {
-      case '\\nl':
-         break;
+   if (stx.blank === '\\')
+      ;
+   else if (stx.head !== undefined) {
+      let i;
 
-      case '()': {
-         let i;
-
-         if (stx.sub.length > 0 && stx.sub[0].stx === 'id' && stx.sub[0].id === ':') {
+      if (stx.head === null) {
+         yield '()';
+      }
+      else {
+         let needSpace;
+         
+         if (stx.head.id === ':') {
             yield ':(';
-            i = 1;
+            needSpace = false;
          }
          else {
             yield '(';
-            i = 0;
+            yield* $.dumpInline(stx.head);
+            needSpace = true;
          }
          
-         let needSpace = false;
-
-         for (; i < stx.sub.length; i += 1) {
+         for (let sub of stx.body) {
             if (needSpace) {
                yield ' ';
             }
-            yield* $.dumpInline(stx.sub[i]);
+            yield* $.dumpInline(sub);
             needSpace = true;
          }
-
+         
          yield ')';
-         break;
       }
-      
-      case 'id':
-         yield stx.id;
-         break;
-      
-      case 'str':
-         yield JSON.stringify(stx.str);
-         break;
-      
-      case 'kw':
-         yield stx.kw;
-         break;
-      
-      case 'num':
-         yield stx.num;
-         break;
-      
-      default:
-         throw new Error(`Unexpected syntax object: ${stx.stx}`);
+   }
+   else if (stx.id !== undefined) {
+      yield stx.id;
+   }
+   else if (stx.str !== undefined) {
+      yield JSON.stringify(stx.str);
+   }
+   else if (stx.kw !== undefined) {
+      yield stx.kw;
+      yield ':';
+   }
+   else if (stx.num !== undefined) {
+      yield String(stx.num);
+   }
+   else {
+      throw new Error(`Unexpected syntax object: ${stx}`);
    }
 }

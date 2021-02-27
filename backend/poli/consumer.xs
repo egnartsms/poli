@@ -73,9 +73,9 @@ vec-by ::=
             vec-mult-scalar (ort-by dir) magn
 processor ::=
     syntax-rules :(stx)
-        \ a
-            b
-            c
+            \ a
+        b
+        c
         d
         e
             f

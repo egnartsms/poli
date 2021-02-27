@@ -149,11 +149,10 @@ checkTerminalNewline ::= function (stm) {
    }
 }
 readMultilined ::= function (stm, mylevel) {
-   let children = $.readToEol(stm);
-
-   $.assert(children.length > 0);
-
-   let sink = children;
+   let [head, ...body] = $.readToEol(stm);
+   let keyedBodies = null;
+   let sink = body;
+   let isBodyBeginning = true;   // track possibility of double indentation
 
    while (!$.isAtEos(stm)) {
       $.assert(stm.next.token === 'indent');
@@ -165,16 +164,16 @@ readMultilined ::= function (stm, mylevel) {
          break;
       }
       
-      if (lvlshift > 2 || (lvlshift === 2 && !full)) {
-         throw new $.ReaderError(stm, `Too much of an indentation`);
+      if (lvlshift === 1) {
+         isBodyBeginning = false;
+      }
+      else if (lvlshift > 2 || !(full && isBodyBeginning)) {
+         throw new $.ReaderError(stm, `Too indented`);
       }
       
       for (let i = 0; i < stm.nblanks; i += 1) {
-         // If the current line is partially indented, then we shove all the preceding
-         // blank lines into the 'children' array rather than 'sink' which may be a
-         // container for preceding keyworded body.
-         (full ? sink : children).push({
-            stx: 'nl',
+         sink.push({
+            blank: '\n',
             nl: lvlshift
          });
       }
@@ -187,7 +186,7 @@ readMultilined ::= function (stm, mylevel) {
 
             if (stm.next.token === 'nl') {
                sink.push({
-                  stx: '\\nl',
+                  blank: '\\',
                   nl: -lvlshift
                });
                $.move(stm);
@@ -219,37 +218,27 @@ readMultilined ::= function (stm, mylevel) {
                   `'${stm.next.token}'`
             );
          }
+         
          let keyword = stm.next.word;
-
-         $.move(stm);
-         if (stm.next.token !== 'nl') {
-            throw new $.ReaderError(
-               stm,
-               `Expected a linebreak after a keyword at partially ` +
-                  `indented position, found '${stm.next.token}'`
-            );
-         }
          $.move(stm);
          
-         let compound = {
-            stx: '()',
-            nl: .5,  // yes, seriously
-            sub: [{
-               stx: 'kw',
-               kw: keyword,
-               nl: 0
-            }]
-         };
-
-         children.push(compound);
-         sink = compound.sub;
+         if (keyedBodies === null) {
+            keyedBodies = [];
+         }
+         sink = $.readToEol(stm);
+         keyedBodies.push({
+            key: keyword,
+            body: sink
+         });
+         isBodyBeginning = true;
       }
    }
    
    return {
-      stx: '()',
-      nl: 0,   // that will be fixed up at the call site
-      sub: children,
+      head: head,
+      body: body,
+      ...(keyedBodies !== null && {keyed: keyedBodies}),
+      nl: 0,   // that will be set at the call site
    };
 }
 readComment ::= function (stm) {
@@ -260,25 +249,18 @@ readComment ::= function (stm) {
       $.move(stm);
    }
    
-   // See if there are any trailing empty comment lines. If yes, they become blank lines
-   // for the purpose of further parsing.
-   let k = lines.length - 1;
-   while (k > 0 && lines[k] === '') {
-      k -= 1;
-   }
-   
-   stm.nblanks = lines.length - (k + 1);
    return {
-      stx: 'comment',
-      nl: 1,
-      lines: lines.slice(0, k + 1)
+      commentLines: lines,
+      nl: 0,  // will be set up (to either 1 or 2)
    };
 }
 readToEol ::= function (stm) {
    let syntaxes = [];
 
    while (!$.isAtEol(stm)) {
-      syntaxes.push($.readLineUnit(stm));
+      let syntax = $.readLineUnit(stm);
+      syntax.nl = 0;
+      syntaxes.push(syntax);
    }
    
    $.move(stm);
@@ -291,33 +273,25 @@ readLineUnit ::= function (stm) {
    switch (stm.next.token) {
       case 'word':
          atom = {
-            stx: 'id',
-            id: stm.next.word,
-            nl: 0
+            id: stm.next.word
          };
          break;
       
       case 'string':
          atom = {
-            stx: 'str',
-            str: stm.next.string,
-            nl: 0
+            str: stm.next.string
          };
          break;
       
       case 'number':
          atom = {
-            stx: 'num',
-            num: stm.next.number,
-            nl: 0
+            num: stm.next.number
          };
          break;
 
       case 'keyword':
          atom = {
-            stx: 'kw',
-            kw: stm.next.word,
-            nl: 0
+            kw: stm.next.word
          }
          break;
 
@@ -336,11 +310,7 @@ readLineUnit ::= function (stm) {
    let sub = [];
    
    if (stm.next.token === ':(') {
-      sub.push({
-         stx: 'id',
-         id: ':',
-         nl: 0
-      });
+      sub.push({id: ':'});
    }
 
    $.move(stm);
@@ -355,9 +325,16 @@ readLineUnit ::= function (stm) {
    
    $.move(stm);
    
-   return {
-      stx: '()',
-      nl: 0,
-      sub: sub,
+   if (sub.length === 0) {
+      return {
+         head: null,
+         body: null
+      };
+   }
+   else {
+      return {
+         head: sub[0],
+         body: sub.slice(1)
+      };
    }
 }
