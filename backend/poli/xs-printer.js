@@ -46,6 +46,10 @@ dumpMultilined ::= function* (stx, level) {
    }
 }
 dumpNext ::= function* (stx, level) {
+   if (stx.nl === undefined) {
+      throw new Error(`The .nl property is not set for syntax object`);
+   }
+   
    if (stx.nl === 0) {
       yield ' ';
       yield* $.dumpInline(stx);

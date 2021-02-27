@@ -81,6 +81,7 @@ readEntryDefinition ::= function (src) {
    }
    else {
       stx = $.readLineUnit(stm);
+      stx.nl = 0;
       $.checkTerminalNewline(stm);
    }
    
