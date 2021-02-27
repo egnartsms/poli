@@ -79,8 +79,8 @@ handleOperation ::= function (op) {
    try {      
       $_.db.transaction(() => {
          $.operationHandlers[op['op']].call(null, op['args']);
+         $.flush();
       })();
-      $.flush();
       $.applyRtDelta();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }

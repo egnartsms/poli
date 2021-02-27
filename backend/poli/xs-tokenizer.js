@@ -28,8 +28,8 @@ TokenizerError ::= class extends Error {
       this.message = message;
    }
 }
-indSpaces ::= 3
-partialIndSpaces ::= 1
+indSpaces ::= 4
+partialIndSpaces ::= 2
 isAtEos ::= function (stm) {
    return stm.line === null;
 }

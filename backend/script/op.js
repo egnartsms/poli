@@ -217,8 +217,8 @@ function compactImage() {
    console.log("Renumerating objects...");
    console.time('renumerate');
    db.transaction(renumerateObjects)(db);
-   console.timeEnd('renumerate');
    console.log("Renumeration done");
+   console.timeEnd('renumerate');
 
    console.log("Vacuuming...");
    db.exec('vacuum');
@@ -233,7 +233,7 @@ function renumerateObjects(db) {
    const SQL_GET_ALL_IDS = `select id from obj order by id asc`;
 
    let old2new = new Map;
-   let newid = 0;
+   let newid = LOBBY_OID;  // lobby is always the first object
 
    for (let oldid of db.prepare(SQL_GET_ALL_IDS).pluck().all()) {
       old2new.set(oldid, newid);

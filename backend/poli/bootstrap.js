@@ -434,7 +434,7 @@ loadImage ::= function () {
    $.effectuateImports('js');
    $.modules['xs-bootstrap'].rtobj['animateXsModules']();
    $.effectuateImports('xs');
-
+   
    return $.modules;
 }
 animateJsModules ::= function () {
