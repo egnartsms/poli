@@ -135,17 +135,25 @@ update ::=
 rename-refs-in ::=
     func :(module rename-map)
         #; TODO: impelement reference renaming for xs
-        if (=== module.lang "xs")
+        if
+                === module.lang "xs"
             return (arr|)
         
         func escape :(ref)
             return (ref.replace h/./g "\\.")
         
-        if (instanceof rename-map Array)
+        if
+                instanceof rename-map Array
             if
+              else:
                     &&
                         === (typeof (@ rename-map 0)) "string"
                         === rename-map.length 2
+                        + a
+                      unless:
+                            fuck
+                        normally-indented-code
+                        and-more
                 = rename-map (arr| rename-map)
         
         let alts = (Array.from (rename-map.keys) escape)

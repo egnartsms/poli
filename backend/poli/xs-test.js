@@ -1,7 +1,7 @@
 bootstrap
    modules
-xs-compiler
-   compileModuleEntry
+xs-finalizer
+   finalizeModuleEntry
 xs-printer
    syntax2str
 xs-reader
@@ -66,5 +66,7 @@ testReader ::= function () {
    console.log("$.text1 === $.text", $.text1 === $.text);
 }
 testCompiler ::= function () {
-   console.log($.compileModuleEntry($.modules['consumer'], 'use-reverse'));
+   console.dir($.finalizeModuleEntry($.modules['consumer'], 'use-reverse'), {
+      depth: null
+   });
 }

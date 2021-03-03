@@ -1,13 +1,12 @@
 bootstrap
    assert
    hasOwnProperty
+xs-finalizer
+   globalNames
+   isGlobalName
+   isModuleEntryName
 -----
 CompilerError ::= class extends Error {}
-globalNames ::= [
-   'console',
-   'Array',
-   'Object'
-]
 result ::= null
 module ::= null
 entry ::= null
@@ -84,12 +83,6 @@ isLocalName ::= function (name) {
    }
    
    return false;
-}
-isModuleEntryName ::= function (name) {
-   return $.hasOwnProperty($.module.defs, name);
-}
-isGlobalName ::= function (name) {
-   return $.globalNames.includes(name);
 }
 compileCompoundExpr ::= function (syntax) {
    $.assert(syntax.stx === '()');
