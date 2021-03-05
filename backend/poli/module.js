@@ -1,6 +1,7 @@
 bootstrap
    moduleEval
-   saveObject
+exc
+   rethrowCodeErrorsOn
 persist
    markAsDirty
 rtrec
@@ -30,7 +31,7 @@ addEntry ::= function (module, name, source, idx) {
       $.rtset(module, name, $.moduleEval(module, source));
    }
    else if (module.lang === 'xs') {
-      let stx = $.readEntryDefinition(source);
+      let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
       defn = {
          stx: stx
       };
@@ -47,4 +48,9 @@ addEntry ::= function (module, name, source, idx) {
    module.defs[name] = defn;
 
    return normalizedSource;
+}
+makeEntryDefinition ::= function (module, source) {
+   // For XS: read 'source' with xs-reader and assoc srcloc info to syntax objects
+   let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
+   
 }

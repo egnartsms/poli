@@ -14,9 +14,6 @@ __all__ = ['RegEditListener']
 CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
 
-_saved = None
-
-
 class RegEdit:
     """Region edit context.
 
@@ -138,26 +135,6 @@ class RegEdit:
                 break
 
             with read_only_set_to(self.view, False):
-                print("Undoing")
-                global _saved
-                _saved = {
-                    'before': self.view.substr(
-                        sublime.Region(
-                            0,
-                            self.edit_region[self.view].begin()
-                        )
-                    ),
-                    'after': self.view.substr(
-                        sublime.Region(
-                            self.edit_region[self.view].end(),
-                            self.view.size()
-                        )
-                    ),
-                    'edit': self.view.substr(self.edit_region[self.view]),
-                    'mem': (self.pre, self.post, self.rowcol),
-                    'now': (pre, post, rowcol)
-                }
-
                 self.view.run_command('undo')
                 n += 1
 

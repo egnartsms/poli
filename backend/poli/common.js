@@ -71,3 +71,31 @@ yreTest ::= function (re, offset, str) {
    re.lastIndex = offset;
    return re.test(str);
 }
+parameterize ::= function (tobind, callback) {
+   $.assert(tobind.length % 2 === 0);
+   
+   let oldvals = new Array(tobind.length / 2);
+   let i = 0, k = 0;
+   
+   while (i < tobind.length) {
+      oldvals[k] = tobind[i].val;
+      tobind[i].val = tobind[i + 1];
+      
+      i += 2;
+      k += 1;
+   }
+   
+   try {
+      return callback();
+   }
+   finally {
+      i = 0; k = 0;
+
+      while (i < tobind.length) {
+         tobind[i].val = oldvals[k];
+         
+         i += 2;
+         k += 1;
+      }
+   }
+}

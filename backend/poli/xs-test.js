@@ -1,9 +1,12 @@
+bootstrap
+   modules
+xs-finalizer
+   finalizeModuleEntry
 xs-printer
-   syntax2str
+   multilined2str
 xs-reader
    read1FromString
 xs-tokenizer
-   makeStream
    tokenizeFromNewline
 -----
 util ::= $_.require('util')
@@ -56,9 +59,14 @@ testTok ::= function () {
    }
    console.timeEnd();
 }
-test ::= function () {
+testReader ::= function () {
    let obj1 = $.read1FromString($.text);
-   $.text1 = $.syntax2str(obj1) + '\n';
+   $.text1 = $.multilined2str(obj1) + '\n';
    
    console.log("$.text1 === $.text", $.text1 === $.text);
+}
+testCompiler ::= function () {
+   console.dir($.finalizeModuleEntry($.modules['consumer'], 'use-reverse'), {
+      depth: null
+   });
 }

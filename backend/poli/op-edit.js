@@ -3,6 +3,8 @@ bootstrap
    moduleEval
 common
    propagateValueToRecipients
+exc
+   rethrowCodeErrorsOn
 module
    * as: module
 persist
@@ -59,8 +61,7 @@ editEntry ::= function (module, name, newSource) {
       $.propagateValueToRecipients(module, name);
    }
    else if (module.lang === 'xs') {
-      let stx = $.readEntryDefinition(newSource);
-
+      let stx = $.rethrowCodeErrorsOn(newSource, () => $.readEntryDefinition(newSource));
       // TODO: compute the value when you finally have XS compiler
       $.markAsDirty(module.defs);
       module.defs[name] = {

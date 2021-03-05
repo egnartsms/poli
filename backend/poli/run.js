@@ -8,7 +8,6 @@ common
    moduleNames
 exc
    ApiError
-   throwApiError
 img2fs
    dumpModule
 import
@@ -80,8 +79,8 @@ handleOperation ::= function (op) {
    try {      
       $_.db.transaction(() => {
          $.operationHandlers[op['op']].call(null, op['args']);
+         $.flush();
       })();
-      $.flush();
       $.applyRtDelta();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
@@ -336,7 +335,7 @@ operationHandlers ::= ({
          res = $.moduleEval(module, code);
       }
       catch (e) {
-         $.throwApiError('repl-eval', {
+         throw new $.ApiError('repl-eval', {
             message: e.message,
             stack: e.stack,
          });

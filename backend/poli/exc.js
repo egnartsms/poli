@@ -1,3 +1,7 @@
+xs-reader
+   ReaderError
+xs-tokenizer
+   TokenizerError
 -----
 ApiError ::= class extends Error {
    constructor (error, info) {
@@ -6,6 +10,21 @@ ApiError ::= class extends Error {
       this.info = info;
    }
 }
-throwApiError ::= function (error, info) {
-   throw new $.ApiError(error, info);
+rethrowCodeErrorsOn ::= function (source, callback) {
+   try {
+      return callback();
+   }
+   catch (e) {
+      if (e instanceof $.ReaderError && e.str === source ||
+            e instanceof $.TokenizerError && e.str === source) {
+         throw new $.ApiError('code', {
+            message: e.message,
+            row: e.row,
+            col: e.col,
+         });
+      }
+      else {
+         throw e;
+      }
+   }
 }
