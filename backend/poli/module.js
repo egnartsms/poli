@@ -49,3 +49,8 @@ addEntry ::= function (module, name, source, idx) {
 
    return normalizedSource;
 }
+makeEntryDefinition ::= function (module, source) {
+   // For XS: read 'source' with xs-reader and assoc srcloc info to syntax objects
+   let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
+   
+}

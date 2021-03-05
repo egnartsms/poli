@@ -333,7 +333,7 @@ finalizeAssignmentStmt ::= function (form) {
    
    return {
       type: 'assignment',
-      assignmentOp: form.head.id,
+      op: form.head.id,
       lhs: $.finalizeAssignmentTarget(lhs),
       rhs: $.finalizeExpr(rhs),
       parent: null

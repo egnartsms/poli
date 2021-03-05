@@ -2,7 +2,7 @@ xs-tokenizer
    indSpaces
    partialIndSpaces
 -----
-syntax2str ::= function (stx) {
+multilined2str ::= function (stx) {
    return Array.from($.dumpMultilined(stx, 0)).join('');
 }
 dumpsNext ::= function (stx, level) {
