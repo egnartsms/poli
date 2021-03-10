@@ -2,8 +2,12 @@
 a ::= 34
 use-reverse ::=
     func :(arr)
+      fucked:
         let len = (console console arr)
         console arr len (len arr "literal")
+        
+      var
+        \ 20
 gcd ::=
     func :((obj| (module: module-name) lang))
         if
