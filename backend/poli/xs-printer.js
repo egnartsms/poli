@@ -18,31 +18,18 @@ dumpMultilined ::= function* (stx, level) {
       return;
    }
    
-   if (stx.head === null) {
-      throw new Error(`Invalid syntax object: multilined compound is empty`);
-   }
-   
    if (stx.head === undefined) {
       throw new Error(`Invalid syntax object: ${stx}`);  // TODO: don't dump whole stx
    }
-   
+
+   if (stx.head === null) {
+      throw new Error(`Invalid syntax object: multilined compound is empty`);
+   }
+      
    yield* $.dumpInline(stx.head);
    
    for (let sub of stx.body) {
       yield* $.dumpNext(sub, level);
-   }
-   
-   if (stx.keyed !== undefined) {
-      for (let {key, body} of stx.keyed) {
-         yield '\n';
-         yield* $.partIndent(level);
-         yield key;
-         yield ':';
-         
-         for (let sub of body) {
-            yield* $.dumpNext(sub, level);
-         }
-      }
    }
 }
 dumpNext ::= function* (stx, level) {
@@ -53,18 +40,28 @@ dumpNext ::= function* (stx, level) {
    if (stx.nl === 0) {
       yield ' ';
       yield* $.dumpInline(stx);
+      return;
    }
-   else if (stx.nl < 0) {
+
+   let isFull = Number.isInteger(level);
+   let xlevel = isFull ? level : Math.floor(level);
+
+   if (stx.nl < 0) {
       yield '\n';
-      yield* $.indent(level + (-stx.nl));
+      yield* $.dumpIndentation(xlevel + (-stx.nl));
       yield '\\ ';
       yield* $.dumpInline(stx);
+
+      return;
    }
-   else {
-      yield '\n';
-      yield* $.indent(level + stx.nl);
-      yield* $.dumpMultilined(stx, level + stx.nl);
+
+   if (!isFull && stx.nl === .5) {
+      throw new Error(`Invalid syntax object: nested partially-indented bodies`);
    }
+
+   yield '\n';
+   yield* $.dumpIndentation(xlevel + stx.nl);
+   yield* $.dumpMultilined(stx, xlevel + stx.nl);
 }
 dumpComment ::= function* (comment, level) {
    let commentLines = comment.commentLines;
@@ -77,16 +74,18 @@ dumpComment ::= function* (comment, level) {
    
    for (let i = 1; i < commentLines.length; i += 1) {
       yield '\n';
-      yield* $.indent(level + 1);
+      yield* $.dumpIndentation(level + 1);
       yield commentLines[i];
    }
 }
-indent ::= function* (level) {
-   yield ' '.repeat($.indSpaces).repeat(level);
-}
-partIndent ::= function* (level) {
-   yield ' '.repeat($.indSpaces).repeat(level);
-   yield ' '.repeat($.partialIndSpaces);
+dumpIndentation ::= function* (level) {
+   if (Number.isInteger(level)) {
+      yield '\x20'.repeat($.indSpaces).repeat(level);
+   }
+   else {
+      yield '\x20'.repeat($.indSpaces).repeat(Math.floor(level));
+      yield '\x20'.repeat($.partialIndSpaces);
+   }   
 }
 dumpInline ::= function* (stx) {
    if (stx.blank === '\\')

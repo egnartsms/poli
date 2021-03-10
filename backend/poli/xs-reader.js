@@ -151,7 +151,6 @@ checkTerminalNewline ::= function (stm) {
 }
 readMultilined ::= function (stm, mylevel) {
    let [head, ...body] = $.readToEol(stm);
-   let keyedBodies = null;
    let sink = body;
    let isBodyBeginning = true;   // track possibility of double indentation
 
@@ -169,11 +168,14 @@ readMultilined ::= function (stm, mylevel) {
          isBodyBeginning = false;
       }
       else if (lvlshift > 2 || !(full && isBodyBeginning)) {
-         throw new $.ReaderError(stm, `Too indented`);
+         throw new $.ReaderError(stm, `Line too indented`);
       }
       
       for (let i = 0; i < stm.nblanks; i += 1) {
-         sink.push({
+         // If the current line is partially indented, then all the preceding
+         // blank lines become peers of partially-indented subbodies. Otherwise, they go
+         // into the current partially-indented subbody.
+         (full ? sink : body).push({
             blank: '\n',
             nl: lvlshift
          });
@@ -212,25 +214,15 @@ readMultilined ::= function (stm, mylevel) {
       else {
          $.assert(lvlshift === 1);
 
-         if (stm.next.token !== 'keyword') {
-            throw new $.ReaderError(
-               stm,
-               `Expected a keyword at partially indented position, found ` +
-                  `'${stm.next.token}'`
-            );
-         }
+         let [subhead, ...subbody] = $.readToEol(stm);
+         let sub = {
+            head: subhead,
+            body: subbody,
+            nl: .5
+         };
          
-         let keyword = stm.next.word;
-         $.move(stm);
-         
-         if (keyedBodies === null) {
-            keyedBodies = [];
-         }
-         sink = $.readToEol(stm);
-         keyedBodies.push({
-            key: keyword,
-            body: sink
-         });
+         body.push(sub);
+         sink = subbody;
          isBodyBeginning = true;
       }
    }
@@ -238,7 +230,6 @@ readMultilined ::= function (stm, mylevel) {
    return {
       head: head,
       body: body,
-      ...(keyedBodies !== null && {keyed: keyedBodies}),
       nl: 0,   // that will be set at the call site
    };
 }
@@ -260,7 +251,6 @@ readToEol ::= function (stm) {
 
    while (!$.isAtEol(stm)) {
       let syntax = $.readLineUnit(stm);
-      syntax.nl = 0;
       syntaxes.push(syntax);
    }
    
@@ -274,25 +264,29 @@ readLineUnit ::= function (stm) {
    switch (stm.next.token) {
       case 'word':
          atom = {
-            id: stm.next.word
+            id: stm.next.word,
+            nl: 0
          };
          break;
       
       case 'string':
          atom = {
-            str: stm.next.string
+            str: stm.next.string,
+            nl: 0
          };
          break;
       
       case 'number':
          atom = {
-            num: stm.next.number
+            num: stm.next.number,
+            nl: 0
          };
          break;
 
       case 'keyword':
          atom = {
-            kw: stm.next.word
+            kw: stm.next.word,
+            nl: 0
          }
          break;
 
@@ -300,7 +294,9 @@ readLineUnit ::= function (stm) {
          throw new $.ReaderError(stm, `Unexpected closing parenthesis`);
       
       default:
-         $.assert(stm.next.token === '(' || stm.next.token === ':(');
+         if (!(stm.next.token === '(' || stm.next.token === ':(')) {
+            throw new $.ReaderError(stm, `Unexpected token`);
+         }
    }
 
    if (atom !== null) {
@@ -329,13 +325,15 @@ readLineUnit ::= function (stm) {
    if (sub.length === 0) {
       return {
          head: null,
-         body: null
+         body: null,
+         nl: 0
       };
    }
    else {
       return {
          head: sub[0],
-         body: sub.slice(1)
+         body: sub.slice(1),
+         nl: 0
       };
    }
 }
