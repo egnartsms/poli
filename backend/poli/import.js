@@ -1,49 +1,19 @@
 bootstrap
    assert
    importedAs
-   validateImport
-persist
-   markAsDirty
-rtrec
-   delmark
-   rtget
-   rtset
+   rtdel
 -----
-import ::= function (imp) {
-   $.validateImport(imp);
-
-   let {recp, donor} = imp;
-
-   $.markAsDirty(recp.importedNames);
-   recp.importedNames.add($.importedAs(imp));
-
-   $.markAsDirty(recp.imports);
-   recp.imports.add(imp);
-
-   $.markAsDirty(donor.exports);
-   donor.exports.add(imp);
-
-   $.rtset(
-      recp,
-      $.importedAs(imp),
-      imp.name === null ? donor.rtobj : $.rtget(donor, imp.name)
-   );
-}
 unimport ::= function (imp) {
    let {recp, donor} = imp;
 
-   $.markAsDirty(recp.importedNames);
-   recp.importedNames.delete($.importedAs(imp));
-   
-   $.markAsDirty(recp.imports);
    $.assert(recp.imports.has(imp));
-   recp.imports.delete(imp);
-
-   $.markAsDirty(donor.exports);
    $.assert(donor.exports.has(imp));
+
+   recp.importedNames.delete($.importedAs(imp));
+   recp.imports.delete(imp);
    donor.exports.delete(imp);
    
-   $.rtset(recp, $.importedAs(imp), $.delmark);
+   $.rtdel(recp, $.importedAs(imp));
 }
 importsFromTo ::= function* (donor, recp) {
    if (donor.exports.size < recp.imports.size) {

@@ -2,13 +2,12 @@ bootstrap
    assert
    importedAs
    modules
+   rtget
+   rtset
 img2fs
    dumpModuleImportSection
 import
    importsOf
-rtrec
-   rtget
-   rtset
 -----
 moduleByName ::= function (name) {
    let module = $.modules[name];

@@ -1,10 +1,3 @@
-bootstrap
-   assert
-   hasOwnProperty
-xs-finalizer
-   globalNames
-   isGlobalName
-   isModuleEntryName
 -----
 CompilerError ::= class extends Error {}
 result ::= null

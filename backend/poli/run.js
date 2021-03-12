@@ -1,6 +1,9 @@
 bootstrap
    hasOwnProperty
+   import
    moduleEval
+   rtdrop
+   rtflush
 common
    dumpImportSection
    dumpImportSections
@@ -11,7 +14,6 @@ exc
 img2fs
    dumpModule
 import
-   import
    importFor
 module
    entrySource
@@ -28,11 +30,6 @@ op-query
    * as: query
 op-refactor
    * as: opRefactor
-persist
-   flush
-rtrec
-   applyRtDelta
-   discardRtDelta
 -----
 WebSocket ::= $_.require('ws')
 port ::= 8080
@@ -77,19 +74,17 @@ handleOperation ::= function (op) {
    })();
 
    try {      
-      $_.db.transaction(() => {
-         $.operationHandlers[op['op']].call(null, op['args']);
-         $.flush();
-      })();
-      $.applyRtDelta();
+      $.operationHandlers[op['op']].call(null, op['args']);
+      $.rtflush();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
-      // Remember that we don't yet have a normal rolling back, so after a failure
-      // things in memory will most likely be corrupted.
+      // It is responsibility of the code itself to maintain correct state of all the
+      // data structures when exceptions are thrown. Here, if things are corrup then this
+      // is the bug with Poli itself, not the code the user is working on.
       console.error(e);
 
-      $.discardRtDelta();
+      $.rtdrop();
 
       let error, info;
       
