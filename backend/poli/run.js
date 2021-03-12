@@ -109,6 +109,7 @@ send ::= function (msg) {
 }
 opExc ::= function (error, info) {
    $.send({
+      type: 'save',
       success: false,
       error: error,
       info: info
@@ -116,8 +117,15 @@ opExc ::= function (error, info) {
 }
 opRet ::= function (result=null) {
    $.send({
+      type: 'resp',
       success: true,
       result: result
+   });
+}
+applyModifications ::= function (modifications) {
+   $.send({
+      type: 'save',
+      modifications: modifications
    });
 }
 operationHandlers ::= ({
@@ -182,7 +190,7 @@ operationHandlers ::= ({
       let module = $.moduleByName(moduleName);
       let modifiedModules = $.opRefactor.renameEntry(module, oldName, newName);
 
-      $.opRet(
+      $.applyModifications(
          Array.from(
             modifiedModules,
             ({module, modifiedEntries, importSectionAffected}) => ({
@@ -192,6 +200,7 @@ operationHandlers ::= ({
             })
          )
       );
+      $.opRet();
    },
 
    removeEntry: function ({module: moduleName, entry, force}) {
@@ -204,13 +213,15 @@ operationHandlers ::= ({
          });
       }
       else {
-         $.opRet({
-            removed: true,
-            modifiedModules: Array.from(affectedModules, m => ({
+         $.applyModifications(
+            Array.from(affectedModules, m => ({
                module: m.name,
                importSection: $.dumpImportSection(m),
                modifiedEntries: [],
             }))
+         );
+         $.opRet({
+            removed: true
          });
       }
    },
@@ -258,13 +269,15 @@ operationHandlers ::= ({
    removeUnusedImportsInAllModules: function () {
       let {removedCount, affectedModules} = $.opImport.removeUnusedImportsInAllModules();
 
-      $.opRet({
-         removedCount,
-         modifiedModules: Array.from(affectedModules, module => ({
+      $.applyModifications(
+         Array.from(affectedModules, module => ({
             module: module.name,
             importSection: $.dumpImportSection(module),
             modifiedEntries: []
          }))
+      );
+      $.opRet({
+         removedCount
       });
    },
 
@@ -309,16 +322,14 @@ operationHandlers ::= ({
       let donor = $.moduleByName(donorModuleName);
       let modifiedEntries = $.opImport.convertImportsToStar(recp, donor);
 
-      if (modifiedEntries === null) {
-         $.opRet([]);
-      }
-      else {
-         $.opRet([{
+      if (modifiedEntries !== null) {
+         $.applyModifications([{
             module: recp.name,
             modifiedEntries,
             importSection: $.dumpImportSection(recp)
          }]);
       }
+      $.opRet();
    },
 
    eval: function ({module: moduleName, code}) {

@@ -145,12 +145,11 @@ class PoliCommit(ModuleTextCommand):
                 sublime.status_message("Not a valid name")
                 return
 
-            res = comm.op('renameEntry', {
+            comm.op('renameEntry', {
                 'module': op.view_module_name(self.view),
                 'oldName': cxt.name,
                 'newName': new_name
             })
-            op.modify_and_save_modules(self.view.window(), res)
         else:
             assert cxt.target == 'entry'
             
@@ -228,4 +227,3 @@ class PoliRemove(ModuleTextCommand):
             self.view.erase(edit, loc.entry.reg_entry_nl)
 
         op.save_module(self.view)
-        op.modify_and_save_modules(self.view.window(), res['modifiedModules'])

@@ -45,6 +45,7 @@ def plugin_loaded():
         for view in op.all_poli_views():
             op.setup_module_view(view)
     comm.on_status_changed = op.maybe_set_connected_status_in_active_view
+    comm.on_save_message = op.apply_modifications
     comm.reconnect()
     print("Loaded Poli")
 

@@ -209,9 +209,11 @@ def modify_module(view, edit, module_data):
     modify_module_entries(view, edit, module_data['modifiedEntries'])
 
 
-def modify_and_save_modules(window, modules_data):
+def apply_modifications(modules_data):
     if not modules_data:
         return
+
+    window = sublime.active_window()
 
     with active_view_preserved(window):
         views = [open_module(window, d['module']) for d in modules_data]
