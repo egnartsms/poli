@@ -6,8 +6,6 @@ import
    connectedModulesOf
    moduleRevDepsOf
    unimport
-persist
-   markAsDirty
 xs-bootstrap
    makeXsModule
 -----
@@ -28,7 +26,6 @@ addNewModule ::= function (moduleName, lang) {
       throw new Error(`Invalid lang: ${lang}`);
    }
 
-   $.markAsDirty($.modules);
    $.modules[moduleName] = module;
 }
 renameModule ::= function (module, newName) {
@@ -36,11 +33,9 @@ renameModule ::= function (module, newName) {
       throw new Error(`Module with the name "${newName}" already exists`);
    }
 
-   $.markAsDirty($.modules);
    $.modules[newName] = module;
    delete $.modules[module.name];
 
-   $.markAsDirty(module);
    module.name = newName;
 
    return $.moduleRevDepsOf(module);
@@ -60,7 +55,6 @@ removeModule ::= function (module, force) {
       }
    }
 
-   $.markAsDirty($.modules);
    delete $.modules[module.name];
 
    return true;

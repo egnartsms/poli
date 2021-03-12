@@ -1,18 +1,15 @@
 bootstrap
    hasOwnProperty
    moduleEval
+   rtset
 common
    propagateValueToRecipients
 exc
    rethrowCodeErrorsOn
 module
    * as: module
-persist
-   markAsDirty
 reference
    isNameFree
-rtrec
-   rtset
 xs-printer
    dumpsNext
 xs-reader
@@ -55,7 +52,6 @@ editEntry ::= function (module, name, newSource) {
       normalizedSource = newSource.trim();
       let newVal = $.moduleEval(module, normalizedSource);
 
-      $.markAsDirty(module.defs);
       module.defs[name] = normalizedSource;
       $.rtset(module, name, newVal);
       $.propagateValueToRecipients(module, name);
@@ -63,7 +59,6 @@ editEntry ::= function (module, name, newSource) {
    else if (module.lang === 'xs') {
       let stx = $.rethrowCodeErrorsOn(newSource, () => $.readEntryDefinition(newSource));
       // TODO: compute the value when you finally have XS compiler
-      $.markAsDirty(module.defs);
       module.defs[name] = {
          stx: stx
       };

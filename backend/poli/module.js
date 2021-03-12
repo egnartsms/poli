@@ -1,11 +1,8 @@
 bootstrap
    moduleEval
+   rtset
 exc
    rethrowCodeErrorsOn
-persist
-   markAsDirty
-rtrec
-   rtset
 xs-printer
    dumpsNext
 xs-reader
@@ -26,7 +23,7 @@ addEntry ::= function (module, name, source, idx) {
    let defn, normalizedSource;
 
    if (module.lang === 'js') {
-      defn = normalizedSource = source.trim()
+      defn = normalizedSource = source.trim();
       
       $.rtset(module, name, $.moduleEval(module, source));
    }
@@ -42,9 +39,7 @@ addEntry ::= function (module, name, source, idx) {
    else
       throw new Error;
    
-   $.markAsDirty(module.entries);
    module.entries.splice(idx, 0, name);
-   $.markAsDirty(module.defs);
    module.defs[name] = defn;
 
    return normalizedSource;

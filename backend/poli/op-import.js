@@ -10,8 +10,6 @@ import
 op-refactor
    renameImportedName
    renameRefsIn
-persist
-   markAsDirty
 reference
    isNameFree
    isReferredTo
@@ -32,7 +30,6 @@ renameImport ::= function (imp, newAlias) {
    }
 
    $.renameImportedName(recp, oldName, newName);
-   $.markAsDirty(imp);
    imp.alias = newAlias;
 
    return $.renameRefsIn(recp, [oldName, newName]);

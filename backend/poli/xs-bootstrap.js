@@ -1,13 +1,12 @@
 bootstrap
    addModuleInfoImports
    assert
-   effectuateImports
    modules
-   skRuntimeKeys
+   rtflush
 xs-reader
    readEntryDefinition
 -----
-makeModulesByInfo ::= function (modulesInfo) {
+load ::= function (modulesInfo) {
    for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeXsModule(name, body);
    }
@@ -16,7 +15,7 @@ makeModulesByInfo ::= function (modulesInfo) {
       $.addModuleInfoImports(minfo);
    }
    
-   $.effectuateImports('xs');
+   $.rtflush();
 }
 makeXsModule ::= function (name, body) {
    let defs = {};
@@ -30,7 +29,6 @@ makeXsModule ::= function (name, body) {
    }
    
    let module = {
-      [$.skRuntimeKeys]: ['rtobj'],
       lang: 'xs',
       name: name,
       
@@ -40,24 +38,10 @@ makeXsModule ::= function (name, body) {
 
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
-      rtobj: null
+      // TODO: this needs a compiler
+      rtobj: Object.create(null),
+      delta: Object.create(null)
    };
 
-   $.evalXsModuleDefinitions(module);
-
    return module;
-}
-evalXsModuleDefinitions ::= function (module) {
-   $.assert(module.lang === 'xs');
-   $.assert(module.rtobj === null);
-
-   // TODO: this needs a compiler
-   module.rtobj = Object.create(null);
-}
-animateXsModules ::= function () {
-   for (let module of Object.values($.modules)) {
-      if (module.lang === 'xs') {
-         $.evalXsModuleDefinitions(module);
-      }
-   }
 }

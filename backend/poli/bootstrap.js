@@ -2,40 +2,33 @@
 util ::= $_.require('util')
 fs ::= $_.require('fs')
 assert ::= $_.require('assert').strict
-lobby ::= null
-modules ::= null
-makeImageByFs ::= function () {
-   $.modules = {};
-
+modules ::= ({})
+load ::= function () {
    let modulesInfo = $.parseAllModules();
-   let jsModulesInfo = modulesInfo.filter(mi => mi.lang === 'js');
 
-   // Phase 0: make JS modules and fully prepare them to operate
-   for (let {name, body} of jsModulesInfo) {
+   $.loadJs(modulesInfo.filter(mi => mi.lang === 'js'));
+   $.loadXs(modulesInfo.filter(mi => mi.lang === 'xs'));
+
+   return $.modules;
+}
+loadJs ::= function (modulesInfo) {
+   for (let {name, body} of modulesInfo) {
       $.modules[name] = $.makeJsModule(name, body);
    }
 
-   for (let minfo of jsModulesInfo) {
+   for (let minfo of modulesInfo) {
       $.addModuleInfoImports(minfo);
    }
-   
-   $.effectuateImports('js');
 
-   // Phase 1: make XS modules
-   let xsModulesInfo = modulesInfo.filter(mi => mi.lang === 'xs');
-   $.modules['xs-bootstrap'].rtobj['makeModulesByInfo'](xsModulesInfo);
-   
-   // Phase 2: save the whole object graph to the persistent storage
-   // (Lobby exists in the DB but is empty at this point)
-   $.lobby = {
-      modules: $.modules,
-      bootstrapDefs: $.modules[$_.BOOTSTRAP_MODULE].defs
-   };
-   $.obj2id = new WeakMap([[$.lobby, $_.LOBBY_OID]]);
-   
-   let uow = $.makeUow();
-   $.saveObject($.lobby, uow);
-   $.flushUow(uow);
+   // Don't forget to flush the changes to modules' rtobjs. We don't really need to go
+   // through this transactional behavior now during the load process. The reason we do 
+   // this is that we want to reuse this code in other modules of the system (by just 
+   // importing from 'bootstrap' which is perfectly fine)
+   $.rtflush();
+}
+loadXs ::= function (modulesInfo) {
+   let xsBootstrap = $.modules['xs-bootstrap'];
+   xsBootstrap.rtobj['load'](modulesInfo);
 }
 parseAllModules ::= function () {
    let modulesInfo = [];
@@ -120,8 +113,8 @@ parseModuleFile ::= function (moduleFile) {
    };
 }
 makeJsModule ::= function (name, body) {
+   // Make JS module, evaluate its entries but don't do any imports yet
    let module = {
-      [$.skRuntimeKeys]: ['rtobj'],
       lang: 'js',
       name: name,
 
@@ -134,29 +127,21 @@ makeJsModule ::= function (name, body) {
       // in JS, trim entry src definitions
       defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
 
-      rtobj: null
+      rtobj: name === $_.BOOTSTRAP_MODULE ? $ : Object.create(null),
+      delta: Object.create(null)
    };
    
-   $.evalJsModuleDefinitions(module);
+   if (module.name !== $_.BOOTSTRAP_MODULE) {
+      for (let entry of module.entries) {
+         $.rtset(module, entry, $.moduleEval(module, module.defs[entry]));
+      }
+   }
 
    return module;
 }
-evalJsModuleDefinitions ::= function (module) {
-   $.assert(module.lang === 'js');
-   $.assert(module.rtobj === null);
-   
-   if (module.name === $_.BOOTSTRAP_MODULE) {
-      module.rtobj = $;
-   }
-   else {
-      module.rtobj = Object.create(null);
-      for (let entry of module.entries) {
-         module.rtobj[entry] = $.moduleEval(module, module.defs[entry]);
-      }
-   }
-}
 addModuleInfoImports ::= function ({name, imports}) {
    let recp = $.modules[name];
+
    for (let {donor: donorName, asterisk, imports: importrecs} of imports) {
       let donor = $.modules[donorName];
       if (asterisk !== null) {
@@ -171,178 +156,42 @@ importedAs ::= function (imp) {
    return imp.alias || imp.name;
 }
 import ::= function (imp) {
-   // This function is only for use while creating image from files. It's not intended
-   // to be reused in other modules.
-   //
-   // Perform import 'imp' but don't touch modules' rtobjs. That will be done separately.
-
    $.validateImport(imp);
    
-   imp.recp.importedNames.add($.importedAs(imp));
-   imp.recp.imports.add(imp);
-   imp.donor.exports.add(imp);
+   let {recp, donor, name} = imp;
+
+   recp.importedNames.add($.importedAs(imp));
+   recp.imports.add(imp);
+   donor.exports.add(imp);
+
+   $.rtset(
+      recp,
+      $.importedAs(imp),
+      name === null ? donor.rtobj : $.rtget(donor, name)
+   );
 }
 validateImport ::= function (imp) {
-   $.assert(!imp.recp.imports.has(imp));
-   $.assert(!imp.donor.exports.has(imp));
+   let importedAs = $.importedAs(imp);
+   let {recp, donor, name, alias} = imp;
 
-   if (imp.name === null) {
-      $.validateStarImport(imp);
-   }
-   else {
-      $.validateEntryImport(imp);
-   }
-}
-validateEntryImport ::= function ({recp, donor, name, alias}) {
-   let importedAs = alias || name;
-
-   if (!$.hasOwnProperty(donor.defs, name)) {
+   // This check does only make sense for entry imports (not star imports)
+   if (name !== null && !$.hasOwnProperty(donor.defs, name)) {
       throw new Error(
-         `Module "${recp.name}": cannot import "${name}" from "${donor.name}": ` +
+         `Module '${recp.name}': cannot import '${name}' from '${donor.name}': ` +
          `no such definition`
       );
    }
    if ($.hasOwnProperty(recp.defs, importedAs)) {
       throw new Error(
-         `Module "${recp.name}": cannot import "${importedAs}" from the module ` +
-         `"${donor.name}": the name collides with own definition`
+         `Module '${recp.name}': imported name '${importedAs}' from the module ` +
+         `'${donor.name}' collides with own definition`
       );
    }
    if (recp.importedNames.has(importedAs)) {
       throw new Error(
-         `Module "${recp.name}": the name "${importedAs}" imported from multiple ` +
-         `modules`
-      );         
-   }
-}
-validateStarImport ::= function ({recp, donor, alias}) {
-   if ($.hasOwnProperty(recp.defs, alias)) {
-      throw new Error(
-         `Module "${recp.name}": cannot import "${donor.name}" as "${alias}": ` +
-         `the name collides with own definition`
+         `Module '${recp.name}': the name '${importedAs}' imported more than once`
       );
    }
-   if (recp.importedNames.has(alias)) {
-      throw new Error(
-         `Module "${recp.name}": the name "${alias}" imported from multiple modules`
-      );
-   }
-}
-effectuateImports ::= function (inLang) {
-   for (let recp of Object.values($.modules)) {
-      if (inLang && recp.lang !== inLang) {
-         continue;
-      }
-
-      for (let imp of recp.imports) {
-         recp.rtobj[$.importedAs(imp)] =
-            imp.name === null ? imp.donor.rtobj : imp.donor.rtobj[imp.name];
-      }
-   }
-}
-skSet ::= '__set'
-skMap ::= '__map'
-skRuntimeKeys ::= '__rtkeys'
-skRef ::= '__ref'
-obj2id ::= null
-nextOid ::= $_.LOBBY_OID + 1
-takeNextOid ::= function () {
-   return $.nextOid++;
-}
-stmtReplace ::= $_.db.prepare(`
-   INSERT OR REPLACE INTO obj(id, val) VALUES (?, ?)
-`)
-isObject ::= function (val) {
-   return typeof val === 'object' && val !== null;
-}
-makeUow ::= function () {
-   return {
-      newobj2id: new Map,  // new objects (not already on $.obj2id)
-      savelist: [],    // [[oid, "serialized to JSON"], ...]
-      discovered: [],  // new objects waiting to be further examined
-   }
-}
-uowoid ::= function (uow, obj) {
-   $.assert($.isObject(obj));
-
-   let oid = $.obj2id.get(obj);
-   if (!oid) {
-      oid = uow.newobj2id.get(obj);
-      if (!oid) {
-         oid = $.takeNextOid();
-         uow.newobj2id.set(obj, oid);
-         uow.discovered.push(obj);
-      }
-   }
-
-   return oid;
-}
-saveObject ::= function (obj, uow) {
-   $.assert($.isObject(obj));
-
-   let oid = $.obj2id.get(obj);
-
-   if (oid) {
-      uow.savelist.push([oid, $.toJson(obj, uow)]);
-   }
-   else {
-      $.uowoid(uow, obj);
-   }   
-
-   while (uow.discovered.length > 0) {
-      let obj = uow.discovered.pop();
-      uow.savelist.push([uow.newobj2id.get(obj), $.toJson(obj, uow)]);
-   }
-}
-toJson ::= function (obj, uow) { 
-   let runtimeKeys = obj[$.skRuntimeKeys] || [];
-
-   if (obj instanceof Set) {
-      obj = {
-         [$.skSet]: Array.from(obj),
-         ...obj
-      }
-   }
-
-   function ref(val) {
-      return (
-         $.isObject(val) ? {
-            [$.skRef]: $.uowoid(uow, val)
-         } : val
-      );      
-   }
-
-   return JSON.stringify(obj, function (key, val) {
-      if (val === obj) {
-         return val;
-      }
-
-      if (this !== obj) {
-         // We are at some nested level (e.g. [$.skSet]: [item, ...])
-         return ref(val);
-      }
-
-      // Special keys should not be touched
-      if (key === $.skRuntimeKeys || key === $.skSet) {
-         return val;
-      }
-
-      if (runtimeKeys.includes(key)) {
-         return null;
-      }
-      
-      return ref(val);
-   });
-}
-flushUow ::= function (uow) {
-   $.assert(uow.discovered.length === 0);
-
-   for (let pair of uow.savelist) {
-      $.stmtReplace.run(pair);
-   }
-
-   uow.savelist.length = 0;
-   uow.newobj2id.clear();
 }
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
@@ -357,91 +206,44 @@ moduleEval ::= function (module, code) {
       throw e;
    }
 }
-loadImage ::= function () {
-   let obj2id = new Map;
-   let id2obj = new Map;
-   let obj2plain = new Map;
-
-   let data = $_.db.prepare(`SELECT id, val FROM obj ORDER BY id ASC`).raw().all();
-
-   for (let [id, val] of data) {
-      let plain = JSON.parse(val);
-      let obj;
-
-      if (plain[$.skSet]) {
-         obj = new Set;
-         obj2plain.set(obj, plain);
-      }
-      else {
-         obj = plain;
-      }
-
-      obj2id.set(obj, id);
-      id2obj.set(id, obj);
+touchedModules ::= new Set
+delmark ::= Object.create(null)
+rtget ::= function (module, name) {
+   if (name in module.delta) {
+      let val = module.delta[name];
+      return val === $.delmark ? undefined : val;
    }
-
-   $.nextOid = data[data.length - 1][0] + 1;
-
-   function isref(v) {
-      return $.isObject(v) && $.hasOwnProperty(v, $.skRef);
+   else {
+      return module.rtobj[name];
    }
-
-   function noref(v) {
-      if (!isref(v)) {
-         return v;
-      }
-
-      let obj = id2obj.get(v[$.skRef]);
-      if (!obj) {
-         throw new Error(`The image is corrupted: object by ID ${refid} is missing`);
-      }
-
-      return obj;
-   }
-
-   function derefObject(obj) {
-      for (let [k, v] of Object.entries(obj)) {
-         if (isref(v)) {
-            obj[k] = noref(v);
-         }
-      }
-   }
-
-   for (let obj of obj2id.keys()) {
-      if (obj instanceof Set) {
-         let plain = obj2plain.get(obj);
-         
-         for (let item of plain[$.skSet]) {
-            obj.add(noref(item));
-         }
-
-         for (let [k, v] of Object.entries(plain)) {
-            if (k !== $.skSet) {
-               obj[k] = noref(v);
-            }
-         }
-      }
-      else {
-         derefObject(obj);
-      }
-   }
-
-   $.lobby = id2obj.get($_.LOBBY_OID);
-   $.modules = $.lobby.modules;
-   $.obj2id = new WeakMap(obj2id);
-
-   $.animateJsModules();
-   $.effectuateImports('js');
-   $.modules['xs-bootstrap'].rtobj['animateXsModules']();
-   $.effectuateImports('xs');
-   
-   return $.modules;
 }
-animateJsModules ::= function () {
-   // Initialize JS modules' rtobj's
-   for (let module of Object.values($.modules)) {
-      if (module.lang === 'js') {
-         $.evalJsModuleDefinitions(module);
+rtset ::= function (module, name, val) {
+   module.delta[name] = val;
+   $.touchedModules.add(module);
+}
+rtdel ::= function (module, name) {
+   $.rtset(module, name, $.delmark);
+}
+rtflush ::= function () {
+   for (let module of $.touchedModules) {
+      for (let [name, val] of Object.entries(module.delta)) {
+         if (val === $.delmark) {
+            delete module.rtobj[name];
+         }
+         else {
+            module.rtobj[name] = val;
+         }
       }
-   }   
+
+      module.delta = Object.create(null);
+   }
+   
+   $.touchedModules.clear();
+}
+rtdrop ::= function () {
+   for (let module of $.touchedModules) {
+      module.delta = Object.create(null);
+   }
+
+   $.touchedModules.clear();
 }

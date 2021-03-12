@@ -1,28 +1,25 @@
 bootstrap
    hasOwnProperty
+   import
    importedAs
    moduleEval
+   rtdel
+   rtset
 common
    dumpImportSection
    joindot
 import
-   import
    importFromTo
    referrerImportsFromTo
    referrersOf
    unimport
 op-refactor
    renameRefsIn
-persist
-   markAsDirty
 reference
    extractRefs
    isNameFree
    isReferredTo
    resolveReference
-rtrec
-   delmark
-   rtset
 -----
 moveBy1 ::= function (module, name, direction) {
    if (!$.hasOwnProperty(module.defs, name)) {
@@ -38,7 +35,6 @@ moveBy1 ::= function (module, name, direction) {
             (i === 0 ? module.entries.length - 1 : i - 1) :
             (i === module.entries.length - 1 ? 0 : i + 1);
 
-   $.markAsDirty(module.entries);
    module.entries.splice(i, 1);
    module.entries.splice(j, 0, name);
 }
@@ -87,10 +83,8 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    // Stage 2. Take out srcModule[entry] definition
    let oldCode = srcModule.defs[entry];
 
-   $.markAsDirty(srcModule.defs);
-   $.markAsDirty(srcModule.entries);
    delete srcModule.defs[entry];
-   $.rtset(srcModule, entry, $.delmark);
+   $.rtdel(srcModule, entry);
    srcModule.entries.splice(srcModule.entries.indexOf(entry), 1);
 
    // Stage 3. Modify modules (do rename in definitions)
@@ -120,7 +114,6 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
 
    let newVal = $.moduleEval(destModule, newCode);
 
-   $.markAsDirty(destModule.defs);
    destModule.defs[entry] = newCode;
    $.rtset(destModule, entry, newVal);
 
@@ -140,7 +133,6 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
       iAnchor = before ? iAnchor : iAnchor + 1;
    }
    
-   $.markAsDirty(destModule.entries);
    destModule.entries.splice(iAnchor, 0, entry);
 
    // Stage 5. Add imports

@@ -1,6 +1,9 @@
 bootstrap
    hasOwnProperty
    moduleEval
+   rtget
+   rtset
+   rtdel
 common
    joindot
    propagateValueToRecipients
@@ -9,21 +12,14 @@ import
    referrerImportsFromTo
    referrersOf
    unimport
-persist
-   markAsDirty
 reference
    isEntryUsed
    isNameFree
-rtrec
-   delmark
-   rtget
-   rtset
 -----
 renameImportedName ::= function (recp, oldName, newName) {
    $.rtset(recp, newName, $.rtget(recp, oldName));
-   $.rtset(recp, oldName, $.delmark);
+   $.rtdel(recp, oldName);
 
-   $.markAsDirty(recp.importedNames);
    recp.importedNames.delete(oldName);
    recp.importedNames.add(newName);
 }
@@ -74,7 +70,6 @@ renameRefsIn ::= function (module, renameMap) {
 
       let newVal = $.moduleEval(module, newSource);
 
-      $.markAsDirty(module.defs);
       module.defs[entry] = newSource;
       $.rtset(module, entry, newVal);
       $.propagateValueToRecipients(module, entry);
@@ -97,7 +92,6 @@ modifyRecipientsForRename ::= function (module, oldName, newName) {
             $.renameImportedName(eimp.recp, oldName, newName);
             rnmap.set(oldName, newName);
          }
-         $.markAsDirty(eimp);
          eimp.name = newName;
       }
       if (simp) {
@@ -147,14 +141,12 @@ renameEntry ::= function (module, oldName, newName) {
       ownPair[0] = newName;
    }
 
-   $.markAsDirty(module.entries);
-   $.markAsDirty(module.defs);
    module.entries[module.entries.indexOf(oldName)] = newName;
    module.defs[newName] = module.defs[oldName];
    delete module.defs[oldName];
 
    $.rtset(module, newName, $.rtget(module, oldName));
-   $.rtset(module, oldName, $.delmark);
+   $.rtdel(module, oldName);
 
    return modifiedModules;
 }
@@ -187,11 +179,9 @@ removeEntry ::= function (module, entry, force) {
       $.unimport(imp);
    }      
 
-   $.markAsDirty(module.entries);
    module.entries.splice(module.entries.indexOf(entry), 1);
-   $.markAsDirty(module.defs);
    delete module.defs[entry];
-   $.rtset(module, entry, $.delmark);
+   $.rtdel(module, entry);
 
    return {
       removed: true,
