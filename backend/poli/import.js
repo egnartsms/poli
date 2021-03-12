@@ -1,10 +1,10 @@
 bootstrap
    assert
-   importedAs
    delmark
+   importedAs
+   rtdel
    rtget
    rtset
-   rtdel
 -----
 unimport ::= function (imp) {
    let {recp, donor} = imp;

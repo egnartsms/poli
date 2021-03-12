@@ -1,9 +1,9 @@
 bootstrap
    hasOwnProperty
    moduleEval
+   rtdel
    rtget
    rtset
-   rtdel
 common
    joindot
    propagateValueToRecipients

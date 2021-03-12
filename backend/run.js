@@ -75,6 +75,9 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 }
 
 
+Object.assign(exports, {load});
+
+
 if (require.main === module) {
    run();
 }
