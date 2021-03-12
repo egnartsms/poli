@@ -1,6 +1,5 @@
 bootstrap
    addModuleInfoImports
-   assert
    modules
    rtflush
 xs-reader
