@@ -190,12 +190,9 @@ class PoliRemoveUnusedImports(ModuleTextCommand):
 class PoliRemoveUnusedImportsInAllModules(WindowCommand):
     def run(self):
         res = comm.op('removeUnusedImportsInAllModules', {})
-
-        modified_modules = res['modifiedModules']
         removed_count = res['removedCount']
         
         if removed_count > 0:
-            op.modify_and_save_modules(self.window, modified_modules)
             sublime.status_message("Removed {} unused imports".format(removed_count))
         else:
             sublime.status_message("There are no unused imports in any module")

@@ -47,11 +47,10 @@ class NewNameInputHandler(sublime_plugin.ListInputHandler):
 
 class PoliConvertImportsToStar(ModuleTextCommand):
     def run(self, edit, donor_module):
-        modules_data = comm.op('convertImportsToStar', {
+        comm.op('convertImportsToStar', {
             'recp': op.view_module_name(self.view),
             'donor': donor_module
         })
-        op.modify_and_save_modules(self.view.window(), modules_data)
 
     def input(self, args):
         return DonorModuleInputHandler(self.view)
