@@ -1,9 +1,11 @@
 bootstrap
    assert
 common
+   parameterize
    yreExec
    yreTest
 -----
+strictMode ::= ({val: false})
 makeStream ::= function (str) {
    let stm = {
       str,
@@ -65,6 +67,9 @@ restOfLine ::= function (stm) {
 }
 numSpacesAhead ::= function (stm) {
    return $.yExec(stm, /[ ]*/y)[0].length;
+}
+skipSpaces ::= function (stm) {
+   $.advanceN(stm, $.numSpacesAhead(stm));
 }
 advanceN ::= function (stm, n) {
    $.assert(n <= stm.line.length - stm.col);
@@ -280,64 +285,123 @@ parseContinuationLine ::= function* (stm) {
    }
 }
 parseNormalLine ::= function* (stm) {
-   let spaceIndex = /\x20*$/.exec(stm.line).index;
-   if (spaceIndex < stm.line.length) {
-      stm.col = spaceIndex;
-      throw new $.TokenizerError(stm, `Line ends with trailing spaces`);
-   }
-   
-   let isAfterOpenParen = false;
-   let token;
-
-   while (!$.isAtEol(stm)) {
-      if (stm.nextChar === ' ') {
+   yield* (
+      $.strictMode.val ? $.parseNormalLineStrictly(stm) : $.parseNormalLineLoosely(stm)
+   );
+}
+parseNormalLineStrictly ::= function* (stm) {
+   function* beforeAtom() {
+      if (stm.nextChar === '\x20') {
          throw new $.TokenizerError(stm, `Excessive whitespace`);
       }
-
+      else if (yield* tryOpenParen()) {
+         yield* afterOpenParen();
+      }
+      else if (stm.nextChar === ')') {
+         throw new $.TokenizerError(stm, `Closing parenthesis preceded by whitespace`);
+      }
+      else if (!$.isAtEol(stm)) {
+         yield $.consumeToken(stm);
+         yield* afterToken();
+      }
+   }
+   
+   function* afterToken() {
+      if (stm.nextChar === '\x20') {
+         $.advanceN(stm, 1);
+         yield* beforeAtom();
+      }
+      else if (stm.nextChar === '(') {
+         throw new $.TokenizerError(stm, `Missing whitespace before opening parenthesis`);
+      }
+      else if (yield* tryCloseParen()) {
+         yield* afterCloseParen();
+      }
+   }
+   
+   function* afterOpenParen() {
+      if (yield* tryOpenParen()) {
+         yield* afterOpenParen();
+      }
+      else if (yield* tryCloseParen()) {
+         yield* afterCloseParen();
+      }
+      else if (!$.isAtEol(stm)) {
+         yield* beforeAtom();
+      }
+   }
+   
+   function* afterCloseParen() {
+      if (stm.nextChar === '\x20') {
+         $.advanceN(stm, 1);
+         yield* beforeAtom();
+      }
+      else if (yield* tryCloseParen()) {
+         yield* afterCloseParen();
+      }
+      else if (!$.isAtEol(stm)) {
+         throw new $.TokenizerError(stm, `Missing whitespace after closing parenthesis`);
+      }
+   }
+   
+   function* tryOpenParen() {
       let match = $.yExec(stm, /:?\(/y);
-      if (match) {
-         token = {
+
+      if (match === null) {
+         return false;
+      }
+      else {
+         let token = {
             token: match[0],
             row: stm.row,
-            col: stm.col,
+            col: stm.col
          };
          $.advanceMatch(stm, match);
          yield token;
-
-         isAfterOpenParen = true;
-         continue;
+         return true;
       }
-
+   }
+   
+   function* tryCloseParen() {
       if (stm.nextChar === ')') {
-         if (!isAfterOpenParen) {
-            throw new $.TokenizerError(
-               stm, `Closing parenthesis preceded by whitespace`
-            );
-         }
-      }
-      else {
-         yield $.consumeToken(stm);
-      }
-      
-      while (stm.nextChar === ')') {
-         token = {
+         let token = {
             token: ')',
             row: stm.row,
             col: stm.col,
          };
          $.advanceN(stm, 1);
          yield token;
+         return true;
       }
-      
-      if (stm.nextChar === '(') {
-         throw new $.TokenizerError(
-            stm, `Missing whitespace before opening parenthesis`
-         );
+      else {
+         return false;
       }
-
-      if (stm.nextChar === ' ') {
-         $.advanceN(stm, 1);
-         isAfterOpenParen = false;
+   }
+   
+   // Check for trailing spaces
+   let spaceIndex = /\x20*$/.exec(stm.line).index;
+   if (spaceIndex < stm.line.length) {
+      stm.col = spaceIndex;  // to point directly to the problem
+      throw new $.TokenizerError(stm, `Line ends with trailing spaces`);
+   }
+   
+   yield* beforeAtom();
+}
+parseNormalLineLoosely ::= function* (stm) {
+   while (!$.isAtEol(stm)) {
+      let match = $.yExec(stm, /(:?\(|\))\s*/y);
+      if (match) {
+         token = {
+            token: match[1],
+            row: stm.row,
+            col: stm.col
+         };
+         $.advanceMatch(stm, match);
+         yield token;
+      }
+      else {
+         yield $.consumeToken(stm);
+         $.skipSpaces(stm);
       }
    }
 }

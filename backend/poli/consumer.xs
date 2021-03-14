@@ -4,10 +4,25 @@ use-reverse ::=
    func :(arr)
     fucked:
       let len = (console console arr)
-      console arr len (len arr "literal")
+      console arr len (len arr "literal") f
       
     var
       \ 20
+fran ::=
+   if
+         === syntax.stx "id"
+      console.log "identifier"
+      
+    else-if:
+         === syntax.stx "str"
+      console.log "string"
+      
+    else-if:
+         === syntax.stx "num"
+      console.log "number"
+      
+    else:
+      console.log "unknown"
 gcd ::=
    func :((obj| (module: module-name) lang))
       if
@@ -20,12 +35,15 @@ gcd ::=
       if
             === syntax.stx "id"
          console.log "identifier"
+         
        else-if:
             === syntax.stx "str"
          console.log "string"
+         
        else-if:
             === syntax.stx "num"
          console.log "number"
+         
        else:
          console.log "unknown"
       
