@@ -98,8 +98,8 @@ test2 ::=
       
       Furnicle? "Uncle"
       
-      if (really-you?)
-       then:
+      if
+            really-you?
          console.log "Serhio"
        else:
          console.log "Ramos"
