@@ -16,6 +16,7 @@ function run() {
 
 
 function load() {
+   console.time('load');
    let $_ = {
       require,
       matchAllHeaderBodyPairs,
@@ -38,7 +39,9 @@ function load() {
       $[name] = moduleEval(code);
    }
 
-   return $['load']();
+   let modules = $['load']();
+   console.timeEnd('load');
+   return modules;
 }
 
 

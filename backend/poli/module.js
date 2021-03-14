@@ -1,12 +1,16 @@
 bootstrap
    moduleEval
    rtset
+common
+   parameterize
 exc
    rethrowCodeErrorsOn
 xs-printer
    dumpsNext
 xs-reader
    readEntryDefinition
+xs-tokenizer
+   strictMode
 -----
 entrySource ::= function (module, entry) {
    if (module.lang === 'js') {
@@ -28,7 +32,13 @@ addEntry ::= function (module, name, source, idx) {
       $.rtset(module, name, $.moduleEval(module, source));
    }
    else if (module.lang === 'xs') {
-      let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
+      let stx = $.rethrowCodeErrorsOn(
+         source,
+         () => $.parameterize(
+            [$.strictMode, true],
+            () => $.readEntryDefinition(source)
+         )
+      );
       defn = {
          stx: stx
       };

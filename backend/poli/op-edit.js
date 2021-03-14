@@ -3,6 +3,7 @@ bootstrap
    moduleEval
    rtset
 common
+   parameterize
    propagateValueToRecipients
 exc
    rethrowCodeErrorsOn
@@ -14,6 +15,8 @@ xs-printer
    dumpsNext
 xs-reader
    readEntryDefinition
+xs-tokenizer
+   strictMode
 -----
 addEntry ::= function (module, name, source, anchor, before) {
    if (!$.isNameFree(module, name)) {
@@ -57,7 +60,13 @@ editEntry ::= function (module, name, newSource) {
       $.propagateValueToRecipients(module, name);
    }
    else if (module.lang === 'xs') {
-      let stx = $.rethrowCodeErrorsOn(newSource, () => $.readEntryDefinition(newSource));
+      let stx = $.rethrowCodeErrorsOn(
+         newSource, 
+         () => $.parameterize(
+            [$.strictMode, true],
+            () => $.readEntryDefinition(newSource)
+         )
+      );
       // TODO: compute the value when you finally have XS compiler
       module.defs[name] = {
          stx: stx

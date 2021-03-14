@@ -1,5 +1,7 @@
 -----
 a ::= 34
+fierce ::=
+   \ 34
 use-reverse ::=
    func :(arr)
     fucked:
