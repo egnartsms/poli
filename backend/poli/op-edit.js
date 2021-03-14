@@ -60,7 +60,7 @@ editEntry ::= function (module, name, newSource) {
       $.propagateValueToRecipients(module, name);
    }
    else if (module.lang === 'xs') {
-      let stx = $.rethrowCodeErrorsOn(
+      let syntax = $.rethrowCodeErrorsOn(
          newSource, 
          () => $.parameterize(
             [$.strictMode, true],
@@ -69,9 +69,9 @@ editEntry ::= function (module, name, newSource) {
       );
       // TODO: compute the value when you finally have XS compiler
       module.defs[name] = {
-         stx: stx
+         syntax: syntax
       };
-      normalizedSource = $.dumpsNext(stx, 0);
+      normalizedSource = $.dumpsNext(syntax, 0);
    }
    else {
       throw new Error;
