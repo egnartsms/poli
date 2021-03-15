@@ -43,7 +43,7 @@ dumpDef ::= function* (lang, def) {
       yield def;
    }
    else if (lang === 'xs') {
-      yield* $.dumpsNext(def.stx, 0);
+      yield* $.dumpsNext(def.syntax, 0);
    }
    else {
       throw new Error;

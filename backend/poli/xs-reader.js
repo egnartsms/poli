@@ -295,7 +295,7 @@ readLineUnit ::= function (stm) {
       
       default:
          if (!(stm.next.token === '(' || stm.next.token === ':(')) {
-            throw new $.ReaderError(stm, `Unexpected token`);
+            throw new $.ReaderError(stm, `Unexpected token: ${stm.next.token}`);
          }
    }
 

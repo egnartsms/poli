@@ -46,8 +46,9 @@ function load() {
 
 
 function parseBody(str) {
-   const re = /^(\S+?) ::=(?=\s)/gm;
-
+   const re = /^(\S+?)\s+::=(?=\s)/gm;
+   // Here we parse loosely but still require at least 1 space before and after '::='.
+   // (::= can actually be followed immediately by a newline which is a whitespace, too)
    return Array.from(matchAllHeaderBodyPairs(str, re), ([mtch, def]) => [mtch[1], def]);
 }
 
