@@ -45,10 +45,11 @@ contexts:
       scope: invalid.illegal
 
   contents:
-    - match: '^({{word_char}}+) (::=)(?= \S)'
+    - match: '^({{word_char}}+) (\s*)(::=)(?=\s.*\S)'
       captures:
         1: entity.name.entry meta.entry.name
-        2: punctuation.separator.poli.defined-as
+        2: invalid.illegal.excessive-whitespace
+        3: punctuation.separator.poli.defined-as
       push:
         - 
           - meta_content_scope: meta.entry.def
@@ -57,10 +58,12 @@ contexts:
             pop: true
         - line
         - after-thing
-    - match: '^({{word_char}}+) (::=)$'
+    - match: '^({{word_char}}+) (\s*)(::=)(\s*?)$'
       captures:
         1: entity.name.entry meta.entry.name
-        2: punctuation.separator.poli.defined-as
+        2: invalid.illegal.excessive-whitespace
+        3: punctuation.separator.poli.defined-as
+        4: invalid.illegal.excessive-whitespace
       push: multiline-definition
 
   multiline-definition:

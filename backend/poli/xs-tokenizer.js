@@ -68,7 +68,9 @@ numSpacesAhead ::= function (stm) {
    return $.yExec(stm, /[ ]*/y)[0].length;
 }
 skipSpaces ::= function (stm) {
-   $.advanceN(stm, $.numSpacesAhead(stm));
+   let nspaces = $.numSpacesAhead(stm);
+   $.advanceN(stm, nspaces);
+   return nspaces;
 }
 advanceN ::= function (stm, n) {
    $.assert(n <= stm.line.length - stm.col);
@@ -90,11 +92,11 @@ tokenizeFromNewline ::= function* (str) {
 tokenizeEntryDefinition ::= function* (src) {
    // 'src' is what immediately follows "::="
    let stm = $.makeStream(src);
+   let nspaces = $.skipSpaces(stm);
 
    if ($.isAtEol(stm))
       ;
-   else if (stm.nextChar === '\x20') {
-      $.advanceN(stm, 1);
+   else if (nspaces > 0) {
       yield* $.parseNormalLine(stm);
    }
    else {
@@ -387,11 +389,13 @@ parseNormalLineStrictly ::= function* (stm) {
    yield* beforeAtom();
 }
 parseNormalLineLoosely ::= function* (stm) {
+   $.skipSpaces(stm);
+
    while (!$.isAtEol(stm)) {
-      let match = $.yExec(stm, /(:?\(|\))\s*/y);
+      let match = $.yExec(stm, /:?\(|\)/y);
       if (match) {
          token = {
-            token: match[1],
+            token: match[0],
             row: stm.row,
             col: stm.col
          };
@@ -400,8 +404,8 @@ parseNormalLineLoosely ::= function* (stm) {
       }
       else {
          yield $.consumeToken(stm);
-         $.skipSpaces(stm);
       }
+      $.skipSpaces(stm);
    }
 }
 consumeString ::= function (stm) {
