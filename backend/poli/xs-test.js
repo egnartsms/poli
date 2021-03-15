@@ -1,7 +1,7 @@
 bootstrap
    modules
-xs-compiler
-   compileFinalized
+xs-codegen
+   genCodeByFintree
 xs-finalizer
    finalizeModuleEntry
 xs-printer
@@ -75,6 +75,6 @@ testCompiler ::= function () {
 testFin ::= function () {
    let fin = $.finalizeModuleEntry($.modules['consumer'], 'use-reverse');
    // console.dir(fin, {depth: 6});
-   let js = $.compileFinalized(fin);
+   let js = $.genCodeByFintree(fin);
    console.log(js);
 }
