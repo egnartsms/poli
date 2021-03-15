@@ -1,9 +1,3 @@
-bootstrap
-   modules
-xs-compiler
-   compileFinalized
-xs-finalizer
-   finalizeModuleEntry
 xs-printer
    multilined2str
 xs-reader
@@ -66,15 +60,4 @@ testReader ::= function () {
    $.text1 = $.multilined2str(obj1) + '\n';
    
    console.log("$.text1 === $.text", $.text1 === $.text);
-}
-testCompiler ::= function () {
-   console.dir($.finalizeModuleEntry($.modules['consumer'], 'use-reverse'), {
-      depth: null
-   });
-}
-testFin ::= function () {
-   let fin = $.finalizeModuleEntry($.modules['consumer'], 'use-reverse');
-   // console.dir(fin, {depth: 6});
-   let js = $.compileFinalized(fin);
-   console.log(js);
 }

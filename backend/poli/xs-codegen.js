@@ -1,10 +1,6 @@
 common
    parameterize
 -----
-CompilerError ::= class extends Error {}
-module ::= null
-entry ::= null
-env ::= null
 result ::= ({val: null})
 indent ::= ({val: 0})
 emit ::= function (s) {
@@ -13,33 +9,33 @@ emit ::= function (s) {
 emitIndent ::= function () {
    $.emit('\x20'.repeat(3).repeat($.indent.val));
 }
-compileFinalized ::= function (fintree) {
+genCodeByFintree ::= function (fintree) {
    return $.parameterize([$.result, []], () => {
-      $.compileExpr(fintree);
+      $.cgenExpr(fintree);
       return $.result.val.join('');
    });
 }
-compileExpr ::= function (node) {
+cgenExpr ::= function (node) {
    switch (node.type) {
       case 'literal':
-         $.compileLiteral(node);
+         $.cgenLiteral(node);
          break;
       
       case 'ref':
-         $.emit(node.name);
+         $.cgenRef(node);
          break;
       
       case 'funcall':
-         $.compileFuncall(node);
+         $.cgenFuncall(node);
          break;
       
       case 'func':
-         $.compileFunc(node);
+         $.cgenFunc(node);
          break;
       
    }
 }
-compileLiteral ::= function (node) {
+cgenLiteral ::= function (node) {
    if (node.str !== undefined) {
       $.emit(JSON.stringify(node.str));
    }
@@ -50,8 +46,14 @@ compileLiteral ::= function (node) {
       throw new Error;
    }
 }
-compileFuncall ::= function (node) {
-   $.compileExpr(node.fun);
+cgenRef ::= function (node) {
+   if (node.refkind === 'module') {
+      $.emit('$.');
+   }
+   $.emit(node.name);
+}
+cgenFuncall ::= function (node) {
+   $.cgenExpr(node.fun);
    $.emit('(');
    
    let needComma = false;
@@ -62,12 +64,12 @@ compileFuncall ::= function (node) {
       else {
          needComma = true;
       }
-      $.compileExpr(arg);
+      $.cgenExpr(arg);
    }
    
    $.emit(')');
 }
-compileFunc ::= function (node) {
+cgenFunc ::= function (node) {
    $.emit('function (');
    
    let needComma = false;
@@ -95,7 +97,7 @@ compileFunc ::= function (node) {
       for (let stmt of node.body) {
          $.emit('\n');
          $.emitIndent();
-         $.compileStmt(stmt);
+         $.cgenStmt(stmt);
          $.emit(';');
       }
    });
@@ -104,56 +106,56 @@ compileFunc ::= function (node) {
    $.emitIndent();
    $.emit('}');
 }
-compileStmt ::= function (node) {
+cgenStmt ::= function (node) {
    switch (node.type) {
       case 'expr-stmt':
-         $.compileExpr(node.expr);
+         $.cgenExpr(node.expr);
          break;
       
       case 'let':
-         $.compileLet(node);
+         $.cgenLet(node);
          break;
       
       case 'return':
-         $.compileReturn(node);
+         $.cgenReturn(node);
          break;
       
       case 'assignment':
-         $.compileAssignment(node);
+         $.cgenAssignment(node);
          break;
       
       default:
          throw new Error;
    }
 }
-compileLet ::= function (node) {
+cgenLet ::= function (node) {
    $.emit('let ');
    $.emit(node.var);
    if (node.expr !== null) {
       $.emit(' = ');
-      $.compileExpr(node.expr);
+      $.cgenExpr(node.expr);
    }
 }
-compileReturn ::= function (node) {
+cgenReturn ::= function (node) {
    $.emit('return');
    if (node.expr !== null) {
       $.emit(' ');
-      $.compileExpr(node.expr);
+      $.cgenExpr(node.expr);
    }
 }
-compileAssignment ::= function (node) {
-   $.compileAssignmentTarget(node.lhs);
+cgenAssignment ::= function (node) {
+   $.cgenAssignmentTarget(node.lhs);
    $.emit(' = ');
-   $.compileExpr(node.rhs);
+   $.cgenExpr(node.rhs);
 }
-compileAssignmentTarget ::= function (target) {
+cgenAssignmentTarget ::= function (target) {
    switch (target.type) {
       case 'ref':
          $.emit(target.name);
          break;
       
       case '.':
-         $.compileAssignmentTarget(target.target)
+         $.cgenAssignmentTarget(target.target)
          $.emit('.');
          $.emit(target.prop);
          break;

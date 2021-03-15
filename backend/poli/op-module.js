@@ -33,9 +33,8 @@ renameModule ::= function (module, newName) {
       throw new Error(`Module with the name "${newName}" already exists`);
    }
 
-   $.modules[newName] = module;
    delete $.modules[module.name];
-
+   $.modules[newName] = module;
    module.name = newName;
 
    return $.moduleRevDepsOf(module);

@@ -1,7 +1,6 @@
 bootstrap
    assert
 common
-   parameterize
    yreExec
    yreTest
 -----

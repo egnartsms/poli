@@ -1,7 +1,12 @@
 bootstrap
    addModuleInfoImports
+   moduleEval
    modules
    rtflush
+xs-codegen
+   genCodeByFintree
+xs-finalizer
+   finalizeSyntax
 xs-reader
    readEntryDefinition
 -----
@@ -21,7 +26,9 @@ makeXsModule ::= function (name, body) {
 
    for (let [entry, src] of body) {
       defs[entry] = {
-         syntax: $.readEntryDefinition(src)
+         syntax: $.readEntryDefinition(src),
+         fintree: null,
+         jscode: null
       };
    }
    
@@ -32,13 +39,20 @@ makeXsModule ::= function (name, body) {
       imports: new Set(),
       exports: new Set(),
       importedNames: new Set(),
-
+      
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
-      // TODO: this needs a compiler
       rtobj: Object.create(null),
       delta: Object.create(null)
    };
-
+   
+   for (let [entry, def] of Object.entries(defs)) {
+      let fintree = $.finalizeSyntax(module, def.syntax);
+      let jscode = $.genCodeByFintree(fintree);
+      
+      Object.assign(def, {fintree, jscode});
+      module.rtobj[entry] = $.moduleEval(module, jscode);
+   }
+   
    return module;
 }

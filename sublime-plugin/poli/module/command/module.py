@@ -39,17 +39,16 @@ class PoliAddNewModule(ApplicationCommand):
 
 class PoliRenameModule(ModuleTextCommand):
     def run(self, edit, module_name):
-        res = comm.op('renameModule', {
+        comm.op('renameModule', {
             'module': op.view_module_name(self.view),
             'newName': module_name
         })
-        new_file_name = op.module_filename(module_name)
+        new_file_name = op.module_filename(module_name, op.view_lang(self.view))
         os.rename(self.view.file_name(), new_file_name)
         self.view.retarget(new_file_name)
-        op.replace_import_section_in_modules(self.view.window(), res)
 
     def input(self, args):
-        return ModuleNameInputHandler(comm.op('getModules', {}))
+        return chain_input_handlers(self.view, args, [ModuleNameInputHandler])
 
 
 class ModuleNameInputHandler(ChainableInputHandler, sublime_plugin.TextInputHandler):
