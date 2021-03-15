@@ -22,7 +22,7 @@ cgenExpr ::= function (node) {
          break;
       
       case 'ref':
-         $.emit(node.name);
+         $.cgenRef(node);
          break;
       
       case 'funcall':
@@ -45,6 +45,12 @@ cgenLiteral ::= function (node) {
    else {
       throw new Error;
    }
+}
+cgenRef ::= function (node) {
+   if (node.refkind === 'module') {
+      $.emit('$.');
+   }
+   $.emit(node.name);
 }
 cgenFuncall ::= function (node) {
    $.cgenExpr(node.fun);

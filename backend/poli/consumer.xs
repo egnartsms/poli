@@ -1,6 +1,9 @@
 -----
-a ::= 34
-makeDoe ::=
-   func :(obj)
-      = obj.name "Doe"
-      return 10
+a ::=
+   \ 2.45
+getDoe ::=
+   func :()
+      return "Doe"
+getSue ::=
+   func :()
+      return (arr| 1 2 3)

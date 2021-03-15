@@ -3,10 +3,13 @@ bootstrap
    rtset
 common
    parameterize
+   propagateValueToRecipients
 exc
    rethrowCodeErrorsOn
+xs-codegen
+   genCodeByFintree
 xs-finalizer
-   finalizeModuleEntry
+   finalizeSyntax
 xs-printer
    dumpsNext
 xs-reader
@@ -15,51 +18,74 @@ xs-tokenizer
    strictMode
 -----
 entrySource ::= function (module, entry) {
+   let def = module.defs[entry];
+   
    if (module.lang === 'js') {
-      return module.defs[entry];
+      return def;;
    }
    
    if (module.lang === 'xs') {
-      return $.dumpsNext(module.defs[entry].syntax, 0);
+      return $.dumpsNext(def.syntax, 0);
    }
    
    throw new Error;
 }
-addEntry ::= function (module, name, source, idx) {
-   let defn, normalizedSource;
-
-   if (module.lang === 'js') {
-      defn = normalizedSource = source.trim();
-      
-      $.rtset(module, name, $.moduleEval(module, source));
-   }
-   else if (module.lang === 'xs') {
-      let syntax = $.rethrowCodeErrorsOn(
-         source,
-         () => $.parameterize(
-            [$.strictMode, true],
-            () => $.readEntryDefinition(source)
-         )
-      );
-      defn = {
-         syntax: syntax
-      };
-      normalizedSource = $.dumpsNext(syntax, 0);
-
-      // TODO: evaluate stx once you have XS compiler
-   }
-   else
-      throw new Error;
+addEntry ::= function (module, entry, source, idx) {
+   let {def, normalizedSource, val} =
+      (module.lang === 'js') ?
+         $.prepareEntryJs(module, source)
+      : module.lang === 'xs' ?
+         $.prepareEntryXs(module, source)
+      : function () { throw new Error; }.call(null);
    
-   module.entries.splice(idx, 0, name);
-   module.defs[name] = defn;
-
+   module.entries.splice(idx, 0, entry);
+   module.defs[entry] = def;
+   $.rtset(module, entry, val);
+   
    return normalizedSource;
 }
-finalizeEntry ::= function (module, entry) {
-   let def = module.defs[entry];
+editEntry ::= function (module, entry, newSource) {
+   let {def, normalizedSource, val} =
+      (module.lang === 'js') ?
+         $.prepareEntryJs(module, newSource)
+      : module.lang === 'xs' ?
+         $.prepareEntryXs(module, newSource)
+      : function () { throw new Error; }.call(null);
+      
+   module.defs[entry] = def;
+   $.rtset(module, entry, val);
+   $.propagateValueToRecipients(module, entry);
    
-   let fin = $.finalizeModuleEntry(module, entry);
-   console.log(fin);
-   
+   return normalizedSource;
+}
+prepareEntryJs ::= function (module, source) {
+   let trimmed = source.trim();
+
+   return {
+      def: trimmed,
+      normalizedSource: trimmed,
+      val: $.moduleEval(module, trimmed)
+   };
+}
+prepareEntryXs ::= function (module, source) {
+   let syntax = $.rethrowCodeErrorsOn(
+      source,
+      () => $.parameterize(
+         [$.strictMode, true],
+         () => $.readEntryDefinition(source)
+      )
+   );
+   let fintree = $.finalizeSyntax(module, syntax);
+   let jscode = $.genCodeByFintree(fintree);
+   let val = $.moduleEval(module, jscode);
+      
+   return {
+      def: {
+         syntax,
+         fintree,
+         jscode
+      },
+      normalizedSource: $.dumpsNext(syntax, 0),
+      val: val
+   };
 }

@@ -6,7 +6,7 @@ bootstrap
 xs-codegen
    genCodeByFintree
 xs-finalizer
-   finalizeModuleEntry
+   finalizeSyntax
 xs-reader
    readEntryDefinition
 -----
@@ -39,23 +39,20 @@ makeXsModule ::= function (name, body) {
       imports: new Set(),
       exports: new Set(),
       importedNames: new Set(),
-
+      
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
       rtobj: Object.create(null),
       delta: Object.create(null)
    };
    
-   for (let [entry] of body) {
-      let fintree = $.finalizeModuleEntry(module, entry);
+   for (let [entry, def] of Object.entries(defs)) {
+      let fintree = $.finalizeSyntax(module, def.syntax);
       let jscode = $.genCodeByFintree(fintree);
       
-      Object.assign(defs[entry], {fintree, jscode});
+      Object.assign(def, {fintree, jscode});
+      module.rtobj[entry] = $.moduleEval(module, jscode);
    }
    
-   for (let [entry] of body) {
-      module.rtobj[entry] = $.moduleEval(module, defs[entry].jscode);
-   }
-
    return module;
 }

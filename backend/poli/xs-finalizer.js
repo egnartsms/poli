@@ -11,7 +11,6 @@ globalNames ::= [
    'Object'
 ]
 curModule ::= ({val: null})
-curEntry ::= ({val: null})
 curBlock ::= ({val: null})
 isLocalName ::= function (name) {
    let block = $.curBlock.val;
@@ -71,11 +70,9 @@ enumNames ::= function (syntax) {
    
    return names;
 }
-finalizeModuleEntry ::= function (module, entry) {
-   let syntax = module.defs[entry].syntax;
-    
+finalizeSyntax ::= function (module, syntax) {
    return $.parameterize(
-      [$.curModule, module, $.curEntry, entry],
+      [$.curModule, module],
       () => $.finalizeExpr(syntax)
    );
 }

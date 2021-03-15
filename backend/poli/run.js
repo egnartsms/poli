@@ -6,7 +6,6 @@ bootstrap
    rtflush
 common
    dumpImportSection
-   dumpImportSections
    moduleByName
    moduleNames
 exc
