@@ -45,7 +45,7 @@ contexts:
       scope: invalid.illegal
 
   contents:
-    - match: '^({{word_char}}+) (\s*)(::=)(?=\s.*\S)'
+    - match: '^(\S+) (\s*)(::=)(?=\s.*\S)'
       captures:
         1: entity.name.entry meta.entry.name
         2: invalid.illegal.excessive-whitespace
@@ -58,7 +58,7 @@ contexts:
             pop: true
         - line
         - after-thing
-    - match: '^({{word_char}}+) (\s*)(::=)(\s*?)$'
+    - match: '^(\S+) (\s*)(::=)(\s*?)$'
       captures:
         1: entity.name.entry meta.entry.name
         2: invalid.illegal.excessive-whitespace

@@ -36,10 +36,11 @@ contexts:
       scope: invalid.illegal
 
   contents:
-    - match: '^(\S+) (::=) '
+    - match: '^(\S+) (\s*)(::=) '
       captures:
         1: entity.name.entry meta.entry.name
-        2: punctuation.separator.poli.defined-as
+        2: invalid.illegal.excessive-whitespace
+        3: punctuation.separator.poli.defined-as
       embed: Packages/JavaScript/JavaScript.sublime-syntax
       escape: '^(?=\S+ ::= )'
       embed_scope: meta.entry.def
