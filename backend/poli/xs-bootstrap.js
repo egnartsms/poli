@@ -20,10 +20,8 @@ makeXsModule ::= function (name, body) {
    let defs = {};
 
    for (let [entry, src] of body) {
-      let stx = $.readEntryDefinition(src);
-
       defs[entry] = {
-         stx: stx
+         syntax: $.readEntryDefinition(src)
       };
    }
    

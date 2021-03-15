@@ -1,13 +1,15 @@
 -----
 a ::= 34
+fierce ::=
+   \ 34
 use-reverse ::=
    func :(arr)
-    fucked:
-      let len = (console console arr)
-      console arr len (len arr "literal") f
-      
-    var
-      \ 20
+      let get-len =
+         func :(obj)
+            let aux = 30
+            return (+ aux (console obj))
+      return
+         get-len 100
 fran ::=
    if
          === syntax.stx "id"

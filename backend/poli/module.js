@@ -1,12 +1,18 @@
 bootstrap
    moduleEval
    rtset
+common
+   parameterize
 exc
    rethrowCodeErrorsOn
+xs-finalizer
+   finalizeModuleEntry
 xs-printer
    dumpsNext
 xs-reader
    readEntryDefinition
+xs-tokenizer
+   strictMode
 -----
 entrySource ::= function (module, entry) {
    if (module.lang === 'js') {
@@ -14,7 +20,7 @@ entrySource ::= function (module, entry) {
    }
    
    if (module.lang === 'xs') {
-      return $.dumpsNext(module.defs[entry].stx, 0);
+      return $.dumpsNext(module.defs[entry].syntax, 0);
    }
    
    throw new Error;
@@ -28,11 +34,17 @@ addEntry ::= function (module, name, source, idx) {
       $.rtset(module, name, $.moduleEval(module, source));
    }
    else if (module.lang === 'xs') {
-      let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
+      let syntax = $.rethrowCodeErrorsOn(
+         source,
+         () => $.parameterize(
+            [$.strictMode, true],
+            () => $.readEntryDefinition(source)
+         )
+      );
       defn = {
-         stx: stx
+         syntax: syntax
       };
-      normalizedSource = $.dumpsNext(stx, 0);
+      normalizedSource = $.dumpsNext(syntax, 0);
 
       // TODO: evaluate stx once you have XS compiler
    }
@@ -44,8 +56,10 @@ addEntry ::= function (module, name, source, idx) {
 
    return normalizedSource;
 }
-makeEntryDefinition ::= function (module, source) {
-   // For XS: read 'source' with xs-reader and assoc srcloc info to syntax objects
-   let stx = $.rethrowCodeErrorsOn(source, () => $.readEntryDefinition(source));
+finalizeEntry ::= function (module, entry) {
+   let def = module.defs[entry];
+   
+   let fin = $.finalizeModuleEntry(module, entry);
+   console.log(fin);
    
 }

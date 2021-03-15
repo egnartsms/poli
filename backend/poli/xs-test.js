@@ -1,5 +1,7 @@
 bootstrap
    modules
+xs-compiler
+   compileFinalized
 xs-finalizer
    finalizeModuleEntry
 xs-printer
@@ -69,4 +71,10 @@ testCompiler ::= function () {
    console.dir($.finalizeModuleEntry($.modules['consumer'], 'use-reverse'), {
       depth: null
    });
+}
+testFin ::= function () {
+   let fin = $.finalizeModuleEntry($.modules['consumer'], 'use-reverse');
+   // console.dir(fin, {depth: 6});
+   let js = $.compileFinalized(fin);
+   console.log(js);
 }

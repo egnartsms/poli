@@ -3,9 +3,8 @@ bootstrap
    hasOwnProperty
 common
    parameterize
-xs-compiler
-   CompilerError
 -----
+FinalizeError ::= class extends Error {}
 globalNames ::= [
    'console',
    'Array',
@@ -14,9 +13,6 @@ globalNames ::= [
 curModule ::= ({val: null})
 curEntry ::= ({val: null})
 curBlock ::= ({val: null})
-hasKeyed ::= function (syntax) {
-   return syntax.keyed !== undefined && syntax.keyed.length > 0;
-}
 isLocalName ::= function (name) {
    let block = $.curBlock.val;
    
@@ -48,59 +44,40 @@ isCompound ::= function (syntax) {
    return syntax.head !== undefined;
 }
 isNonemptyCompound ::= function (syntax) {
-   return $.isCompound(syntax) && syntax.head !== null;
+   return syntax.head != null;
 }
-isCompoundHeaded ::= function (syntax, headname) {
-   return syntax.head != null && syntax.head.id === headname;
+isEmptyCompound ::= function (syntax) {
+   return syntax.head === null;
 }
-checkNoKeyedBodies ::= function (syntax) {
-   if ($.hasKeyed(syntax)) {
-      throw new $.CompilerError(`Keyed bodies not expected`);
-   }
+isHeadedCompound ::= function (syntax, headname) {
+   return $.isNonemptyCompound(syntax) && syntax.head.id === headname;
 }
-isEnumForm ::= function (syntax) {
-   if (syntax.head != null && $.isColon(syntax.head)) {
-      $.checkNoKeyedBodies(syntax);
-      return true;
-   }
-   else
-      return false;
+isEnumeration ::= function (syntax) {
+   return $.isNonemptyCompound(syntax) && $.isColon(syntax.head);
 }
 enumNames ::= function (syntax) {
-   if (!$.isEnumForm(syntax)) {
-      throw new $.CompilerError(`Not an enumeration form`);
+   if (!$.isEnumeration(syntax)) {
+      throw new $.FinalizeError(`Not an enumeration form`);
    }
    
    let names = [];
    
    for (let sub of syntax.body) {
       if (!$.isId(sub)) {
-         throw new $.CompilerError(`Not an id`);
+         throw new $.FinalizeError(`Not an id`);
       }
       names.push(sub.id);
    }
    
    return names;
 }
-expandDottedId ::= function (syntax) {
-   if (!syntax.id.includes('.')) {
-      return syntax;
-   }
-   
-   let parts = syntax.id.split(/\./);
-   $.assert(parts.length >= 2);
-   
-   return {
-      head: {id: '.'},
-      body: parts.map(part => ({id: part}))
-   }
-}
 finalizeModuleEntry ::= function (module, entry) {
-   let syntax = module.defs[entry].stx;
+   let syntax = module.defs[entry].syntax;
     
-   return $.parameterize([$.curModule, module, $.curEntry, entry], () => {
-      return $.finalizeExpr(syntax);
-   });
+   return $.parameterize(
+      [$.curModule, module, $.curEntry, entry],
+      () => $.finalizeExpr(syntax)
+   );
 }
 finalizeExpr ::= function (syntax) {
    if (syntax.id !== undefined) {
@@ -125,11 +102,11 @@ finalizeExpr ::= function (syntax) {
       return $.finalizeCompoundExpr(syntax);
    }
    
-   throw new $.CompilerError(`Wrong syntax object at expr position`);
+   throw new $.FinalizeError(`Wrong syntax object at expr position`);
 }
 finalizeId ::= function (name) {
    if (name.includes('.')) {
-      throw new $.CompilerError(`Not impl`);
+      throw new $.FinalizeError(`Dotted Identifiers not impl`);
    }
    
    if ($.isLocalName(name)) {
@@ -156,28 +133,33 @@ finalizeId ::= function (name) {
       };
    }
    
-   throw new $.CompilerError(`Reference to unknown name: '${name}'`);
+   return {
+      type: 'ref',
+      refkind: 'unknown',
+      name: name
+   };
 }
-finalizeCompoundExpr ::= function (syntax) {
-   $.checkNoKeyedBodies(syntax);
-   
-   if (syntax.head === null) {
-      throw new $.CompilerError(`Empty form`);
+finalizeCompoundExpr ::= function (compound) {
+   if ($.isEmptyCompound(compound)) {
+      throw new $.FinalizeError(`Empty form`);
    }
    
-   if ($.isId(syntax.head)) {
-      let headname = syntax.head.id;
+   if ($.isId(compound.head)) {
+      let headname = compound.head.id;
       
       if (headname === 'func') {
-         return $.finalizeFuncExpr(syntax);
+         return $.finalizeFuncExpr(compound);
       }
       if (headname === 'call|') {
-         return $.finalizeFuncall(syntax.body[0], syntax.body.slice(1));
+         if (compound.body.length === 0) {
+            throw new $.FinalizeError(`call| with no args`);
+         }
+         return $.finalizeFuncall(compound.body[0], compound.body.slice(1));
       }
       // TODO: check headname to not be JS builtin syntax words like if, return, etc.
    }
    
-   return $.finalizeFuncall(syntax.head, syntax.body);
+   return $.finalizeFuncall(compound.head, compound.body);
 }
 finalizeFuncall ::= function (fun, args) {
    return {
@@ -189,7 +171,7 @@ finalizeFuncall ::= function (fun, args) {
 }
 finalizeFuncExpr ::= function (syntax) {
    if (syntax.body.length < 2) {
-      throw new $.CompilerError(`Bad function expression syntax`);
+      throw new $.FinalizeError(`Bad function expression syntax`);
    }
    
    let [args, ...body] = syntax.body;
@@ -202,7 +184,8 @@ finalizeFuncExpr ::= function (syntax) {
       type: 'func',
       args: args,
       body: stmts,
-      block: block
+      block: block,
+      parent: null
    };
 }
 finalizeBlock ::= function (body, startWithNames=null) {
@@ -214,7 +197,7 @@ finalizeBlock ::= function (body, startWithNames=null) {
          let var_ = form.body[0].id;
 
          if (names.includes(var_)) {
-            throw new $.CompilerError(`Identifier '${var_}' has already been declared`);
+            throw new $.FinalizeError(`Identifier '${var_}' has already been declared`);
          }
          
          names.push(var_);
@@ -227,7 +210,10 @@ finalizeBlock ::= function (body, startWithNames=null) {
       names: names
    };
    
-   let stmts = $.parameterize([$.curBlock, block], () => body.map($.finalizeStmt));
+   let stmts = $.parameterize(
+      [$.curBlock, block],
+      () => body.map($.finalizeStmt).filter(stmt => stmt !== null)
+   );
    
    return {
       block,
@@ -236,19 +222,20 @@ finalizeBlock ::= function (body, startWithNames=null) {
 }
 looksLikeLet ::= function (form) {
    return (
-      $.isCompoundHeaded(form, 'let') && form.body.length >= 1 && $.isId(form.body[0])
+      $.isHeadedCompound(form, 'let') && form.body.length >= 1 && $.isId(form.body[0])
    );
 }
 finalizeStmt ::= function (form) {
    if ($.isCompound(form)) {
-      if (form.head === null) {
-         throw new $.CompilerError(`Empty form at stmt position`);
+      if ($.isEmptyCompound(form)) {
+         throw new $.FinalizeError(`Empty form at stmt position`);
       }
       
       if (!$.isId(form.head)) {
          return {
             type: 'expr-stmt',
-            expr: $.finalizeExpr(form)
+            expr: $.finalizeExpr(form),
+            parent: null
          };
       }
       
@@ -267,22 +254,21 @@ finalizeStmt ::= function (form) {
          default:
             return {
                type: 'expr-stmt',
-               expr: $.finalizeExpr(form)
+               expr: $.finalizeExpr(form),
+               parent: null
             };
       }
    }
    
-   if (syntax.stx === 'nl' || syntax.stx === 'comment') {
+   if (form.blank !== undefined) {
       return null;
    }
    
-   throw new $.CompilerError(`Invalid statement object`);
+   throw new $.FinalizeError(`Invalid statement object`);
 }
 finalizeLetStmt ::= function (form) {
-   $.checkNoKeyedBodies(form);
-
    function badSyntax() {
-      throw new $.CompilerError(`Bad 'let' syntax`);
+      throw new $.FinalizeError(`Bad 'let' syntax`);
    }
    
    let expr;
@@ -304,29 +290,24 @@ finalizeLetStmt ::= function (form) {
    return {
       type: 'let',
       var: form.body[0].id,
-      expr: $.finalizeExpr(expr),
-      myblock: $.curBlock.val,
+      expr: expr === null ? expr : $.finalizeExpr(expr),
       parent: null  // will be set by the call site
    };
 }
 finalizeReturnStmt ::= function (form) {
-   $.checkNoKeyedBodies(form);
-   
    if (form.body.length > 1) {
-      throw new $.CompilerError(`Bad syntax`);
+      throw new $.FinalizeError(`Bad syntax`);
    }
    
    return {
       type: 'return',
       expr: form.body.length === 0 ? null : $.finalizeExpr(form.body[0]),
-      myblock: $.curBlock.val
+      parent: null
    };
 }
 finalizeAssignmentStmt ::= function (form) {
-   $.checkNoKeyedBodies(form);
-   
    if (form.body.length !== 2) {
-      throw new $.CompilerError(`Bad syntax`);
+      throw new $.FinalizeError(`Bad syntax`);
    }
    
    let [lhs, rhs] = form.body;
@@ -341,7 +322,7 @@ finalizeAssignmentStmt ::= function (form) {
 }
 finalizeAssignmentTarget ::= function (lhs) {
    if ($.isId(lhs)) {
-      lhs = $.expandDottedId(lhs);
+      lhs = $.expandDottedId(lhs.id);
    }
    
    if ($.isId(lhs)) {
@@ -352,25 +333,37 @@ finalizeAssignmentTarget ::= function (lhs) {
             name: lhs.id
          };
       }
-      
-      throw new $.CompilerError(`Bad lhs name: '${lhs.id}'`);
+      else {
+         return {
+            type: 'ref',
+            refkind: 'unknown',
+            name: lhs.id
+         };
+      }
    }
    
-   if (!$.isNonemptyCompound(lhs)) {
-      throw new $.CompilerError(`Bad lhs of assignment`);
+   if ($.isHeadedCompound(lhs, '.')) {
+      return $.finalizeDotAssignmentTarget(lhs);
    }
    
-   if ($.isIdNamed(lhs.head, '.')) {
-      return $.finalizeDotAccess(lhs);
-   }
-   
-   throw new $.CompilerError(`Bad lhs of assignment`);
+   throw new $.FinalizeError(`Bad lhs of assignment`);
 }
-finalizeDotAccess ::= function (syntax) {
-   $.checkNoKeyedBodies(syntax);
+expandDottedId ::= function (id) {
+   if (!id.includes('.')) {
+      return syntax;
+   }
    
+   let parts = id.split(/\./);
+   $.assert(parts.length >= 2);
+   
+   return {
+      head: {id: '.'},
+      body: parts.map(part => ({id: part}))
+   }
+}
+finalizeDotAssignmentTarget ::= function (syntax) {
    if (syntax.body.length < 2) {
-      throw new $.CompilerError(`Bad . syntax`);
+      throw new $.FinalizeError(`Bad . syntax`);
    }
    
    let target = $.finalizeExpr(syntax.body[0]);
@@ -378,14 +371,17 @@ finalizeDotAccess ::= function (syntax) {
    
    while (i < syntax.body.length) {
       if (!$.isId(syntax.body[i])) {
-         throw new $.CompilerError(`Bad . syntax`);
+         throw new $.FinalizeError(`Bad . syntax`);
       }
       
       target = {
          type: '.',
          target: target,
-         prop: syntax.body[i].id
+         prop: syntax.body[i].id,
+         parent: null
       };
+      
+      i += 1;
    }
    
    return target;
