@@ -394,7 +394,7 @@ parseNormalLineLoosely ::= function* (stm) {
    while (!$.isAtEol(stm)) {
       let match = $.yExec(stm, /:?\(|\)/y);
       if (match) {
-         token = {
+         let token = {
             token: match[0],
             row: stm.row,
             col: stm.col
@@ -492,4 +492,4 @@ numberValue ::= function (number) {
       return null;
    }
 }
-gEval ::= global.eval
+gEval ::= eval

@@ -4,18 +4,19 @@
   "description": "Interactive programming environment on top of JavaScript",
   "main": "poli.js",
   "scripts": {
-    "nd": "node script/run.js"
+    "nd": "node script/ndrun.js",
+    "bw": "node script/bwrun.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/egnartsms/poli.git"
   },
   "keywords": [
-    "lisp",
+    "scheme",
     "interactive",
     "reactive",
     "language-oriented",
-    "image-based"
+    "live"
   ],
   "author": "Serhii Mozghovyi",
   "license": "MIT",
@@ -24,6 +25,9 @@
   },
   "homepage": "https://github.com/egnartsms/poli#readme",
   "dependencies": {
+    "rollup": "^2.41.3",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
     "ws": "^7.4.3"
   }
 }

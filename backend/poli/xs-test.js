@@ -60,3 +60,8 @@ testReader ::= function () {
    
    console.log("$.text1 === $.text", $.text1 === $.text);
 }
+addDiv ::= function () {
+   let div = document.createElement('div');
+   div.innerText = 'I am a div!!';
+   document.body.appendChild(div);
+}

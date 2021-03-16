@@ -180,14 +180,24 @@ hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
+   let fun;
+
    try {
-      let fun = new Function('$_, $, $$', `return (${code})`);
+      fun = new Function('$_, $, $$', `"use strict"; return (${code});`);
+   }
+   catch (e) {
+      console.error(`Parsing of this code failed: ${code}`);
+      throw e;
+   }
+
+   try {
       return fun.call(null, $_, module.rtobj, module);
    }
    catch (e) {
-      console.error(`Could not eval: "${code}"`);
+      console.error(`Evaluation of this code failed: ${code}`);
       throw e;
    }
+   
 }
 touchedModules ::= new Set
 delmark ::= Object.create(null)

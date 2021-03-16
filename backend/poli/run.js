@@ -30,17 +30,16 @@ op-query
 op-refactor
    * as: opRefactor
 -----
-getws ::= null
-main ::= function (getws) {
-   $.getws = getws;
+main ::= function (sendMessage) {
+   $.sendMessage = sendMessage;
    return $.handleOperation;
 }
 handleOperation ::= function (op) {
    let stopwatch = (() => {
-      let start = process.hrtime();
+      let start = new Date;
       return () => {
-         let [sec, nano] = process.hrtime(start);
-         return `${sec}.${String(Math.round(nano / 1e6)).padStart(3, '0')}`;
+         let elapsed = new Date - start;
+         return `${elapsed} ms`;
       };
    })();
 
@@ -75,11 +74,9 @@ handleOperation ::= function (op) {
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
-send ::= function (msg) {
-   $.getws().send(JSON.stringify(msg));
-}
+sendMessage ::= null
 respFailure ::= function (error, info) {
-   $.send({
+   $.sendMessage({
       type: 'resp',
       success: false,
       error: error,
@@ -87,14 +84,14 @@ respFailure ::= function (error, info) {
    });
 }
 respOk ::= function (result=null) {
-   $.send({
+   $.sendMessage({
       type: 'resp',
       success: true,
       result: result
    });
 }
 applyModifications ::= function (modifications) {
-   $.send({
+   $.sendMessage({
       type: 'save',
       modifications: modifications
    });

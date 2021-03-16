@@ -1,6 +1,8 @@
 import json
-import poli.config as config
+import time
 import websocket
+
+import poli.config as config
 
 from poli.exc import make_backend_error
 
@@ -27,7 +29,7 @@ class Communicator:
 
     def reconnect(self):
         self.disconnect()
-        self.ws.connect('ws://localhost:{port}/'.format(port=config.port))
+        self.ws.connect('ws://localhost:{port}/sublime'.format(port=config.port))
         self._fire_status_changed()
 
     def disconnect(self):
@@ -35,6 +37,7 @@ class Communicator:
         self._fire_status_changed()
 
     def op(self, op, args):
+        start = time.perf_counter()
         try:
             self.ws.send(json.dumps({
                 'op': op,
@@ -56,6 +59,9 @@ class Communicator:
             self.ws.shutdown()
             self._fire_status_changed()
             raise
+
+        elapsed = time.perf_counter() - start
+        print("{} took: {} ms".format(op, round(elapsed * 1000)))
 
         if res['success']:
             return res['result']
