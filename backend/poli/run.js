@@ -30,38 +30,10 @@ op-query
 op-refactor
    * as: opRefactor
 -----
-WebSocket ::= $_.require('ws')
-port ::= 8080
-server ::= null
-ws ::= null
-main ::= function () {
-   $.server = new $.WebSocket.Server({port: $.port});
-   $.server
-      .on('error', function (error) {
-         console.error("WebSocket server error:", error);
-      })
-      .on('connection', function (ws) {
-         if ($.ws !== null) {
-            console.error("Double simultaneous connections attempted");
-            ws.close();
-            return;
-         }
-
-         $.ws = ws;
-         $.ws
-            .on('message', function (data) {
-               $.handleOperation(JSON.parse(data));
-            })
-            .on('close', function (code, reason) {
-               $.ws = null;
-               console.log("Front-end disconnected. Code:", code, "reason:", reason);
-            })
-            .on('error', function (error) {
-               console.error("WebSocket client connection error:", error);
-            });
-
-         console.log("Front-end connected");
-      });
+getws ::= null
+main ::= function (getws) {
+   $.getws = getws;
+   return $.handleOperation;
 }
 handleOperation ::= function (op) {
    let stopwatch = (() => {
@@ -104,7 +76,7 @@ handleOperation ::= function (op) {
    }
 }
 send ::= function (msg) {
-   $.ws.send(JSON.stringify(msg));
+   $.getws().send(JSON.stringify(msg));
 }
 respFailure ::= function (error, info) {
    $.send({

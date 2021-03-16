@@ -5,7 +5,6 @@ xs-reader
 xs-tokenizer
    tokenizeFromNewline
 -----
-util ::= $_.require('util')
 text ::= String.raw`
 square-equation ::=$
    fn :(a b c)

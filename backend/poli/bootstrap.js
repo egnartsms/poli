@@ -1,10 +1,12 @@
 -----
-util ::= $_.require('util')
-fs ::= $_.require('fs')
-assert ::= $_.require('assert').strict
+assert ::= function (cond) {
+   if (!cond) {
+      throw new Error;
+   }
+}
 modules ::= ({})
-load ::= function () {
-   let modulesInfo = $.parseAllModules();
+load ::= function (rawModules) {
+   let modulesInfo = $.parseModules(rawModules);
 
    $.loadJs(modulesInfo.filter(mi => mi.lang === 'js'));
    $.loadXs(modulesInfo.filter(mi => mi.lang === 'xs'));
@@ -30,22 +32,14 @@ loadXs ::= function (modulesInfo) {
    let xsBootstrap = $.modules['xs-bootstrap'];
    xsBootstrap.rtobj['load'](modulesInfo);
 }
-parseAllModules ::= function () {
+parseModules ::= function (rawModules) {
    let modulesInfo = [];
 
-   for (let moduleFile of $.fs.readdirSync($_.SRC_FOLDER)) {
-      let res = $.parseModuleFile(moduleFile);
-      if (res === null) {
-         console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
-         continue;
-      }
-      
-      let {name, lang} = res;
-      let contents = $.fs.readFileSync(`./${$_.SRC_FOLDER}/${moduleFile}`, 'utf8');
-      let {imports, body} = $.parseModule(contents);
+   for (let raw of Object.values(rawModules)) {
+      let {imports, body} = $.parseModule(raw.contents);
       let moduleInfo = {
-         name: name,
-         lang: lang,
+         name: raw.name,
+         lang: raw.lang,
          imports: imports,
          body: body
       };
@@ -100,17 +94,6 @@ parseImports ::= function (str) {
    }
 
    return res;
-}
-parseModuleFile ::= function (moduleFile) {
-   let mtch = /^(?<name>.+)\.(?<lang>js|xs)$/.exec(moduleFile);
-   if (!mtch) {
-      return null;
-   }
-
-   return {
-      name: mtch.groups.name,
-      lang: mtch.groups.lang,
-   };
 }
 makeJsModule ::= function (name, body) {
    // Make JS module, evaluate its entries but don't do any imports yet

@@ -3,7 +3,6 @@ bootstrap
 xs-printer
    dumpsNext
 -----
-fs ::= $_.require('fs')
 ind ::= '   '
 main ::= function () {
    for (let moduleName in $.modules) {
@@ -11,6 +10,7 @@ main ::= function () {
    }
 }
 dumpModule ::= function (module) {
+   // This needs refactoring, as Poli runtime can now run in Browser
    let moduleStream = $.fs.createWriteStream(
       `${$_.SRC_FOLDER}/${module.name}.${module.lang}`, {
          mode: '664'
