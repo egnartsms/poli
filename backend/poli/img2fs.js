@@ -11,8 +11,8 @@ main ::= function () {
 }
 dumpModule ::= function (module) {
    // This needs refactoring, as Poli runtime can now run in Browser
-   let moduleStream = $.fs.createWriteStream(
-      `${$_.SRC_FOLDER}/${module.name}.${module.lang}`, {
+   let moduleStream = $_.fs.createWriteStream(
+      `poli/${module.name}.${module.lang}`, {
          mode: '664'
       }
    );

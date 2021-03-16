@@ -68,6 +68,7 @@ function load() {
    let $_ = {
       matchAllHeaderBodyPairs,
       parseBody,
+      fs,  // in Browser, that won't be available
       BOOTSTRAP_MODULE
    };
 
