@@ -1,45 +1,30 @@
-const assert = require('assert').strict;
-const fs = require('fs');
+const {BOOTSTRAP_MODULE} = require('./const');
 
 
-const
-   SRC_FOLDER = 'poli',
-   BOOTSTRAP_MODULE = 'bootstrap',
-   RUN_MODULE = 'run'
-;
-
-
-function run() {
-   let modules = load();
-   modules[RUN_MODULE].rtobj['main']();
-}
-
-
-function load() {
+function loadPoli(rawModules) {
    console.time('load');
+
    let $_ = {
-      require,
       matchAllHeaderBodyPairs,
       parseBody,
-      SRC_FOLDER,
+      // fs,  // FIXME: in Browser, that won't be available
       BOOTSTRAP_MODULE
    };
 
    let $ = Object.create(null);
 
    function moduleEval(code) {
-      let fun = new Function('$_, $', `return (${code})`);
+      let fun = Function('$_, $', `"use strict"; return (${code})`);
       return fun.call(null, $_, $);
    }
 
-   let contents = fs.readFileSync(`./${SRC_FOLDER}/${BOOTSTRAP_MODULE}.js`, 'utf8');
-   let entries = parseBody(contents);
+   let entries = parseBody(rawModules[BOOTSTRAP_MODULE].contents);
 
    for (let [name, code] of entries) {
       $[name] = moduleEval(code);
    }
 
-   let modules = $['load']();
+   let modules = $['load'](rawModules);
    console.timeEnd('load');
    return modules;
 }
@@ -61,8 +46,6 @@ function parseBody(str) {
    a body that belongs to that header.
 */
 function* matchAllHeaderBodyPairs(str, reHeader) {
-   assert(reHeader.global);
-
    let prev_i = null, prev_mtch = null;
 
    for (let mtch of str.matchAll(reHeader)) {
@@ -79,9 +62,4 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 }
 
 
-Object.assign(exports, {load});
-
-
-if (require.main === module) {
-   run();
-}
+Object.assign(exports, {loadPoli});

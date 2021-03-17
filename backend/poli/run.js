@@ -30,45 +30,16 @@ op-query
 op-refactor
    * as: opRefactor
 -----
-WebSocket ::= $_.require('ws')
-port ::= 8080
-server ::= null
-ws ::= null
-main ::= function () {
-   $.server = new $.WebSocket.Server({port: $.port});
-   $.server
-      .on('error', function (error) {
-         console.error("WebSocket server error:", error);
-      })
-      .on('connection', function (ws) {
-         if ($.ws !== null) {
-            console.error("Double simultaneous connections attempted");
-            ws.close();
-            return;
-         }
-
-         $.ws = ws;
-         $.ws
-            .on('message', function (data) {
-               $.handleOperation(JSON.parse(data));
-            })
-            .on('close', function (code, reason) {
-               $.ws = null;
-               console.log("Front-end disconnected. Code:", code, "reason:", reason);
-            })
-            .on('error', function (error) {
-               console.error("WebSocket client connection error:", error);
-            });
-
-         console.log("Front-end connected");
-      });
+main ::= function (sendMessage) {
+   $.sendMessage = sendMessage;
+   return $.handleOperation;
 }
 handleOperation ::= function (op) {
    let stopwatch = (() => {
-      let start = process.hrtime();
+      let start = new Date;
       return () => {
-         let [sec, nano] = process.hrtime(start);
-         return `${sec}.${String(Math.round(nano / 1e6)).padStart(3, '0')}`;
+         let elapsed = new Date - start;
+         return `${elapsed} ms`;
       };
    })();
 
@@ -103,11 +74,9 @@ handleOperation ::= function (op) {
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
-send ::= function (msg) {
-   $.ws.send(JSON.stringify(msg));
-}
+sendMessage ::= null
 respFailure ::= function (error, info) {
-   $.send({
+   $.sendMessage({
       type: 'resp',
       success: false,
       error: error,
@@ -115,14 +84,14 @@ respFailure ::= function (error, info) {
    });
 }
 respOk ::= function (result=null) {
-   $.send({
+   $.sendMessage({
       type: 'resp',
       success: true,
       result: result
    });
 }
 applyModifications ::= function (modifications) {
-   $.send({
+   $.sendMessage({
       type: 'save',
       modifications: modifications
    });

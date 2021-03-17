@@ -5,7 +5,6 @@ xs-reader
 xs-tokenizer
    tokenizeFromNewline
 -----
-util ::= $_.require('util')
 text ::= String.raw`
 square-equation ::=$
    fn :(a b c)
@@ -60,4 +59,9 @@ testReader ::= function () {
    $.text1 = $.multilined2str(obj1) + '\n';
    
    console.log("$.text1 === $.text", $.text1 === $.text);
+}
+addDiv ::= function () {
+   let div = document.createElement('div');
+   div.innerText = 'I am a div!!';
+   document.body.appendChild(div);
 }
