@@ -43,6 +43,15 @@ function run() {
                }
                else {
                   console.log('sublime -> 0');
+                  // This needs to be kept in-sync with our messaging format, which is bad
+                  wsSublime.send(JSON.stringify({
+                     type: 'resp',
+                     success: false,
+                     error: 'not-connected',
+                     info: {
+                        message: "The browser is not connected"
+                     }
+                  }));
                }
             });
 

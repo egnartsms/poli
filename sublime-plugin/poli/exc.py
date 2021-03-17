@@ -14,6 +14,10 @@ class BackendError(Exception):
         return cls(**{camel_to_underscore(k): v for k, v in info.items()})
 
 
+class PoliNotConnectedError(BackendError):
+    name = 'not-connected'
+
+
 class GenericError(BackendError):
     name = 'generic'
 
