@@ -5,7 +5,6 @@ const url = require('url');
 
 
 const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const {loadPoli} = require('./load');
 const {readRawModules} = require('./raw');
 
 
@@ -39,11 +38,11 @@ function run() {
             })
             .on('message', (data) => {
                if (wsBrowser !== null) {
-                  console.log('sublime -> browser: ', data);
+                  console.log('sublime -> browser');
                   wsBrowser.send(data);
                }
                else {
-                  console.log('sublime -> 0', data);
+                  console.log('sublime -> 0');
                }
             });
 
@@ -72,11 +71,11 @@ function run() {
                })
                .on('message', (data) => {
                   if (wsSublime !== null) {
-                     console.log('browser -> sublime: ', data);
+                     console.log('browser -> sublime');
                      wsSublime.send(data);
                   }
                   else {
-                     console.log('browser -> 0', data);
+                     console.log('browser -> 0');
                   }
                });
 
