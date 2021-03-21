@@ -5,6 +5,10 @@ common
    propagateValueToRecipients
 exc
    rethrowCodeErrorsOn
+transact
+   DpropSet
+   propSet
+   splice
 xs-codegen
    genCodeByFintree
 xs-finalizer
@@ -15,10 +19,6 @@ xs-reader
    readEntryDefinition
 xs-tokenizer
    strictMode
-transact
-   DpropSet
-   propSet
-   splice
 -----
 entrySource ::= function (module, entry) {
    let def = module.defs[entry];

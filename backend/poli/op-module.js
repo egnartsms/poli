@@ -6,11 +6,11 @@ import
    connectedModulesOf
    moduleRevDepsOf
    unimport
+transact
+   propDel
+   propSet
 xs-bootstrap
    makeXsModule
-transact
-   propSet
-   propDel
 -----
 addNewModule ::= function (moduleName, lang) {
    if ($.hasOwnProperty($.modules, moduleName)) {

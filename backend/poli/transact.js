@@ -63,7 +63,7 @@ setBwdDeltaFor ::= function (set) {
    let delta = $.setBwdDeltas.get(set);
    if (delta === undefined) {
       delta = new Map;  // {elt: true (add it back) / false (delete it)}
-      $.setBwdDeltas.set(obj, delta);
+      $.setBwdDeltas.set(set, delta);
    }
 
    return delta;

@@ -7,7 +7,7 @@ function loadPoli(rawModules) {
    let $_ = {
       matchAllHeaderBodyPairs,
       parseBody,
-      // fs,  // FIXME: in Browser, that won't be available
+      fs: require('fs'),  // FIXME: in Browser, that won't be available
       BOOTSTRAP_MODULE
    };
 

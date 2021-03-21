@@ -1,4 +1,5 @@
-const {loadPoli, readRawModules} = require('./run');
+const {loadPoli} = require('./load');
+const {readRawModules} = require('./raw');
 
 
 if (require.main === module) {

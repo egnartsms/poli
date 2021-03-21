@@ -38,7 +38,6 @@ function run() {
             })
             .on('message', (data) => {
                if (wsBrowser !== null) {
-                  console.log('sublime -> browser');
                   wsBrowser.send(data);
                }
                else {
@@ -80,11 +79,10 @@ function run() {
                })
                .on('message', (data) => {
                   if (wsSublime !== null) {
-                     console.log('browser -> sublime');
                      wsSublime.send(data);
                   }
                   else {
-                     console.log('browser -> 0');
+                     console.log('browser -> nil');
                   }
                });
 
@@ -124,7 +122,7 @@ function run() {
       else if (pathname === '/bootstrap.js') {
          let rawModules = readRawModules();
          let bootstrap = fs
-            .readFileSync('./script/bootstrap.js', 'utf8')
+            .readFileSync('./script/bootstrap.dist.js', 'utf8')
             .replace(/"%RAW_MODULES%"/, () => JSON.stringify(rawModules, null, 2));
 
          resp.writeHead(200, {

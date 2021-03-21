@@ -1,5 +1,4 @@
 bootstrap
-   assert
    importedAs
    validateImport
 transact
@@ -8,7 +7,6 @@ transact
    DpropSet
    setAdd
    setRemove
-   propSet
 -----
 import ::= function (imp) {
    $.validateImport(imp);

@@ -13,14 +13,14 @@ reference
    isEntryUsed
    isNameFree
 transact
-   DpropSet
-   DpropGet
    DpropDel
+   DpropGet
+   DpropSet
+   arraySet
+   propSet
    setAdd
    setDelete
    splice
-   arraySet
-   propSet
 -----
 renameImportedName ::= function (recp, oldName, newName) {
    $.DpropSet(recp.rtobj, newName, $.DpropGet(recp.rtobj, oldName));

@@ -10,6 +10,7 @@ exc
 img2fs
    dumpModule
 import
+   import
    importFor
 module
    entrySource

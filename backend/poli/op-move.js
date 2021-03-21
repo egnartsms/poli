@@ -19,8 +19,8 @@ reference
    isReferredTo
    resolveReference
 transact
-   DpropSet
    DpropDel
+   DpropSet
    propSet
    splice
 -----
