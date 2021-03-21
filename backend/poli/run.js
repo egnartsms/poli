@@ -1,9 +1,6 @@
 bootstrap
    hasOwnProperty
-   import
    moduleEval
-   rtdrop
-   rtflush
 common
    dumpImportSection
    moduleByName
@@ -29,6 +26,9 @@ op-query
    * as: query
 op-refactor
    * as: opRefactor
+transact
+   commit
+   rollback
 -----
 main ::= function (sendMessage) {
    $.sendMessage = sendMessage;
@@ -45,7 +45,7 @@ handleOperation ::= function (op) {
 
    try {      
       $.operationHandlers[op['op']].call(null, op['args']);
-      $.rtflush();
+      $.commit();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
@@ -54,7 +54,7 @@ handleOperation ::= function (op) {
       // is the bug with Poli itself, not the code the user is working on.
       console.error(e);
 
-      $.rtdrop();
+      $.rollback();
 
       let error, info;
       

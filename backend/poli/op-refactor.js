@@ -1,9 +1,6 @@
 bootstrap
    hasOwnProperty
    moduleEval
-   rtdel
-   rtget
-   rtset
 common
    joindot
    propagateValueToRecipients
@@ -15,13 +12,21 @@ import
 reference
    isEntryUsed
    isNameFree
+transact
+   DpropSet
+   DpropGet
+   DpropDel
+   setAdd
+   setDelete
+   splice
+   arraySet
+   propSet
 -----
 renameImportedName ::= function (recp, oldName, newName) {
-   $.rtset(recp, newName, $.rtget(recp, oldName));
-   $.rtdel(recp, oldName);
-
-   recp.importedNames.delete(oldName);
-   recp.importedNames.add(newName);
+   $.DpropSet(recp.rtobj, newName, $.DpropGet(recp.rtobj, oldName));
+   $.DpropDel(recp.rtobj, oldName);
+   $.setDelete(recp.importedNames, oldName);
+   $.setAdd(recp.importedNames, newName);
 }
 offendingModulesOnRename ::= function (module, oldName, newName) {
    let offendingModules = [];
@@ -70,8 +75,8 @@ renameRefsIn ::= function (module, renameMap) {
 
       let newVal = $.moduleEval(module, newSource);
 
-      module.defs[entry] = newSource;
-      $.rtset(module, entry, newVal);
+      $.propSet(module.defs, entry, newSource);
+      $.DpropSet(module.rtobj, entry, newVal);
       $.propagateValueToRecipients(module, entry);
 
       modifiedEntries.push([entry, newSource]);
@@ -141,12 +146,12 @@ renameEntry ::= function (module, oldName, newName) {
       ownPair[0] = newName;
    }
 
-   module.entries[module.entries.indexOf(oldName)] = newName;
-   module.defs[newName] = module.defs[oldName];
-   delete module.defs[oldName];
+   $.arraySet(module.entries, module.entries.indexOf(oldName), newName);
+   $.propSet(module.defs, newName, module.defs[oldName]);
+   $.propDel(module.defs, oldName);
 
-   $.rtset(module, newName, $.rtget(module, oldName));
-   $.rtdel(module, oldName);
+   $.DpropSet(module.rtobj, newName, $.DpropGet(module.rtobj, oldName));
+   $.DpropDel(module.rtobj, oldName);
 
    return modifiedModules;
 }
@@ -179,9 +184,9 @@ removeEntry ::= function (module, entry, force) {
       $.unimport(imp);
    }      
 
-   module.entries.splice(module.entries.indexOf(entry), 1);
-   delete module.defs[entry];
-   $.rtdel(module, entry);
+   $.splice(module.entries, module.entries.indexOf(entry), 1);
+   $.propDel(module.defs, entry);
+   $.DpropDel(module.rtobj, entry);
 
    return {
       removed: true,

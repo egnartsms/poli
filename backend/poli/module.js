@@ -1,6 +1,5 @@
 bootstrap
    moduleEval
-   rtset
 common
    parameterize
    propagateValueToRecipients
@@ -16,6 +15,10 @@ xs-reader
    readEntryDefinition
 xs-tokenizer
    strictMode
+transact
+   DpropSet
+   propSet
+   splice
 -----
 entrySource ::= function (module, entry) {
    let def = module.defs[entry];
@@ -38,9 +41,9 @@ addEntry ::= function (module, entry, source, idx) {
          $.prepareEntryXs(module, source)
       : function () { throw new Error; }.call(null);
    
-   module.entries.splice(idx, 0, entry);
-   module.defs[entry] = def;
-   $.rtset(module, entry, val);
+   $.splice(module.entries, idx, 0, entry);
+   $.propSet(module.defs, entry, def);
+   $.DpropSet(module.rtobj, entry, val);
    
    return normalizedSource;
 }
@@ -52,8 +55,8 @@ editEntry ::= function (module, entry, newSource) {
          $.prepareEntryXs(module, newSource)
       : function () { throw new Error; }.call(null);
       
-   module.defs[entry] = def;
-   $.rtset(module, entry, val);
+   $.propSet(module.defs, entry, def);
+   $.DpropSet(module.rtobj, entry, val);
    $.propagateValueToRecipients(module, entry);
    
    return normalizedSource;

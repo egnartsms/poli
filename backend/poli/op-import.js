@@ -13,6 +13,8 @@ op-refactor
 reference
    isNameFree
    isReferredTo
+transact
+   propSet
 -----
 renameImport ::= function (imp, newAlias) {
    let recp = imp.recp;
@@ -30,7 +32,7 @@ renameImport ::= function (imp, newAlias) {
    }
 
    $.renameImportedName(recp, oldName, newName);
-   imp.alias = newAlias;
+   $.propSet(imp, 'alias', newAlias);
 
    return $.renameRefsIn(recp, [oldName, newName]);
 }

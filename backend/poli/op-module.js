@@ -8,6 +8,9 @@ import
    unimport
 xs-bootstrap
    makeXsModule
+transact
+   propSet
+   propDel
 -----
 addNewModule ::= function (moduleName, lang) {
    if ($.hasOwnProperty($.modules, moduleName)) {
@@ -26,16 +29,16 @@ addNewModule ::= function (moduleName, lang) {
       throw new Error(`Invalid lang: ${lang}`);
    }
 
-   $.modules[moduleName] = module;
+   $.propSet($.modules, moduleName, module);
 }
 renameModule ::= function (module, newName) {
    if ($.hasOwnProperty($.modules, newName)) {
       throw new Error(`Module with the name "${newName}" already exists`);
    }
 
-   delete $.modules[module.name];
-   $.modules[newName] = module;
-   module.name = newName;
+   $.propDel($.modules, module.name);
+   $.propSet($.modules, newName, module);
+   $.propSet(module, 'name', newName);
 
    return $.moduleRevDepsOf(module);
 }
@@ -54,7 +57,7 @@ removeModule ::= function (module, force) {
       }
    }
 
-   delete $.modules[module.name];
+   $.propDel($.modules, module.name);
 
    return true;
 }

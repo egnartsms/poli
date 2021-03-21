@@ -21,12 +21,6 @@ loadJs ::= function (modulesInfo) {
    for (let minfo of modulesInfo) {
       $.addModuleInfoImports(minfo);
    }
-
-   // Don't forget to flush the changes to modules' rtobjs. We don't really need to go
-   // through this transactional behavior now during the load process. The reason we do 
-   // this is that we want to reuse this code in other modules of the system (by just 
-   // importing from 'bootstrap' which is perfectly fine)
-   $.rtflush();
 }
 loadXs ::= function (modulesInfo) {
    let xsBootstrap = $.modules['xs-bootstrap'];
@@ -109,14 +103,13 @@ makeJsModule ::= function (name, body) {
       entries: Array.from(body, ([entry]) => entry),
       // in JS, trim entry src definitions
       defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
-
-      rtobj: name === $_.BOOTSTRAP_MODULE ? $ : Object.create(null),
-      delta: Object.create(null)
+      
+      rtobj: name === $_.BOOTSTRAP_MODULE ? $ : Object.create(null)
    };
    
    if (module.name !== $_.BOOTSTRAP_MODULE) {
       for (let entry of module.entries) {
-         $.rtset(module, entry, $.moduleEval(module, module.defs[entry]));
+         module.rtobj[entry] = $.moduleEval(module, module.defs[entry]);
       }
    }
 
@@ -147,11 +140,7 @@ import ::= function (imp) {
    recp.imports.add(imp);
    donor.exports.add(imp);
 
-   $.rtset(
-      recp,
-      $.importedAs(imp),
-      name === null ? donor.rtobj : $.rtget(donor, name)
-   );
+   recp.rtobj[$.importedAs(imp)] = name === null ? donor.rtobj : donor.rtobj[name];
 }
 validateImport ::= function (imp) {
    let importedAs = $.importedAs(imp);
@@ -197,46 +186,4 @@ moduleEval ::= function (module, code) {
       console.error(`Evaluation of this code failed: ${code}`);
       throw e;
    }
-   
-}
-touchedModules ::= new Set
-delmark ::= Object.create(null)
-rtget ::= function (module, name) {
-   if (name in module.delta) {
-      let val = module.delta[name];
-      return val === $.delmark ? undefined : val;
-   }
-   else {
-      return module.rtobj[name];
-   }
-}
-rtset ::= function (module, name, val) {
-   module.delta[name] = val;
-   $.touchedModules.add(module);
-}
-rtdel ::= function (module, name) {
-   $.rtset(module, name, $.delmark);
-}
-rtflush ::= function () {
-   for (let module of $.touchedModules) {
-      for (let [name, val] of Object.entries(module.delta)) {
-         if (val === $.delmark) {
-            delete module.rtobj[name];
-         }
-         else {
-            module.rtobj[name] = val;
-         }
-      }
-
-      module.delta = Object.create(null);
-   }
-   
-   $.touchedModules.clear();
-}
-rtdrop ::= function () {
-   for (let module of $.touchedModules) {
-      module.delta = Object.create(null);
-   }
-
-   $.touchedModules.clear();
 }

@@ -2,7 +2,6 @@ bootstrap
    addModuleInfoImports
    moduleEval
    modules
-   rtflush
 xs-codegen
    genCodeByFintree
 xs-finalizer
@@ -18,8 +17,6 @@ load ::= function (modulesInfo) {
    for (let minfo of modulesInfo) {
       $.addModuleInfoImports(minfo);
    }
-   
-   $.rtflush();
 }
 makeXsModule ::= function (name, body) {
    let defs = {};
@@ -42,15 +39,15 @@ makeXsModule ::= function (name, body) {
       
       entries: Array.from(body, ([entry]) => entry),
       defs: defs,
-      rtobj: Object.create(null),
-      delta: Object.create(null)
+      rtobj: Object.create(null)
    };
    
    for (let [entry, def] of Object.entries(defs)) {
       let fintree = $.finalizeSyntax(module, def.syntax);
       let jscode = $.genCodeByFintree(fintree);
       
-      Object.assign(def, {fintree, jscode});
+      def.fintree = fintree;
+      def.jscode = jscode;
       module.rtobj[entry] = $.moduleEval(module, jscode);
    }
    

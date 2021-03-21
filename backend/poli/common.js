@@ -2,12 +2,13 @@ bootstrap
    assert
    importedAs
    modules
-   rtget
-   rtset
 img2fs
    dumpModuleImportSection
 import
    importsOf
+transact
+   DpropGet
+   DpropSet
 -----
 moduleByName ::= function (name) {
    let module = $.modules[name];
@@ -35,9 +36,9 @@ dumpImportSections ::= function (modules) {
    return result;
 }
 propagateValueToRecipients ::= function (module, name) {
-   let val = $.rtget(module, name);
+   let val = $.DpropGet(module.rtobj, name);
    for (let imp of $.importsOf(module, name)) {
-      $.rtset(imp.recp, $.importedAs(imp), val);
+      $.DpropSet(imp.recp.rtobj, $.importedAs(imp), val);
    }
 }
 moduleNames ::= function (module) {

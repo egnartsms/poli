@@ -1,19 +1,38 @@
 bootstrap
    assert
    importedAs
-   rtdel
+   validateImport
+transact
+   DpropDel
+   DpropGet
+   DpropSet
+   setAdd
+   setRemove
+   propSet
 -----
+import ::= function (imp) {
+   $.validateImport(imp);
+   
+   let {recp, donor, name} = imp;
+
+   $.setAdd(recp.importedNames, $.importedAs(imp));
+   $.setAdd(recp.imports, imp);
+   $.setAdd(donor.exports, imp);
+
+   $.DpropSet(
+      recp.rtobj,
+      $.importedAs(imp),
+      name === null ? donor.rtobj : $.DpropGet(donor.rtobj, name)
+   );
+}
 unimport ::= function (imp) {
    let {recp, donor} = imp;
 
-   $.assert(recp.imports.has(imp));
-   $.assert(donor.exports.has(imp));
-
-   recp.importedNames.delete($.importedAs(imp));
-   recp.imports.delete(imp);
-   donor.exports.delete(imp);
+   $.setRemove(recp.importedNames, $.importedAs(imp));
+   $.setRemove(recp.imports, imp);
+   $.setRemove(donor.exports, imp);
    
-   $.rtdel(recp, $.importedAs(imp));
+   $.DpropDel(recp.rtobj, $.importedAs(imp));
 }
 importsFromTo ::= function* (donor, recp) {
    if (donor.exports.size < recp.imports.size) {
