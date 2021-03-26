@@ -1,5 +1,7 @@
 bootstrap
    hasOwnProperty
+common
+   entryByName
 module
    * as: module
 reference
@@ -20,20 +22,14 @@ addEntry ::= function (module, entry, source, anchor, before) {
       targetIndex = 0;
    }
    else {
-      let idx = module.entries.indexOf(anchor);
-      if (idx === -1) {
-         throw new Error(`Not found an entry "${anchor}"`);
+      let anchorEntry = module.name2entry.get(anchor);
+      if (anchorEntry === undefined) {
+         throw new Error(`Module '${module.name}': not found entry '${anchor}'`);
       }
-
+      
+      let idx = module.entries.indexOf(anchorEntry);
       targetIndex = before ? idx : idx + 1;
    }
 
    return $.module.addEntry(module, entry, source, targetIndex);
-}
-editEntry ::= function (module, entry, newSource) {
-   if (!$.hasOwnProperty(module.defs, entry)) {
-      throw new Error(`Not found entry "${entry}" in module "${module.name}"`);
-   }
-
-   return $.module.editEntry(module, entry, newSource);
 }

@@ -1,6 +1,5 @@
 bootstrap
    hasOwnProperty
-   importedAs
    moduleEval
 common
    dumpImportSection

@@ -1,6 +1,5 @@
 bootstrap
    assert
-   importedAs
    modules
 img2fs
    dumpModuleImportSection
@@ -12,10 +11,17 @@ transact
 -----
 moduleByName ::= function (name) {
    let module = $.modules[name];
-   if (!module) {
+   if (module === undefined) {
       throw new Error(`Unknown module name: ${name}`);
    }
    return module;
+}
+entryByName ::= function (module, name) {
+   let entry = module.name2entry.get(name);
+   if (entry === undefined) {
+      throw new Error(`Entry '${name}'' not found in module '${module.name}'`);
+   }
+   return entry;
 }
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
@@ -35,14 +41,15 @@ dumpImportSections ::= function (modules) {
    }
    return result;
 }
-propagateValueToRecipients ::= function (module, name) {
-   let val = $.DpropGet(module.rtobj, name);
-   for (let imp of $.importsOf(module, name)) {
-      $.DpropSet(imp.recp.rtobj, $.importedAs(imp), val);
+propagateValueToRecipients ::= function (entry, newValue) {
+   $.DpropSet(entry.module.rtobj, entry.name, newValue);
+
+   for (let [recp, as] of entry.module.exported.get(entry) || []) {
+      $.DpropSet(recp.rtobj, as, newValue);
    }
 }
 moduleNames ::= function (module) {
-   return [...module.entries, ...module.importedNames];
+   return [...module.name2entry, ...module.imported];
 }
 isSeqNonEmpty ::= function (seq) {
    let {done} = seq[Symbol.iterator]().next();

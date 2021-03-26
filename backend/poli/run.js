@@ -3,6 +3,7 @@ bootstrap
    moduleEval
 common
    dumpImportSection
+   entryByName
    moduleByName
    moduleNames
 exc
@@ -13,10 +14,10 @@ import
    import
    importFor
 module
-   entrySource
-op-edit
    addEntry
+   entrySource
    editEntry
+   targetIndex
 op-import
    * as: opImport
 op-module
@@ -27,6 +28,8 @@ op-query
    * as: query
 op-refactor
    * as: opRefactor
+reference
+   isNameFree
 transact
    commit
    rollback
@@ -109,7 +112,7 @@ operationHandlers ::= ({
    getModuleEntries: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
 
-      $.respOk(module.entries);
+      $.respOk([...module.name2entry]);
    },
 
    getModuleNames: function ({module: moduleName}) {
@@ -119,12 +122,9 @@ operationHandlers ::= ({
 
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
-      
-      if (!$.hasOwnProperty(module.defs, name)) {
-         throw new Error(`Member "${name}" not found in module "${moduleName}"`);
-      }
+      let entry = $.entryByName(module, name);
 
-      $.respOk($.entrySource(module, name));
+      $.respOk($.entrySource(entry));
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
@@ -139,7 +139,8 @@ operationHandlers ::= ({
 
    addEntry: function ({module: moduleName, name, source, anchor, before}) {
       let module = $.moduleByName(moduleName);
-      let normalizedSource = $.addEntry(module, name, source, anchor, before);
+      let targetIndex = $.targetIndex(module, anchor, before);
+      let normalizedSource = $.addEntry(module, name, source, targetIndex);
 
       $.respOk({
          normalizedSource: normalizedSource
@@ -148,7 +149,8 @@ operationHandlers ::= ({
 
    editEntry: function ({module: moduleName, name, newSource}) {
       let module = $.moduleByName(moduleName);
-      let normalizedSource = $.editEntry(module, name, newSource);
+      let entry = $.entryByName(module, name);
+      let normalizedSource = $.editEntry(entry, newSource);
 
       $.respOk({
          normalizedSource: normalizedSource
@@ -216,12 +218,9 @@ operationHandlers ::= ({
    import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
       let recp = $.moduleByName(recpModuleName);
       let donor = $.moduleByName(donorModuleName);
-      $.import({
-         recp,
-         donor,
-         name: name || null,
-         alias: alias || null
-      });
+      let entry = $.entryByName(donor, name);
+
+      $.import(entry, recp, alias || entry.name);
       $.respOk($.dumpImportSection(recp));
    },
 

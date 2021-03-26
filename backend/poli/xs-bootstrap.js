@@ -33,29 +33,29 @@ makeXsModule ::= function (name, body) {
       rtobj: Object.create(null)
    };
    
-   module.entries = Array.from(body, ([name, src]) => {
-      let syntax = $.readEntryDefinition(src);
-      let fintree = $.finalizeSyntax(module, syntax);
-      let jscode = $.genCodeByFintree(fintree);
-
-      return {
-         name: name,
-         def: syntax,
-         fintree,
-         jscode
-      };
-   });
-
-   module.name2entry = new Map(Array.from(module.entries, e => [e.name, e]));
-
    module.starEntry = {
       name: null,
       def: '*',
       module: module
    };
 
+   module.entries = Array.from(body, ([name, src]) => ({
+         name: name,
+         def: $.readEntryDefinition(src),
+         fintree: null,
+         jscode: null
+   }));
+
+   module.name2entry = new Map(Array.from(module.entries, e => [e.name, e]));
+
    for (let entry of module.entries) {
-      module.rtobj[entry.name] = $.moduleEval(module, entry.jscode);
+      let fintree = $.finalizeSyntax(module, entry.def);
+      let jscode = $.genCodeByFintree(fintree);
+
+      entry.fintree = fintree;
+      entry.jscode = jscode;
+      
+      module.rtobj[entry.name] = $.moduleEval(module, jscode);
    }
    
    return module;

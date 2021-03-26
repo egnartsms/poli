@@ -51,6 +51,7 @@ class PoliFindReferences(ModuleTextCommand):
             'name': name
         })
         if res is None:
+            # TODO: mtch may be None
             sublime.status_message(
                 "Unknown reference at point: \"{}\"".format(mtch.group())
             )

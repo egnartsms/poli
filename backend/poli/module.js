@@ -5,10 +5,14 @@ common
    propagateValueToRecipients
 exc
    rethrowCodeErrorsOn
+reference
+   isNameFree
 transact
    DpropSet
    propSet
+   propAssign
    splice
+   mapSet
 xs-codegen
    genCodeByFintree
 xs-finalizer
@@ -20,57 +24,88 @@ xs-reader
 xs-tokenizer
    strictMode
 -----
-entrySource ::= function (module, entry) {
-   let def = module.defs[entry];
-   
-   if (module.lang === 'js') {
-      return def;;
+entrySource ::= function (entry) {
+   if (entry.module.lang === 'js') {
+      return entry.def;
    }
    
-   if (module.lang === 'xs') {
-      return $.dumpsNext(def.syntax, 0);
+   if (entry.module.lang === 'xs') {
+      return $.dumpsNext(entry.def, 0);
    }
    
    throw new Error;
 }
-addEntry ::= function (module, entry, source, idx) {
-   let {def, normalizedSource, val} =
+targetIndex ::= function (module, anchor, before) {
+   if (anchor === null) {
+      if (module.entries.length > 0) {
+         throw new Error(`Anchor entry is malspecified`);
+      }
+
+      return 0;
+   }
+   else {
+      let anchorEntry = module.name2entry.get(anchor);
+      if (anchorEntry === undefined) {
+         throw new Error(
+            `Module '${module.name}': not found the anchor entry '${anchor}'`
+         );
+      }
+      
+      let idx = module.entries.indexOf(anchorEntry);
+      return before ? idx : idx + 1;
+   }
+}
+addEntry ::= function (module, name, source, idx) {
+   if (!$.isNameFree(module, name)) {
+      throw new Error(
+         `Module '${module.name}': '${name}' already defined or imported`
+      );
+   }
+
+   let {props, normalizedSource, val} =
       (module.lang === 'js') ?
-         $.prepareEntryJs(module, source)
+         $.prepareJsEntry(module, source)
       : module.lang === 'xs' ?
-         $.prepareEntryXs(module, source)
+         $.prepareXsEntry(module, source)
       : function () { throw new Error; }.call(null);
    
+   let entry = {
+      name: name,
+      module: module,
+      ...props
+   };
+
    $.splice(module.entries, idx, 0, entry);
-   $.propSet(module.defs, entry, def);
-   $.DpropSet(module.rtobj, entry, val);
+   $.mapSet(module.name2entry, name, entry);
+   $.DpropSet(module.rtobj, name, val);
    
    return normalizedSource;
 }
-editEntry ::= function (module, entry, newSource) {
-   let {def, normalizedSource, val} =
-      (module.lang === 'js') ?
-         $.prepareEntryJs(module, newSource)
-      : module.lang === 'xs' ?
-         $.prepareEntryXs(module, newSource)
+editEntry ::= function (entry, newSource) {
+   let {props, normalizedSource, val} =
+      (entry.module.lang === 'js') ?
+         $.prepareJsEntry(entry.module, newSource)
+      : entry.module.lang === 'xs' ?
+         $.prepareXsEntry(entry.module, newSource)
       : function () { throw new Error; }.call(null);
       
-   $.propSet(module.defs, entry, def);
-   $.DpropSet(module.rtobj, entry, val);
-   $.propagateValueToRecipients(module, entry);
+   $.propAssign(entry, props);
+   $.propagateValueToRecipients(entry, val);
    
    return normalizedSource;
 }
-prepareEntryJs ::= function (module, source) {
+prepareJsEntry ::= function (module, source) {
    let trimmed = source.trim();
 
    return {
-      def: trimmed,
       normalizedSource: trimmed,
-      val: $.moduleEval(module, trimmed)
+      val: $.moduleEval(module, trimmed),
+      props: {
+         def: trimmed
+      }
    };
 }
-prepareEntryXs ::= function (module, source) {
+prepareXsEntry ::= function (module, source) {
    let syntax = $.rethrowCodeErrorsOn(
       source,
       () => $.parameterize(
@@ -80,15 +115,14 @@ prepareEntryXs ::= function (module, source) {
    );
    let fintree = $.finalizeSyntax(module, syntax);
    let jscode = $.genCodeByFintree(fintree);
-   let val = $.moduleEval(module, jscode);
-      
+   
    return {
-      def: {
-         syntax,
-         fintree,
-         jscode
-      },
       normalizedSource: $.dumpsNext(syntax, 0),
-      val: val
+      val: $.moduleEval(module, jscode),
+      props: {
+         def: syntax,
+         fintree: fintree,
+         jscode: jscode
+      }
    };
 }

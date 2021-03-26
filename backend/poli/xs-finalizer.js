@@ -25,7 +25,7 @@ isLocalName ::= function (name) {
    return false;
 }
 isModuleEntryName ::= function (name) {
-   return $.hasOwnProperty($.curModule.val.defs, name);
+   return $.curModule.val.name2entry.has(name);
 }
 isGlobalName ::= function (name) {
    return $.globalNames.includes(name);

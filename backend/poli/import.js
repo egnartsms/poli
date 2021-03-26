@@ -1,5 +1,4 @@
 bootstrap
-   importedAs
    validateImport
 transact
    DpropDel
@@ -7,30 +6,41 @@ transact
    DpropSet
    setAdd
    setRemove
+   mapSet
+   mapDelete
+   mapRemove
 -----
-import ::= function (imp) {
-   $.validateImport(imp);
+import ::= function (entry, recp, as) {
+   $.validateImport(entry, recp, as);
    
-   let {recp, donor, name} = imp;
-
-   $.setAdd(recp.importedNames, $.importedAs(imp));
-   $.setAdd(recp.imports, imp);
-   $.setAdd(donor.exports, imp);
-
-   $.DpropSet(
-      recp.rtobj,
-      $.importedAs(imp),
-      name === null ? donor.rtobj : $.DpropGet(donor.rtobj, name)
-   );
+   $.mapSet(recp.imported, as, entry);
+   $.mapSet($.exportedFor(entry), recp, as);
+   
+   $.DpropSet(recp.rtobj, as, $.entryRtVal(entry));
 }
-unimport ::= function (imp) {
-   let {recp, donor} = imp;
+exportedFor ::= function (entry) {
+   let exported = entry.module.exported.get(entry);
 
-   $.setRemove(recp.importedNames, $.importedAs(imp));
-   $.setRemove(recp.imports, imp);
-   $.setRemove(donor.exports, imp);
-   
-   $.DpropDel(recp.rtobj, $.importedAs(imp));
+   if (exported === undefined) {
+      exported = new Map;
+      $.mapSet(entry.module.exported, entry, exported);
+   }
+
+   return exported;
+}
+entryRtVal ::= function (entry) {
+   if (entry.name === null)
+      return entry.module.rtobj;
+   else
+      return $.DpropGet(entry.module.rtobj, entry.name);
+}
+unimport ::= function (entry, recp) {
+   let exported = $.exportedFor(entry);  
+   let as = exported.get(recp);
+
+   $.mapRemove(exported, recp);
+   $.mapRemove(recp.imported, as);
+   $.DpropDel(recp.rtobj, as);
 }
 importsFromTo ::= function* (donor, recp) {
    if (donor.exports.size < recp.imports.size) {

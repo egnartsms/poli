@@ -1,5 +1,4 @@
 bootstrap
-   importedAs
    modules
 common
    joindot
@@ -63,25 +62,34 @@ removeUnusedModuleImports ::= function (module) {
    return unused.length;
 }
 removeUnusedImportsInAllModules ::= function () {
-   let unused = [];
-   let recps = new Set;
+   let modules = new Map;
 
    for (let module of Object.values($.modules)) {
-      for (let imp of module.imports) {
-         if (!$.isReferredTo(module, $.importedAs(imp))) {
-            unused.push(imp);
-            recps.add(module);
+      let unused = [];
+
+      for (let [as, entry] of module.imported) {
+         if (!$.isReferredTo(module, as)) {
+            unused.push(entry);
          }
+      }
+
+      if (unused.length > 0) {
+         modules.set(module, unused);
       }
    }
 
-   for (let imp of unused) {
-      $.unimport(imp);
+   let count = 0;
+
+   for (let [module, unused] of modules) {
+      for (let entry of unused) {
+         $.unimport(entry, module);
+         count += 1;
+      }
    }
 
    return {
-      removedCount: unused.length,
-      affectedModules: recps
+      removedCount: count,
+      affectedModules: [...modules.keys()]
    };
 }
 convertImportsToStar ::= function (recp, donor) {

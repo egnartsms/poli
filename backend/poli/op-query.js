@@ -1,5 +1,4 @@
 bootstrap
-   importedAs
    modules
 common
    joindot
@@ -18,7 +17,7 @@ allEntries ::= function () {
 
    for (let module of Object.values($.modules)) {
       for (let entry of module.entries) {
-         res.push([module.name, entry]);
+         res.push([module.name, entry.name]);
       }
    }
 

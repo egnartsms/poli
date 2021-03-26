@@ -47,6 +47,11 @@ propSet ::= function (obj, key, val) {
    }
    obj[key] = val;
 }
+propAssign ::= function (obj, from) {
+   for (let [key, val] of Object.entries(from)) {
+      $.propSet(obj, key, val);
+   }
+}
 propDel ::= function (obj, key) {
    if (!$.hasOwnProperty(obj, key))
       return;
@@ -95,6 +100,39 @@ setRemove ::= function (set, elt) {
       throw new Error(`setRemove() did not remove the element`);
    }
 }
+mapBwdDeltas ::= new Map
+mapBwdDeltaFor ::= function (map) {
+   let delta = $.mapBwdDeltas.get(map);
+   if (delta === undefined) {
+      delta = new Map;  // {elt: old_value or nihil}
+      $.mapBwdDeltas.set(map, delta);
+   }
+
+   return delta;
+}
+mapSet ::= function (map, key, val) {
+   let delta = $.mapBwdDeltaFor(map);
+   if (!delta.has(key)) {
+      delta.set(key, map.has(key) ? map.get(key) : $.nihil);
+   }
+   return map.set(key, val);
+}
+mapDelete ::= function (map, key) {
+   if (!map.has(key)) {
+      return false;
+   }
+
+   let delta = $.mapBwdDeltaFor(map);
+   delta.set(key, map.get(key));
+   map.delete(key);
+   return true;
+}
+mapRemove ::= function (map, key) {
+   let deleted = $.mapDelete(map, key);
+   if (!deleted) {
+      throw new Error(`mapRemove() did not remove the key`);
+   }
+}
 arrayCopies ::= new Map
 ensureArraySaved ::= function (arr) {
    if (!$.arrayCopies.has(arr)) {
@@ -110,6 +148,7 @@ arraySet ::= function (arr, idx, val) {
    arr[idx] = val;
 }
 commit ::= function () {
+   $.mapBwdDeltas.clear();
    $.setBwdDeltas.clear();
    $.objBwdDeltas.clear();
 
@@ -120,6 +159,13 @@ commit ::= function () {
    $.objFwdDeltas.clear();
 }
 rollback ::= function () {
+   for (let [map, delta] of $.mapBwdDeltas) {
+      for (let [key, oldval] of delta) {
+         oldval === $.nihil ? map.delete(key) : map.set(key, oldval);
+      }
+   }
+   $.mapBwdDeltas.clear();
+
    for (let [set, delta] of $.setBwdDeltas) {
       for (let [elt, addBack] of delta) {
          addBack ? set.add(elt) : set.delete(elt);

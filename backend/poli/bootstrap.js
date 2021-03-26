@@ -62,7 +62,7 @@ parseImports ::= function (str) {
 
    for (let [[,donor], rawImports] of $_.matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
       let imports = Array.from(
-         rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
+         rawImports.matchAll(/^\s+(?<name>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
       );
 
       if (imports.length === 0) {
@@ -72,7 +72,7 @@ parseImports ::= function (str) {
 
       let asterisk = null;
 
-      if (imports[0].groups.entry === '*') {
+      if (imports[0].groups.name === '*') {
          asterisk = imports[0].groups.alias;
          imports.splice(0, 1);
       }
@@ -81,7 +81,7 @@ parseImports ::= function (str) {
          donor,
          asterisk,
          imports: Array.from(imports, imp => ({
-            entry: imp.groups.entry,
+            name: imp.groups.name,
             alias: imp.groups.alias || null,
          }))
       });
@@ -162,7 +162,6 @@ import ::= function (entry, recp, as) {
    recp.imported.set(as, entry);
    
    let donor = entry.module;
-
    if (!donor.exported.has(entry)) {
       donor.exported.set(entry, new Map);
    }
@@ -171,9 +170,6 @@ import ::= function (entry, recp, as) {
    recp.rtobj[as] = entry.name === null ? donor.rtobj : donor.rtobj[entry.name];
 }
 validateImport ::= function (entry, recp, as) {
-   let importedAs = $.importedAs(imp);
-   let {recp, donor, name, alias} = imp;
-
    if (recp.name2entry.has(as)) {
       throw new Error(
          `Module '${recp.name}': imported name '${as}' from the module ` +

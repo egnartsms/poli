@@ -1,7 +1,6 @@
 bootstrap
    assert
    hasOwnProperty
-   importedAs
 common
    joindot
 import
@@ -39,7 +38,7 @@ isReferredTo ::= function (module, name, except=null) {
          continue;
       }
 
-      if (re.test(module.defs[entry])) {
+      if (re.test(entry.def)) {
          return true;
       }
    }
