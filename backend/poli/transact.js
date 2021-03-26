@@ -92,7 +92,7 @@ setDelete ::= function (set, elt) {
 setRemove ::= function (set, elt) {
    let deleted = $.setDelete(set, elt);
    if (!deleted) {
-      throw new Error(`setRemove() failed because the element was not there`);
+      throw new Error(`setRemove() did not remove the element`);
    }
 }
 arrayCopies ::= new Map
@@ -101,9 +101,9 @@ ensureArraySaved ::= function (arr) {
       $.arrayCopies.set(arr, [...arr]);
    }
 }
-splice ::= function (arr, idx, ndelete, ...toInsert) {
+splice ::= function (arr, ...args) {
    $.ensureArraySaved(arr);
-   return arr.splice(idx, ndelete, ...toInsert);
+   return Array.prototype.splice.apply(arr, args);
 }
 arraySet ::= function (arr, idx, val) {
    $.ensureArraySaved(arr);

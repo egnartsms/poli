@@ -19,36 +19,43 @@ load ::= function (modulesInfo) {
    }
 }
 makeXsModule ::= function (name, body) {
-   let defs = {};
-
-   for (let [entry, src] of body) {
-      defs[entry] = {
-         syntax: $.readEntryDefinition(src),
-         fintree: null,
-         jscode: null
-      };
-   }
-   
    let module = {
       lang: 'xs',
       name: name,
       
-      imports: new Set(),
-      exports: new Set(),
-      importedNames: new Set(),
+      imported: new Map,  // { importedAs -> <entry> }
+      exported: new Map,  // { <entry> -> {<recp module> -> as} }
       
-      entries: Array.from(body, ([entry]) => entry),
-      defs: defs,
+      entries: null,
+      name2entry: null,
+      starEntry: null,
+
       rtobj: Object.create(null)
    };
    
-   for (let [entry, def] of Object.entries(defs)) {
-      let fintree = $.finalizeSyntax(module, def.syntax);
+   module.entries = Array.from(body, ([name, src]) => {
+      let syntax = $.readEntryDefinition(src);
+      let fintree = $.finalizeSyntax(module, syntax);
       let jscode = $.genCodeByFintree(fintree);
-      
-      def.fintree = fintree;
-      def.jscode = jscode;
-      module.rtobj[entry] = $.moduleEval(module, jscode);
+
+      return {
+         name: name,
+         def: syntax,
+         fintree,
+         jscode
+      };
+   });
+
+   module.name2entry = new Map(Array.from(module.entries, e => [e.name, e]));
+
+   module.starEntry = {
+      name: null,
+      def: '*',
+      module: module
+   };
+
+   for (let entry of module.entries) {
+      module.rtobj[entry.name] = $.moduleEval(module, entry.jscode);
    }
    
    return module;

@@ -4,7 +4,7 @@ assert ::= function (cond) {
       throw new Error;
    }
 }
-modules ::= ({})
+modules ::= Object.create(null)
 load ::= function (rawModules) {
    let modulesInfo = $.parseModules(rawModules);
 
@@ -96,20 +96,33 @@ makeJsModule ::= function (name, body) {
       name: name,
 
       // Import/export information is filled later
-      imports: new Set(),
-      exports: new Set(),
-      importedNames: new Set(),
-      
-      entries: Array.from(body, ([entry]) => entry),
-      // in JS, trim entry src definitions
-      defs: Object.fromEntries(body.map(([entry, src]) => [entry, src.trim()])),
-      
+      imported: new Map,  // { importedAs -> <entry> }
+      exported: new Map,  // { <entry> -> {<recp module> -> as} }
+
+      entries: null,  // [<entry>], in order
+      name2entry: null, // {name -> <entry>}
+      starEntry: null,  // fake entry to express star imports
+
       rtobj: name === $_.BOOTSTRAP_MODULE ? $ : Object.create(null)
    };
+
+   module.entries = Array.from(body, ([name, src]) => ({
+      name: name,
+      def: src.trim(),
+      module: module
+   }));
+
+   module.name2entry = new Map(Array.from(module.entries, e => [e.name, e]));
    
+   module.starEntry = {
+      name: null,
+      def: '*',
+      module: module
+   };
+
    if (module.name !== $_.BOOTSTRAP_MODULE) {
       for (let entry of module.entries) {
-         module.rtobj[entry] = $.moduleEval(module, module.defs[entry]);
+         module.rtobj[entry.name] = $.moduleEval(module, entry.def);
       }
    }
 
@@ -120,48 +133,56 @@ addModuleInfoImports ::= function ({name, imports}) {
 
    for (let {donor: donorName, asterisk, imports: importrecs} of imports) {
       let donor = $.modules[donorName];
-      if (asterisk !== null) {
-         $.import({recp, donor, name: null, alias: asterisk});
+      if (donor === undefined) {
+         throw new Error(
+            `Module '${recp.name}': cannot import from '${donorName}': no such module`
+         );
       }
-      for (let {entry, alias} of importrecs) {
-         $.import({recp, donor, name: entry, alias});
+
+      if (asterisk !== null) {
+         $.import(donor.starEntry, recp, asterisk);
+      }
+
+      for (let {name, alias} of importrecs) {
+         let entry = donor.name2entry.get(name);
+         if (entry === undefined) {
+            throw new Error(
+               `Module '${recp.name}': cannot import '${name}' from '${donor.name}': ` +
+               `no such definition`
+            );
+         }
+         
+         $.import(entry, recp, alias || name);
       }
    }
 }
-importedAs ::= function (imp) {
-   return imp.alias || imp.name;
-}
-import ::= function (imp) {
-   $.validateImport(imp);
+import ::= function (entry, recp, as) {
+   $.validateImport(entry, recp, as);
    
-   let {recp, donor, name} = imp;
+   recp.imported.set(as, entry);
+   
+   let donor = entry.module;
 
-   recp.importedNames.add($.importedAs(imp));
-   recp.imports.add(imp);
-   donor.exports.add(imp);
-
-   recp.rtobj[$.importedAs(imp)] = name === null ? donor.rtobj : donor.rtobj[name];
+   if (!donor.exported.has(entry)) {
+      donor.exported.set(entry, new Map);
+   }
+   donor.exported.get(entry).set(recp, as);
+   
+   recp.rtobj[as] = entry.name === null ? donor.rtobj : donor.rtobj[entry.name];
 }
-validateImport ::= function (imp) {
+validateImport ::= function (entry, recp, as) {
    let importedAs = $.importedAs(imp);
    let {recp, donor, name, alias} = imp;
 
-   // This check does only make sense for entry imports (not star imports)
-   if (name !== null && !$.hasOwnProperty(donor.defs, name)) {
+   if (recp.name2entry.has(as)) {
       throw new Error(
-         `Module '${recp.name}': cannot import '${name}' from '${donor.name}': ` +
-         `no such definition`
+         `Module '${recp.name}': imported name '${as}' from the module ` +
+         `'${entry.module.name}' collides with own definition`
       );
    }
-   if ($.hasOwnProperty(recp.defs, importedAs)) {
+   if (recp.imported.has(as)) {
       throw new Error(
-         `Module '${recp.name}': imported name '${importedAs}' from the module ` +
-         `'${donor.name}' collides with own definition`
-      );
-   }
-   if (recp.importedNames.has(importedAs)) {
-      throw new Error(
-         `Module '${recp.name}': the name '${importedAs}' imported more than once`
+         `Module '${recp.name}': the name '${as}' imported more than once`
       );
    }
 }

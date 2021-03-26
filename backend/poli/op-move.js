@@ -45,17 +45,16 @@ moveEntry ::= function (srcModule, entry, destModule, anchor, before) {
    if (srcModule === destModule) {
       throw new Error(`Cannot move inside a single module`);
    }
-   if (!$.hasOwnProperty(srcModule.defs, entry)) {
-      throw new Error(`Entry "${entry}" does not exist in "${srcModuleName}"`);
+   if (!srcModule.name2entry.has(entry)) {
+      throw new Error(`Entry '${entry}' does not exist in '${srcModule.name}'`);
    }
-
    if (anchor === null) {
       if (destModule.entries.length > 0) {
          throw new Error(`Anchor entry is null but the destination module is not empty`);
       }
    }
-   else if (typeof anchor === 'string' && !$.hasOwnProperty(destModule.defs, anchor)) {
-      throw new Error(`Anchor entry "${anchor}" does not exist in "${destModuleName}"`);
+   else if (typeof anchor === 'string' && !destModule.name2entry.has(anchor)) {
+      throw new Error(`Anchor entry '${anchor}' does not exist in '${destModule.name}'`);
    }
 
    if (!$.isNameFree(destModule, entry)) {

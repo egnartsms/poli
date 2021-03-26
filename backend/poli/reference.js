@@ -11,7 +11,7 @@ import
    referrersOf
 -----
 isNameFree ::= function (module, name) {
-   return !($.hasOwnProperty(module.defs, name) || module.importedNames.has(name));
+   return !(module.name2entry.has(name) || module.imported.has(name));
 }
 whereNameCame ::= function (module, name) {
    if ($.hasOwnProperty(module.defs, name)) {
