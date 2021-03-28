@@ -40,10 +40,11 @@ makeXsModule ::= function (name, body) {
    };
 
    module.entries = Array.from(body, ([name, src]) => ({
-         name: name,
-         def: $.readEntryDefinition(src),
-         fintree: null,
-         jscode: null
+      name: name,
+      def: $.readEntryDefinition(src),
+      module: module,
+      fintree: null,
+      jscode: null
    }));
 
    module.name2entry = new Map(Array.from(module.entries, e => [e.name, e]));

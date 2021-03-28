@@ -48,21 +48,21 @@ removeImport ::= function (imp, force) {
 }
 removeUnusedModuleImports ::= function (module) {
    let unused = [];
-
-   for (let imp of module.imports) {
-      if (!$.isReferredTo(module, $.importedAs(imp))) {
-         unused.push(imp);
+   
+   for (let [as, entry] of module.imported) {
+      if (!$.isReferredTo(module, as)) {
+         unused.push(entry);
       }
    }
-
-   for (let imp of unused) {
-      $.unimport(imp);
+   
+   for (let entry of unused) {
+      $.unimport(entry, module);
    }
 
    return unused.length;
 }
 removeUnusedImportsInAllModules ::= function () {
-   let modules = new Map;
+   let modules = [];
 
    for (let module of Object.values($.modules)) {
       let unused = [];
@@ -74,7 +74,7 @@ removeUnusedImportsInAllModules ::= function () {
       }
 
       if (unused.length > 0) {
-         modules.set(module, unused);
+         modules.push([module, unused]);
       }
    }
 
@@ -89,7 +89,7 @@ removeUnusedImportsInAllModules ::= function () {
 
    return {
       removedCount: count,
-      affectedModules: [...modules.keys()]
+      affectedModules: Array.from(modules, pair => pair[0])
    };
 }
 convertImportsToStar ::= function (recp, donor) {

@@ -24,8 +24,8 @@ allEntries ::= function () {
    return res;
 }
 importablesInto ::= function (recp) {
-   function encodeEntry(moduleName, entry) {
-      return JSON.stringify([moduleName, entry]);
+   function encodeEntry(entry) {
+      return JSON.stringify([entry.module.name, entry.name]);
    }
 
    function decodeEntry(encoded) {
@@ -41,14 +41,14 @@ importablesInto ::= function (recp) {
       }
 
       for (let e of module.entries) {
-         importables.add(encodeEntry(module.name, e));
+         importables.add(encodeEntry(e));
       }
-      importables.add(encodeEntry(module.name, null));
+      importables.add(encodeEntry(module.starEntry));
    }
 
    // Exclude those already imported
-   for (let imp of recp.imports) {
-      importables.delete(encodeEntry(imp.donor.name, imp.name));
+   for (let entry of recp.imported.values()) {
+      importables.delete(encodeEntry(entry));
    }
 
    return Array.from(importables, decodeEntry);

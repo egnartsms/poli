@@ -1,5 +1,9 @@
 bootstrap
    modules
+common
+   setDefault
+xs-codegen
+   cgenFunc
 xs-printer
    dumpsNext
 -----
@@ -23,9 +27,9 @@ dumpModule ::= function (module) {
 
       // Body
       for (let entry of module.entries) {
-         yield entry;
+         yield entry.name;
          yield ' ::=';
-         yield* $.dumpDef(module.lang, module.defs[entry]);
+         yield* $.dumpDef(entry);
          yield '\n';
       }
    });
@@ -37,53 +41,67 @@ writingToStream ::= function (stream, generatorFunc) {
 
    stream.end();
 }
-dumpDef ::= function* (lang, def) {
-   if (lang === 'js') {
+dumpDef ::= function* (entry) {
+   if (entry.module.lang === 'js') {
       yield ' ';
-      yield def;
+      yield entry.def;
    }
-   else if (lang === 'xs') {
-      yield* $.dumpsNext(def.syntax, 0);
+   else if (entry.module.lang === 'xs') {
+      yield* $.dumpsNext(entry.def, 0);
    }
    else {
       throw new Error;
    }
 }
 dumpModuleImportSection ::= function* (module) {
-   let imports = $.sortedImportsInto(module);
-   let curDonorName = null;
+   let spec = $.importSectionSpec(module);
+   
+   for (let [donorName, imports] of spec) {
+      yield donorName;
+      yield '\n';
 
-   for (let {recp, donor, name, alias} of imports) {
-      if (donor.name !== curDonorName) {
-         curDonorName = donor.name;
-         yield curDonorName;
+      for (let [name, alias] of imports) {
+         yield $.ind;
+         yield name === null ? '*' : name;
+         if (alias) {
+            yield ` as: ${alias}`;
+         }
          yield '\n';
       }
-
-      yield $.ind;
-      yield name === null ? '*' : name;
-      if (alias) {
-         yield ` as: ${alias}`;
-      }
-      yield '\n';
    }
 }
-sortedImportsInto ::= function (recp) {
-   let imports = Array.from(recp.imports);
-   imports.sort($.compareImports);
-   return imports;
-}
-compareImports ::= function (i1, i2) {
-   if (i1.donor.name !== i2.donor.name) {
-      return (i1.donor.name < i2.donor.name) ? -1 : 1;
+importSectionSpec ::= function (recp) {
+   let donors = new Map;
+   
+   for (let [as, entry] of recp.imported) {
+      $.setDefault(donors, entry.module, () => []).push([entry, as]);
+   }
+   
+   for (let asNames of donors.values()) {
+      asNames.sort(([e1], [e2]) => $.compareEntries(e1, e2));
    }
 
-   if (i1.name === null) {
+   let orderedDonors = [...donors.keys()];
+   orderedDonors.sort((m1, m2) => $.compareStrings(m1.name, m2.name));
+   
+   return Array.from(orderedDonors, donor => [
+      donor.name,
+      Array.from(donors.get(donor), ([entry, as]) => [
+         entry.name,
+         entry.name === as ? null : as
+      ])
+   ]);
+}
+compareEntries ::= function (e1, e2) {
+   if (e1.name === null) {
       return -1;
    }
-   if (i2.name === null) {
+   if (e2.name === null) {
       return 1;
    }
 
-   return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
+   return $.compareStrings(e1.name, e2.name);
+}
+compareStrings ::= function (s1, s2) {
+   return s1 < s2 ? -1 : s1 > s2 ? 1 : 0;
 }

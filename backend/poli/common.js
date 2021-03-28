@@ -49,7 +49,7 @@ propagateValueToRecipients ::= function (entry, newValue) {
    }
 }
 moduleNames ::= function (module) {
-   return [...module.name2entry, ...module.imported];
+   return [...module.name2entry.keys(), ...module.imported.keys()];
 }
 isSeqNonEmpty ::= function (seq) {
    let {done} = seq[Symbol.iterator]().next();
@@ -67,6 +67,13 @@ extendArray ::= function (A, X) {
       i += 1;
       j += 1;
    }
+}
+setDefault ::= function (map, key, ifNotFound) {
+   if (!map.has(key)) {
+      map.set(key, ifNotFound());
+   }
+   
+   return map.get(key);
 }
 yreExec ::= function (re, offset, str) {
    $.assert(re.sticky);
