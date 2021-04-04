@@ -1,4 +1,5 @@
 import collections.abc
+import sublime
 import sublime_plugin
 
 
@@ -55,7 +56,7 @@ def on_view_load(view, callback):
     if view.is_loading():
         on_view_loaded.setdefault(view, []).append(callback)
     else:
-        callback()
+        sublime.set_timeout(callback, 0)
 
 
 def on_all_views_load(views, callback):

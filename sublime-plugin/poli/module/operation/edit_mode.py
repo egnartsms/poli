@@ -26,11 +26,11 @@ class EditContext:
     """What is being edited in a Poli view
 
     :attr name: 
-        if target == 'name', the old name;
-        if target == 'defn', the name of the definition being edited;
-        if target == 'entry', the name before or after which we want to add
-    :attr target: one of 'name', 'defn', 'entry'
-    :attr is_before: whether addition is performed before
+        if target == "name", the old name;
+        if target == "defn", the name of the definition being edited;
+        if target == "entry", the name before or after which we want to add
+    :attr target: one of "name", "defn", "entry"
+    :attr is_before: whether addition is performed before 'name'
     """
 
     def __init__(self, name, target, is_before=None):

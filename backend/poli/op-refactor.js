@@ -2,6 +2,7 @@ bootstrap
    hasOwnProperty
    moduleEval
 common
+   iconcat
    joindot
    propagateValueToRecipients
 import
@@ -17,26 +18,28 @@ transact
    DpropGet
    DpropSet
    arraySet
+   mapDelete
+   mapSet
    propSet
    setAdd
    setDelete
    splice
 -----
-renameImportedName ::= function (recp, oldName, newName) {
-   $.DpropSet(recp.rtobj, newName, $.DpropGet(recp.rtobj, oldName));
-   $.DpropDel(recp.rtobj, oldName);
-   $.setDelete(recp.importedNames, oldName);
-   $.setAdd(recp.importedNames, newName);
+renameImportedName ::= function (entry, recp, as, newName) {
+   $.DpropSet(recp.rtobj, newName, $.DpropGet(recp.rtobj, as));
+   $.DpropDel(recp.rtobj, as);
+   $.mapDelete(recp.imported, as);
+   $.mapSet(recp.imported, newName, entry);
 }
-offendingModulesOnRename ::= function (module, oldName, newName) {
+offendingModulesOnRename ::= function (entry, newName) {
    let offendingModules = [];
 
-   for (let imp of $.importsOf(module, oldName)) {
-      if (imp.alias === null && !$.isNameFree(imp.recp, newName)) {
-         offendingModules.push(imp.recp);
+   for (let {recp, as} of entry.module.exported.get(entry) || []) {
+      if (as === entry.name && !$.isNameFree(recp, newName)) {
+         offendingModules.push(recp);
       }
    }
-
+   
    return offendingModules;
 }
 renameRefsIn ::= function (module, renameMap) {
@@ -66,7 +69,7 @@ renameRefsIn ::= function (module, renameMap) {
    let modifiedEntries = [];
 
    for (let entry of module.entries) {
-      let oldSource = module.defs[entry];
+      let oldSource = entry.def;
       let newSource = oldSource.replace(re, ref => renameMap.get(ref));
       
       if (oldSource === newSource) {
@@ -75,84 +78,97 @@ renameRefsIn ::= function (module, renameMap) {
 
       let newVal = $.moduleEval(module, newSource);
 
-      $.propSet(module.defs, entry, newSource);
-      $.DpropSet(module.rtobj, entry, newVal);
-      $.propagateValueToRecipients(module, entry);
+      $.propSet(entry, 'def', newSource);
+      $.propagateValueToRecipients(entry, newVal);
 
       modifiedEntries.push([entry, newSource]);
    }
 
    return modifiedEntries;
 }
-modifyRecipientsForRename ::= function (module, oldName, newName) {
-   let referrers = $.referrersOf(module, oldName);
-   let modifiedModules = [];
-
-   for (let referrer of referrers) {
+modifyRecipientsForRename ::= function (entry, newName) {
+   let exps = entry.module.exported.get(entry);
+   let starExps = entry.module.exported.get(entry.module.starEntry);
+   let result = new Map; // module -> <info>
+   
+   for (let [recp, as] of exps || []) {
       let rnmap = new Map;
-      let {eimp, simp} = $.referrerImportsFromTo(module, oldName, referrer);
-
-      if (eimp) {
-         if (eimp.alias === null) {
-            $.renameImportedName(eimp.recp, oldName, newName);
-            rnmap.set(oldName, newName);
-         }
-         eimp.name = newName;
+      
+      if (as === entry.name) {
+         // if it was imported with no alias
+         $.renameImportedName(entry, recp, as, newName);
+         exps.set(recp, newName);
+         rnmap.set(as, newName);
       }
-      if (simp) {
-         rnmap.set($.joindot(simp.alias, oldName), $.joindot(simp.alias, newName));
-      }
-
-      let modifiedEntries = $.renameRefsIn(referrer, rnmap);
-      modifiedModules.push({
-         module: referrer,
-         modifiedEntries,
-         importSectionAffected: !!eimp
+      
+      result.set(recp, {
+         rnmap,
+         importSectionAffected: true
       });
    }
-
-   return modifiedModules;
-}
-renameEntry ::= function (module, oldName, newName) {
-   if (!$.hasOwnProperty(module.defs, oldName)) {
-      throw new Error(`Did not find an entry named "${oldName}"`);
+   
+   for (let [recp, as] of starExps || []) {
+      let rnmap;
+      
+      if (result.has(recp)) {
+         ({rnmap} = result.get(recp));
+      }
+      else {
+         rnmap = new Map;
+         result.set(recp, {
+            rnmap,
+            importSectionAffected: false
+         });
+      }
+      
+      rnmap.set($.joindot(as, entry.name), $.joindot(as, newName));
    }
-   if (oldName === newName) {
+
+   return Array.from(result, ([recp, {rnmap, importSectionAffected}]) => {
+      let modifiedEntries = $.renameRefsIn(recp, rnmap);
+      return {
+         module: recp,
+         modifiedEntries,
+         importSectionAffected
+      };
+   });
+}
+renameEntry ::= function (entry, newName) {
+   if (entry.name === newName) {
       return [];
    }
-   if (!$.isNameFree(module, newName)) {
+   if (!$.isNameFree(entry.module, newName)) {
       throw new Error(`Cannot rename to "${newName}": such an entry already ` +
                       `exists or imported`);
    }
 
-   let offendingModules = $.offendingModulesOnRename(module, oldName, newName);
+   let offendingModules = $.offendingModulesOnRename(entry, newName);
    if (offendingModules.length > 0) {
       throw new Error(`Cannot rename to "${newName}": cannot rename imports in ` +
                       `modules: ${offendingModules.map(m => m.name).join(',')}`);
    }
 
-   let modifiedModules = $.modifyRecipientsForRename(module, oldName, newName);
-   let modifiedEntries = $.renameRefsIn(module, [oldName, newName]);
+   let modifiedModules = $.modifyRecipientsForRename(entry, newName);
+   let modifiedEntries = $.renameRefsIn(entry.module, [entry.name, newName]);
 
    modifiedModules.unshift({
-      module,
+      module: entry.module,
       modifiedEntries,
       importSectionAffected: false
    });
 
    // See if the entry was recursive. If yes, then we should refer to it by its new name
-   let ownPair = modifiedEntries.find(([entry, code]) => entry === oldName);
-   if (ownPair != null) {
+   let ownPair = modifiedEntries.find(([name, code]) => name === entry.name);
+   if (ownPair !== undefined) {
       ownPair[0] = newName;
    }
-
-   $.arraySet(module.entries, module.entries.indexOf(oldName), newName);
-   $.propSet(module.defs, newName, module.defs[oldName]);
-   $.propDel(module.defs, oldName);
-
-   $.DpropSet(module.rtobj, newName, $.DpropGet(module.rtobj, oldName));
-   $.DpropDel(module.rtobj, oldName);
-
+   
+   $.DpropSet(entry.module.rtobj, newName, $.DpropGet(entry.module.rtobj, entry.name));
+   $.DpropDel(entry.module.rtobj, entry.name);
+   $.mapSet(entry.module.name2entry, newName, entry);
+   $.mapDelete(entry.module.name2entry, entry.name);
+   $.propSet(entry, 'name', newName);
+   
    return modifiedModules;
 }
 replaceUsages ::= function (module, name, newName) {

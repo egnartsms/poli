@@ -68,6 +68,10 @@ extendArray ::= function (A, X) {
       j += 1;
    }
 }
+iconcat ::= function* (seq1, seq2) {
+   yield* seq1;
+   yield* seq2;
+}
 setDefault ::= function (map, key, ifNotFound) {
    if (!map.has(key)) {
       map.set(key, ifNotFound());

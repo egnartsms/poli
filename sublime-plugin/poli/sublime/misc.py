@@ -76,14 +76,14 @@ def insert_in(view, edit, pos, s):
 
 
 def replace_in(view, edit, reg, s):
-    view.replace(edit, reg, s)
-    return sublime.Region(reg.begin(), reg.begin() + len(s))
+    view.erase(edit, reg)
+    return insert_in(view, edit, reg.begin(), s)
 
 
 class Regions:
     """Temporarily save region(s) that adjust with text insertions/removals.
 
-    Can be used to save multiple region, a single region or a single position (marker).
+    Can be used to save multiple regions, a single region or a single position (marker).
     """
     NAME_TEMPLATE = '_reg_{}'
     NEXT_KEY = 0
@@ -173,3 +173,18 @@ def match_at(view, ptreg, pattern, flags=0):
             return mtch
 
     return None
+
+
+class AdjustableRegions:
+    def __init__(self, view, key, regs):
+        self.view = view
+        self.key = key
+        self.view.add_regions(self.key, regs, '', '', sublime.HIDDEN)
+
+    def __getitem__(self, i):
+        return self.view.get_regions(self.key)[i]
+
+    def __setitem__(self, i, reg):
+        regs = self.view.get_regions(self.key)
+        regs[i] = reg
+        self.view.add_regions(self.key, regs, '', '', sublime.HIDDEN)

@@ -6,6 +6,8 @@ common
    entryByName
    moduleByName
    moduleNames
+delta
+   computeDelta
 exc
    ApiError
 img2fs
@@ -48,8 +50,16 @@ handleOperation ::= function (op) {
    })();
 
    try {      
-      $.operationHandlers[op['op']].call(null, op['args']);
+      let ret = $.operationHandlers[op['op']].call(null, op['args']);
+      let delta = $.computeDelta();
+      if (delta.length > 0) {
+         $.sendMessage({
+            type: 'save',
+            modifications: delta
+         });
+      }
       $.commit();
+      $.respOk(ret);
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
@@ -95,6 +105,9 @@ respOk ::= function (result=null) {
    });
 }
 applyModifications ::= function (modifications) {
+   console.log("Ignored ancient $.applyModifications() call");
+   return;
+   
    $.sendMessage({
       type: 'save',
       modifications: modifications
@@ -102,39 +115,42 @@ applyModifications ::= function (modifications) {
 }
 operationHandlers ::= ({
    getModules: function () {
-      $.respOk($.query.allModuleNames());
+      return $.query.allModuleNames();
    },
 
    getEntries: function () {
-      $.respOk($.query.allEntries());
+      return $.query.allEntries();
    },
 
    getModuleEntries: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
 
-      $.respOk([...module.name2entry]);
+      return [...module.name2entry.keys()];
    },
 
    getModuleNames: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.moduleNames(module));
+
+      return $.moduleNames(module);
    },
 
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       let entry = $.entryByName(module, name);
 
-      $.respOk($.entrySource(entry));
+      return $.entrySource(entry);
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.query.getCompletions(module, star, prefix));
+
+      return $.query.getCompletions(module, star, prefix);
    },
 
    getImportables: function ({recp: recpModuleName}) {
       let recp = $.moduleByName(recpModuleName);
-      $.respOk($.query.importablesInto(recp));
+
+      return $.query.importablesInto(recp);
    },
 
    addEntry: function ({module: moduleName, name, source, anchor, before}) {
@@ -142,9 +158,9 @@ operationHandlers ::= ({
       let targetIndex = $.targetIndex(module, anchor, before);
       let normalizedSource = $.addEntry(module, name, source, targetIndex);
 
-      $.respOk({
+      return {
          normalizedSource: normalizedSource
-      });
+      };
    },
 
    editEntry: function ({module: moduleName, name, newSource}) {
@@ -152,26 +168,26 @@ operationHandlers ::= ({
       let entry = $.entryByName(module, name);
       let normalizedSource = $.editEntry(entry, newSource);
 
-      $.respOk({
+      return {
          normalizedSource: normalizedSource
-      });
+      };
    },
 
    renameEntry: function ({module: moduleName, oldName, newName}) {
       let module = $.moduleByName(moduleName);
-      let modifiedModules = $.opRefactor.renameEntry(module, oldName, newName);
+      let entry = $.entryByName(module, oldName);
+      let modifiedModules = $.opRefactor.renameEntry(entry, newName);
 
-      $.applyModifications(
-         Array.from(
-            modifiedModules,
-            ({module, modifiedEntries, importSectionAffected}) => ({
-               module: module.name,
-               modifiedEntries,
-               importSection: importSectionAffected ? $.dumpImportSection(module) : null
-            })
-         )
-      );
-      $.respOk();
+      // $.applyModifications(
+      //    Array.from(
+      //       modifiedModules,
+      //       ({module, modifiedEntries, importSectionAffected}) => ({
+      //          module: module.name,
+      //          modifiedEntries,
+      //          importSection: importSectionAffected ? $.dumpImportSection(module) : null
+      //       })
+      //    )
+      // );
    },
 
    removeEntry: function ({module: moduleName, entry, force}) {
@@ -179,28 +195,27 @@ operationHandlers ::= ({
       let {removed, affectedModules} = $.opRefactor.removeEntry(module, entry, force);
       
       if (!removed) {
-         $.respOk({
+         return {
             removed: false
-         });
+         };
       }
       else {
-         $.applyModifications(
-            Array.from(affectedModules, m => ({
-               module: m.name,
-               modifiedEntries: [],
-               importSection: $.dumpImportSection(m),
-            }))
-         );
-         $.respOk({
+         // $.applyModifications(
+         //    Array.from(affectedModules, m => ({
+         //       module: m.name,
+         //       modifiedEntries: [],
+         //       importSection: $.dumpImportSection(m),
+         //    }))
+         // );
+         return {
             removed: true
-         });
+         };
       }
    },
 
    moveBy1: function ({module: moduleName, name, direction}) {
       let module = $.moduleByName(moduleName);
       $.opMove.moveBy1(module, name, direction);
-      $.respOk();
    },
 
    move: function ({
@@ -212,7 +227,7 @@ operationHandlers ::= ({
    }) {
       let srcModule = $.moduleByName(srcModuleName);
       let destModule = $.moduleByName(destModuleName);
-      $.respOk($.opMove.moveEntry(srcModule, entry, destModule, anchor, before));
+      return $.opMove.moveEntry(srcModule, entry, destModule, anchor, before);
    },
 
    import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
@@ -221,32 +236,32 @@ operationHandlers ::= ({
       let entry = $.entryByName(donor, name);
 
       $.import(entry, recp, alias || entry.name);
-      $.respOk($.dumpImportSection(recp));
+      return $.dumpImportSection(recp);
    },
 
    removeUnusedImports: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
       let removedCount = $.opImport.removeUnusedModuleImports(module);
 
-      $.respOk({
+      return {
          importSection: removedCount > 0 ? $.dumpImportSection(module) : null,
          removedCount
-      });
+      };
    },
 
    removeUnusedImportsInAllModules: function () {
       let {removedCount, affectedModules} = $.opImport.removeUnusedImportsInAllModules();
 
-      $.applyModifications(
-         Array.from(affectedModules, module => ({
-            module: module.name,
-            importSection: $.dumpImportSection(module),
-            modifiedEntries: []
-         }))
-      );
-      $.respOk({
+      // $.applyModifications(
+      //    Array.from(affectedModules, module => ({
+      //       module: module.name,
+      //       importSection: $.dumpImportSection(module),
+      //       modifiedEntries: []
+      //    }))
+      // );
+      return {
          removedCount
-      });
+      };
    },
 
    renameImport: function ({module: moduleName, importedAs, newAlias}) {
@@ -257,10 +272,10 @@ operationHandlers ::= ({
       }
 
       let modifiedEntries = $.opImport.renameImport(imp, newAlias || null);
-      $.respOk({
+      return {
          modifiedEntries: modifiedEntries || [],
          importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
-      });
+      };
    },
 
    removeImport: function ({module: moduleName, importedAs, force}) {
@@ -273,15 +288,15 @@ operationHandlers ::= ({
       let removed = $.opImport.removeImport(imp, force);
       
       if (!removed) {
-         $.respOk({
+         return {
             removed: false
-         });
+         };
       }
       else {
-         $.respOk({
+         return {
             removed: true,
             importSection: $.dumpImportSection(module)
-         });
+         };
       }
    },
 
@@ -290,14 +305,13 @@ operationHandlers ::= ({
       let donor = $.moduleByName(donorModuleName);
       let modifiedEntries = $.opImport.convertImportsToStar(recp, donor);
 
-      if (modifiedEntries !== null) {
-         $.applyModifications([{
-            module: recp.name,
-            modifiedEntries,
-            importSection: $.dumpImportSection(recp)
-         }]);
-      }
-      $.respOk();
+      // if (modifiedEntries !== null) {
+      //    $.applyModifications([{
+      //       module: recp.name,
+      //       modifiedEntries,
+      //       importSection: $.dumpImportSection(recp)
+      //    }]);
+      // }
    },
 
    eval: function ({module: moduleName, code}) {
@@ -315,7 +329,7 @@ operationHandlers ::= ({
          });
       }
 
-      $.respOk($.serialize(res));
+      return $.serialize(res);
    },
 
    addModule: function ({module: moduleName, lang}) {
@@ -324,48 +338,45 @@ operationHandlers ::= ({
       }
 
       $.opModule.addNewModule(moduleName, lang);
-      $.respOk();
    },
 
    renameModule: function ({module: moduleName, newName}) {
       let module = $.moduleByName(moduleName);
       let affectedModules = $.opModule.renameModule(module, newName);
       
-      $.applyModifications(
-         Array.from(affectedModules, module => ({
-            module: module.name,
-            modifiedEntries: [],
-            importSection: $.dumpImportSection(module)
-         }))
-      );
-      $.respOk();
+      // $.applyModifications(
+      //    Array.from(affectedModules, module => ({
+      //       module: module.name,
+      //       modifiedEntries: [],
+      //       importSection: $.dumpImportSection(module)
+      //    }))
+      // );
    },
 
    refreshModule: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
       $.dumpModule(module);
-      $.respOk();
    },
 
    removeModule: function ({module: moduleName, force}) {
       let module = $.moduleByName(moduleName);
       let connectedModuleNames = $.opModule.removeModule(module, force);
 
-      $.respOk(connectedModuleNames);
+      return connectedModuleNames;
    },
 
    findReferences: function ({module: moduleName, star, name}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.query.findReferences(module, star, name));
+      return $.query.findReferences(module, star, name);
    },
 
    replaceUsages: function ({module: moduleName, name, newName}) {
       let module = $.moduleByName(moduleName);
       let modifiedEntries = $.opRefactor.replaceUsages(module, name, newName);
-      $.respOk({
+      return {
          importSection: null,
          modifiedEntries
-      });
+      };
    }
 
 })

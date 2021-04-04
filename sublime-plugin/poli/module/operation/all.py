@@ -8,8 +8,8 @@ from .body import reg_entry_name
 from .edit_mode import highlight_unknown_names
 from .edit_mode import save_module
 from .import_section import parse_import_section
-from .structure import reg_import_section
-
+from .structure import reg_import_section, name_region, def_regions
+from operator import itemgetter
 from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.shared.misc import Kind
@@ -20,7 +20,7 @@ from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import all_views
-from poli.sublime.misc import match_at
+from poli.sublime.misc import match_at, AdjustableRegions
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import ViewDict
@@ -203,29 +203,42 @@ def modify_module_entries(view, edit, entries_data):
             view.replace(edit, retained.regs[i], code)
 
 
-def modify_module(view, edit, module_data):
+def modify_module(view, actions, edit):
+    if action[0]['type'] == 'refresh-import-section':
+        replace_import_section(view, edit, action[0]['contents'])
+        del action[0]
+
+    adj_names = AdjustableRegions(view, 'poli-names', name_regions(view))
+    adj_defs = AdjustableRegions(view, 'poli-defs', def_regions(view))
+
+    def apply_edit(action, i):
+        if 'name' in action:
+            adj_names[i] = replace_in(view, edit, adj_names[i], action['name'])
+        if 'def' in action:
+            adj_defs[i] = replace_in(view, edit, adj_defs[i], action['def'])
+
+    for action in actions:
+        if action['type'] == 'edit':
+
+
+
     if module_data['importSection'] is not None:
         replace_import_section(view, edit, module_data['importSection'])
     modify_module_entries(view, edit, module_data['modifiedEntries'])
 
 
-def apply_modifications(modules_data):
-    if not modules_data:
-        return
-
+def apply_modifications(modifications):
     window = sublime.active_window()
 
     with active_view_preserved(window):
-        views = [open_module(window, d['module']) for d in modules_data]
-
-    def process_1(view, module_data, edit):
-        modify_module(view, edit, module_data)
-        save_module(view)
+        views = [open_module(window, module_name) for [module_name] in modifications]
 
     def proceed():
-        for view, module_data in zip(views, modules_data):
-            call_with_edit(view, functools.partial(process_1, view, module_data))
+        for view, actions in zip(views, map(modifications, itemgetter(1))):
+            print("actions: ", actions)
+            call_with_edit(view, functools.partial(modify_module, view, actions))
 
+        # save_module(view)
         sublime.status_message("{} modules updated".format(len(views)))
 
     on_all_views_load(views, proceed)

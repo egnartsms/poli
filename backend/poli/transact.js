@@ -148,6 +148,7 @@ arraySet ::= function (arr, idx, val) {
    arr[idx] = val;
 }
 commit ::= function () {
+   $.arrayCopies.clear();
    $.mapBwdDeltas.clear();
    $.setBwdDeltas.clear();
    $.objBwdDeltas.clear();
@@ -159,6 +160,14 @@ commit ::= function () {
    $.objFwdDeltas.clear();
 }
 rollback ::= function () {
+   for (let [arr, copy] of $.arrayCopies) {
+      arr.length = copy.length;
+      for (let i = 0; i < copy.length; i += 1) {
+         arr[i] = copy[i];
+      }
+   }
+   $.arrayCopies.clear();
+   
    for (let [map, delta] of $.mapBwdDeltas) {
       for (let [key, oldval] of delta) {
          oldval === $.nihil ? map.delete(key) : map.set(key, oldval);

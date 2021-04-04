@@ -1,3 +1,8 @@
+delta
+   computeModuleDelta as: computeDelta
+transact
+   arraySet
+   splice
 xs-printer
    multilined2str
 xs-reader
@@ -64,4 +69,19 @@ addDiv ::= function () {
    let div = document.createElement('div');
    div.innerText = 'I am a div!!';
    document.body.appendChild(div);
+}
+testComputeDelta ::= function () {
+   let module = {
+      entries: ['a', 'b', 'c', 'd', 'e']
+   };
+   let newEntries = ['b', 'c', 'd', 'e', 'a'];
+   // let newEntries = ['e', 'a', 'b', 'c', 'd'];
+   // let newEntries = ['b', 'c', 'x', 'd', 'e'];
+   
+   module.entries.length = newEntries.length;
+   for (let i = 0; i < newEntries.length; i += 1) {
+      $.arraySet(module.entries, i, newEntries[i]);
+   }
+   
+   console.dir($.computeDelta(module), {depth: null});
 }
