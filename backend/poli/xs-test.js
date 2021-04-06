@@ -1,3 +1,10 @@
+trie
+   Trie
+   objectId
+   trieAdd
+   trieItems
+   trieRemove
+   trieSearch
 xs-printer
    multilined2str
 xs-reader
@@ -64,4 +71,142 @@ addDiv ::= function () {
    let div = document.createElement('div');
    div.innerText = 'I am a div!!';
    document.body.appendChild(div);
+}
+allKeys ::= [
+   'one',
+   'two',
+   'three',
+   'four',
+   'five',
+   'six',
+   'seven',
+   'eight',
+   'nine',
+   'ten',
+   'eleven',
+   'twelve',
+   'thirteen',
+   'fourteen',
+   'fifteen',
+   'sixteen',
+   'seventeen',
+   'eighteen',
+   'nineteen',
+   'twenty',
+   'twenty-one',
+   'twenty-two',
+   'twenty-three',
+   'twenty-four',
+   'twenty-five',
+   'twenty-six',
+   'twenty-seven',
+   'twenty-eight',
+   'twenty-nine',
+   'thirty',
+   'thirty-one',
+   'thirty-two',
+   'thirty-three',
+   'thirty-four',
+   'thirty-five',
+   'thirty-six',
+   'thirty-seven',
+   'thirty-eight',
+   'thirty-nine',
+   'forty',
+   'forty-one',
+   'forty-two',
+   'forty-three',
+   'forty-four',
+   'forty-five'
+]
+allValues ::= [
+   'un',
+   'deux',
+   'trois',
+   'quatre',
+   'cinq',
+   'six',
+   'sept',
+   'huit',
+   'neuf',
+   'dix',
+   'onze',
+   'douze',
+   'treize',
+   'quatorze',
+   'quinze',
+   'seize',
+   'dix-sept',
+   'dix-huit',
+   'dix-neuf',
+   'vingt',
+   'vingt et un',
+   'vingt-deux',
+   'vingt-trois',
+   'vingt-quatre',
+   'vingt-cinq',
+   'vingt-six',
+   'vingt-sept',
+   'vingt-huit',
+   'vingt-neuf',
+   'trente',
+   'trente et un',
+   'trente-deux',
+   'trente-trois',
+   'trente-quatre',
+   'trente-cinq',
+   'trente-six',
+   'trente-sept',
+   'trente-huit',
+   'trente-neuf',
+   'quarante',
+   'quarante et un',
+   'quarante-deux',
+   'quarante-trois',
+   'quarante-quatre',
+   'quarante-cinq'
+]
+perfTrie ::= function (N) {
+   let map = $.Trie(([key]) => key);
+   
+   let M = $.allKeys.length;
+   for (let i = 0; i < M; i += 1) {
+      map = $.trieAdd(map, [$.allKeys[i], $.allValues[i]]);
+   }
+   
+   console.time();
+   for (let i = 0; i < N; i += 1) {
+      let ikey = Math.floor(Math.random() * M);
+      let ival = Math.floor(Math.random() * M);
+      map = $.trieAdd(map, [$.allKeys[ikey], $.allValues[ival]]);
+      
+      let s = $.trieSearch(map, $.allKeys[Math.floor(Math.random() * M)]);
+      if (s[0] === 'a') {
+         console.log(s);
+      }
+
+   }
+   console.timeEnd();
+}
+testTrie ::= function () {
+   let map = $.Trie(([key]) => key);
+   
+   map = $.trieAdd(map, ['england', 'angleterre']);
+   map = $.trieAdd(map, ['germany', 'allemagne']);
+   map = $.trieAdd(map, ['russia', 'russie']);
+   map = $.trieAdd(map, ['spain', 'espagne']);
+   
+   console.log(Array.from($.trieItems(map)));
+   
+   map = $.trieRemove(map, 'italy');
+   console.log(Array.from($.trieItems(map)));
+   
+   map = $.trieRemove(map, 'russia');
+   console.log(Array.from($.trieItems(map)));
+   
+   map = $.trieRemove(map, 'spain');
+   console.log(Array.from($.trieItems(map)));
+   
+   console.log($.trieSearch(map, 'england'));
+   console.log($.trieSearch(map, 'germany'));
 }
