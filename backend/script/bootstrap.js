@@ -1,4 +1,4 @@
-(function () {
+var poli = (function () {
    'use strict';
 
    function loadModules(rawModules) {
@@ -191,10 +191,10 @@
    }
 
 
-   var load = loadModules;
+   var loadModules_1 = loadModules;
 
    function run(rawModules) {
-      load(rawModules);
+      loadModules_1(rawModules);
       let url = new URL('/browser', window.location.href);
       url.protocol = 'ws';
 

@@ -1,4 +1,4 @@
-const loadModules = require('./load');
+const loadModules = require('./load-modules');
 const {RUN_MODULE} = require('./const');
 
 

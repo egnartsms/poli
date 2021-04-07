@@ -6,7 +6,7 @@ module.exports = {
    output: {
       file: './script/bootstrap.js',
       format: 'iife',
-      name: null
+      name: 'poli'
    },
    plugins: [nodeResolve(), commonjs()]
 };

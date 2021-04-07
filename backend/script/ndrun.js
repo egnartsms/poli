@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 
 
 const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const loadModules = require('./load');
+const loadModules = require('./load-modules');
 const readRawModules = require('./read-raw-modules');
 
 
