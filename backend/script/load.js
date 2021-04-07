@@ -1,32 +1,159 @@
-const {BOOTSTRAP_MODULE} = require('./const');
+const {BOOTSTRAP_MODULE, SRC_FOLDER} = require('./const');
 
 
-function loadPoli(rawModules) {
+function loadModules(rawModules) {
+   function moduleEval($, code) {
+      let fun = Function('$', `"use strict";\n   return (${code})`);
+      return fun.call(null, $);
+   }
+
    console.time('load');
+   
+   let modules = new Map(function* (modules) {
+      for (let module of modules) {
+         yield [
+            module.name,
+            {
+               ...module,
+               $: Object.create(null)
+            }
+         ];
+      }
+   }(parseModules(rawModules)));
+   
+   // Evaluate bodies
+   for (let module of modules.values()) {
+      if (module.lang !== 'js') {
+         continue;
+      }
 
-   let $_ = {
-      matchAllHeaderBodyPairs,
-      parseBody,
-      // fs,  // FIXME: in Browser, that won't be available
-      BOOTSTRAP_MODULE
-   };
-
-   let $ = Object.create(null);
-
-   function moduleEval(code) {
-      let fun = Function('$_, $', `"use strict"; return (${code})`);
-      return fun.call(null, $_, $);
+      for (let [name, code] of module.body) {
+         module.$[name] = moduleEval(module.$, code);
+      }
    }
 
-   let entries = parseBody(rawModules[BOOTSTRAP_MODULE].contents);
+   // Perform the imports
+   for (let recp of modules.values()) {
+      if (recp.lang !== 'js') {
+         continue;
+      }
 
-   for (let [name, code] of entries) {
-      $[name] = moduleEval(code);
+      for (let {donor: donorName, asterisk, imports} of recp.imports) {
+         let donor = modules.get(donorName);
+
+         if (donor === undefined) {
+            throw new Error(
+               `Module '${recp.name}': cannot import from '${donorName}:' ` +
+               `no such module`
+            );
+         }
+
+         if (asterisk !== null) {
+            if (asterisk in recp.$) {
+               throw new Error(
+                  `Module '${recp.name}': cannot import '* as ${asterisk}' from ` +
+                  `'${donor.name}': collides with another name`
+               );
+            }
+
+            recp.$[asterisk] = donor.$;
+         }
+
+         for (let {entry, alias} of imports) {
+            if (!(entry in donor.$)) {
+               throw new Error(
+                  `Module '${recp.name}': cannot import '${entry}' from ` +
+                  `'${donor.name}': no such definition`
+               );
+            }
+
+            let importedAs = alias || entry;
+
+            if (importedAs in recp.$) {
+               throw new Error(
+                  `Module '${recp.name}': cannot import '${importedAs}' from ` +
+                  `'${donor.name}': collides with another name`
+               );
+            }
+
+            recp.$[importedAs] = donor.$[entry];
+         }
+      }
    }
 
-   let modules = $['load'](rawModules);
    console.timeEnd('load');
+   
    return modules;
+}
+
+
+function parseModules(rawModules) {
+   let modules = [];
+
+   for (let raw of rawModules) {
+      let {imports, body} = parseModule(raw.contents);
+
+      modules.push({
+         name: raw.name,
+         lang: raw.lang,
+         imports: imports,
+         body: body
+      });
+   }
+
+   return modules;
+}
+
+
+function parseModule(str) {
+   let mtch = str.match(/^-+\n/m);
+   if (!mtch) {
+      throw new Error(`Bad module: not found the ----- separator`);
+   }
+
+   let rawImports = str.slice(0, mtch.index);
+   let rawBody = str.slice(mtch.index + mtch[0].length);
+
+   let imports = parseImports(rawImports);
+   let body = parseBody(rawBody);
+
+   return {imports, body};
+}
+
+
+function parseImports(str) {
+   let res = [];
+
+   for (let [[,donor], rawImports] of matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
+      let imports = Array.from(
+         rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
+      );
+
+      if (imports.length === 0) {
+         // This should not normally happen but not an error
+         continue;
+      }
+
+      let asterisk = null;
+
+      // TODO: check for asterisk at any index
+
+      if (imports[0].groups.entry === '*') {
+         asterisk = imports[0].groups.alias;
+         imports.shift();
+      }
+
+      res.push({
+         donor,
+         asterisk,
+         imports: Array.from(imports, imp => ({
+            entry: imp.groups.entry,
+            alias: imp.groups.alias || null,
+         }))
+      });
+   }
+
+   return res;
 }
 
 
@@ -44,6 +171,8 @@ function parseBody(str) {
 
    Everything following a header before the next header or the end of string is considered
    a body that belongs to that header.
+
+   Yield pairs [header_match, body]
 */
 function* matchAllHeaderBodyPairs(str, reHeader) {
    let prev_i = null, prev_mtch = null;
@@ -62,4 +191,4 @@ function* matchAllHeaderBodyPairs(str, reHeader) {
 }
 
 
-Object.assign(exports, {loadPoli});
+module.exports = loadModules;

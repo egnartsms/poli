@@ -4,12 +4,12 @@ const WebSocket = require('ws');
 
 
 const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const {loadPoli} = require('./load');
-const {readRawModules} = require('./raw');
+const loadModules = require('./load');
+const readRawModules = require('./read-raw-modules');
 
 
 function run() {
-   let modules = loadPoli(readRawModules());
+   let modules = loadModules(readRawModules());
 
    let handleOperation;
    let websocket = null;

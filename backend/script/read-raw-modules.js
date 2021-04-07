@@ -1,28 +1,26 @@
 const fs = require('fs');
-
-
 const {SRC_FOLDER} = require('./const');
 
 
 function readRawModules() {
-   let data = {};
+   let modules = [];
 
    for (let filename of fs.readdirSync(SRC_FOLDER)) {
       let res = parseModuleFilename(filename);
       if (res === null) {
-         console.warn(`Encountered file "${moduleFile}" which is not Poli module. Ignored`);
+         console.warn(`Encountered file "${filename}" which is not Poli module. Ignored`);
          continue;
       }
 
-      data[res.name] = {
+      modules.push({
          type: 'module',
          lang: res.lang,
          name: res.name,
          contents: fs.readFileSync(`./${SRC_FOLDER}/${filename}`, 'utf8')
-      };
+      });
    }
 
-   return data;
+   return modules;
 }
 
 
@@ -39,4 +37,4 @@ function parseModuleFilename(filename) {
 }
 
 
-Object.assign(exports, {readRawModules});
+module.exports = readRawModules;

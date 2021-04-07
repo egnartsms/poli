@@ -32,69 +32,6 @@ loadXs ::= function (modulesInfo) {
    let xsBootstrap = $.modules['xs-bootstrap'];
    xsBootstrap.rtobj['load'](modulesInfo);
 }
-parseModules ::= function (rawModules) {
-   let modulesInfo = [];
-
-   for (let raw of Object.values(rawModules)) {
-      let {imports, body} = $.parseModule(raw.contents);
-      let moduleInfo = {
-         name: raw.name,
-         lang: raw.lang,
-         imports: imports,
-         body: body
-      };
-
-      modulesInfo.push(moduleInfo);
-   }
-
-   return modulesInfo;
-}
-parseModule ::= function (str) {
-   let mtch = str.match(/^-+\n/m);
-   if (!mtch) {
-      throw new Error(`Bad module: not found the ----- separator`);
-   }
-
-   let rawImports = str.slice(0, mtch.index);
-   let rawBody = str.slice(mtch.index + mtch[0].length);
-
-   let imports = $.parseImports(rawImports);
-   let body = $_.parseBody(rawBody);
-
-   return {imports, body};
-}
-parseImports ::= function (str) {
-   let res = [];
-
-   for (let [[,donor], rawImports] of $_.matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
-      let imports = Array.from(
-         rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
-      );
-
-      if (imports.length === 0) {
-         // This should not normally happen but not an error
-         continue;
-      }
-
-      let asterisk = null;
-
-      if (imports[0].groups.entry === '*') {
-         asterisk = imports[0].groups.alias;
-         imports.splice(0, 1);
-      }
-
-      res.push({
-         donor,
-         asterisk,
-         imports: Array.from(imports, imp => ({
-            entry: imp.groups.entry,
-            alias: imp.groups.alias || null,
-         }))
-      });
-   }
-
-   return res;
-}
 makeJsModule ::= function (name, body) {
    // Make JS module, evaluate its entries but don't do any imports yet
    let module = {
