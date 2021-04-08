@@ -194,11 +194,13 @@ var poli = (function () {
    var loadModules_1 = loadModules;
 
    function run(rawModules) {
-      loadModules_1(rawModules);
+      let name2module = loadModules_1(rawModules);
       let url = new URL('/browser', window.location.href);
       url.protocol = 'ws';
 
       new WebSocket(url);
+      
+      name2module.get('xs-test').$['testTrie']();
       
       return;
    }

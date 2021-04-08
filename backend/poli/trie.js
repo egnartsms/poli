@@ -12,15 +12,41 @@ objectId ::= function (obj) {
    }
    return oid;
 }
-MIN_NODE_SIZE ::= 8
 MAX_NODE_SIZE ::= 16
-Trie ::= function (item2key) {
+Trie ::= function (cmp) {
    return {
-      item2key,
+      cmp,
       root: null
    };
 }
-trieItems ::= function* (trie) {
+isMutable ::= function (trie) {
+   return trie.root !== null && trie.root.isFresh;
+}
+asMutable ::= function (trie) {
+   if ($.isMutable(trie)) {
+      throw new Error(`Attempt to make a mutable Trie from another mutable Trie`);
+   }
+
+   return {...trie};
+}
+freeze ::= function (trie) {
+   // Mark all fresh nodes as non-fresh
+   if (!$.isMutable(trie)) {
+      return;
+   }
+   
+   function freeze(node) {
+      node.isFresh = false;
+      if (!node.isLeaf) {
+         for (let subnode of node) {
+            if (subnode.isFresh) {
+               freeze(subnode);
+            }
+         }
+      }
+   }(trie.root)
+}
+items ::= function* (trie) {
    function* subtree(node) {
       if (node.isLeaf) {
          yield* node;
@@ -36,78 +62,194 @@ trieItems ::= function* (trie) {
       yield* subtree(trie.root);
    }
 }
-trieSearch ::= function (trie, key) {
-   if (trie.root === null || key < trie.root.minKey || key > trie.root.maxKey) {
+searchItem ::= function (trie, key) {
+   if (trie.root === null ||
+         trie.cmp(key, trie.root.least) < 0 ||
+         trie.cmp(key, trie.root.greatest) > 0) {
       return null;
    }
    
-   return $.nodeSearch(trie.root, key, trie.item2key);
-}
-trieAdd ::= function (trie, item) {
-   if (trie.root === null) {
-      root = [item];
-      $.makeLeaf(root, trie.item2key);
+   return (function searchIn(node) {
+      let {at} = $.nodeKeyPlace(node, key, trie.cmp);
       
-      return {
-         item2key: trie.item2key,
-         root: root
+      if (at === undefined) {
+         return null;
       }
+      
+      if (node.isLeaf) {
+         return node[at];
+      }
+      else {
+         return searchIn(node[at]);
+      }
+   })(trie.root);
+}
+addItem ::= function (trie, item, key) {
+   if (trie.root === null) {
+      trie.root = [item];
+      $.makeNode(trie.root, true);
+
+      return true;  // was new
+   }
+
+   let wasNew;
+
+   function addTo(node) {
+      if (node.isLeaf) {
+         let newNode = $.freshNode(node);
+         let {at, right} = $.nodeKeyPlace(node, key, trie.cmp);
+         
+         if (at !== undefined) {
+            wasNew = false;
+            newNode.splice(at, 1, item);
+         }
+         else {
+            wasNew = true;
+            newNode.splice(right, 0, item);
+         }
+         
+         return $.maybeSplit(newNode);         
+      }
+      
+      let index;
+      let {at, left, right} = $.nodeKeyPlace(node, key, trie.cmp);
+      
+      if (at !== undefined) {
+         index = at;
+      }
+      else if (left === -1) {
+         index = right;
+      }
+      else if (right === node.length) {
+         index = left;
+      }
+      else if (node[left].length < node[right].length) {
+         index = left;
+      }
+      else {
+         index = right;
+      }
+      
+      let {node: subnode, leftNode, rightNode} = addTo(node[index]);
+      let newNode = $.freshNode(node);
+      
+      if (subnode !== undefined) {
+         newNode[index] = subnode;
+      }
+      else {
+         newNode.splice(index, 1, leftNode, rightNode);
+      }
+      
+      return $.maybeSplit(newNode);
+   }
+
+   let {node: root, leftNode, rightNode} = addTo(trie.root);
+
+   if (root !== undefined) {
+      trie.root = root;
    }
    else {
-      let {node: root, leftNode, rightNode} = $.nodeAdd(trie.root, item, trie.item2key);
-      if (root === undefined) {
-         root = [leftNode, rightNode];
-         $.makeInterior(root);
+      trie.root = [leftNode, rightNode];
+      $.makeNode(trie.root, false);
+   }
+
+   return wasNew;
+}
+deleteByKey ::= function (trie, key) {
+   if (trie.root === null) {
+      return false;
+   }
+
+   let didDelete = false;
+
+   function deleteFrom(node) {
+      let {at} = $.nodeKeyPlace(node, key, trie.cmp);
+      
+      if (at === undefined) {
+         return node;
       }
       
-      return {
-         item2key: trie.item2key,
-         root: root
+      if (node.isLeaf) {
+         if (node.length === 1) {
+            return null;  // it was the only item in the whole trie
+         }
+
+         let newNode = $.freshNode(node);
+         newNode.splice(at, 1);
+         didDelete = true;
+         return newNode;
       }
-   }
-}
-trieRemove ::= function (trie, key) {
-   if (trie.root === null) {
-      return trie;
+
+      let oldSub = node[at];
+      let oldSubLength = oldSub.length;
+      let newSub = removeFrom(oldSub);
+      
+      $.assert(newSub.isFresh);
+
+      // In this implementation, we don't bother to move subnodes between neighboring
+      // nodes to satisfy the minimum node size constraint.  Instead, we check for
+      // whether it's possible to merge neighboring subnodes.
+
+      if (newSub.length < oldSubLength) {
+         let neighbor = $.smallerNeighborIndex(node, at);
+         if (newSub.length + node[neighbor].length <= $.MAX_NODE_SIZE) {
+            // Merge them, reuse 'newSub' as it is fresh
+            newSub.splice(neighbor < at ? 0 : newSub.length, 0, ...node[neighbor]);
+            
+            // If 'node' is the root, it's possible that 'node.length == 2'. This is how
+            // the tree may shorten at all.
+            if (node.length === 2) {
+               return newSub;
+            }
+            
+            let newNode = $.freshNode(node);
+            newNode.splice(at, 1, newSub);
+            newNode.splice(neighbor, 1);
+            
+            return newNode;
+         }
+      }
+
+      if (newSub === oldSub) {
+         return node;
+      }
+      
+      let newNode = $.freshNode(node);
+      newNode.splice(at, 1, newsub);
+      
+      return newNode;
    }
    
-   let newRoot = $.nodeRemove(trie.root, key, trie.item2key);
-   if (newRoot === trie.root) {
-      return trie;
-   }
-   else {
-      return {
-         item2key: trie.item2key,
-         root: newRoot
-      }
-   }
+   trie.root = deleteFrom(trie.root);
+
+   return didDelete;
 }
 isNodeFull ::= function (node) {
    return node.length === $.MAX_NODE_SIZE;
 }
-nodeKeyPlace ::= function (node, key, item2key) {
+nodeKeyPlace ::= function (node, key, cmp) {
    let i = 0;
    let j = node.length - 1;
    
    while (i <= j) {
       let k = (i + j) >> 1;
       let subnode = node[k];
-      let subMin, subMax;
+      let least, greatest;
       
       // actually, the subnodes will either be all items or all nodes
       if (node.isLeaf) {
-         subMin = subMax = item2key(subnode);
+         least = greatest = subnode;
       }
       else {
-         subMin = subnode.minKey;
-         subMax = subnode.maxKey;
+         least = subnode.least;
+         greatest = subnode.greatest;
       }
       
-      if (key > subMax) {
-         i = k + 1;
-      }
-      else if (key < subMin) {
+      if (cmp(key, least) < 0) {
          j = k - 1;
+      }
+      else if (cmp(key, greatest) > 0) {
+         i = k + 1;
       }
       else {
          return {
@@ -119,122 +261,6 @@ nodeKeyPlace ::= function (node, key, item2key) {
    return {
       left: j,
       right: i
-   }
-}
-nodeSearch ::= function (node, key, item2key) {
-   let {at} = $.nodeKeyPlace(node, key, item2key);
-   
-   if (at === undefined) {
-      return null;
-   }
-   
-   if (node.isLeaf) {
-      return node[at];
-   }
-   else {
-      return $.nodeSearch(node[at], key, item2key);
-   }
-}
-nodeAdd ::= function (node, item, item2key) {
-   return (node.isLeaf ? $.leafAdd : $.interiorAdd)(node, item, item2key);
-}
-leafAdd ::= function (node, item, item2key) {
-   let array = node.slice();
-   let {at, right} = $.nodeKeyPlace(node, item2key(item), item2key);
-   
-   if (at !== undefined) {
-      array.splice(at, 1, item);
-   }
-   else {
-      array.splice(right, 0, item);
-   }
-   
-   return $.arrayToNodes(array, true, item2key);
-}
-interiorAdd ::= function (node, item, item2key) {
-   let index;
-   let {at, left, right} = $.nodeKeyPlace(node, item2key(item), item2key);
-   
-   if (at !== undefined) {
-      index = at;
-   }
-   else if (left === -1) {
-      index = 0;
-   }
-   else if (right === node.length) {
-      index = node.length - 1;
-   }
-   else if (node[left].length < node[right].length) {
-      index = left;
-   }
-   else {
-      index = right;
-   }
-   
-   let {
-      node: subnode,
-      leftNode,
-      rightNode
-   } = $.nodeAdd(node[index], item, item2key);
-   let array = node.slice();
-   
-   if (subnode !== undefined) {
-      array[index] = subnode;
-   }
-   else {
-      // insert 2 subnodes instead of the one at 'index'
-      array.splice(index, 1, leftNode, rightNode);
-   }
-   
-   return $.arrayToNodes(array, false, item2key);
-}
-nodeRemove ::= function (node, key, item2key) {
-   let {at} = $.nodeKeyPlace(node, key, item2key);
-   
-   if (at === undefined) {
-      return node;
-   }
-   
-   if (node.isLeaf) {
-      node = Array.from(node);
-      node.splice(at, 1);
-      $.makeLeaf(node, item2key);
-      return node;
-   }
-   else {
-      let subnode = $.nodeRemove(node[at], key, item2key);
-      
-      if (subnode === node[at]) {
-         return node;
-      }
-      
-      // In this implementation, we don't bother to move subnodes between neighboring
-      // nodes to satisfy the $.MIN_NODE_SIZE constraint.  Instead, we check for
-      // whether it's possible to merge neighboring nodes.
-      
-      if (subnode.length < node[at].length) {
-         // Find the smaller neighbor
-         let neighbor = $.smallerNeighborIndex(node, at);
-               
-         if (subnode.length + node[neighbor].length <= $.MAX_NODE_SIZE) {
-            // Merge them, reuse 'subnode' as it is a fresh array
-            subnode.splice(neighbor < at ? 0 : subnode.length, 0, ...node[neighbor]);
-            $.makeNode(subnode, subnode.isLeaf, item2key);
-            
-            node = Array.from(node);
-            node.splice(at, 1, subnode);
-            node.splice(neighbor, 1);
-            $.makeInterior(node);
-            
-            return node;
-         }
-      }
-      
-      node = Array.from(node);
-      node.splice(at, 1, subnode);
-      $.makeInterior(node);
-      
-      return node;
    }
 }
 smallerNeighborIndex ::= function (parent, i) {
@@ -252,43 +278,58 @@ smallerNeighborIndex ::= function (parent, i) {
    
    return neighbor;
 }
-makeLeaf ::= function (array, item2key) {
-   array.isLeaf = true;
-   array.minKey = item2key(array[0]);
-   array.maxKey = item2key(array[array.length - 1]);
-}
-makeInterior ::= function (array) {
-   array.isLeaf = false;
-   array.minKey = array[0].minKey;
-   array.maxKey = array[array.length - 1].maxKey;
-}
-makeNode ::= function (array, isLeaf, item2key) {
+makeNode ::= function (array, isLeaf) {
+   array.isLeaf = isLeaf;
+   array.isFresh = true;
+
    if (isLeaf) {
-      $.makeLeaf(array, item2key);
+      Object.defineProperties(array, {
+         least: {
+            get: function () { return this[0] }
+         },
+         greatest: {
+            get: function () { return this[this.length - 1] }
+         }
+      });
    }
    else {
-      $.makeInterior(array);
+      Object.defineProperties(array, {
+         least: {
+            get: function () { return this[0].least }
+         },
+         greatest: {
+            get: function () { return this[this.length - 1].greatest }
+         }
+      });
    }
 }
-splitNode ::= function (array, isLeaf, item2key) {
-   let Rarray = array.splice(array.length >> 1, array.length);
-   
-   $.makeNode(array, isLeaf, item2key);
-   $.makeNode(Rarray, isLeaf, item2key);
-   
-   return {
-      leftNode: array,
-      rightNode: Rarray
-   }
-}
-arrayToNodes ::= function (array, isLeaf, item2key) {
-   if (array.length > $.MAX_NODE_SIZE) {
-      return $.splitNode(array, isLeaf, item2key);
-   }
-   else {
-      $.makeNode(array, isLeaf, item2key)
+maybeSplit ::= function (node) {
+   $.assert(node.isFresh);
+
+   if (node.length > $.MAX_NODE_SIZE) {
+      // 'node' itself is expected to be freshly created, even if we're dealing with an
+      // immutable trie. So we can mutate it now.
+      let Rnode = node.splice(node.length >> 1, node.length);
+         
+      $.makeNode(Rnode, node.isLeaf);
+         
       return {
-         node: array
+         leftNode: node,
+         rightNode: Rnode
       }
    }
+   else {
+      return {
+         node: node
+      }
+   }
+}
+freshNode ::= function (node) {
+   if (node.isFresh) {
+      return node;
+   }
+
+   let newNode = Array.from(node);
+   $.makeNode(newNode, node.isLeaf);
+   return newNode;
 }

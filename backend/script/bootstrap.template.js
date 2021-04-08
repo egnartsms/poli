@@ -9,6 +9,8 @@ function run(rawModules) {
 
    let websocket = new WebSocket(url);
    
+   name2module.get('xs-test').$['testTrie']();
+   
    return;
 
    // That's our protocol with RUN_MODULE:

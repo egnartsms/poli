@@ -1,10 +1,7 @@
+bootstrap
+   assert
 trie
-   Trie
-   objectId
-   trieAdd
-   trieItems
-   trieRemove
-   trieSearch
+   * as: trie
 xs-printer
    multilined2str
 xs-reader
@@ -189,24 +186,22 @@ perfTrie ::= function (N) {
    console.timeEnd();
 }
 testTrie ::= function () {
-   let map = $.Trie(([key]) => key);
+   let t = $.trie.Trie((k1, [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
    
-   map = $.trieAdd(map, ['england', 'angleterre']);
-   map = $.trieAdd(map, ['germany', 'allemagne']);
-   map = $.trieAdd(map, ['russia', 'russie']);
-   map = $.trieAdd(map, ['spain', 'espagne']);
+   $.trie.addItem(t, ['england', 'angleterre'], 'england');
+   $.trie.addItem(t, ['germany', 'allemagne'], 'germany');
+   $.trie.addItem(t, ['russia', 'russie'], 'russia');
+   $.trie.addItem(t, ['spain', 'espagne'], 'spain');
    
-   console.log(Array.from($.trieItems(map)));
+   console.log(Array.from($.trie.items(t)));
    
-   map = $.trieRemove(map, 'italy');
-   console.log(Array.from($.trieItems(map)));
-   
-   map = $.trieRemove(map, 'russia');
-   console.log(Array.from($.trieItems(map)));
-   
-   map = $.trieRemove(map, 'spain');
-   console.log(Array.from($.trieItems(map)));
-   
-   console.log($.trieSearch(map, 'england'));
-   console.log($.trieSearch(map, 'germany'));
+   let deleted = $.trie.deleteByKey(t, 'germany');
+   $.assert(deleted === true);
+
+   deleted = $.trie.deleteByKey(t, 'germany');
+   $.assert(deleted === false);
+
+   console.log(Array.from($.trie.items(t)));
+
+   return;
 }
