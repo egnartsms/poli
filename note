@@ -83,18 +83,21 @@ Syntax objects
 
 
 ========
-per module relation: {entryid, name, def}
-imports relation: {donorid, entryid, recpid, alias}
-modules relation: {name, lang, ordEntryIds, entries, name2import}
+per module relation: {name, def, ...}
+
+imports relation: {donorid, entryName, recpid, alias}
+modules relation: {id, name, lang, entries, ...}
+   modules.byName: {name => <module fact>}
+   modules.byId: {moduleid => <module fact>}
 
 
 module = {
+   id,
    name,
    lang,
 
-   entries: [entryid],
-   name2entry: {name => <entry fact>},
-   id2entry: {entryid => <entry fact>},
-
+   entries: [name],
+      entries.byName: {name => <entry fact>},
+   
    name2import: {name => <import fact>}
 }

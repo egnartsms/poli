@@ -186,12 +186,15 @@ perfTrie ::= function (N) {
    console.timeEnd();
 }
 testTrie ::= function () {
-   let t = $.trie.Trie((k1, [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+   let t = $.trie.Trie({
+      keyof: ([k, v]) => k,
+      less: (k1, k2) => k1 < k2
+   });
    
-   $.trie.addItem(t, ['england', 'angleterre'], 'england');
-   $.trie.addItem(t, ['germany', 'allemagne'], 'germany');
-   $.trie.addItem(t, ['russia', 'russie'], 'russia');
-   $.trie.addItem(t, ['spain', 'espagne'], 'spain');
+   $.trie.add(t, ['england', 'angleterre']);
+   $.trie.add(t, ['germany', 'allemagne']);
+   $.trie.add(t, ['russia', 'russie']);
+   $.trie.add(t, ['spain', 'espagne']);
    
    console.log(Array.from($.trie.items(t)));
    

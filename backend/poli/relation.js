@@ -1,9 +1,44 @@
 bootstrap
    assert
+   hasOwnProperty
+common
+   compareValues
 trie
    * as: trie
 -----
-Relation ::= function (indices) {
+Relation ::= function () {
+   return {};
+}
+Index ::= function (item2key) {
+   let trie = $.trie.Trie((key, item) => $.compareValues(key, item2key(item)));
+   trie.item2key = item2key;
+
+   return trie;
+}
+addItem ::= function (indexed, item) {
+   return $.trie.addItem(indexed, item, indexed.item2key(item));
+}
+deleteByKey ::= function (indexed, key) {
+   return $.trie.deleteByKey(indexed, key);
+}
+addUniqueGrouping ::= function (rel, name, fact2key) {
+   $.assert(!$.hasOwnProperty(rel, name));
+
+   rel[name] = $.Index(fact2key);
+}
+addFact ::= function (rel, fact) {
+   // Add fact to all the groupings
+   for (let index of Object.values(rel)) {
+      let wasNew = $.addItem(index, fact);
+
+      if (!wasNew) {
+         throw new Error(`Not implemented: adding facts that break unique groupings`);
+      }
+   }
+}
+
+
+Relation2 ::= function (indices) {
    let spec = Object.fromEntries(function* () {
       for (let {name, unique, prop, props} of indices) {
          if (prop !== undefined) {
@@ -43,10 +78,4 @@ Relation ::= function (indices) {
       spec,
       tries,
    }
-}
-addFact ::= function (rel, fact) {
-   // Add fact to all the indexes
-   let newTries = Object.fromEntries(function* () {
-      
-   }())
 }

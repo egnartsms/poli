@@ -1,29 +1,19 @@
 bootstrap
    assert
 -----
-obj2id ::= new WeakMap
-nextOid ::= 1
-objectId ::= function (obj) {
-   let oid = $.obj2id.get(obj);
-   if (oid === undefined) {
-      oid = $.nextOid;
-      $.obj2id.set(obj, oid);
-      $.nextOid += 1;
-   }
-   return oid;
-}
 MAX_NODE_SIZE ::= 16
-Trie ::= function (cmp) {
+Trie ::= function ({keyof, less}) {
    return {
-      cmp,
+      keyof,
+      less,
       root: null
    };
 }
-isMutable ::= function (trie) {
+isMutated ::= function (trie) {
    return trie.root !== null && trie.root.isFresh;
 }
 asMutable ::= function (trie) {
-   if ($.isMutable(trie)) {
+   if ($.isMutated(trie)) {
       throw new Error(`Attempt to make a mutable Trie from another mutable Trie`);
    }
 
@@ -31,7 +21,7 @@ asMutable ::= function (trie) {
 }
 freeze ::= function (trie) {
    // Mark all fresh nodes as non-fresh
-   if (!$.isMutable(trie)) {
+   if (!$.isMutated(trie)) {
       return;
    }
    
@@ -44,7 +34,9 @@ freeze ::= function (trie) {
             }
          }
       }
-   }(trie.root)
+   }
+
+   freeze(trie.root);
 }
 items ::= function* (trie) {
    function* subtree(node) {
@@ -62,15 +54,15 @@ items ::= function* (trie) {
       yield* subtree(trie.root);
    }
 }
-searchItem ::= function (trie, key) {
+search ::= function (trie, key) {
    if (trie.root === null ||
-         trie.cmp(key, trie.root.least) < 0 ||
-         trie.cmp(key, trie.root.greatest) > 0) {
+         trie.less(key, trie.root.minKey) ||
+         trie.less(trie.root.maxKey, key)) {
       return null;
    }
    
    return (function searchIn(node) {
-      let {at} = $.nodeKeyPlace(node, key, trie.cmp);
+      let {at} = $.nodeKeyPlace(trie, node, key);
       
       if (at === undefined) {
          return null;
@@ -84,35 +76,37 @@ searchItem ::= function (trie, key) {
       }
    })(trie.root);
 }
-addItem ::= function (trie, item, key) {
+add ::= function (trie, item) {
    if (trie.root === null) {
       trie.root = [item];
-      $.makeNode(trie.root, true);
-
+      $.setNodeProps(trie.root, true);
+      trie.root.minKey = trie.root.maxKey = trie.keyof(item);
+      
       return true;  // was new
    }
 
    let wasNew;
+   let itemKey = trie.keyof(item);
 
    function addTo(node) {
       if (node.isLeaf) {
          let newNode = $.freshNode(node);
-         let {at, right} = $.nodeKeyPlace(node, key, trie.cmp);
+         let {at, right} = $.nodeKeyPlace(trie, node, itemKey);
          
          if (at !== undefined) {
             wasNew = false;
-            newNode.splice(at, 1, item);
+            $.nodeSplice(trie, newNode, at, 1, item);
          }
          else {
             wasNew = true;
-            newNode.splice(right, 0, item);
+            $.nodeSplice(trie, newNode, right, 0, item);
          }
          
-         return $.maybeSplit(newNode);         
+         return $.maybeSplit(trie, newNode);         
       }
       
       let index;
-      let {at, left, right} = $.nodeKeyPlace(node, key, trie.cmp);
+      let {at, left, right} = $.nodeKeyPlace(trie, node, itemKey);
       
       if (at !== undefined) {
          index = at;
@@ -134,13 +128,13 @@ addItem ::= function (trie, item, key) {
       let newNode = $.freshNode(node);
       
       if (subnode !== undefined) {
-         newNode[index] = subnode;
+         $.nodeSplice(trie, newNode, index, 1, subnode);
       }
       else {
-         newNode.splice(index, 1, leftNode, rightNode);
+         $.nodeSplice(trie, newNode, index, 1, leftNode, rightNode);
       }
       
-      return $.maybeSplit(newNode);
+      return $.maybeSplit(trie, newNode);
    }
 
    let {node: root, leftNode, rightNode} = addTo(trie.root);
@@ -150,7 +144,9 @@ addItem ::= function (trie, item, key) {
    }
    else {
       trie.root = [leftNode, rightNode];
-      $.makeNode(trie.root, false);
+      $.setNodeProps(trie.root, false);
+      trie.root.minKey = leftNode.minKey;
+      trie.root.maxKey = rightNode.maxKey;
    }
 
    return wasNew;
@@ -163,20 +159,22 @@ deleteByKey ::= function (trie, key) {
    let didDelete = false;
 
    function deleteFrom(node) {
-      let {at} = $.nodeKeyPlace(node, key, trie.cmp);
+      let {at} = $.nodeKeyPlace(trie, node, key);
       
       if (at === undefined) {
          return node;
       }
       
       if (node.isLeaf) {
+         didDelete = true;
+
          if (node.length === 1) {
             return null;  // it was the only item in the whole trie
          }
 
          let newNode = $.freshNode(node);
-         newNode.splice(at, 1);
-         didDelete = true;
+         $.nodeSplice(trie, newNode, at, 1);
+         
          return newNode;
       }
 
@@ -194,7 +192,7 @@ deleteByKey ::= function (trie, key) {
          let neighbor = $.smallerNeighborIndex(node, at);
          if (newSub.length + node[neighbor].length <= $.MAX_NODE_SIZE) {
             // Merge them, reuse 'newSub' as it is fresh
-            newSub.splice(neighbor < at ? 0 : newSub.length, 0, ...node[neighbor]);
+            $.splice(trie, newSub, neighbor < at ? 0 : newSub.length, 0, ...node[neighbor]);
             
             // If 'node' is the root, it's possible that 'node.length == 2'. This is how
             // the tree may shorten at all.
@@ -203,9 +201,7 @@ deleteByKey ::= function (trie, key) {
             }
             
             let newNode = $.freshNode(node);
-            newNode.splice(at, 1, newSub);
-            newNode.splice(neighbor, 1);
-            
+            $.splice(trie, newNode, Math.min(at, neighbor), 2, newSub);
             return newNode;
          }
       }
@@ -215,7 +211,7 @@ deleteByKey ::= function (trie, key) {
       }
       
       let newNode = $.freshNode(node);
-      newNode.splice(at, 1, newsub);
+      $.splice(trie, newNode, at, 1, newSub);
       
       return newNode;
    }
@@ -227,28 +223,27 @@ deleteByKey ::= function (trie, key) {
 isNodeFull ::= function (node) {
    return node.length === $.MAX_NODE_SIZE;
 }
-nodeKeyPlace ::= function (node, key, cmp) {
+nodeKeyPlace ::= function (trie, node, key) {
    let i = 0;
    let j = node.length - 1;
    
    while (i <= j) {
       let k = (i + j) >> 1;
-      let subnode = node[k];
-      let least, greatest;
+      let loKey, hiKey;
       
       // actually, the subnodes will either be all items or all nodes
       if (node.isLeaf) {
-         least = greatest = subnode;
+         loKey = hiKey = trie.keyof(node[k]);
       }
       else {
-         least = subnode.least;
-         greatest = subnode.greatest;
+         loKey = node[k].minKey;
+         hiKey = node[k].maxKey;
       }
       
-      if (cmp(key, least) < 0) {
+      if (trie.less(key, loKey)) {
          j = k - 1;
       }
-      else if (cmp(key, greatest) > 0) {
+      else if (trie.less(hiKey, key)) {
          i = k + 1;
       }
       else {
@@ -278,41 +273,43 @@ smallerNeighborIndex ::= function (parent, i) {
    
    return neighbor;
 }
-makeNode ::= function (array, isLeaf) {
+setNodeProps ::= function (array, isLeaf) {
    array.isLeaf = isLeaf;
    array.isFresh = true;
-
-   if (isLeaf) {
-      Object.defineProperties(array, {
-         least: {
-            get: function () { return this[0] }
-         },
-         greatest: {
-            get: function () { return this[this.length - 1] }
-         }
-      });
-   }
-   else {
-      Object.defineProperties(array, {
-         least: {
-            get: function () { return this[0].least }
-         },
-         greatest: {
-            get: function () { return this[this.length - 1].greatest }
-         }
-      });
-   }
 }
-maybeSplit ::= function (node) {
+minKeyOf ::= function (trie, node) {
+   return node.isLeaf ? trie.keyof(node[0]) : node[0].minKey;
+}
+maxKeyOf ::= function (trie, node) {
+   return node.isLeaf ? trie.keyof(node[node.length - 1]) : node[node.length - 1].maxKey;
+}
+nodeSplice ::= function (trie, node, index, deleteCount, ...insert) {
+   let lastAffected = (node.length - index <= deleteCount);
+
+   let result = node.splice(index, deleteCount, ...insert);
+   
+   $.assert(node.length > 0);
+
+   if (index === 0) {
+      node.minKey = $.minKeyOf(trie, node);
+   }
+   
+   if (lastAffected) {
+      node.maxKey = $.maxKeyOf(trie, node);
+   }
+
+   return result;
+}
+maybeSplit ::= function (trie, node) {
    $.assert(node.isFresh);
 
    if (node.length > $.MAX_NODE_SIZE) {
-      // 'node' itself is expected to be freshly created, even if we're dealing with an
-      // immutable trie. So we can mutate it now.
-      let Rnode = node.splice(node.length >> 1, node.length);
-         
-      $.makeNode(Rnode, node.isLeaf);
-         
+      let Rnode = $.splice(trie, node, node.length >> 1, node.length);
+      
+      $.setNodeProps(Rnode, node.isLeaf);
+      Rnode.minKey = $.minKeyOf(trie, Rnode);
+      Rnode.maxKey = $.maxKeyOf(trie, Rnode);    
+      
       return {
          leftNode: node,
          rightNode: Rnode
@@ -330,6 +327,10 @@ freshNode ::= function (node) {
    }
 
    let newNode = Array.from(node);
-   $.makeNode(newNode, node.isLeaf);
+
+   $.setNodeProps(newNode, node.isLeaf);
+   newNode.minKey = node.minKey;
+   newNode.maxKey = node.maxKey;
+
    return newNode;
 }
