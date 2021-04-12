@@ -1,11 +1,5 @@
-bootstrap
-   hasOwnProperty
-   import
-   importedAs
-   moduleEval
-   rtdel
-   rtset
 common
+   hasOwnProperty
    dumpImportSection
    joindot
 import

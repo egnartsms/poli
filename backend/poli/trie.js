@@ -1,4 +1,4 @@
-bootstrap
+common
    assert
 -----
 MAX_NODE_SIZE ::= 16
@@ -95,11 +95,11 @@ add ::= function (trie, item) {
          
          if (at !== undefined) {
             wasNew = false;
-            $.nodeSplice(trie, newNode, at, 1, item);
+            $.splice(trie, newNode, at, 1, item);
          }
          else {
             wasNew = true;
-            $.nodeSplice(trie, newNode, right, 0, item);
+            $.splice(trie, newNode, right, 0, item);
          }
          
          return $.maybeSplit(trie, newNode);         
@@ -128,10 +128,10 @@ add ::= function (trie, item) {
       let newNode = $.freshNode(node);
       
       if (subnode !== undefined) {
-         $.nodeSplice(trie, newNode, index, 1, subnode);
+         $.splice(trie, newNode, index, 1, subnode);
       }
       else {
-         $.nodeSplice(trie, newNode, index, 1, leftNode, rightNode);
+         $.splice(trie, newNode, index, 1, leftNode, rightNode);
       }
       
       return $.maybeSplit(trie, newNode);
@@ -173,7 +173,7 @@ deleteByKey ::= function (trie, key) {
          }
 
          let newNode = $.freshNode(node);
-         $.nodeSplice(trie, newNode, at, 1);
+         $.splice(trie, newNode, at, 1);
          
          return newNode;
       }
@@ -283,7 +283,7 @@ minKeyOf ::= function (trie, node) {
 maxKeyOf ::= function (trie, node) {
    return node.isLeaf ? trie.keyof(node[node.length - 1]) : node[node.length - 1].maxKey;
 }
-nodeSplice ::= function (trie, node, index, deleteCount, ...insert) {
+splice ::= function (trie, node, index, deleteCount, ...insert) {
    let lastAffected = (node.length - index <= deleteCount);
 
    let result = node.splice(index, deleteCount, ...insert);

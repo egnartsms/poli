@@ -1,8 +1,3 @@
-bootstrap
-   addModuleInfoImports
-   moduleEval
-   modules
-   rtflush
 xs-codegen
    genCodeByFintree
 xs-finalizer

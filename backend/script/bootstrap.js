@@ -9,7 +9,7 @@ var poli = (function () {
 
       console.time('load');
       
-      let modules = new Map(function* (modules) {
+      let name2module = new Map(function* (modules) {
          for (let module of modules) {
             yield [
                module.name,
@@ -22,7 +22,7 @@ var poli = (function () {
       }(parseModules(rawModules)));
       
       // Evaluate bodies
-      for (let module of modules.values()) {
+      for (let module of name2module.values()) {
          if (module.lang !== 'js') {
             continue;
          }
@@ -33,13 +33,13 @@ var poli = (function () {
       }
 
       // Perform the imports
-      for (let recp of modules.values()) {
+      for (let recp of name2module.values()) {
          if (recp.lang !== 'js') {
             continue;
          }
 
          for (let {donor: donorName, asterisk, imports} of recp.imports) {
-            let donor = modules.get(donorName);
+            let donor = name2module.get(donorName);
 
             if (donor === undefined) {
                throw new Error(
@@ -83,7 +83,7 @@ var poli = (function () {
 
       console.timeEnd('load');
       
-      return modules;
+      return name2module;
    }
 
 
@@ -200,7 +200,9 @@ var poli = (function () {
 
       new WebSocket(url);
       
-      name2module.get('xs-test').$['testTrie']();
+      name2module.get('load').$['main'](name2module);
+      
+      console.log(name2module.get('load').$['modules']);
       
       return;
    }

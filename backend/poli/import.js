@@ -1,7 +1,5 @@
-bootstrap
+common
    assert
-   importedAs
-   rtdel
 -----
 unimport ::= function (imp) {
    let {recp, donor} = imp;

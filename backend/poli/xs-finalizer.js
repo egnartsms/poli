@@ -1,7 +1,6 @@
-bootstrap
+common
    assert
    hasOwnProperty
-common
    parameterize
 -----
 FinalizeError ::= class extends Error {}

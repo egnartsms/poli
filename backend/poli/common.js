@@ -1,14 +1,16 @@
-bootstrap
-   assert
-   importedAs
-   modules
-   rtget
-   rtset
 img2fs
    dumpModuleImportSection
 import
    importsOf
 -----
+assert ::= function (cond) {
+   if (!cond) {
+      throw new Error;
+   }
+}
+hasOwnProperty ::= function (obj, prop) {
+   return Object.prototype.hasOwnProperty.call(obj, prop);
+}
 moduleByName ::= function (name) {
    let module = $.modules[name];
    if (!module) {
@@ -98,6 +100,6 @@ parameterize ::= function (tobind, callback) {
       }
    }
 }
-compareValues ::= function (a, b) {
-   return a < b ? -1 : a > b ? 1 : 0;
+lessThan ::= function (a, b) {
+   return a < b;
 }

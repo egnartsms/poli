@@ -9,7 +9,9 @@ function run(rawModules) {
 
    let websocket = new WebSocket(url);
    
-   name2module.get('xs-test').$['testTrie']();
+   name2module.get('load').$['main'](name2module);
+   
+   console.log(name2module.get('load').$['modules']);
    
    return;
 

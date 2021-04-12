@@ -1,10 +1,5 @@
-bootstrap
-   hasOwnProperty
-   import
-   moduleEval
-   rtdrop
-   rtflush
 common
+   hasOwnProperty
    dumpImportSection
    moduleByName
    moduleNames

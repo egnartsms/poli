@@ -1,9 +1,6 @@
-bootstrap
-   assert
-   hasOwnProperty
-   importedAs
 common
    joindot
+   hasOwnProperty
 import
    importFor
    importsOf

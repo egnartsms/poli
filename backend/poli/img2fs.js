@@ -1,5 +1,3 @@
-bootstrap
-   modules
 xs-printer
    dumpsNext
 -----

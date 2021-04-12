@@ -1,10 +1,5 @@
-bootstrap
-   hasOwnProperty
-   moduleEval
-   rtdel
-   rtget
-   rtset
 common
+   hasOwnProperty
    joindot
    propagateValueToRecipients
 import

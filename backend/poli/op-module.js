@@ -1,7 +1,5 @@
-bootstrap
+common
    hasOwnProperty
-   makeJsModule
-   modules
 import
    connectedModulesOf
    moduleRevDepsOf

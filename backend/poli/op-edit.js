@@ -1,4 +1,4 @@
-bootstrap
+common
    hasOwnProperty
 module
    * as: module

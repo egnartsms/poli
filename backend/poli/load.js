@@ -1,38 +1,34 @@
+relation
+   * as: rel
 -----
-assert ::= function (cond) {
-   if (!cond) {
-      throw new Error;
-   }
-}
-modules ::= ({})
-load ::= function (rawModules) {
-   let modulesInfo = $.parseModules(rawModules);
+nextModuleId ::= 1
+modules ::= null
+main ::= function (name2module) {
+   // name2module :: Map(name => {name, lang, imports, body, $})
+   let Rmodules = $.rel.Relation('byId', [
+      {name: 'byId', prop: 'id'},
+      {name: 'byName', prop: 'name'}
+   ]);
 
-   $.loadJs(modulesInfo.filter(mi => mi.lang === 'js'));
-   $.loadXs(modulesInfo.filter(mi => mi.lang === 'xs'));
+   $.rel.addFacts(Rmodules, function* () {
+      for (let minfo of name2module.values()) {
+         let entries = $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
 
-   return $.modules;
-}
-loadJs ::= function (modulesInfo) {
-   for (let {name, body} of modulesInfo) {
-      $.modules[name] = $.makeJsModule(name, body);
-   }
+         yield {
+            id: $.nextModuleId++,
+            name: minfo.name,
+            lang: minfo.lang,
+            entries: entries,
+            $: minfo.$
+         };
+      }
+   }.call(null));
 
-   for (let minfo of modulesInfo) {
-      $.addModuleInfoImports(minfo);
-   }
-
-   // Don't forget to flush the changes to modules' rtobjs. We don't really need to go
-   // through this transactional behavior now during the load process. The reason we do 
-   // this is that we want to reuse this code in other modules of the system (by just 
-   // importing from 'bootstrap' which is perfectly fine)
-   $.rtflush();
+   $.rel.freeze(Rmodules);
+   
+   $.modules = Rmodules;
 }
-loadXs ::= function (modulesInfo) {
-   let xsBootstrap = $.modules['xs-bootstrap'];
-   xsBootstrap.rtobj['load'](modulesInfo);
-}
-makeJsModule ::= function (name, body) {
+makeJsModule ::= function ({name, lang, imports, body, $}) {
    // Make JS module, evaluate its entries but don't do any imports yet
    let module = {
       lang: 'js',
@@ -112,9 +108,6 @@ validateImport ::= function (imp) {
          `Module '${recp.name}': the name '${importedAs}' imported more than once`
       );
    }
-}
-hasOwnProperty ::= function (obj, prop) {
-   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 moduleEval ::= function (module, code) {
    let fun;
