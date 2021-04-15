@@ -3,16 +3,16 @@ const {RUN_MODULE} = require('./const');
 
 
 function run(rawModules) {
-   let name2module = loadModules(rawModules);
+   let modules = loadModules(rawModules);
    let url = new URL('/browser', window.location.href);
    url.protocol = 'ws';
 
    let websocket = new WebSocket(url);
    
-   name2module.get('load').$['main'](name2module);
+   modules.find(m => m.name === 'load').$['main'](modules);
    
-   console.log(name2module.get('load').$['modules']);
-   
+   console.log(modules.find(m => m.name === 'load').$['modules']);
+
    return;
 
    // That's our protocol with RUN_MODULE:

@@ -9,20 +9,15 @@ function loadModules(rawModules) {
 
    console.time('load');
    
-   let name2module = new Map(function* (modules) {
-      for (let module of modules) {
-         yield [
-            module.name,
-            {
-               ...module,
-               $: Object.create(null)
-            }
-         ];
-      }
-   }(parseModules(rawModules)));
-   
+   let modules = Array.from(
+      parseModules(rawModules), module => ({
+         ...module,
+         $: Object.create(null)
+      })
+   );
+
    // Evaluate bodies
-   for (let module of name2module.values()) {
+   for (let module of modules) {
       if (module.lang !== 'js') {
          continue;
       }
@@ -33,13 +28,13 @@ function loadModules(rawModules) {
    }
 
    // Perform the imports
-   for (let recp of name2module.values()) {
+   for (let recp of modules) {
       if (recp.lang !== 'js') {
          continue;
       }
 
       for (let {donor: donorName, asterisk, imports} of recp.imports) {
-         let donor = name2module.get(donorName);
+         let donor = modules.find(m => m.name === donorName);
 
          if (donor === undefined) {
             throw new Error(
@@ -83,7 +78,7 @@ function loadModules(rawModules) {
 
    console.timeEnd('load');
    
-   return name2module;
+   return modules;
 }
 
 

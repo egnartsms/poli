@@ -103,3 +103,12 @@ parameterize ::= function (tobind, callback) {
 lessThan ::= function (a, b) {
    return a < b;
 }
+itorFinal ::= function (itor) {
+   let finalItem = undefined;
+
+   for (let item of itor) {
+      finalItem = item;
+   }
+
+   return finalItem;
+}

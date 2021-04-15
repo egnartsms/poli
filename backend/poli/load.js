@@ -1,31 +1,50 @@
 relation
    * as: rel
+vector
+   * as: vec
 -----
 nextModuleId ::= 1
 modules ::= null
-main ::= function (name2module) {
-   // name2module :: Map(name => {name, lang, imports, body, $})
+main ::= function (modules) {
+   // modules :: [{name, lang, imports, body, $}]
    let Rmodules = $.rel.Relation('byId', [
       {name: 'byId', prop: 'id'},
       {name: 'byName', prop: 'name'}
    ]);
 
    $.rel.addFacts(Rmodules, function* () {
-      for (let minfo of name2module.values()) {
+      for (let module of modules) {
          let entries = $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
+         let seqEntries = $.vec.Vector();
+
+         if (module.lang === 'js') {
+            for (let [name, code] of module.body) {
+               code = code.trim();
+               
+               $.rel.addFact(entries, {
+                  name: name,
+                  strDef: code,
+                  def: code
+               });
+               $.vec.pushBack(seqEntries, name);
+            }
+
+            $.rel.freeze(entries);
+            $.vec.freeze(seqEntries);
+         }
 
          yield {
             id: $.nextModuleId++,
-            name: minfo.name,
-            lang: minfo.lang,
+            name: module.name,
+            lang: module.lang,
             entries: entries,
-            $: minfo.$
+            seqEntries: seqEntries,
+            $: module.$
          };
       }
    }.call(null));
-
    $.rel.freeze(Rmodules);
-   
+
    $.modules = Rmodules;
 }
 makeJsModule ::= function ({name, lang, imports, body, $}) {

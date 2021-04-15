@@ -38,12 +38,15 @@ asMutable ::= function (rel) {
 addFacts ::= function (rel, facts) {
    // Add facts to all the unique indices
    for (let fact of facts) {
-      for (let name of Object.keys(rel.uniques)) {
-         let wasNew = $.trie.add(rel[name], fact);
-         
-         if (!wasNew) {
-            throw new Error(`Attempt to add a fact that breaks unique index(es)`);
-         }
+      $.addFact(rel, fact);
+   }
+}
+addFact ::= function (rel, fact) {
+   for (let name of Object.keys(rel.uniques)) {
+      let wasNew = $.trie.add(rel[name], fact);
+      
+      if (!wasNew) {
+         throw new Error(`Attempt to add a fact that breaks unique index(es)`);
       }
    }
 }
