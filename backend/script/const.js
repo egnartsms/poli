@@ -1,5 +1,5 @@
 module.exports = {
    SRC_FOLDER: 'poli',
-   BOOTSTRAP_MODULE: 'bootstrap',
-   RUN_MODULE: 'run'
+   LOAD_MODULE: 'loader',
+   RUN_MODULE: 'runner'
 };

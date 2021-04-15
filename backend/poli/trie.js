@@ -58,14 +58,14 @@ search ::= function (trie, key) {
    if (trie.root === null ||
          trie.less(key, trie.root.minKey) ||
          trie.less(trie.root.maxKey, key)) {
-      return null;
+      return undefined;
    }
    
    return (function searchIn(node) {
       let {at} = $.nodeKeyPlace(trie, node, key);
       
       if (at === undefined) {
-         return null;
+         return undefined;
       }
       
       if (node.isLeaf) {
@@ -75,6 +75,9 @@ search ::= function (trie, key) {
          return searchIn(node[at]);
       }
    })(trie.root);
+}
+has ::= function (trie, key) {
+   return $.search(trie, key) !== undefined;
 }
 add ::= function (trie, item) {
    if (trie.root === null) {

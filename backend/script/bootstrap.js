@@ -1,6 +1,12 @@
 var poli = (function () {
    'use strict';
 
+   var _const = {
+      SRC_FOLDER: 'poli',
+      LOAD_MODULE: 'loader',
+      RUN_MODULE: 'runner'
+   };
+
    function loadModules(rawModules) {
       function moduleEval($, code) {
          let fun = Function('$', `"use strict";\n   return (${code})`);
@@ -188,19 +194,34 @@ var poli = (function () {
 
    var loadModules_1 = loadModules;
 
+   const {LOAD_MODULE, RUN_MODULE} = _const;
+
+
    function run(rawModules) {
       let modules = loadModules_1(rawModules);
       let url = new URL('/browser', window.location.href);
       url.protocol = 'ws';
-      new WebSocket(url);
+      let websocket = new WebSocket(url);
       
-      let load = modules.find(m => m.name === 'load');
-      load.$['main'](modules);
+      let Mload = modules.find(m => m.name === LOAD_MODULE);
+      Mload.$['main'](modules);
       
-      let xsTest = modules.find(m => m.name === 'xs-test');
-      xsTest.$['testVector']();
+      // let xsTest = modules.find(m => m.name === 'xs-test');
+      // xsTest.$['testVector']();
+      // return;
 
-      return;
+      let Mrun = modules.find(m => m.name === RUN_MODULE);
+
+      // That's our contract with RUN_MODULE:
+      //   * we give it the way to send a message over the wire
+      //   * it gives us operation handler which we call on incoming operation request
+      let handleOperation = Mrun.$['main'](
+         message => websocket.send(JSON.stringify(message))
+      );
+
+      websocket.addEventListener('message', ev => {
+         handleOperation(JSON.parse(ev.data));
+      });
    }
 
 

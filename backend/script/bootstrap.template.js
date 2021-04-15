@@ -1,5 +1,5 @@
 const loadModules = require('./load-modules');
-const {RUN_MODULE} = require('./const');
+const {LOAD_MODULE, RUN_MODULE} = require('./const');
 
 
 function run(rawModules) {
@@ -8,18 +8,19 @@ function run(rawModules) {
    url.protocol = 'ws';
    let websocket = new WebSocket(url);
    
-   let load = modules.find(m => m.name === 'load');
-   load.$['main'](modules);
+   let Mload = modules.find(m => m.name === LOAD_MODULE);
+   Mload.$['main'](modules);
    
-   let xsTest = modules.find(m => m.name === 'xs-test');
-   xsTest.$['testVector']();
+   // let xsTest = modules.find(m => m.name === 'xs-test');
+   // xsTest.$['testVector']();
+   // return;
 
-   return;
+   let Mrun = modules.find(m => m.name === RUN_MODULE);
 
-   // That's our protocol with RUN_MODULE:
+   // That's our contract with RUN_MODULE:
    //   * we give it the way to send a message over the wire
    //   * it gives us operation handler which we call on incoming operation request
-   let handleOperation = name2module[RUN_MODULE].rtobj['main'](
+   let handleOperation = Mrun.$['main'](
       message => websocket.send(JSON.stringify(message))
    );
 

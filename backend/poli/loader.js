@@ -4,7 +4,7 @@ vector
    * as: vec
 -----
 nextModuleId ::= 1
-modules ::= null
+Rmodules ::= null
 main ::= function (modules) {
    // modules :: [{name, lang, imports, body, $}]
    let Rmodules = new $.rel.Relation('byId', [
@@ -14,38 +14,38 @@ main ::= function (modules) {
 
    $.rel.addFacts(Rmodules, function* () {
       for (let module of modules) {
-         let entries = new $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
-         let seqEntries = new $.vec.Vector();
+         let Rentries = new $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
+         let entryNames = new $.vec.Vector();
 
          if (module.lang === 'js') {
             for (let [name, code] of module.body) {
                code = code.trim();
                
-               $.rel.addFact(entries, {
+               $.rel.addFact(Rentries, {
                   name: name,
                   strDef: code,
                   def: code
                });
-               $.vec.pushBack(seqEntries, name);
+               $.vec.pushBack(entryNames, name);
             }
 
-            $.rel.freeze(entries);
-            $.vec.freeze(seqEntries);
+            $.rel.freeze(Rentries);
+            $.vec.freeze(entryNames);
          }
 
          yield {
             id: $.nextModuleId++,
             name: module.name,
             lang: module.lang,
-            entries: entries,
-            seqEntries: seqEntries,
+            entries: Rentries,
+            entryNames: entryNames,
             $: module.$
          };
       }
    }.call(null));
    $.rel.freeze(Rmodules);
 
-   $.modules = Rmodules;
+   $.Rmodules = Rmodules;
 }
 makeJsModule ::= function ({name, lang, imports, body, $}) {
    // Make JS module, evaluate its entries but don't do any imports yet

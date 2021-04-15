@@ -1,4 +1,4 @@
-const {BOOTSTRAP_MODULE, SRC_FOLDER} = require('./const');
+const {SRC_FOLDER} = require('./const');
 
 
 function loadModules(rawModules) {
