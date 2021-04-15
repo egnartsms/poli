@@ -2,28 +2,30 @@ common
    assert
 -----
 MAX_NODE_SIZE ::= 16
-Vector ::= function (items=[]) {
-   let vec = {
-      root: null
-   };
+Vector ::= class Vector {
+   constructor (items=[]) {
+      this.root = null;
 
-   for (let item of items) {
-      $.push(vec, item);
+      for (let item of items) {
+         $.push(this, item);
+      }
+
+      $.freeze(this);
    }
-
-   $.freeze(vec);
-
-   return vec;
+   
+   get size() {
+      return this.root.size;
+   }
 }
 isMutated ::= function (vec) {
    return vec.root !== null && vec.root.isFresh;
 }
-asMutable ::= function (vec) {
+copyIdentity ::= function (vec) {
    if ($.isMutated(vec)) {
-      throw new Error(`Attempt to make a mutable Vector from another mutable Vector`);
+      throw new Error(`Attempt to copy the identity of a mutated Vector`);
    }
 
-   return {...vec};
+   return Object.assign(Object.create($.Vector.prototype), vec);
 }
 freeze ::= function (vec) {
    // Mark all fresh nodes as non-fresh
@@ -73,8 +75,8 @@ nodeAt ::= function (node, index) {
 
       let k = 0;
 
-      while (k < node.length && node[k].totalSize <= index) {
-         index -= node[k].totalSize;
+      while (k < node.length && node[k].size <= index) {
+         index -= node[k].size;
          k += 1;
       }
 
@@ -99,16 +101,16 @@ pushBack ::= function (vec, item) {
 
       if (xnode.isLeaf) {         
          xnode.push(item);
-         xnode.totalSize = xnode.length;
+         xnode.size = xnode.length;
       }
       else {
          let subTarget = xnode[xnode.length - 1];
-         let subTargetSize = subTarget.totalSize;
+         let subTargetSize = subTarget.size;
          let newSubs = $.splitNode(pushTo(subTarget));
-         let deltaSize = newSubs.reduce((sum, nd) => sum + nd.totalSize) - subTargetSize;
+         let deltaSize = newSubs.reduce((sum, nd) => sum + nd.size, 0) - subTargetSize;
 
          xnode.splice(xnode.length - 1, 1, ...newSubs);
-         xnode.totalSize += deltaSize;
+         xnode.size += deltaSize;
       }
 
       return xnode;
@@ -167,7 +169,7 @@ freshNode ::= function (node) {
 
    newNode.isFresh = true;
    newNode.isLeaf = node.isLeaf;
-   newNode.totalSize = node.totalSize;
+   newNode.size = node.size;
 
    return newNode;
 }
@@ -176,9 +178,9 @@ makeNode ::= function (array, isLeaf) {
    array.isLeaf = isLeaf;
 
    if (isLeaf) {
-      array.totalSize = array.length;
+      array.size = array.length;
    }
    else {
-      array.totalSize = array.reduce((sum, nd) => sum + nd.totalSize);
+      array.size = array.reduce((sum, nd) => sum + nd.size, 0);
    }
 }

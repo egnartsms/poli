@@ -192,12 +192,13 @@ var poli = (function () {
       let modules = loadModules_1(rawModules);
       let url = new URL('/browser', window.location.href);
       url.protocol = 'ws';
-
       new WebSocket(url);
       
-      modules.find(m => m.name === 'load').$['main'](modules);
+      let load = modules.find(m => m.name === 'load');
+      load.$['main'](modules);
       
-      console.log(modules.find(m => m.name === 'load').$['modules']);
+      let xsTest = modules.find(m => m.name === 'xs-test');
+      xsTest.$['testVector']();
 
       return;
    }

@@ -6,12 +6,13 @@ function run(rawModules) {
    let modules = loadModules(rawModules);
    let url = new URL('/browser', window.location.href);
    url.protocol = 'ws';
-
    let websocket = new WebSocket(url);
    
-   modules.find(m => m.name === 'load').$['main'](modules);
+   let load = modules.find(m => m.name === 'load');
+   load.$['main'](modules);
    
-   console.log(modules.find(m => m.name === 'load').$['modules']);
+   let xsTest = modules.find(m => m.name === 'xs-test');
+   xsTest.$['testVector']();
 
    return;
 

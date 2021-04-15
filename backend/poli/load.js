@@ -7,15 +7,15 @@ nextModuleId ::= 1
 modules ::= null
 main ::= function (modules) {
    // modules :: [{name, lang, imports, body, $}]
-   let Rmodules = $.rel.Relation('byId', [
+   let Rmodules = new $.rel.Relation('byId', [
       {name: 'byId', prop: 'id'},
       {name: 'byName', prop: 'name'}
    ]);
 
    $.rel.addFacts(Rmodules, function* () {
       for (let module of modules) {
-         let entries = $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
-         let seqEntries = $.vec.Vector();
+         let entries = new $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
+         let seqEntries = new $.vec.Vector();
 
          if (module.lang === 'js') {
             for (let [name, code] of module.body) {

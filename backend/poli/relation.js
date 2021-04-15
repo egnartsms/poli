@@ -5,32 +5,30 @@ common
 trie
    * as: trie
 -----
-Relation ::= function (pk, uniques, groupings) {
-   let rel = {
-      uniques: Object.fromEntries(function* () {
+Relation ::= class Relation {
+   constructor (pk, uniques, groupings) {
+      this.uniques = Object.fromEntries(function* () {
          for (let {name, prop} of uniques) {
             yield [name, {prop}];
          }
-      }()),
-      pk: pk
-   };
+      }());
+      this.pk = pk;
 
-   for (let {name, prop} of uniques) {
-      $.assert(!$.hasOwnProperty(rel, name));
+      for (let {name, prop} of uniques) {
+         $.assert(!$.hasOwnProperty(this, name));
 
-      rel[name] = $.trie.Trie({
-         keyof: fact => fact[prop],
-         less: $.lessThan
-      });
+         this[name] = $.trie.Trie({
+            keyof: fact => fact[prop],
+            less: $.lessThan
+         });
+      }
    }
-
-   return rel;
 }
-asMutable ::= function (rel) {
-   let newRel = {...rel};
+copyIdentity ::= function (rel) {
+   let newRel = Object.assign(Object.create($.Relation.prototype), rel);
 
    for (let name of Object.keys(newRel.uniques)) {
-      newRel[name] = $.trie.asMutable(newRel[name]);
+      newRel[name] = $.trie.copyIdentity(newRel[name]);
    }
 
    return newRel;

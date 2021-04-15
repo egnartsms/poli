@@ -2,6 +2,8 @@ common
    assert
 trie
    * as: trie
+vector
+   * as: vec
 xs-printer
    multilined2str
 xs-reader
@@ -207,4 +209,22 @@ testTrie ::= function () {
    console.log(Array.from($.trie.items(t)));
 
    return;
+}
+testVector ::= function () {
+   let v = new $.vec.Vector();
+
+   for (let i = 0; i < $.vec.MAX_NODE_SIZE * 4; i += 1) {
+      $.vec.pushBack(v, `Element #${i}`);
+   }
+   $.vec.freeze(v);
+
+   let w = $.vec.copyIdentity(v);
+
+   for (let i = 0; i < $.vec.MAX_NODE_SIZE; i += 1) {
+      $.vec.pushBack(w, `New Element #${i}`);
+   }
+   $.vec.freeze(w);
+
+   console.log(v);
+   console.log(w);
 }

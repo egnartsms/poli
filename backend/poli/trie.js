@@ -12,9 +12,9 @@ Trie ::= function ({keyof, less}) {
 isMutated ::= function (trie) {
    return trie.root !== null && trie.root.isFresh;
 }
-asMutable ::= function (trie) {
+copyIdentity ::= function (trie) {
    if ($.isMutated(trie)) {
-      throw new Error(`Attempt to make a mutable Trie from another mutable Trie`);
+      throw new Error(`Attempt to copy the identity of a mutated Trie`);
    }
 
    return {...trie};
