@@ -4,6 +4,7 @@ common
    moduleNames
 exc
    ApiError
+   genericError
 img2fs
    dumpModule
 import
@@ -32,6 +33,9 @@ main ::= function (sendMessage) {
    $.sendMessage = sendMessage;
    return $.handleOperation;
 }
+
+product ::= (a, b) => a * b
+
 handleOperation ::= function (op) {
    let stopwatch = (() => {
       let start = new Date;
@@ -43,45 +47,36 @@ handleOperation ::= function (op) {
 
    try {      
       $.operationHandlers[op['op']].call(null, $.loader.Rmodules, op['args']);
-      // $.rtflush();
       console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
    }
    catch (e) {
-      // It is responsibility of the code itself to maintain correct state of all the
-      // data structures when exceptions are thrown. Here, if things are corrup then this
-      // is the bug with Poli itself, not the code the user is working on.
-      console.error(e);
-
-      // $.rtdrop();
-
-      let error, info;
+      let error, message, info;
       
       if (e instanceof $.ApiError) {
          error = e.error;
+         message = e.message;
          info = e.info;
       }
       else {
-         error = 'generic';
-         info = {
-            stack: e.stack,
-            message: e.message
-         };
+         error = 'uncaught';
+         message = e.message;
+         info = {};
       }
 
-      $.respFailure(error, info);
+      $.sendMessage({
+         type: 'resp',
+         success: false,
+         error: error,
+         message: message,
+         info: info,
+      });
+
+      console.error(e);
       console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
    }
 }
 sendMessage ::= null
-respFailure ::= function (error, info) {
-   $.sendMessage({
-      type: 'resp',
-      success: false,
-      error: error,
-      info: info
-   });
-}
-respOk ::= function (result=null) {
+respond ::= function (result=null) {
    $.sendMessage({
       type: 'resp',
       success: true,
@@ -92,29 +87,29 @@ moduleByName ::= function (Rmodules, name) {
    let module = $.trie.search(Rmodules.byName, name);
 
    if (module === undefined) {
-      throw new Error(`Unknown module name: ${name}`);
+      throw $.genericError(`Unknown module name: '${name}'`);
    }
 
    return module;
 }
 operationHandlers ::= ({
    getModules: function () {
-      $.respOk($.query.allModuleNames());
+      $.respond($.query.allModuleNames());
    },
 
    getEntries: function () {
-      $.respOk($.query.allEntries());
+      $.respond($.query.allEntries());
    },
 
    getModuleEntries: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
 
-      $.respOk(module.entries);
+      $.respond(module.entries);
    },
 
    getModuleNames: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.moduleNames(module));
+      $.respond($.moduleNames(module));
    },
 
    getDefinition: function (Rmodules, {module: moduleName, name}) {
@@ -125,24 +120,24 @@ operationHandlers ::= ({
          throw new Error(`Member "${name}" not found in module "${moduleName}"`);
       }
 
-      $.respOk(entry.strDef);
+      $.respond(entry.strDef);
    },
 
    getCompletions: function ({module: moduleName, star, prefix}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.query.getCompletions(module, star, prefix));
+      $.respond($.query.getCompletions(module, star, prefix));
    },
 
    getImportables: function ({recp: recpModuleName}) {
       let recp = $.moduleByName(recpModuleName);
-      $.respOk($.query.importablesInto(recp));
+      $.respond($.query.importablesInto(recp));
    },
 
    addEntry: function ({module: moduleName, name, source, anchor, before}) {
       let module = $.moduleByName(moduleName);
       let normalizedSource = $.addEntry(module, name, source, anchor, before);
 
-      $.respOk({
+      $.respond({
          normalizedSource: normalizedSource
       });
    },
@@ -151,7 +146,7 @@ operationHandlers ::= ({
       let module = $.moduleByName(moduleName);
       let normalizedSource = $.editEntry(module, name, newSource);
 
-      $.respOk({
+      $.respond({
          normalizedSource: normalizedSource
       });
    },
@@ -170,7 +165,7 @@ operationHandlers ::= ({
             })
          )
       );
-      $.respOk();
+      $.respond();
    },
 
    removeEntry: function ({module: moduleName, entry, force}) {
@@ -178,7 +173,7 @@ operationHandlers ::= ({
       let {removed, affectedModules} = $.opRefactor.removeEntry(module, entry, force);
       
       if (!removed) {
-         $.respOk({
+         $.respond({
             removed: false
          });
       }
@@ -190,7 +185,7 @@ operationHandlers ::= ({
                importSection: $.dumpImportSection(m),
             }))
          );
-         $.respOk({
+         $.respond({
             removed: true
          });
       }
@@ -199,7 +194,7 @@ operationHandlers ::= ({
    moveBy1: function ({module: moduleName, name, direction}) {
       let module = $.moduleByName(moduleName);
       $.opMove.moveBy1(module, name, direction);
-      $.respOk();
+      $.respond();
    },
 
    move: function ({
@@ -211,7 +206,7 @@ operationHandlers ::= ({
    }) {
       let srcModule = $.moduleByName(srcModuleName);
       let destModule = $.moduleByName(destModuleName);
-      $.respOk($.opMove.moveEntry(srcModule, entry, destModule, anchor, before));
+      $.respond($.opMove.moveEntry(srcModule, entry, destModule, anchor, before));
    },
 
    import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
@@ -223,14 +218,14 @@ operationHandlers ::= ({
          name: name || null,
          alias: alias || null
       });
-      $.respOk($.dumpImportSection(recp));
+      $.respond($.dumpImportSection(recp));
    },
 
    removeUnusedImports: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
       let removedCount = $.opImport.removeUnusedModuleImports(module);
 
-      $.respOk({
+      $.respond({
          importSection: removedCount > 0 ? $.dumpImportSection(module) : null,
          removedCount
       });
@@ -246,7 +241,7 @@ operationHandlers ::= ({
             modifiedEntries: []
          }))
       );
-      $.respOk({
+      $.respond({
          removedCount
       });
    },
@@ -259,7 +254,7 @@ operationHandlers ::= ({
       }
 
       let modifiedEntries = $.opImport.renameImport(imp, newAlias || null);
-      $.respOk({
+      $.respond({
          modifiedEntries: modifiedEntries || [],
          importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
       });
@@ -275,12 +270,12 @@ operationHandlers ::= ({
       let removed = $.opImport.removeImport(imp, force);
       
       if (!removed) {
-         $.respOk({
+         $.respond({
             removed: false
          });
       }
       else {
-         $.respOk({
+         $.respond({
             removed: true,
             importSection: $.dumpImportSection(module)
          });
@@ -299,7 +294,7 @@ operationHandlers ::= ({
             importSection: $.dumpImportSection(recp)
          }]);
       }
-      $.respOk();
+      $.respond();
    },
 
    eval: function ({module: moduleName, code}) {
@@ -317,7 +312,7 @@ operationHandlers ::= ({
          });
       }
 
-      $.respOk($.serialize(res));
+      $.respond($.serialize(res));
    },
 
    addModule: function ({module: moduleName, lang}) {
@@ -326,7 +321,7 @@ operationHandlers ::= ({
       }
 
       $.opModule.addNewModule(moduleName, lang);
-      $.respOk();
+      $.respond();
    },
 
    renameModule: function ({module: moduleName, newName}) {
@@ -340,31 +335,31 @@ operationHandlers ::= ({
             importSection: $.dumpImportSection(module)
          }))
       );
-      $.respOk();
+      $.respond();
    },
 
    refreshModule: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
       $.dumpModule(module);
-      $.respOk();
+      $.respond();
    },
 
    removeModule: function ({module: moduleName, force}) {
       let module = $.moduleByName(moduleName);
       let connectedModuleNames = $.opModule.removeModule(module, force);
 
-      $.respOk(connectedModuleNames);
+      $.respond(connectedModuleNames);
    },
 
    findReferences: function ({module: moduleName, star, name}) {
       let module = $.moduleByName(moduleName);
-      $.respOk($.query.findReferences(module, star, name));
+      $.respond($.query.findReferences(module, star, name));
    },
 
    replaceUsages: function ({module: moduleName, name, newName}) {
       let module = $.moduleByName(moduleName);
       let modifiedEntries = $.opRefactor.replaceUsages(module, name, newName);
-      $.respOk({
+      $.respond({
          importSection: null,
          modifiedEntries
       });

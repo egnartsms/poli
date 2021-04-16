@@ -4,11 +4,15 @@ xs-tokenizer
    TokenizerError
 -----
 ApiError ::= class extends Error {
-   constructor (error, info) {
-      super();
+   constructor (error, message, info) {
+      super(message);
+
       this.error = error;
       this.info = info;
    }
+}
+genericError ::= function (message) {
+   return new $.ApiError('generic', message, {});
 }
 rethrowCodeErrorsOn ::= function (source, callback) {
    try {

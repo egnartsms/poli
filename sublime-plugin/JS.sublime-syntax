@@ -42,5 +42,21 @@ contexts:
         2: invalid.illegal.excessive-whitespace
         3: punctuation.separator.poli.defined-as
       embed: Packages/JavaScript/JavaScript.sublime-syntax
-      escape: '^(?=\S+ ::= )'
+      escape: '^(?=(\S+ ::= )|(<+\s*$))'
       embed_scope: meta.entry.def
+    - match: '^<+\s*$'
+      scope: punctuation.separator.poli.new-entry.start
+      push:
+        - match: '^(\S+) (\s*)(::=)'
+          captures:
+            1: entity.name.entry
+            2: invalid.illegal.excessive-whitespace
+            3: punctuation.separator.poli.defined-as
+          embed: Packages/JavaScript/JavaScript.sublime-syntax
+          escape: '^(?=>+\s*$)'
+        - match: ^>+\s*$
+          scope: punctuation.separator.poli.new-entry.end
+          pop: true
+        - match: ^
+          embed: Packages/JavaScript/JavaScript.sublime-syntax
+          escape: '^(?=>+\s*$)'

@@ -4,7 +4,7 @@ import websocket
 
 import poli.config as config
 
-from poli.exc import make_backend_error
+from poli.exc import make_api_error
 
 
 class Communicator:
@@ -66,6 +66,7 @@ class Communicator:
         if res['success']:
             return res['result']
         else:
-            raise make_backend_error(res['error'], res['info'])
+            raise make_api_error(res['error'], res['message'], res['info'])
+
 
 comm = Communicator()
