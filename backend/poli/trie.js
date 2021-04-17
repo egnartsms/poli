@@ -12,7 +12,7 @@ Trie ::= function ({keyof, less}) {
 isMutated ::= function (trie) {
    return trie.root !== null && trie.root.isFresh;
 }
-copyIdentity ::= function (trie) {
+newIdentity ::= function (trie) {
    if ($.isMutated(trie)) {
       throw new Error(`Attempt to copy the identity of a mutated Trie`);
    }
@@ -154,14 +154,14 @@ add ::= function (trie, item) {
 
    return wasNew;
 }
-deleteByKey ::= function (trie, key) {
+removeByKey ::= function (trie, key) {
    if (trie.root === null) {
       return false;
    }
 
    let didDelete = false;
 
-   function deleteFrom(node) {
+   function removeFrom(node) {
       let {at} = $.nodeKeyPlace(trie, node, key);
       
       if (at === undefined) {
@@ -219,9 +219,12 @@ deleteByKey ::= function (trie, key) {
       return newNode;
    }
    
-   trie.root = deleteFrom(trie.root);
+   trie.root = removeFrom(trie.root);
 
    return didDelete;
+}
+remove ::= function (trie, item) {
+   return $.removeByKey(trie, trie.keyof(item));
 }
 isNodeFull ::= function (node) {
    return node.length === $.MAX_NODE_SIZE;

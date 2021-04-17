@@ -218,7 +218,7 @@ testVector ::= function () {
    }
    $.vec.freeze(v);
 
-   let w = $.vec.copyIdentity(v);
+   let w = $.vec.newIdentity(v);
 
    for (let i = 0; i < $.vec.MAX_NODE_SIZE; i += 1) {
       $.vec.pushBack(w, `New Element #${i}`);

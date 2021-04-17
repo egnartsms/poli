@@ -2,9 +2,9 @@ const {SRC_FOLDER} = require('./const');
 
 
 function loadModules(rawModules) {
-   function moduleEval($, code) {
+   function moduleEval(ns, code) {
       let fun = Function('$', `"use strict";\n   return (${code})`);
-      return fun.call(null, $);
+      return fun.call(null, ns);
    }
 
    console.time('load');
@@ -12,7 +12,7 @@ function loadModules(rawModules) {
    let modules = Array.from(
       parseModules(rawModules), module => ({
          ...module,
-         $: Object.create(null)
+         ns: Object.create(null)
       })
    );
 
@@ -23,7 +23,7 @@ function loadModules(rawModules) {
       }
 
       for (let [name, code] of module.body) {
-         module.$[name] = moduleEval(module.$, code);
+         module.ns[name] = moduleEval(module.ns, code);
       }
    }
 
@@ -44,18 +44,18 @@ function loadModules(rawModules) {
          }
 
          if (asterisk !== null) {
-            if (asterisk in recp.$) {
+            if (asterisk in recp.ns) {
                throw new Error(
                   `Module '${recp.name}': cannot import '* as ${asterisk}' from ` +
                   `'${donor.name}': collides with another name`
                );
             }
 
-            recp.$[asterisk] = donor.$;
+            recp.ns[asterisk] = donor.ns;
          }
 
          for (let {entry, alias} of imports) {
-            if (!(entry in donor.$)) {
+            if (!(entry in donor.ns)) {
                throw new Error(
                   `Module '${recp.name}': cannot import '${entry}' from ` +
                   `'${donor.name}': no such definition`
@@ -64,14 +64,14 @@ function loadModules(rawModules) {
 
             let importedAs = alias || entry;
 
-            if (importedAs in recp.$) {
+            if (importedAs in recp.ns) {
                throw new Error(
                   `Module '${recp.name}': cannot import '${importedAs}' from ` +
                   `'${donor.name}': collides with another name`
                );
             }
 
-            recp.$[importedAs] = donor.$[entry];
+            recp.ns[importedAs] = donor.ns[entry];
          }
       }
    }

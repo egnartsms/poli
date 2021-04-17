@@ -16,11 +16,15 @@ Vector ::= class Vector {
    get size() {
       return this.root.size;
    }
+
+   [Symbol.iterator] () {
+      return $.items(this);
+   }
 }
 isMutated ::= function (vec) {
    return vec.root !== null && vec.root.isFresh;
 }
-copyIdentity ::= function (vec) {
+newIdentity ::= function (vec) {
    if ($.isMutated(vec)) {
       throw new Error(`Attempt to copy the identity of a mutated Vector`);
    }
@@ -47,19 +51,46 @@ freeze ::= function (vec) {
    freeze(vec.root);
 }
 items ::= function* (vec) {
-   function* subtree(node) {
+   if (vec.root !== null) {
+      yield* $.genSubtree(vec.root);
+   }
+}
+genSubtree ::= function* (node) {
+   if (node.isLeaf) {
+      yield* node;
+   }
+   else {
+      for (let subnode of node) {
+         yield* subtree(subnode);
+      }
+   }   
+}
+genSlice ::= function* (vec, n) {
+   function* gen(node, n) {
       if (node.isLeaf) {
-         yield* node;
+         yield* node.slice(n);
       }
       else {
-         for (let subnode of node) {
-            yield* subtree(subnode);
+         let i = 0;
+         while (i < node.length && node[i].size <= n) {
+            n -= node[i].size;
+            i += 1;
+         }
+
+         if (i < node.length) {
+            yield* gen(node[i], n);
+
+            i += 1;
+            while (i < node.length) {
+               yield* $.genSubtree(node[i]);
+               i += 1;
+            }
          }
       }
    }
    
    if (vec.root !== null) {
-      yield* subtree(vec.root);
+      yield* gen(vec.root, n);
    }
 }
 at ::= function (vec, index) {
@@ -183,4 +214,10 @@ makeNode ::= function (array, isLeaf) {
    else {
       array.size = array.reduce((sum, nd) => sum + nd.size, 0);
    }
+}
+updated ::= function (vec, fnMutator) {
+   let newVec = $.newIdentity(vec);
+   fnMutator(newVec);
+   $.freeze(newVec);
+   return newVec;
 }

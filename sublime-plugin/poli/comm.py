@@ -17,7 +17,7 @@ class Communicator:
         self.ws = websocket.WebSocket()
         self.ws.timeout = config.ws_timeout
         self.on_status_changed = None
-        self.on_save_message = None
+        self.on_modify_code = None
 
     def _fire_status_changed(self):
         if self.on_status_changed is not None:
@@ -43,18 +43,9 @@ class Communicator:
                 'op': op,
                 'args': args
             }))
-            while True:
-                res = json.loads(self.ws.recv())
-                if res['type'] == 'save':
-                    self.on_save_message(res['modifications'])
-                elif res['type'] == 'resp':
-                    break
-                else:
-                    raise RuntimeError(
-                        "Internal error: unrecognized WS message type: '{}'".format(
-                            res['type']
-                        )
-                    )
+
+            res = json.loads(self.ws.recv())
+            assert res['type'] == 'response'
         except Exception as exc:
             self.ws.shutdown()
             self._fire_status_changed()
@@ -62,6 +53,9 @@ class Communicator:
 
         elapsed = time.perf_counter() - start
         print("{} took: {} ms".format(op, round(elapsed * 1000)))
+
+        if res['modifyCode']:
+            self.on_modify_code(res['modifyCode'])
 
         if res['success']:
             return res['result']

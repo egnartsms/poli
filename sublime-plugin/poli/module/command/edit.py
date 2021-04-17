@@ -133,8 +133,10 @@ class PoliCommit(ModuleTextCommand):
                 res = comm.op('editEntry', {
                     'module': op.view_module_name(self.view),
                     'name': cxt.name,
-                    'newSource': new_src
+                    'newDef': new_src
                 })
+
+            return
 
             self.view.set_read_only(False)
             self.view.replace(edit, reg, res['normalizedSource'])

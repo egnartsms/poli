@@ -20,12 +20,12 @@ function run(rawModules) {
    // That's our contract with RUN_MODULE:
    //   * we give it the way to send a message over the wire
    //   * it gives us operation handler which we call on incoming operation request
-   let handleOperation = Mrun.$['main'](
+   let handleMessage = Mrun.$['main'](
       message => websocket.send(JSON.stringify(message))
    );
 
    websocket.addEventListener('message', ev => {
-      handleOperation(JSON.parse(ev.data));
+      handleMessage(JSON.parse(ev.data));
    });
 }
 

@@ -24,14 +24,22 @@ Relation ::= class Relation {
       }
    }
 }
-copyIdentity ::= function (rel) {
+newIdentity ::= function (rel) {
    let newRel = Object.assign(Object.create($.Relation.prototype), rel);
 
    for (let name of Object.keys(newRel.uniques)) {
-      newRel[name] = $.trie.copyIdentity(newRel[name]);
+      newRel[name] = $.trie.newIdentity(newRel[name]);
    }
 
    return newRel;
+}
+freeze ::= function (rel) {
+   for (let name of Object.keys(rel.uniques)) {
+      $.trie.freeze(rel[name]);
+   }
+}
+genFacts ::= function (rel) {
+   return $.trie.items(rel[rel.pk]);
 }
 addFacts ::= function (rel, facts) {
    // Add facts to all the unique indices
@@ -42,14 +50,22 @@ addFacts ::= function (rel, facts) {
 addFact ::= function (rel, fact) {
    for (let name of Object.keys(rel.uniques)) {
       let wasNew = $.trie.add(rel[name], fact);
-      
-      if (!wasNew) {
-         throw new Error(`Attempt to add a fact that breaks unique index(es)`);
-      }
+      $.assert(wasNew);
    }
 }
-freeze ::= function (rel) {
+removeFact ::= function (rel, fact) {
    for (let name of Object.keys(rel.uniques)) {
-      $.trie.freeze(rel[name]);
+      let didDelete = $.trie.remove(rel[name], fact);
+      $.assert(didDelete);
    }
+}
+changeFact ::= function (rel, fact, newFact) {
+   $.removeFact(rel, fact);
+   $.addFact(rel, newFact);
+}
+updated ::= function (rel, fnMutator) {
+   let newRel = $.newIdentity(rel);
+   fnMutator(newRel);
+   $.freeze(newRel);
+   return newRel;
 }

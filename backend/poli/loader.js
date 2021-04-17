@@ -15,7 +15,7 @@ main ::= function (modules) {
    $.rel.addFacts(Rmodules, function* () {
       for (let module of modules) {
          let Rentries = new $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
-         let entryNames = new $.vec.Vector();
+         let members = new $.vec.Vector();
 
          if (module.lang === 'js') {
             for (let [name, code] of module.body) {
@@ -26,11 +26,11 @@ main ::= function (modules) {
                   strDef: code,
                   def: code
                });
-               $.vec.pushBack(entryNames, name);
+               $.vec.pushBack(members, name);
             }
 
             $.rel.freeze(Rentries);
-            $.vec.freeze(entryNames);
+            $.vec.freeze(members);
          }
 
          yield {
@@ -38,8 +38,9 @@ main ::= function (modules) {
             name: module.name,
             lang: module.lang,
             entries: Rentries,
-            entryNames: entryNames,
-            $: module.$
+            members: members,
+            ns: module.ns,
+            nsDelta: Object.create(null)
          };
       }
    }.call(null));

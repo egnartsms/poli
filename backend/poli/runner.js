@@ -2,6 +2,8 @@ common
    hasOwnProperty
    dumpImportSection
    moduleNames
+delta
+   modulesDelta
 exc
    ApiError
    genericError
@@ -26,62 +28,90 @@ op-query
    * as: query
 op-refactor
    * as: opRefactor
+relation
+   * as: rel
 trie
    * as: trie
+vector
+   * as: vec
 -----
 main ::= function (sendMessage) {
-   $.sendMessage = sendMessage;
-   return $.handleOperation;
-}
+   let pendingRmodules = null;
 
-product ::= (a, b) => a * b
+   
+   function handleMessage(msg) {
+      if (pendingRmodules !== null) {
+         if (msg['type'] !== 'modify-code-result') {
+            throw new Error(`Expected 'modify-code-result' message, got: ${msg}`);
+         }
+         if (msg['result']) {
+            $.loader.Rmodules = pendingRmodules;
+            pendingRmodules = null;
+            $.rel.freeze($.loader.Rmodules);
+            // TODO: apply nsDeltas
+         }
+         else {
+            console.warning(`Sublime could not modify code, rolling back`);
+            pendingRmodules = null;
+         }
 
-handleOperation ::= function (op) {
-   let stopwatch = (() => {
-      let start = new Date;
-      return () => {
-         let elapsed = new Date - start;
-         return `${elapsed} ms`;
-      };
-   })();
-
-   try {      
-      $.operationHandlers[op['op']].call(null, $.loader.Rmodules, op['args']);
-      console.log(op['op'], `SUCCESS`, `(${stopwatch()})`);
-   }
-   catch (e) {
-      let error, message, info;
-      
-      if (e instanceof $.ApiError) {
-         error = e.error;
-         message = e.message;
-         info = e.info;
-      }
-      else {
-         error = 'uncaught';
-         message = e.message;
-         info = {};
+         return;
       }
 
-      $.sendMessage({
-         type: 'resp',
-         success: false,
-         error: error,
-         message: message,
-         info: info,
-      });
+      let stopwatch = (() => {
+         let start = new Date;
+         return () => {
+            let elapsed = new Date - start;
+            return `${elapsed} ms`;
+         };
+      })();
 
-      console.error(e);
-      console.log(op['op'], `FAILURE`, `(${stopwatch()})`);
+      try {      
+         let Rmodules = $.rel.newIdentity($.loader.Rmodules);
+         let result = $.operationHandlers[msg['op']].call(null, Rmodules, msg['args']);
+         let actions = $.modulesDelta($.loader.Rmodules, Rmodules);
+
+         if (actions.length > 0) {
+            pendingRmodules = Rmodules;
+         }
+
+         sendMessage({
+            type: 'response',
+            success: true,
+            result: result,
+            modifyCode: actions
+         });
+
+         console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
+      }
+      catch (e) {
+         let error, message, info;
+         
+         if (e instanceof $.ApiError) {
+            error = e.error;
+            message = e.message;
+            info = e.info;
+         }
+         else {
+            error = 'uncaught';
+            message = e.message;
+            info = {};
+         }
+
+         sendMessage({
+            type: 'resp',
+            success: false,
+            error: error,
+            message: message,
+            info: info,
+         });
+
+         console.error(e);
+         console.log(msg['op'], `FAILURE`, `(${stopwatch()})`);
+      }
    }
-}
-sendMessage ::= null
-respond ::= function (result=null) {
-   $.sendMessage({
-      type: 'resp',
-      success: true,
-      result: result
-   });
+
+   return handleOperation;
 }
 moduleByName ::= function (Rmodules, name) {
    let module = $.trie.search(Rmodules.byName, name);
@@ -92,7 +122,66 @@ moduleByName ::= function (Rmodules, name) {
 
    return module;
 }
+entryByName ::= function (module, name) {
+   let entry = $.trie.search(module.entries.byName, name);
+
+   if (entry === undefined) {
+      throw $.genericError(`Member '${name}' not found in module '${module.name}'`);
+   }
+
+   return entry;
+}
+moduleEval ::= function moduleEval(ns, code) {
+   let fun = Function('$', `"use strict";\n   return (${code})`);
+   return fun.call(null, ns);
+}
 operationHandlers ::= ({
+   getDefinition: function (Rmodules, {module: moduleName, name}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+      let entry = $.entryByName(module, name);
+
+      return entry.strDef;
+   },
+
+   editEntry: function (Rmodules, {module: moduleName, name, newDef}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+      let entry = $.entryByName(module, name);
+      
+      // EXPERIMENT
+      $.rel.changeFact(Rmodules, module, {
+         ...module,
+         entries: $.rel.updated(module.entries, (entries) => {
+            $.rel.addFact(entries, {name: 'fake', def: 'null', strDef: 'null'});
+         }),
+         members: $.vec.updated(module.members, (members) => {
+            $.vec.pushBack(members, 'fake');
+         })
+      });
+      return {
+         normalizedSource: newDef
+      }
+      
+      newDef = newDef.trim();
+      let newVal = $.moduleEval(module.ns, newDef);
+
+      module.nsDelta[name] = newVal;
+
+      $.rel.changeFact(Rmodules, module, {
+         ...module,
+         entries: $.rel.updated(module.entries, (entries) => {
+            $.rel.changeFact(entries, entry, {
+               ...entry,
+               strDef: newDef,
+               def: newDef
+            });
+         })
+      });
+
+      return {
+         normalizedSource: newDef
+      }
+   },
+
    getModules: function () {
       $.respond($.query.allModuleNames());
    },
@@ -112,17 +201,6 @@ operationHandlers ::= ({
       $.respond($.moduleNames(module));
    },
 
-   getDefinition: function (Rmodules, {module: moduleName, name}) {
-      let module = $.moduleByName(Rmodules, moduleName);
-      let entry = $.trie.search(module.entries.byName, name);
-
-      if (entry === undefined) {
-         throw new Error(`Member "${name}" not found in module "${moduleName}"`);
-      }
-
-      $.respond(entry.strDef);
-   },
-
    getCompletions: function ({module: moduleName, star, prefix}) {
       let module = $.moduleByName(moduleName);
       $.respond($.query.getCompletions(module, star, prefix));
@@ -136,15 +214,6 @@ operationHandlers ::= ({
    addEntry: function ({module: moduleName, name, source, anchor, before}) {
       let module = $.moduleByName(moduleName);
       let normalizedSource = $.addEntry(module, name, source, anchor, before);
-
-      $.respond({
-         normalizedSource: normalizedSource
-      });
-   },
-
-   editEntry: function ({module: moduleName, name, newSource}) {
-      let module = $.moduleByName(moduleName);
-      let normalizedSource = $.editEntry(module, name, newSource);
 
       $.respond({
          normalizedSource: normalizedSource
