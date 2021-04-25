@@ -6,7 +6,6 @@ from .structure import reg_body
 
 from poli.shared.command import StopCommand
 from poli.shared.misc import single_selected_region
-from poli.sublime import regedit
 
 
 def module_body(view):
@@ -41,12 +40,12 @@ class Body:
             return None
 
         for entry in self.entries:
-            if entry.reg_entry.contains(reg):
+            if entry.reg.contains(reg):
                 return CursorLocation(
                     entry=entry,
                     is_inside_name=entry.reg_name.contains(reg),
                     is_inside_def=entry.reg_def.contains(reg),
-                    is_fully_selected=(entry.reg_entry == reg)
+                    is_fully_selected=(entry.reg == reg)
                 )
 
         # Special case: past the last entry is considered the last entry        
@@ -91,24 +90,18 @@ class Entry:
         return reg_plus_trailing_nl(self.reg_def)
 
     @property
-    def reg_entry(self):
+    def reg(self):
         return self.reg_name.cover(self.reg_def)
 
     @property
-    def reg_entry_nl(self):
+    def reg_nl(self):
         return self.reg_name.cover(self.reg_def_nl)
 
     def name(self):
         return self.body.view.substr(self.reg_name)
 
     def contents(self):
-        return self.body.view.substr(self.reg_entry)
-
-    def is_under_edit(self):
-        if not regedit.is_active_in(self.body.view):
-            return False
-
-        return regedit.editing_region(self.body.view).intersects(self.reg_entry)
+        return self.body.view.substr(self.reg)
 
     @property
     def myindex(self):
@@ -148,11 +141,6 @@ def sel_cursor_location(view, require_fully_selected=False):
     return module_body(view).cursor_location_or_stop(
         reg, require_fully_selected=require_fully_selected
     )
-
-
-def known_entries(view):
-    regs = name_regions(view)
-    return {view.substr(reg) for reg in regs}
 
 
 def reg_entry_name(view, name):

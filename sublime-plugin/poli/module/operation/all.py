@@ -1,15 +1,19 @@
+import contextlib
 import functools
 import os.path
 import re
 import sublime
 
+from . import edit_mode as em
 from .body import module_body
 from .body import reg_entry_name
+from .body import reg_plus_trailing_nl
 from .edit_mode import highlight_unknown_names
 from .edit_mode import save_module
 from .import_section import parse_import_section
 from .structure import reg_import_section
 
+from poli.common.misc import FreeObj
 from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.shared.misc import Kind
@@ -168,67 +172,183 @@ def replace_import_section(view, edit, new_import_section):
         )
 
 
-def modify_module_entries(view, edit, entries_data):
-    if not entries_data:
-        return
-
-    mcont = module_body(view)
-    code_by_entry = {entry: code for entry, code in entries_data}
-    regs, codes = [], []
-
-    if regedit.is_active_in(view):
-        ereg = regedit.editing_region(view)
-    else:
-        ereg = None
-
-    for entry in mcont.entries:
-        if entry.name() in code_by_entry:
-            if ereg and ereg.intersects(entry.reg_def):
-                raise RuntimeError(
-                    "Could not modify module \"{}\": entry under edit".format(
-                        view_module_name(view)
-                    )
-                )
-            regs.append(entry.reg_def)
-            codes.append(code_by_entry[entry.name()])
-
-    if len(regs) != len(entries_data):
-        raise RuntimeError("Could not modify module \"{}\": out of sync".format(
-            view_module_name(view)
-        ))
-
-    with regedit.region_editing_suppressed(view),\
-            Regions(view, regs) as retained:
-        for i, code in enumerate(codes):
-            view.replace(edit, retained.regs[i], code)
+class ModificationConflict(Exception):
+    def __init__(self, module_name):
+        super().__init__("Code modification conflict in module '{}'".format(module_name))
+        self.module_name = module_name
 
 
-def modify_module(view, edit, module_data):
-    if module_data['importSection'] is not None:
-        replace_import_section(view, edit, module_data['importSection'])
-    modify_module_entries(view, edit, module_data['modifiedEntries'])
-
-
-def apply_modifications(modules_data):
-    if not modules_data:
-        return
-
+def apply_code_modifications(modules_actions, committing_module_name, callback):
     window = sublime.active_window()
 
-    with active_view_preserved(window):
-        views = [open_module(window, d['module']) for d in modules_data]
+    modify_spec = []
 
-    def process_1(view, module_data, edit):
-        modify_module(view, edit, module_data)
-        save_module(view)
+    for module_name, action_list in modules_actions:
+        with active_view_preserved(window):
+            view = open_module(window, module_name)
 
-    def proceed():
-        for view, module_data in zip(views, modules_data):
-            call_with_edit(view, functools.partial(process_1, view, module_data))
+        is_committing = module_name == committing_module_name
+        if is_committing and not em.in_edit_mode(view):
+            raise RuntimeError(
+                "Module '{}' is designated as committing but not in "
+                "edit mode".format(module_name)
+            )
 
-        sublime.status_message("{} modules updated".format(len(views)))
+        modify_spec.append(
+            FreeObj(
+                view=view,
+                is_committing=is_committing,
+                action_list=action_list
+            )
+        )
 
-    on_all_views_load(views, proceed)
+    on_all_views_load(
+        [s.view for s in modify_spec], lambda: modify_modules(modify_spec, callback)
+    )
+
+
+def modify_modules(modify_spec, callback):
+    try:
+        do_modify_modules(modify_spec)
+    except:
+        sublime.status_message("Code modification failed")
+        callback(False)
+    else:
+        sublime.status_message("{} modules updated".format(len(modify_spec)))
+        callback(True)
+
+
+def do_modify_modules(modify_spec):
+    with contextlib.ExitStack() as stack:
+        for spec in modify_spec:
+            stack.enter_context(
+                modify_editing_module(spec.view, spec.action_list, spec.is_committing)
+                    if em.in_edit_mode(spec.view) else
+                modify_browsing_module(spec.view, spec.action_list)
+            )
+
+
+@contextlib.contextmanager
+def modify_editing_module(view, action_list, is_committing):
+    view.set_read_only(False)
+    try:
+        committed = call_with_edit(view, lambda edit: apply_actions(
+            view, edit, action_list, 'committing' if is_committing else True
+        ))
+        yield
+    except:
+        view.run_command('undo')
+        em.adjust_edit_mode(view)
+        raise
+    else:
+        em.save_module(view)
+        if committed:
+            em.quit_edit_mode(view)
+        else:
+            em.adjust_edit_mode(view)
+
+
+@contextlib.contextmanager
+def modify_browsing_module(view, action_list):
+    view.set_read_only(False)
+    try:
+        call_with_edit(view, lambda edit: apply_actions(view, edit, action_list, False))
+        yield
+    except:
+        view.run_command('undo')
+        view.set_read_only(True)
+        raise
+    else:
+        em.save_module(view)
+        view.set_read_only(True)
+
+
+def apply_actions(view, edit, action_list, under_edit):
+    committed = False
+
+    for action in action_list:
+        committed |= apply_action(
+            view,
+            edit,
+            action,
+            ('committing' if not committed else False)
+                if under_edit == 'committing' else under_edit
+        )
+
+    return committed
+
+
+def apply_action(view, edit, action, under_edit):
+    body = module_body(view)
+
+    if under_edit == 'committing':
+        ephemeral_index = body.remove_ephemeral_entry()
+    else:
+        ephemeral_index = -1
+
+    committed = False
+
+    if action['type'] == 'insert/replace':
+        eOnto = body.entries[action['onto']]
+        if under_edit and eOnto.is_def_under_edit():
+            if under_edit == 'committing':
+                committed = True
+            else:
+                raise ModificationConflict(view_module_name(view))
+        view.replace(edit, eOnto.reg_def, action['def'])
+        if not (under_edit and eOnto.is_name_under_edit()):
+            view.replace(edit, eOnto.reg_name, action['name'])
+    elif action['type'] == 'insert':
+        if action['at'] == ephemeral_index:
+            point = em.edit_region_for[view].begin()
+            view.erase(edit, reg_plus_trailing_nl(em.edit_region_for[view]))
+            committed = True
+        else:
+            point = body.entries[action['at']].reg.begin()
+        view.insert(edit, point, '{[name]} ::= {[def]}\n'.format(action))
+    elif action['type'] == 'rename':
+        entry = body.entries[action['at']]
+        if under_edit and entry.is_name_under_edit():
+            if under_edit == 'committing':
+                committed = True
+            else:
+                raise ModificationConflict(view_module_name(view))
+        view.replace(edit, entry.reg_name, action['newName'])
+    elif action['type'] == 'delete':
+        entry = body.entries[action['at']]
+        if under_edit and entry.is_under_edit():
+            raise ModificationConflict(view_module_name(view))
+
+        view.erase(edit, entry.reg_entry_nl)
+    elif action['type'] == 'move':
+        eFrom = body.entries[action['from']]
+        eTo = body.entries[action['to']]
+        from_is_under_edit = under_edit and eFrom.is_under_edit()
+
+        with Regions(view, eFrom.reg_entry_nl) as F:
+            text = view.substr(F.reg)
+            view.insert(edit, eTo.reg.begin(), text)
+            if from_is_under_edit:
+                em.move_edit_region(view, eTo.reg.a - F.reg.a)
+            view.erase(edit, F.reg)
+    elif action['type'] == 'move/replace':
+        if under_edit and eOnto.is_under_edit():
+            raise ModificationConflict(view_module_name(view))
+
+        eFrom = body.entries[action['from']]
+        eOnto = body.entries[action['onto']]
+        from_is_under_edit = under_edit and eFrom.is_under_edit()
+
+        with Regions(view, eFrom.reg_nl) as F:
+            text = view.substr(F.reg)
+            view.replace(edit, eOnto.reg_nl, text)
+            if from_is_under_edit:
+                em.move_edit_region(view, eOnto.reg.a - F.reg.a)
+            view.erase(edit, F.reg)
+    else:
+        raise RuntimeError
+
+    return committed
 
 
 def word_at(view, reg):

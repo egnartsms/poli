@@ -113,8 +113,8 @@ class Regions:
 
         self.view.erase_regions(self.region_name)
 
-        self.key = None
         self.region_name = None
+        self.key = None
         self.view = None
    
     @property

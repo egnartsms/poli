@@ -5,7 +5,7 @@ import
 -----
 assert ::= function (cond) {
    if (!cond) {
-      throw new Error;
+      throw new Error(`Assert failed`);
    }
 }
 hasOwnProperty ::= function (obj, prop) {
@@ -103,6 +103,9 @@ parameterize ::= function (tobind, callback) {
 lessThan ::= function (a, b) {
    return a < b;
 }
+equal ::= function equal(a, b) {
+   return a === b;
+}
 itorFinal ::= function (itor) {
    let finalItem = undefined;
 
@@ -123,4 +126,24 @@ findIndex ::= function (itbl, pred) {
    }
 
    return -1;
+}
+arraysEqual ::= function arraysEqual (A, B) {
+   if (A.length !== B.length) {
+      return false;
+   }
+
+   for (let i = 0; i < A.length; i += 1) {
+      if (A[i] !== B[i]) {
+         return false;
+      }
+   }
+   return true;
+}
+map ::= function* (fn, itbl) {
+   for (let x of itbl) {
+      yield fn(x);
+   }
+}
+newObj ::= function (proto, props) {
+   return Object.assign(Object.create(proto), props);
 }

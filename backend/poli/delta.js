@@ -21,7 +21,7 @@ moduleDelta ::= function (module, xmodule) {
    let names = Array.from(module.members);
    let defs = Array.from(
       module.members,
-      ename => $.trie.search(module.entries.byName, ename).strDef
+      ename => $.trie.find(module.entries.byName, ename).strDef
    );
    
    function rotateRight(i, j) {
@@ -44,29 +44,18 @@ moduleDelta ::= function (module, xmodule) {
    function replaceWith(i, j) {
       $.assert(i < j);
       
-      if (i + 1 === j) {
-         names.splice(i, 1);
-         defs.splice(i, 1);
+      let [name, def] = [names[j], entries[j]];
 
-         actions.push({
-            type: 'delete',
-            at: i
-         });
-      }
-      else {
-         let [name, def] = [names[j], entries[j]];
+      names.splice(j, 1);
+      defs.splice(j, 1);
+      names.splice(i, 1, name);
+      defs.splice(i, 1, def);
 
-         names.splice(j, 1);
-         defs.splice(j, 1);
-         names.splice(i, 1, name);
-         defs.splice(i, 1, def);
-
-         actions.push({
-            type: 'move/replace',
-            from: j,
-            onto: i
-         });
-      }
+      actions.push({
+         type: 'move/replace',
+         from: j,
+         onto: i
+      });
    }
    
    function rotateLeft(i, j) {
@@ -86,24 +75,33 @@ moduleDelta ::= function (module, xmodule) {
       });
    }
 
+   let def2index = (function () {
+      let map = new Map;
+      let i = 0;
+
+      for (let name of xmodule.members) {
+         map.set($.trie.find(xmodule.entries.byName, name).strDef, i);
+         i += 1;
+      }
+
+      return map;
+   })();
+
    let i = 0;
 
-   while (i < xmodule.members.size && i < names.length) {
+   while (i < $.vec.size(xmodule.members) && i < names.length) {
       let mustBeName = $.vec.at(xmodule.members, i);
-      let mustBeDef = $.trie.search(xmodule.entries.byName, mustBeName).strDef;
+      let mustBeDef = $.trie.find(xmodule.entries.byName, mustBeName).strDef;
       
       // 'j' is the index where we have what must be at the index 'i'
       let j = defs.indexOf(mustBeDef, i);
       
       // k is where *in the new array* what we have at index 'i' in the working array
-      let k = $.findIndex(
-         $.vec.genSlice(xmodule.members, i),
-         ename => $.trie.search(xmodule.entries.byName, ename).strDef === defs[i]
-      );
+      let k = def2index.get(defs[i]);
       
       if (j === -1) {
          // missing => create or replace
-         if (k === -1) {
+         if (k === undefined) {
             actions.push({
                type: 'insert/replace',
                onto: i,
@@ -132,13 +130,13 @@ moduleDelta ::= function (module, xmodule) {
          // where k may be anything >=j. Heuristically, we try to take as k the index in
          // xmodule of what we now have at index i. This strategy handles the case where
          // the bottommost entry is moved to the top.
-         if (k === -1) {
+         if (k === undefined) {
             // What we have at i is not going to be reused
             replaceWith(i, j);
          }
          else if (j === i + 1) {
             // do a left rotation of subarray [i, i + k]
-            rotateLeft(i, Math.min(i + k, defs.length - 1));
+            rotateLeft(i, Math.min(k, names.length - 1));
          }
          else {
             rotateRight(i, j);
@@ -166,9 +164,9 @@ moduleDelta ::= function (module, xmodule) {
       defs.splice(i, 1);
    }
 
-   while (i < xmodule.members.size) {
+   while (i < $.vec.size(xmodule.members)) {
       let mustBeName = $.vec.at(xmodule.members, i);
-      let mustBeDef = $.trie.search(xmodule.entries.byName, mustBeName).strDef;
+      let mustBeDef = $.trie.find(xmodule.entries.byName, mustBeName).strDef;
 
       actions.push({
          type: 'insert',
@@ -186,9 +184,12 @@ moduleDelta ::= function (module, xmodule) {
    return actions;
 }
 modulesDelta ::= function (modules, xmodules) {
-   // TODO: this is just a stub
-   let runner = $.trie.search(modules.byName, 'runner');
-   let xrunner = $.trie.search(xmodules.byName, 'runner');
+   let delta = [];
 
-   return $.moduleDelta(runner, xrunner);
+   for (let module of $.rel.facts(modules)) {
+      let xmodule = $.trie.find(xmodules.byName, module.name);
+      delta.push([module.name, $.moduleDelta(module, xmodule)]);
+   }
+   
+   return delta;
 }

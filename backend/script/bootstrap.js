@@ -3,14 +3,14 @@ var poli = (function () {
 
    var _const = {
       SRC_FOLDER: 'poli',
-      LOAD_MODULE: 'loader',
+      LOADER_MODULE: 'loader',
       RUN_MODULE: 'runner'
    };
 
    function loadModules(rawModules) {
-      function moduleEval($, code) {
+      function moduleEval(ns, code) {
          let fun = Function('$', `"use strict";\n   return (${code})`);
-         return fun.call(null, $);
+         return fun.call(null, ns);
       }
 
       console.time('load');
@@ -18,7 +18,7 @@ var poli = (function () {
       let modules = Array.from(
          parseModules(rawModules), module => ({
             ...module,
-            $: Object.create(null)
+            ns: Object.create(null)
          })
       );
 
@@ -29,7 +29,7 @@ var poli = (function () {
          }
 
          for (let [name, code] of module.body) {
-            module.$[name] = moduleEval(module.$, code);
+            module.ns[name] = moduleEval(module.ns, code);
          }
       }
 
@@ -50,18 +50,18 @@ var poli = (function () {
             }
 
             if (asterisk !== null) {
-               if (asterisk in recp.$) {
+               if (asterisk in recp.ns) {
                   throw new Error(
                      `Module '${recp.name}': cannot import '* as ${asterisk}' from ` +
                      `'${donor.name}': collides with another name`
                   );
                }
 
-               recp.$[asterisk] = donor.$;
+               recp.ns[asterisk] = donor.ns;
             }
 
             for (let {entry, alias} of imports) {
-               if (!(entry in donor.$)) {
+               if (!(entry in donor.ns)) {
                   throw new Error(
                      `Module '${recp.name}': cannot import '${entry}' from ` +
                      `'${donor.name}': no such definition`
@@ -70,14 +70,14 @@ var poli = (function () {
 
                let importedAs = alias || entry;
 
-               if (importedAs in recp.$) {
+               if (importedAs in recp.ns) {
                   throw new Error(
                      `Module '${recp.name}': cannot import '${importedAs}' from ` +
                      `'${donor.name}': collides with another name`
                   );
                }
 
-               recp.$[importedAs] = donor.$[entry];
+               recp.ns[importedAs] = donor.ns[entry];
             }
          }
       }
@@ -194,34 +194,42 @@ var poli = (function () {
 
    var loadModules_1 = loadModules;
 
-   const {LOAD_MODULE, RUN_MODULE} = _const;
+   const {LOADER_MODULE, RUN_MODULE} = _const;
 
 
    function run(rawModules) {
       let modules = loadModules_1(rawModules);
-      let url = new URL('/browser', window.location.href);
-      url.protocol = 'ws';
-      let websocket = new WebSocket(url);
       
-      let Mload = modules.find(m => m.name === LOAD_MODULE);
-      Mload.$['main'](modules);
+      let Mloader = modules.find(m => m.name === LOADER_MODULE);
+      Mloader.ns['main'](modules);
       
       // let xsTest = modules.find(m => m.name === 'xs-test');
-      // xsTest.$['testVector']();
+      // xsTest.ns['testTrie']();
       // return;
+
+      // console.log(Mloader.ns['Rmodules']);
 
       let Mrun = modules.find(m => m.name === RUN_MODULE);
 
       // That's our contract with RUN_MODULE:
       //   * we give it the way to send a message over the wire
       //   * it gives us operation handler which we call on incoming operation request
-      let handleOperation = Mrun.$['main'](
+      let websocket = makeWebsocket();
+
+      let handleMessage = Mrun.ns['main'](
          message => websocket.send(JSON.stringify(message))
       );
 
       websocket.addEventListener('message', ev => {
-         handleOperation(JSON.parse(ev.data));
+         handleMessage(JSON.parse(ev.data));
       });
+   }
+
+
+   function makeWebsocket() {
+      let url = new URL('/browser', window.location.href);
+      url.protocol = 'ws';
+      return new WebSocket(url);
    }
 
 

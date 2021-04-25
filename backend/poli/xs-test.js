@@ -1,5 +1,9 @@
 common
+   arraysEqual
    assert
+   equal
+   lessThan
+   map
 trie
    * as: trie
 vector
@@ -12,7 +16,7 @@ xs-tokenizer
    tokenizeFromNewline
 -----
 text ::= String.raw`
-square-equation ::=$
+ square-equation ::=$
    fn :(a b c)
       let D =
          -
@@ -47,7 +51,7 @@ square-equation ::=$
                   /
                      - (- b) (Math.pow D .5)
                      * 2 a
-`.slice(1)
+`.slice(2)
 text1 ::= 'that will be set at runtime'
 testTok ::= function () {
    console.time();
@@ -165,21 +169,29 @@ allValues ::= [
    'quarante-quatre',
    'quarante-cinq'
 ]
-perfTrie ::= function (N) {
-   let map = $.Trie(([key]) => key);
+perfTrie ::= function () {
+   let map = $.trie.Trie({
+      keyof: ([k, v]) => k,
+      less: $.lessThan
+   });
    
    let M = $.allKeys.length;
    for (let i = 0; i < M; i += 1) {
-      map = $.trieAdd(map, [$.allKeys[i], $.allValues[i]]);
+      $.trie.add(map, [$.allKeys[i], $.allValues[i]]);
    }
+
+   $.trie.freeze(map);
    
+   const N = 1_000_000;
    console.time();
    for (let i = 0; i < N; i += 1) {
       let ikey = Math.floor(Math.random() * M);
       let ival = Math.floor(Math.random() * M);
-      map = $.trieAdd(map, [$.allKeys[ikey], $.allValues[ival]]);
+      map = $.trie.newIdentity(map);
+      $.trie.add(map, [$.allKeys[ikey], $.allValues[ival]]);
+      $.trie.freeze(map);
       
-      let s = $.trieSearch(map, $.allKeys[Math.floor(Math.random() * M)]);
+      let s = $.trie.find(map, $.allKeys[Math.floor(Math.random() * M)]);
       if (s[0] === 'a') {
          console.log(s);
       }
@@ -187,31 +199,42 @@ perfTrie ::= function (N) {
    }
    console.timeEnd();
 }
+check ::= function (pred, arg1, arg2) {
+   if (!pred(arg1, arg2)) {
+      console.log(`Assertion failure: ${pred.name} on`, arg1, arg2);
+      throw new Error();
+   }
+}
 testTrie ::= function () {
    let t = $.trie.Trie({
       keyof: ([k, v]) => k,
-      less: (k1, k2) => k1 < k2
+      less: $.lessThan
    });
    
-   $.trie.add(t, ['england', 'angleterre']);
    $.trie.add(t, ['germany', 'allemagne']);
-   $.trie.add(t, ['russia', 'russie']);
    $.trie.add(t, ['spain', 'espagne']);
-   
-   console.log(Array.from($.trie.items(t)));
-   
-   let deleted = $.trie.deleteByKey(t, 'germany');
-   $.assert(deleted === true);
+   $.trie.add(t, ['england', 'angleterre']);
+   $.trie.add(t, ['russia', 'russie']);
+   $.trie.add(t, ['italy', 'italie']);
 
-   deleted = $.trie.deleteByKey(t, 'germany');
-   $.assert(deleted === false);
+   $.check(
+      $.arraysEqual,
+      Array.from($.map(([k, v]) => k, $.trie.items(t))),
+      ['england', 'germany', 'italy', 'russia', 'spain']
+   );
 
-   console.log(Array.from($.trie.items(t)));
+   $.trie.removeByKey(t, 'england');
+   $.trie.removeByKey(t, 'germany');
+   $.trie.removeByKey(t, 'russia');
+   $.trie.removeByKey(t, 'spain');
+   $.trie.removeByKey(t, 'italy');
 
-   return;
+   $.check($.equal, t.root, null);
+
+   console.log("Trie checkup done!")
 }
 testVector ::= function () {
-   let v = new $.vec.Vector();
+   let v = $.vec.Vector();
 
    for (let i = 0; i < $.vec.MAX_NODE_SIZE * 4; i += 1) {
       $.vec.pushBack(v, `Element #${i}`);

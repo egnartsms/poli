@@ -1,3 +1,7 @@
+from contextlib import contextmanager
+from functools import wraps
+
+
 def first_or_none(gen):
     return next(gen, None)
 
@@ -33,6 +37,18 @@ def range_where(iterable, pred):
     return (None, None) if start is None else (start, i)
 
 
+def last_such(iterable, pred):
+    found_item = None
+
+    for item in iterable:
+        if pred(item):
+            found_item = item
+        else:
+            break
+
+    return found_item
+
+
 class FreeObj:
     def __init__(self, **attrs):
         self.__dict__.update(attrs)
@@ -57,3 +73,19 @@ class exc_recorded:
 
     def __bool__(self):
         return self.exc is not None
+
+
+def method_for(*klasses):
+    def install_in(fn, klass):
+        name = fn.__name__
+        assert not hasattr(klass, name),\
+            "Class {} already has member \"{}\"".format(klass, name)
+        setattr(klass, name, fn)
+        
+    def wrapper(fn):
+        for klass in klasses:
+            install_in(fn, klass)
+
+        return None  # don't put real fn in whatever ns this decorator is being used in
+
+    return wrapper

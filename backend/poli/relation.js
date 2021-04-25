@@ -2,43 +2,48 @@ common
    assert
    hasOwnProperty
    lessThan
+   newObj
 trie
    * as: trie
 -----
-Relation ::= class Relation {
-   constructor (pk, uniques, groupings) {
-      this.uniques = Object.fromEntries(function* () {
-         for (let {name, prop} of uniques) {
-            yield [name, {prop}];
-         }
-      }());
-      this.pk = pk;
+proto ::= ({})
+Relation ::= function ({pk, uniques, facts=null}) {
+   let rel = $.newObj($.proto, {pk, uniques});
+   
+   for (let [name, prop] of Object.entries(uniques)) {
+      $.assert(!$.hasOwnProperty(rel, name));
 
-      for (let {name, prop} of uniques) {
-         $.assert(!$.hasOwnProperty(this, name));
-
-         this[name] = $.trie.Trie({
-            keyof: fact => fact[prop],
-            less: $.lessThan
-         });
-      }
+      rel[name] = $.trie.Trie({
+         keyof: fact => fact[prop],
+         less: $.lessThan
+      });
    }
+
+   if (facts !== null) {
+      $.addFacts(rel, facts);
+      $.freeze(rel);
+   }
+
+   return rel;
 }
 newIdentity ::= function (rel) {
-   let newRel = Object.assign(Object.create($.Relation.prototype), rel);
+   let xrel = $.newObj($.proto, {
+      pk: rel.pk,
+      uniques: rel.uniques
+   });
 
-   for (let name of Object.keys(newRel.uniques)) {
-      newRel[name] = $.trie.newIdentity(newRel[name]);
+   for (let name of Object.keys(rel.uniques)) {
+      xrel[name] = $.trie.newIdentity(rel[name]);
    }
 
-   return newRel;
+   return xrel;
 }
 freeze ::= function (rel) {
    for (let name of Object.keys(rel.uniques)) {
       $.trie.freeze(rel[name]);
    }
 }
-genFacts ::= function (rel) {
+facts ::= function (rel) {
    return $.trie.items(rel[rel.pk]);
 }
 addFacts ::= function (rel, facts) {
@@ -55,8 +60,8 @@ addFact ::= function (rel, fact) {
 }
 removeFact ::= function (rel, fact) {
    for (let name of Object.keys(rel.uniques)) {
-      let didDelete = $.trie.remove(rel[name], fact);
-      $.assert(didDelete);
+      let didRemove = $.trie.remove(rel[name], fact);
+      $.assert(didRemove);
    }
 }
 changeFact ::= function (rel, fact, newFact) {

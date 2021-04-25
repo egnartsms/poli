@@ -1,3 +1,5 @@
+common
+   map
 relation
    * as: rel
 vector
@@ -6,45 +8,46 @@ vector
 nextModuleId ::= 1
 Rmodules ::= null
 main ::= function (modules) {
-   // modules :: [{name, lang, imports, body, $}]
-   let Rmodules = new $.rel.Relation('byId', [
-      {name: 'byId', prop: 'id'},
-      {name: 'byName', prop: 'name'}
-   ]);
+   function makeModule(module) {
+      // module :: [{name, lang, imports, body, $}]
+      let entries = $.rel.Relation({
+         pk: 'byName',
+         uniques: {byName: 'name'},
+         facts: module.lang !== 'js' ? null :
+            (function* () {
+               for (let [name, code] of module.body) {
+                  code = code.trim();
+                  yield {
+                     name: name,
+                     strDef: code,
+                     def: code
+                  };
+               }
+            }())
+      });
+      let members = $.vec.Vector(
+         module.lang !== 'js' ? null : $.map(([name, code]) => name, module.body)
+      );
 
-   $.rel.addFacts(Rmodules, function* () {
-      for (let module of modules) {
-         let Rentries = new $.rel.Relation('byName', [{name: 'byName', prop: 'name'}]);
-         let members = new $.vec.Vector();
+      return {
+         id: $.nextModuleId++,
+         name: module.name,
+         lang: module.lang,
+         entries: entries,
+         members: members,
+         ns: module.ns,
+         nsDelta: Object.create(null)
+      };
+   }
 
-         if (module.lang === 'js') {
-            for (let [name, code] of module.body) {
-               code = code.trim();
-               
-               $.rel.addFact(Rentries, {
-                  name: name,
-                  strDef: code,
-                  def: code
-               });
-               $.vec.pushBack(members, name);
-            }
-
-            $.rel.freeze(Rentries);
-            $.vec.freeze(members);
-         }
-
-         yield {
-            id: $.nextModuleId++,
-            name: module.name,
-            lang: module.lang,
-            entries: Rentries,
-            members: members,
-            ns: module.ns,
-            nsDelta: Object.create(null)
-         };
-      }
-   }.call(null));
-   $.rel.freeze(Rmodules);
+   let Rmodules = $.rel.Relation({
+      pk: 'byId',
+      uniques: {
+         byId: 'id',
+         byName: 'name'
+      },
+      facts: $.map(makeModule, modules)
+   });
 
    $.Rmodules = Rmodules;
 }

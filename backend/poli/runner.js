@@ -38,7 +38,6 @@ vector
 main ::= function (sendMessage) {
    let pendingRmodules = null;
 
-   
    function handleMessage(msg) {
       if (pendingRmodules !== null) {
          if (msg['type'] !== 'modify-code-result') {
@@ -46,14 +45,23 @@ main ::= function (sendMessage) {
          }
          if (msg['result']) {
             $.loader.Rmodules = pendingRmodules;
-            pendingRmodules = null;
             $.rel.freeze($.loader.Rmodules);
-            // TODO: apply nsDeltas
+            
+            for (let module of $.loader.Rmodules) {
+               let changedKeys = Object.keys(module.nsDelta);
+               if (changedKeys.length > 0) {
+                  for (let key of changedKeys) {
+                     module.ns[key] = module.nsDelta[key];
+                     delete module.nsDelta[key];
+                  }
+               }
+            }
          }
          else {
             console.warning(`Sublime could not modify code, rolling back`);
-            pendingRmodules = null;
          }
+
+         pendingRmodules = null;
 
          return;
       }
@@ -68,15 +76,16 @@ main ::= function (sendMessage) {
 
       try {      
          let Rmodules = $.rel.newIdentity($.loader.Rmodules);
-         let result = $.operationHandlers[msg['op']].call(null, Rmodules, msg['args']);
+         let result = $.operationHandlers[msg['op']](Rmodules, msg['args']);
          let actions = $.modulesDelta($.loader.Rmodules, Rmodules);
 
          if (actions.length > 0) {
+            console.log("Code modification:", actions);
             pendingRmodules = Rmodules;
          }
 
          sendMessage({
-            type: 'response',
+            type: 'api-call-result',
             success: true,
             result: result,
             modifyCode: actions
@@ -99,7 +108,7 @@ main ::= function (sendMessage) {
          }
 
          sendMessage({
-            type: 'resp',
+            type: 'api-call-result',
             success: false,
             error: error,
             message: message,
@@ -111,10 +120,10 @@ main ::= function (sendMessage) {
       }
    }
 
-   return handleOperation;
+   return handleMessage;
 }
 moduleByName ::= function (Rmodules, name) {
-   let module = $.trie.search(Rmodules.byName, name);
+   let module = $.trie.find(Rmodules.byName, name);
 
    if (module === undefined) {
       throw $.genericError(`Unknown module name: '${name}'`);
@@ -123,7 +132,7 @@ moduleByName ::= function (Rmodules, name) {
    return module;
 }
 entryByName ::= function (module, name) {
-   let entry = $.trie.search(module.entries.byName, name);
+   let entry = $.trie.find(module.entries.byName, name);
 
    if (entry === undefined) {
       throw $.genericError(`Member '${name}' not found in module '${module.name}'`);
@@ -147,20 +156,6 @@ operationHandlers ::= ({
       let module = $.moduleByName(Rmodules, moduleName);
       let entry = $.entryByName(module, name);
       
-      // EXPERIMENT
-      $.rel.changeFact(Rmodules, module, {
-         ...module,
-         entries: $.rel.updated(module.entries, (entries) => {
-            $.rel.addFact(entries, {name: 'fake', def: 'null', strDef: 'null'});
-         }),
-         members: $.vec.updated(module.members, (members) => {
-            $.vec.pushBack(members, 'fake');
-         })
-      });
-      return {
-         normalizedSource: newDef
-      }
-      
       newDef = newDef.trim();
       let newVal = $.moduleEval(module.ns, newDef);
 
@@ -180,260 +175,7 @@ operationHandlers ::= ({
       return {
          normalizedSource: newDef
       }
-   },
-
-   getModules: function () {
-      $.respond($.query.allModuleNames());
-   },
-
-   getEntries: function () {
-      $.respond($.query.allEntries());
-   },
-
-   getModuleEntries: function ({module: moduleName}) {
-      let module = $.moduleByName(moduleName);
-
-      $.respond(module.entries);
-   },
-
-   getModuleNames: function ({module: moduleName}) {
-      let module = $.moduleByName(moduleName);
-      $.respond($.moduleNames(module));
-   },
-
-   getCompletions: function ({module: moduleName, star, prefix}) {
-      let module = $.moduleByName(moduleName);
-      $.respond($.query.getCompletions(module, star, prefix));
-   },
-
-   getImportables: function ({recp: recpModuleName}) {
-      let recp = $.moduleByName(recpModuleName);
-      $.respond($.query.importablesInto(recp));
-   },
-
-   addEntry: function ({module: moduleName, name, source, anchor, before}) {
-      let module = $.moduleByName(moduleName);
-      let normalizedSource = $.addEntry(module, name, source, anchor, before);
-
-      $.respond({
-         normalizedSource: normalizedSource
-      });
-   },
-
-   renameEntry: function ({module: moduleName, oldName, newName}) {
-      let module = $.moduleByName(moduleName);
-      let modifiedModules = $.opRefactor.renameEntry(module, oldName, newName);
-
-      $.applyModifications(
-         Array.from(
-            modifiedModules,
-            ({module, modifiedEntries, importSectionAffected}) => ({
-               module: module.name,
-               modifiedEntries,
-               importSection: importSectionAffected ? $.dumpImportSection(module) : null
-            })
-         )
-      );
-      $.respond();
-   },
-
-   removeEntry: function ({module: moduleName, entry, force}) {
-      let module = $.moduleByName(moduleName);
-      let {removed, affectedModules} = $.opRefactor.removeEntry(module, entry, force);
-      
-      if (!removed) {
-         $.respond({
-            removed: false
-         });
-      }
-      else {
-         $.applyModifications(
-            Array.from(affectedModules, m => ({
-               module: m.name,
-               modifiedEntries: [],
-               importSection: $.dumpImportSection(m),
-            }))
-         );
-         $.respond({
-            removed: true
-         });
-      }
-   },
-
-   moveBy1: function ({module: moduleName, name, direction}) {
-      let module = $.moduleByName(moduleName);
-      $.opMove.moveBy1(module, name, direction);
-      $.respond();
-   },
-
-   move: function ({
-      srcModule: srcModuleName,
-      entry,
-      destModule: destModuleName,
-      anchor,
-      before
-   }) {
-      let srcModule = $.moduleByName(srcModuleName);
-      let destModule = $.moduleByName(destModuleName);
-      $.respond($.opMove.moveEntry(srcModule, entry, destModule, anchor, before));
-   },
-
-   import: function ({recp: recpModuleName, donor: donorModuleName, name, alias}) {
-      let recp = $.moduleByName(recpModuleName);
-      let donor = $.moduleByName(donorModuleName);
-      $.import({
-         recp,
-         donor,
-         name: name || null,
-         alias: alias || null
-      });
-      $.respond($.dumpImportSection(recp));
-   },
-
-   removeUnusedImports: function ({module: moduleName}) {
-      let module = $.moduleByName(moduleName);
-      let removedCount = $.opImport.removeUnusedModuleImports(module);
-
-      $.respond({
-         importSection: removedCount > 0 ? $.dumpImportSection(module) : null,
-         removedCount
-      });
-   },
-
-   removeUnusedImportsInAllModules: function () {
-      let {removedCount, affectedModules} = $.opImport.removeUnusedImportsInAllModules();
-
-      $.applyModifications(
-         Array.from(affectedModules, module => ({
-            module: module.name,
-            importSection: $.dumpImportSection(module),
-            modifiedEntries: []
-         }))
-      );
-      $.respond({
-         removedCount
-      });
-   },
-
-   renameImport: function ({module: moduleName, importedAs, newAlias}) {
-      let module = $.moduleByName(moduleName);
-      let imp = $.importFor(module, importedAs);
-      if (!imp) {
-         throw new Error(`Not found imported entry: "${importedAs}"`);
-      }
-
-      let modifiedEntries = $.opImport.renameImport(imp, newAlias || null);
-      $.respond({
-         modifiedEntries: modifiedEntries || [],
-         importSection: modifiedEntries === null ? null : $.dumpImportSection(module)
-      });
-   },
-
-   removeImport: function ({module: moduleName, importedAs, force}) {
-      let module = $.moduleByName(moduleName);
-      let imp = $.importFor(module, importedAs);
-      if (!imp) {
-         throw new Error(`Not found imported entry: "${importedAs}"`);
-      }
-
-      let removed = $.opImport.removeImport(imp, force);
-      
-      if (!removed) {
-         $.respond({
-            removed: false
-         });
-      }
-      else {
-         $.respond({
-            removed: true,
-            importSection: $.dumpImportSection(module)
-         });
-      }
-   },
-
-   convertImportsToStar: function ({recp: recpModuleName, donor: donorModuleName}) {
-      let recp = $.moduleByName(recpModuleName);
-      let donor = $.moduleByName(donorModuleName);
-      let modifiedEntries = $.opImport.convertImportsToStar(recp, donor);
-
-      if (modifiedEntries !== null) {
-         $.applyModifications([{
-            module: recp.name,
-            modifiedEntries,
-            importSection: $.dumpImportSection(recp)
-         }]);
-      }
-      $.respond();
-   },
-
-   eval: function ({module: moduleName, code}) {
-      let module = $.moduleByName(moduleName);
-
-      let res;
-
-      try {
-         res = $.moduleEval(module, code);
-      }
-      catch (e) {
-         throw new $.ApiError('repl-eval', {
-            message: e.message,
-            stack: e.stack,
-         });
-      }
-
-      $.respond($.serialize(res));
-   },
-
-   addModule: function ({module: moduleName, lang}) {
-      if (typeof lang !== 'string' || !['xs', 'js'].includes(lang)) {
-         throw new Error(`Invalid module lang`);
-      }
-
-      $.opModule.addNewModule(moduleName, lang);
-      $.respond();
-   },
-
-   renameModule: function ({module: moduleName, newName}) {
-      let module = $.moduleByName(moduleName);
-      let affectedModules = $.opModule.renameModule(module, newName);
-      
-      $.applyModifications(
-         Array.from(affectedModules, module => ({
-            module: module.name,
-            modifiedEntries: [],
-            importSection: $.dumpImportSection(module)
-         }))
-      );
-      $.respond();
-   },
-
-   refreshModule: function ({module: moduleName}) {
-      let module = $.moduleByName(moduleName);
-      $.dumpModule(module);
-      $.respond();
-   },
-
-   removeModule: function ({module: moduleName, force}) {
-      let module = $.moduleByName(moduleName);
-      let connectedModuleNames = $.opModule.removeModule(module, force);
-
-      $.respond(connectedModuleNames);
-   },
-
-   findReferences: function ({module: moduleName, star, name}) {
-      let module = $.moduleByName(moduleName);
-      $.respond($.query.findReferences(module, star, name));
-   },
-
-   replaceUsages: function ({module: moduleName, name, newName}) {
-      let module = $.moduleByName(moduleName);
-      let modifiedEntries = $.opRefactor.replaceUsages(module, name, newName);
-      $.respond({
-         importSection: null,
-         modifiedEntries
-      });
    }
-
 })
 serialize ::= function (obj) {
    const inds = '   ';
