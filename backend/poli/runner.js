@@ -87,7 +87,7 @@ main ::= function (sendMessage) {
          sendMessage({
             type: 'api-call-result',
             success: true,
-            result: result,
+            result: result === undefined ? null : result,
             modifyCode: actions
          });
 
@@ -163,18 +163,37 @@ operationHandlers ::= ({
 
       $.rel.changeFact(Rmodules, module, {
          ...module,
-         entries: $.rel.updated(module.entries, (entries) => {
-            $.rel.changeFact(entries, entry, {
-               ...entry,
-               strDef: newDef,
-               def: newDef
-            });
+         entries: $.rel.withFactChanged(module.entries, entry, {
+            ...entry,
+            strDef: newDef,
+            def: newDef
          })
       });
+   },
 
-      return {
-         normalizedSource: newDef
+   addEntry: function (Rmodules, {module: moduleName, name, def, index}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+
+      if ($.trie.has(module.entries.byName, name)) {
+         throw $.genericError(
+            `'${name}' already defined or imported in the module '${module.name}'`
+         );
       }
+
+      def = def.trim();
+      let val = $.moduleEval(module.ns, def);
+
+      module.nsDelta[name] = val;
+
+      $.rel.changeFact(Rmodules, module, {
+         ...module,
+         entries: $.rel.withFactAdded(module.entries, {
+            name: name,
+            strDef: def,
+            def: def
+         }),
+         members: $.vec.withInsertedAt(module.members, index, name)
+      });
    }
 })
 serialize ::= function (obj) {

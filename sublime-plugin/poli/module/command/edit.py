@@ -84,20 +84,15 @@ class PoliAdd(ModuleTextCommand):
         if op.reg_body(self.view).empty():
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(at=self.view.size())
-            op.enter_edit_mode(
-                self.view, reg_new, target='entry', name=None, is_before=None
-            )
         else:
             loc = op.sel_cursor_location(self.view)
             entry_name = loc.entry.name()
             self.view.set_read_only(False)
             reg_new = insert_dummy_def(
-                at=(loc.entry.reg_entry_nl.begin() if before else
-                    loc.entry.reg_entry_nl.end())
+                at=loc.entry.reg_nl.begin() if before else loc.entry.reg_nl.end()
             )
-            op.enter_edit_mode(
-                self.view, reg_new, target='entry', name=entry_name, is_before=before
-            )
+        
+        op.enter_edit_mode(self.view, reg_new, adding_new=True)
 
 
 class PoliCancel(ModuleTextCommand):
@@ -145,6 +140,34 @@ class PoliCommit(ModuleTextCommand):
         # reg = op.edit_region_for[self.view]
 
         body = op.module_body(self.view)
+
+        if op.edit_cxt_for[self.view].adding_new:
+            index = body.remove_ephemeral_entry()
+
+            templ = op.RE_FULL_ENTRY[op.view_lang(self.view)]
+            reg = op.edit_region_for[self.view]
+            mtch = re.search(templ, self.view.substr(reg), re.DOTALL)
+
+            if mtch is None:
+                sublime.status_message("Invalid entry definition")
+                return
+
+            if mtch.group('def').isspace():
+                sublime.status_message("Empty definition not allowed")
+                return
+
+            comm.op(
+                'addEntry',
+                {
+                    'module': op.view_module_name(self.view),
+                    'name': mtch.group('name'),
+                    'def': mtch.group('def'),
+                    'index': index
+                },
+                committing_module_name=op.view_module_name(self.view)
+            )
+            return
+
         entry = body.entry_under_edit()
 
         if entry.is_def_under_edit():

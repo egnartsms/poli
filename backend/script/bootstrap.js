@@ -209,6 +209,8 @@ var poli = (function () {
 
       // console.log(Mloader.ns['Rmodules']);
 
+      window.exp = modules.find(m => m.name === 'exp').ns;
+
       let Mrun = modules.find(m => m.name === RUN_MODULE);
 
       // That's our contract with RUN_MODULE:

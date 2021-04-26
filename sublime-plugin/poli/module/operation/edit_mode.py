@@ -62,18 +62,6 @@ def quit_edit_mode(view):
     highlight_unknown_names(view)
 
 
-# def exit_edit_mode(view):
-#     assert regedit.is_active_in(view)
-
-#     cxt = edit_cxt_for.pop(view)
-#     regedit.discard(view, read_only=True)
-
-#     if cxt.needs_save:
-#         view.run_command('save')
-
-#     highlight_unknown_names(view)
-
-
 def terminate_edit_mode(view):
     """Exit from edit mode in the most direct and blunt way
 

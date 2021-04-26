@@ -113,8 +113,8 @@ XS_WORD_CHAR = r'[a-zA-Z_\-0-9~!@$%^&*+=?/<>.:|]'
 
 RE_FULL_ENTRY = {
     # the DOTALL is assumed to be on
-    'js': r'^(?P<name>\w[\d\w]*) ::= (?P<defn>.+)$',
-    'xs': r'^(?P<name>{XS_WORD_CHAR}+) ::=(?P<defn>.+)$'.format(**globals())
+    'js': r'^(?P<name>\w[\d\w]*) ::= (?P<def>.+)$',
+    'xs': r'^(?P<name>{XS_WORD_CHAR}+) ::=(?P<def>.+)$'.format(**globals())
 }
 
 TEMPLATE_FULL_ENTRY = {
@@ -314,7 +314,9 @@ def apply_action(view, edit, action, under_edit):
             committed = True
         else:
             point = body.entries[action['at']].reg.begin()
-        view.insert(edit, point, '{[name]} ::= {[def]}\n'.format(action))
+        view.insert(
+            edit, point, '{action[name]} ::= {action[def]}\n'.format(action=action)
+        )
     elif action['type'] == 'rename':
         entry = body.entries[action['at']]
         if under_edit and entry.is_name_under_edit():

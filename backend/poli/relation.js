@@ -43,6 +43,12 @@ freeze ::= function (rel) {
       $.trie.freeze(rel[name]);
    }
 }
+updated ::= function (rel, fnMutator) {
+   let newRel = $.newIdentity(rel);
+   fnMutator(newRel);
+   $.freeze(newRel);
+   return newRel;
+}
 facts ::= function (rel) {
    return $.trie.items(rel[rel.pk]);
 }
@@ -55,22 +61,26 @@ addFacts ::= function (rel, facts) {
 addFact ::= function (rel, fact) {
    for (let name of Object.keys(rel.uniques)) {
       let wasNew = $.trie.add(rel[name], fact);
-      $.assert(wasNew);
+      if (!wasNew) {
+         throw new Error(`A fact added was not new`);
+      }
    }
 }
 removeFact ::= function (rel, fact) {
    for (let name of Object.keys(rel.uniques)) {
       let didRemove = $.trie.remove(rel[name], fact);
-      $.assert(didRemove);
+      if (!didRemove) {
+         throw new Error(`A fact was missing`);
+      }
    }
 }
 changeFact ::= function (rel, fact, newFact) {
    $.removeFact(rel, fact);
    $.addFact(rel, newFact);
 }
-updated ::= function (rel, fnMutator) {
-   let newRel = $.newIdentity(rel);
-   fnMutator(newRel);
-   $.freeze(newRel);
-   return newRel;
+withFactChanged ::= function (rel, fact, newFact) {
+   return $.updated(rel, xrel => $.changeFact(xrel, fact, newFact));
+}
+withFactAdded ::= function (rel, fact) {
+   return $.updated(rel, xrel => $.addFact(xrel, fact));
 }

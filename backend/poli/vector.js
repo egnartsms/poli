@@ -10,15 +10,7 @@ proto ::= ({
    }
 })
 Vector ::= function (items=null) {
-   if (items === null) {
-      return $.newObj($.proto, {root: null});
-   }
-
-   let root = Array.from(items);
-   if (root.length === 0) {
-      return $.newObj($.proto, {root: null});
-   }
-
+   let root = items === null ? [] : Array.from(items);
    $.makeNode(root, true);
 
    while (root.length > $.MAX_NODE_LEN) {
@@ -26,20 +18,22 @@ Vector ::= function (items=null) {
       $.makeNode(root, false);
    }
 
-   return $.newObj($.proto, {root});
+   let vec = $.newObj($.proto, {root});
+   $.freeze(vec);
+   return vec;
 }
 size ::= function (vec) {
-   return vec.root === null ? 0 : vec.root.size;
+   return vec.root.size;
 }
 isMutated ::= function (vec) {
-   return vec.root !== null && vec.root.isFresh;
+   return vec.root.isFresh;
 }
 newIdentity ::= function (vec) {
    if ($.isMutated(vec)) {
       throw new Error(`Attempt to copy the identity of a mutated Vector`);
    }
 
-   return Object.assign(Object.create($.Vector.prototype), vec);
+   return $.newObj($.proto, {root: vec.root});
 }
 freeze ::= function (vec) {
    // Mark all fresh nodes as non-fresh
@@ -130,50 +124,23 @@ nodeAt ::= function (node, index) {
 
    return node[index];
 }
-pushBack ::= function (vec, item) {
-   if (vec.root === null) {
-      vec.root = [item];
-      $.makeNode(vec.root, true);
-      return;
-   }
+indexToMerge ::= function (parent, i) {
+   $.assert(parent.length >= 2);
 
-   function pushTo(node) {
-      let xnode = $.freshNode(node);
+   let isLeft = (i > 0 && 
+      (i + 1 === parent.length || parent[i + 1].length >= parent[i - 1].length)
+   );
 
-      if (xnode.isLeaf) {         
-         xnode.push(item);
-         xnode.size = xnode.length;
-      }
-      else {
-         let sub = xnode[xnode.length - 1];
-         let oldSubSize = sub.size;
-         let xsub = pushTo(sub);
-         let deltaSize = xsub.size - oldSubSize;
-         
-         $.assert(deltaSize === 1);
+   return isLeft ? i - 1 : i;
+}
+redestributeBetween ::= function (lnode, rnode) {
+   $.assert(lnode.isLeaf === rnode.isLeaf);
 
-         if (xsub.length > $.MAX_NODE_LEN) {
-            xnode.splice(xnode.length - 1, 1, ...$.splitNode(xsub));
-         }
-         else if (xsub !== sub) {
-            xnode.splice(xnode.length - 1, 1, xsub);
-         }
-         
-         xnode.size += deltaSize;
-      }
+   let merged = [...lnode, ...rnode];
 
-      return xnode;
-   }
+   $.makeNode(merged, lnode.isLeaf);
 
-   let xroot = pushTo(vec.root);
-   
-   if (xroot.length > $.MAX_NODE_LEN) {
-      let chunks = $.splitNode(xroot);
-      xroot = chunks;
-      $.makeNode(xroot, false);
-   }
-
-   vec.root = xroot;
+   return $.splitNode(merged);
 }
 splitNode ::= function (node) {
    $.assert(node.isFresh);
@@ -230,9 +197,71 @@ makeNode ::= function (array, isLeaf) {
       array.size = array.reduce((sum, nd) => sum + nd.size, 0);
    }
 }
+modifyAt ::= function (vec, index, modifier) {
+   function modify(node, index) {
+      if (node.isLeaf) {
+         let xnode = $.freshNode(node);
+         modifier(xnode, index);
+         xnode.size = xnode.length;
+         return xnode;
+      }
+      else {
+         let k = 0;
+
+         while (k < node.length - 1 && node[k].size <= index) {
+            index -= node[k].size;
+            k += 1;
+         }
+
+         let xnode = $.freshNode(node);
+         let sub = xnode[k];
+         let oldSubSize = sub.size;
+         let xsub = modify(sub, index);
+
+         xnode[k] = xsub;
+         xnode.size += xsub.size - oldSubSize;         
+
+         if (xsub.length > $.MAX_NODE_LEN) {
+            xnode.splice(k, 1, ...$.splitNode(xsub));
+         }
+         else if (xsub.length < $.MIN_NODE_LEN) {
+            let i = $.indexToMerge(xnode, k);
+            xnode.splice(i, 2, ...$.redestributeBetween(xnode[i], xnode[i + 1]));
+         }
+         
+         return xnode;
+      }
+   }
+
+   let xroot = modify(vec.root, index);
+   
+   if (xroot.length > $.MAX_NODE_LEN) {
+      let chunks = $.splitNode(xroot);
+      xroot = chunks;
+      $.makeNode(xroot, false);
+   }
+   else if (!xroot.isLeaf && xroot.length === 1) {
+      [xroot] = xroot;
+   }
+
+   vec.root = xroot;
+}
+pushBack ::= function (vec, item) {
+   $.modifyAt(vec, vec.size, (leaf) => {
+      leaf.push(item);
+   });
+}
+insertAt ::= function (vec, index, item) {
+   $.modifyAt(vec, index, (leaf, i) => {
+      leaf.splice(i, 0, item);
+   });
+}
 updated ::= function (vec, fnMutator) {
    let xvec = $.newIdentity(vec);
    fnMutator(xvec);
    $.freeze(xvec);
    return xvec;
+}
+withInsertedAt ::= function (vec, index, item) {
+   return $.updated(vec, xvec => $.insertAt(xvec, index, item));
 }
