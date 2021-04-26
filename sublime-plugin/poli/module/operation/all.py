@@ -179,13 +179,21 @@ class ModificationConflict(Exception):
 
 
 def apply_code_modifications(modules_actions, committing_module_name, callback):
-    window = sublime.active_window()
+    assert modules_actions or committing_module_name is not None
+
+    if not modules_actions:
+        view = sublime.active_window().find_open_file(
+            module_filename(committing_module_name)
+        )
+        em.quit_edit_mode(view)
+        callback(True)
+        return
 
     modify_spec = []
 
     for module_name, action_list in modules_actions:
-        with active_view_preserved(window):
-            view = open_module(window, module_name)
+        with active_view_preserved(sublime.active_window()):
+            view = open_module(sublime.active_window(), module_name)
 
         is_committing = module_name == committing_module_name
         if is_committing and not em.in_edit_mode(view):
@@ -213,6 +221,7 @@ def modify_modules(modify_spec, callback):
     except:
         sublime.status_message("Code modification failed")
         callback(False)
+        raise
     else:
         sublime.status_message("{} modules updated".format(len(modify_spec)))
         callback(True)
@@ -281,7 +290,7 @@ def apply_actions(view, edit, action_list, under_edit):
 def apply_action(view, edit, action, under_edit):
     body = module_body(view)
 
-    if under_edit == 'committing':
+    if under_edit == 'committing' and em.edit_cxt_for[view].adding_new:
         ephemeral_index = body.remove_ephemeral_entry()
     else:
         ephemeral_index = -1

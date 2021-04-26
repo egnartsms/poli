@@ -95,8 +95,8 @@ def remove_ephemeral_entry(self):
     depending on whether what the user entered satisfies the entry syntax. If yes, then
     exclude it because it doesn't yet exist in the Poli system so indexing would become
     wrong.
-    """    
-    ereg = edit_region_for[self.body.view]
+    """
+    ereg = edit_region_for[self.view]
     i = 0
 
     while i < len(self.entries):

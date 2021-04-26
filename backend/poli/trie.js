@@ -245,6 +245,10 @@ removeByKey ::= function (trie, key) {
       let xnode = $.freshNode(node);
       xnode.size += deltaSize;
 
+      if (xsub !== sub) {
+         xnode[at] = xsub;
+      }
+
       if (xsub.length < $.MIN_NODE_LEN) {
          let i = $.indexToMerge(xnode, at);
          
@@ -262,10 +266,6 @@ removeByKey ::= function (trie, key) {
          }
       }
       else {
-         if (xsub !== sub) {
-            xnode.splice(at, 1, xsub);
-         }
-
          if (at === 0) {
             xnode.minKey = xnode[0].minKey;
          }

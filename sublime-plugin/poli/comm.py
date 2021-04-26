@@ -63,7 +63,7 @@ class Communicator:
         print("{} took: {} ms".format(op, round(elapsed * 1000)))
 
         if res['success']:
-            if res['modifyCode']:
+            if res['modifyCode'] or committing_module_name is not None:
                 self.modify_code(res['modifyCode'], committing_module_name)
 
             return res['result']
@@ -77,10 +77,11 @@ class Communicator:
         @self.updating_status()
         def callback(success):
             self.pending_modify_code = False
-            self.ws.send(json.dumps({
-                'type': 'modify-code-result',
-                'success': success
-            }))
+            if modify_code_spec:
+                self.ws.send(json.dumps({
+                    'type': 'modify-code-result',
+                    'success': success
+                }))
 
         self.pending_modify_code = True
         self.on_modify_code(modify_code_spec, committing_module_name, callback)

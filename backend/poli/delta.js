@@ -188,7 +188,11 @@ modulesDelta ::= function (modules, xmodules) {
 
    for (let module of $.rel.facts(modules)) {
       let xmodule = $.trie.find(xmodules.byName, module.name);
-      delta.push([module.name, $.moduleDelta(module, xmodule)]);
+      let mdelta = $.moduleDelta(module, xmodule);
+      if (mdelta.length > 0) {
+         delta.push([module.name, mdelta]);
+      }
+      
    }
    
    return delta;

@@ -148,12 +148,15 @@ class PoliCommit(ModuleTextCommand):
         entry = body.entry_under_edit()
 
         if entry.is_def_under_edit():
-            res = comm.op('editEntry', {
-                'module': op.view_module_name(self.view),
-                'name': entry.name(),
-                'newDef': self.view.substr(op.edit_region_for[self.view])
-            })
-            
+            res = comm.op(
+                'editEntry',
+                {
+                    'module': op.view_module_name(self.view),
+                    'name': entry.name(),
+                    'newDef': self.view.substr(op.edit_region_for[self.view])
+                },
+                committing_module_name=op.view_module_name(self.view)
+            )
         else:
             raise NotImplementedError
 

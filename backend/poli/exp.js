@@ -1,7 +1,7 @@
 -----
 callme ::= function () {
-    return 11;
+    return 30;
 }
 andMeToo ::= function () {
-    return $.callme() + 1;
+    let x = $.callme() * 2;
 }

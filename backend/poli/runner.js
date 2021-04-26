@@ -43,11 +43,11 @@ main ::= function (sendMessage) {
          if (msg['type'] !== 'modify-code-result') {
             throw new Error(`Expected 'modify-code-result' message, got: ${msg}`);
          }
-         if (msg['result']) {
+         if (msg['success']) {
             $.loader.Rmodules = pendingRmodules;
             $.rel.freeze($.loader.Rmodules);
             
-            for (let module of $.loader.Rmodules) {
+            for (let module of $.rel.facts($.loader.Rmodules)) {
                let changedKeys = Object.keys(module.nsDelta);
                if (changedKeys.length > 0) {
                   for (let key of changedKeys) {
@@ -58,7 +58,7 @@ main ::= function (sendMessage) {
             }
          }
          else {
-            console.warning(`Sublime could not modify code, rolling back`);
+            console.warn(`Sublime could not modify code, rolling back`);
          }
 
          pendingRmodules = null;
@@ -80,7 +80,7 @@ main ::= function (sendMessage) {
          let actions = $.modulesDelta($.loader.Rmodules, Rmodules);
 
          if (actions.length > 0) {
-            console.log("Code modification:", actions);
+            console.log("Code modifications:", actions);
             pendingRmodules = Rmodules;
          }
 
