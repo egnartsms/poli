@@ -6,7 +6,6 @@ from poli.comm import comm
 from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import insert_in
-from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import set_selection
 
@@ -32,7 +31,7 @@ class PoliSelect(ModuleTextCommand):
 
     def run(self, edit):
         loc = op.sel_cursor_location(self.view)
-        set_selection(self.view, to=loc.entry.reg_entry)
+        set_selection(self.view, to=loc.entry.reg)
 
 
 class PoliEdit(ModuleTextCommand):
@@ -75,10 +74,10 @@ class PoliAdd(ModuleTextCommand):
 
     def run(self, edit, before):
         def insert_dummy_def(at):
-            reg_new = insert_in(self.view, edit, at, "name ::= definition\n")
-            reg_new = op.reg_no_trailing_nl(reg_new)
-            set_selection(self.view, to=reg_new, show=True)
-            return reg_new
+            reg = insert_in(self.view, edit, at, "name ::= definition")
+            self.view.insert(edit, reg.end(), "\n")
+            set_selection(self.view, to=reg, show=True)
+            return reg
 
         # In case the module is absolutely empty, take a different approach
         if op.reg_body(self.view).empty():

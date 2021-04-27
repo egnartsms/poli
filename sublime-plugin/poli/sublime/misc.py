@@ -70,6 +70,16 @@ def end_strip_region(view, reg):
     return sublime.Region(reg.begin(), pt + 1)
 
 
+def end_plus_1(reg):
+    """Return a new region that extends 1 char longer than reg"""
+    return sublime.Region(reg.a, reg.b + 1)
+
+
+def end_minus_1(reg):
+    """Return a new region that extends 1 char shorter than reg"""
+    return sublime.Region(reg.a, reg.b - 1)
+
+
 def insert_in(view, edit, pos, s):
     n = view.insert(edit, pos, s)
     return sublime.Region(pos, pos + n)
@@ -78,6 +88,10 @@ def insert_in(view, edit, pos, s):
 def replace_in(view, edit, reg, s):
     view.replace(edit, reg, s)
     return sublime.Region(reg.begin(), reg.begin() + len(s))
+
+
+def add_hidden_regions(view, name, regs):
+    view.add_regions(name, regs, '', '', sublime.HIDDEN)
 
 
 class Regions:

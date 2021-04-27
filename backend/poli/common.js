@@ -127,6 +127,18 @@ findIndex ::= function (itbl, pred) {
 
    return -1;
 }
+indexOf ::= function (itbl, item) {
+   let i = -1;
+
+   for (let x of itbl) {
+      i += 1;
+      if (x === item) {
+         return i;
+      }
+   }
+
+   return -1;
+}
 arraysEqual ::= function arraysEqual (A, B) {
    if (A.length !== B.length) {
       return false;

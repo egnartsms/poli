@@ -2,6 +2,7 @@ common
    hasOwnProperty
    dumpImportSection
    moduleNames
+   indexOf
 delta
    modulesDelta
 exc
@@ -193,6 +194,29 @@ operationHandlers ::= ({
             def: def
          }),
          members: $.vec.withInsertedAt(module.members, index, name)
+      });
+   },
+   
+   moveBy1: function (Rmodules, {module: moduleName, name, direction}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+      let entry = $.entryByName(module, name);
+      
+      if (direction !== 'up' && direction !== 'down') {
+         throw $.genericError(`Invalid direction name: '${direction}'`);
+      }
+
+      let i = $.indexOf(module.members, entry.name);
+      let j = direction === 'up' ?
+               (i === 0 ? $.vec.size(module.members) - 1 : i - 1) :
+               (i === $.vec.size(module.members) - 1 ? 0 : i + 1);
+
+      $.rel.changeFact(Rmodules, module, {
+         ...module,
+         members: $.vec.updated(module.members, members => {
+            // TODO:
+            $.vec.deleteAt(members, i);
+            $.vec.insertAt(members, j, name);
+         })
       });
    }
 })

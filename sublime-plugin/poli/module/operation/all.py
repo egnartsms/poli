@@ -5,8 +5,10 @@ import re
 import sublime
 
 from . import edit_mode as em
+from .body import Body
 from .body import module_body
 from .body import reg_entry_name
+from .body import reg_no_trailing_nl
 from .body import reg_plus_trailing_nl
 from .edit_mode import highlight_unknown_names
 from .edit_mode import save_module
@@ -14,6 +16,7 @@ from .import_section import parse_import_section
 from .structure import reg_import_section
 
 from poli.common.misc import FreeObj
+from poli.common.misc import method_for
 from poli.config import backend_root
 from poli.shared.command import StopCommand
 from poli.shared.misc import Kind
@@ -24,6 +27,8 @@ from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import all_views
+from poli.sublime.misc import end_plus_1
+from poli.sublime.misc import insert_in
 from poli.sublime.misc import match_at
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
@@ -172,6 +177,11 @@ def replace_import_section(view, edit, new_import_section):
         )
 
 
+def ensure_trailing_nl(view, edit):
+    if view.substr(view.size() - 1) != '\n':
+        view.insert(edit, view.size(), '\n')
+
+
 class ModificationConflict(Exception):
     def __init__(self, module_name):
         super().__init__("Code modification conflict in module '{}'".format(module_name))
@@ -273,6 +283,8 @@ def modify_browsing_module(view, action_list):
 
 
 def apply_actions(view, edit, action_list, under_edit):
+    ensure_trailing_nl(view, edit)
+
     committed = False
 
     for action in action_list:
@@ -310,10 +322,11 @@ def apply_action(view, edit, action, under_edit):
     elif action['type'] == 'insert':
         if action['at'] == ephemeral_index:
             point = em.edit_region_for[view].begin()
-            view.erase(edit, reg_plus_trailing_nl(em.edit_region_for[view]))
+            view.erase(edit, end_plus_1(em.edit_region_for[view]))
             committed = True
         else:
-            point = body.entries[action['at']].reg.begin()
+            point = body.insertion_point(action['at'])
+
         view.insert(
             edit, point, '{action[name]} ::= {action[def]}\n'.format(action=action)
         )
@@ -330,18 +343,19 @@ def apply_action(view, edit, action, under_edit):
         if under_edit and entry.is_under_edit():
             raise ModificationConflict(view_module_name(view))
 
-        view.erase(edit, entry.reg_entry_nl)
+        view.erase(edit, entry.reg_nl)
     elif action['type'] == 'move':
         eFrom = body.entries[action['from']]
-        eTo = body.entries[action['to']]
-        from_is_under_edit = under_edit and eFrom.is_under_edit()
+        to = body.insertion_point(action['to'])
 
-        with Regions(view, eFrom.reg_entry_nl) as F:
-            text = view.substr(F.reg)
-            view.insert(edit, eTo.reg.begin(), text)
-            if from_is_under_edit:
-                em.move_edit_region(view, eTo.reg.a - F.reg.a)
-            view.erase(edit, F.reg)
+        with body.regions_tracked():
+            reg = insert_in(view, edit, to, eFrom.contents())
+            view.insert(edit, reg.end(), '\n')
+            if under_edit and eFrom.is_under_edit():
+                em.move_edit_region(view, to - eFrom.reg.begin())
+            if eFrom.is_exclusively_selected():
+                set_selection(view, to=reg, show=True)
+            view.erase(edit, eFrom.reg_nl)
     elif action['type'] == 'move/replace':
         if under_edit and eOnto.is_under_edit():
             raise ModificationConflict(view_module_name(view))
@@ -360,6 +374,16 @@ def apply_action(view, edit, action, under_edit):
         raise RuntimeError
 
     return committed
+
+
+@method_for(Body)
+def insertion_point(self, index):
+    if index < len(self.entries):
+        return self.entries[index].reg.begin()
+    elif self.entries:
+        return self.entries[-1].reg_nl.end()
+    else:
+        return self.body_start
 
 
 def word_at(view, reg):

@@ -256,6 +256,11 @@ insertAt ::= function (vec, index, item) {
       leaf.splice(i, 0, item);
    });
 }
+deleteAt ::= function (vec, index) {
+   $.modifyAt(vec, index, (leaf, i) => {
+      leaf.splice(i, 1);
+   });
+}
 updated ::= function (vec, fnMutator) {
    let xvec = $.newIdentity(vec);
    fnMutator(xvec);
