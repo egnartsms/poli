@@ -227,12 +227,12 @@ operationHandlers ::= ({
          nsDelta: {
             [name]: val
          },
-         entries: $.rel.update(module.entries, $.addFact, {
+         entries: $.rel.update(module.entries, $.rel.addFact, {
             name: name,
             strDef: def,
             def: def            
          }),
-         members: $.vec.update(module.memers, $.insertAt, index, name)
+         members: $.vec.update(module.memers, $.vec.insertAt, index, name)
       });
    },
    

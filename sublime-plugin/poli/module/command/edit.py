@@ -67,6 +67,7 @@ class PoliRename(ModuleTextCommand):
             return
 
         op.enter_edit_mode(self.view, loc.entry.reg_name, adding_new=False)
+        set_selection(self.view, to=loc.entry.reg_name)
 
 
 class PoliAdd(ModuleTextCommand):
