@@ -7,6 +7,7 @@ from poli.module import operation as op
 from poli.shared.misc import single_selected_region
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import read_only_set_to
+from poli.sublime.misc import end_plus_1
 from poli.sublime.selection import set_selection
 
 from .shared import ModuleTextCommand
@@ -55,18 +56,17 @@ class PoliRename(ModuleTextCommand):
     def run(self, edit):
         reg = single_selected_region(self.view)
         if op.reg_import_section(self.view).contains(reg):
+            raise NotImplementedError
+            # TODO: implement import rename
             self.view.run_command('poli_rename_this_import')
             return
 
-        loc = op.module_body(self.view).cursor_location_or_stop(reg)
         loc = op.sel_cursor_location(self.view)
         if not loc.is_name_targeted:
             sublime.status_message("Cursor is not placed over entry name")
             return
 
-        op.enter_edit_mode(
-            self.view, loc.entry.reg_name, target='name', name=loc.entry.name()
-        )
+        op.enter_edit_mode(self.view, loc.entry.reg_name, adding_new=False)
 
 
 class PoliAdd(ModuleTextCommand):
@@ -101,6 +101,11 @@ class PoliCancel(ModuleTextCommand):
         cxt = op.edit_cxt_for[self.view]
         reg = op.edit_region_for[self.view]
 
+        if cxt.adding_new:
+            with op.quitting_edit_mode(self.view):
+                self.view.erase(edit, end_plus_1(reg))
+                return
+
         body = op.module_body(self.view)
         entry = body.entry_under_edit()
 
@@ -109,43 +114,32 @@ class PoliCancel(ModuleTextCommand):
                 'module': op.view_module_name(self.view),
                 'name': entry.name()
             })
-            self.view.set_read_only(False)
-            self.view.replace(edit, op.edit_region_for[self.view], defn)
-            op.quit_edit_mode(self.view)
+            with op.quitting_edit_mode(self.view):
+                self.view.replace(edit, reg, defn)
+        elif entry.is_name_under_edit():
+            name = comm.op('getNameAt', {
+                'module': op.view_module_name(self.view),
+                'at': entry.myindex
+            })
+            with op.quitting_edit_mode(self.view):
+                self.view.replace(edit, reg, name)
         else:
-            raise NotImplementedError
-
-        # with read_only_as_transaction(self.view, False):
-        #     if cxt.target == 'defn':
-        #         defn = comm.op('getDefinition', {
-        #             'module': op.view_module_name(self.view),
-        #             'name': cxt.name
-        #         })
-        #         self.view.replace(edit, reg, defn)
-        #     elif cxt.target == 'name':
-        #         self.view.replace(edit, reg, cxt.name)
-        #     else:
-        #         assert cxt.target == 'entry'
-        #         self.view.erase(edit, op.reg_plus_trailing_nl(reg))
-
-        #     op.exit_edit_mode(self.view)
+            raise RuntimeError
 
 
 class PoliCommit(ModuleTextCommand):
     only_in_mode = 'edit'
 
     def run(self, edit):
-        # cxt = op.edit_cxt_for[self.view]
-        # reg = op.edit_region_for[self.view]
-
+        edit_region = op.edit_region_for[self.view]
+        cxt = op.edit_cxt_for[self.view]
         body = op.module_body(self.view)
 
-        if op.edit_cxt_for[self.view].adding_new:
+        if cxt.adding_new:
             index = body.remove_ephemeral_entry()
-
             templ = op.RE_FULL_ENTRY[op.view_lang(self.view)]
-            reg = op.edit_region_for[self.view]
-            mtch = re.search(templ, self.view.substr(reg), re.DOTALL)
+            
+            mtch = re.search(templ, self.view.substr(edit_region), re.DOTALL)
 
             if mtch is None:
                 sublime.status_message("Invalid entry definition")
@@ -175,77 +169,22 @@ class PoliCommit(ModuleTextCommand):
                 {
                     'module': op.view_module_name(self.view),
                     'name': entry.name(),
-                    'newDef': self.view.substr(op.edit_region_for[self.view])
+                    'newDef': self.view.substr(edit_region)
+                },
+                committing_module_name=op.view_module_name(self.view)
+            )
+        elif entry.is_name_under_edit():
+            comm.op(
+                'renameEntry',
+                {
+                    'module': op.view_module_name(self.view),
+                    'index': entry.myindex,
+                    'newName': self.view.substr(edit_region)
                 },
                 committing_module_name=op.view_module_name(self.view)
             )
         else:
-            raise NotImplementedError
-
-        # if cxt.target == 'defn':
-        #     new_src = self.view.substr(reg)
-        #     if new_src.isspace():
-        #         sublime.status_message("Empty definition not allowed")
-        #         return
-
-        #     with op.code_error_source_indication(self.view, reg.begin()):
-        #         res = comm.op('editEntry', {
-        #             'module': op.view_module_name(self.view),
-        #             'name': cxt.name,
-        #             'newDef': new_src
-        #         })
-
-        #     return
-
-        #     self.view.set_read_only(False)
-        #     self.view.replace(edit, reg, res['normalizedSource'])
-        # elif cxt.target == 'name':
-        #     new_name = self.view.substr(reg)
-
-        #     if not re.search(op.RE_ENTRY_NAME[op.view_lang(self.view)], new_name):
-        #         sublime.status_message("Not a valid name")
-        #         return
-
-        #     comm.op('renameEntry', {
-        #         'module': op.view_module_name(self.view),
-        #         'oldName': cxt.name,
-        #         'newName': new_name
-        #     })
-        # else:
-        #     assert cxt.target == 'entry'
-            
-        #     templ = op.RE_FULL_ENTRY[op.view_lang(self.view)]
-        #     mtch = re.search(templ, self.view.substr(reg), re.DOTALL)
-
-        #     if mtch is None:
-        #         sublime.status_message("Invalid entry definition")
-        #         return
-        #     if mtch.group('defn').isspace():
-        #         sublime.status_message("Empty definition not allowed")
-        #         return
-
-        #     defn_start = reg.begin() + mtch.start('defn')
-        #     with op.code_error_source_indication(self.view, defn_start):
-        #         res = comm.op('addEntry', {
-        #             'module': op.view_module_name(self.view),
-        #             'name': mtch.group('name'),
-        #             'source': mtch.group('defn'),
-        #             'anchor': cxt.name,
-        #             'before': cxt.is_before
-        #         })
-
-        #     self.view.set_read_only(False)
-        #     self.view.replace(
-        #         edit,
-        #         reg,
-        #         op.TEMPLATE_FULL_ENTRY[op.view_lang(self.view)].format(
-        #             name=mtch.group('name'),
-        #             defn=res['normalizedSource']
-        #         )
-        #     )
-
-        # op.save_module(self.view)
-        # op.exit_edit_mode(self.view)
+            raise RuntimeError
 
 
 class PoliRemove(ModuleTextCommand):

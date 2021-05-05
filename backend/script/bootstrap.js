@@ -207,7 +207,7 @@ var poli = (function () {
       // xsTest.ns['testTrie']();
       // return;
 
-      // console.log(Mloader.ns['Rmodules']);
+      console.log(Mloader.ns['Rmodules']);
 
       window.exp = modules.find(m => m.name === 'exp').ns;
 

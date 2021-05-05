@@ -8,8 +8,6 @@ from . import edit_mode as em
 from .body import Body
 from .body import module_body
 from .body import reg_entry_name
-from .body import reg_no_trailing_nl
-from .body import reg_plus_trailing_nl
 from .edit_mode import highlight_unknown_names
 from .edit_mode import save_module
 from .import_section import parse_import_section
@@ -30,6 +28,7 @@ from poli.sublime.misc import all_views
 from poli.sublime.misc import end_plus_1
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import match_at
+from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import ViewDict
@@ -179,7 +178,8 @@ def replace_import_section(view, edit, new_import_section):
 
 def ensure_trailing_nl(view, edit):
     if view.substr(view.size() - 1) != '\n':
-        view.insert(edit, view.size(), '\n')
+        with read_only_set_to(view, False):
+            view.insert(edit, view.size(), '\n')
 
 
 class ModificationConflict(Exception):

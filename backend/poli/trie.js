@@ -1,5 +1,6 @@
 common
    assert
+   newObj
 -----
 MAX_NODE_LEN ::= 16
 MIN_NODE_LEN ::= 8
@@ -9,24 +10,27 @@ proto ::= ({
    }
 })
 Trie ::= function ({keyof, less}) {
-   return Object.assign(Object.create($.proto), {
+   return $.newObj($.proto, {
       keyof,
       less,
-      root: null
+      root: Object.assign([], {
+         isLeaf: true,
+         isFresh: true,
+         minKey: null,
+         maxKey: null,
+         size: 0
+      })
    });
 }
 size ::= function (trie) {
-   return trie.root === null ? 0 : trie.root.size;
+   return trie.root.size;
 }
 isMutated ::= function (trie) {
-   return trie.root !== null && trie.root.isFresh;
+   return trie.root.isFresh;
 }
-newIdentity ::= function (trie) {
-   if ($.isMutated(trie)) {
-      throw new Error(`Attempt to copy the identity of a mutated Trie`);
-   }
-
-   return Object.assign(Object.create($.Trie.prototype), trie);
+copy ::= function (trie) {
+   $.freeze(trie);
+   return $.newObj($.proto, trie);
 }
 freeze ::= function (trie) {
    // Mark all fresh nodes as non-fresh
@@ -59,9 +63,7 @@ items ::= function* (trie) {
       }
    }
    
-   if (trie.root !== null) {
-      yield* subtree(trie.root);
-   }
+   yield* subtree(trie.root);
 }
 find ::= function (trie, key) {
    if (trie.root === null ||
@@ -88,17 +90,117 @@ find ::= function (trie, key) {
 has ::= function (trie, key) {
    return $.find(trie, key) !== undefined;
 }
-add ::= function (trie, item) {
-   if (trie.root === null) {
-      trie.root = [item];
-      trie.root.isFresh = true;
-      trie.root.isLeaf = true;
-      trie.root.minKey = trie.root.maxKey = trie.keyof(item);
-      trie.root.size = 1;
+nodeKeyPlace ::= function (trie, node, key) {
+   let i = 0;
+   let j = node.length - 1;
+   
+   while (i <= j) {
+      let k = (i + j) >> 1;
+      let loKey, hiKey;
       
-      return true;  // was new
+      // actually, the subnodes will either be all items or all nodes
+      if (node.isLeaf) {
+         loKey = hiKey = trie.keyof(node[k]);
+      }
+      else {
+         loKey = node[k].minKey;
+         hiKey = node[k].maxKey;
+      }
+      
+      if (trie.less(key, loKey)) {
+         j = k - 1;
+      }
+      else if (trie.less(hiKey, key)) {
+         i = k + 1;
+      }
+      else {
+         return {
+            at: k
+         };
+      }
+   }
+   
+   return {
+      left: j,
+      right: i
+   }
+}
+indexToMerge ::= function (parent, i) {
+   $.assert(parent.length >= 2);
+
+   let isLeft = (i > 0 && 
+      (i + 1 === parent.length || parent[i + 1].length >= parent[i - 1].length)
+   );
+
+   return isLeft ? i - 1 : i;
+}
+minKeyOf ::= function (trie, node) {
+   return node.isLeaf ? trie.keyof(node[0]) : node[0].minKey;
+}
+maxKeyOf ::= function (trie, node) {
+   return node.isLeaf ? trie.keyof(node[node.length - 1]) : node[node.length - 1].maxKey;
+}
+sizeOf ::= function (node) {
+   return node.isLeaf ? node.length : $.totalSize(node);
+}
+totalSize ::= function (nodes) {
+   return nodes.reduce((sum, nd) => sum + nd.size, 0);
+}
+splitNode ::= function (trie, node) {
+   $.assert(node.length > $.MAX_NODE_LEN);
+   $.assert(node.length <= 2 * $.MAX_NODE_LEN);  // no need to handle this
+
+   let lnode = node.slice(0, node.length >> 1);
+   let rnode = node.slice(node.length >> 1);
+   
+   lnode.isFresh = true;
+   lnode.isLeaf = node.isLeaf;
+   lnode.minKey = node.minKey;
+   lnode.maxKey = $.maxKeyOf(trie, lnode);
+   lnode.size = $.sizeOf(lnode);
+
+   rnode.isFresh = true;
+   rnode.isLeaf = node.isLeaf;
+   rnode.minKey = $.minKeyOf(trie, rnode);
+   rnode.maxKey = node.maxKey;
+   rnode.size = $.sizeOf(rnode);
+
+   return [lnode, rnode];
+}
+redestributeBetween ::= function (trie, lnode, rnode) {
+   $.assert(lnode.isLeaf === rnode.isLeaf);
+
+   let merged = [...lnode, ...rnode];
+
+   merged.isFresh = true;
+   merged.isLeaf = lnode.isLeaf;
+   merged.size = lnode.size + rnode.size;
+   merged.minKey = lnode.minKey;
+   merged.maxKey = rnode.maxKey;
+
+   if (merged.length > $.MAX_NODE_LEN) {
+      return $.splitNode(trie, merged);
+   }
+   else {
+      return [merged];
+   }
+}
+freshNode ::= function (node) {
+   if (node.isFresh) {
+      return node;
    }
 
+   let xnode = Array.from(node);
+
+   xnode.isFresh = true;
+   xnode.isLeaf = node.isLeaf;
+   xnode.minKey = node.minKey;
+   xnode.maxKey = node.maxKey;
+   xnode.size = node.size;
+
+   return xnode;
+}
+add ::= function (trie, item) {
    let wasNew;
    let itemKey = trie.keyof(item);
 
@@ -190,7 +292,7 @@ add ::= function (trie, item) {
    if (xroot.length > $.MAX_NODE_LEN) {
       let lsub, rsub;
 
-      [lsub, rsub] = xroot = $.splitNode(trie, xroot);
+      xroot = [lsub, rsub] = $.splitNode(trie, xroot);
       xroot.isFresh = true;
       xroot.isLeaf = false;
       xroot.size = lsub.size + rsub.size;
@@ -203,10 +305,6 @@ add ::= function (trie, item) {
    return wasNew;
 }
 removeByKey ::= function (trie, key) {
-   if (trie.root === null) {
-      return false;
-   }
-
    let didRemove = false;
 
    function removeFromLeaf(node, at) {
@@ -249,29 +347,25 @@ removeByKey ::= function (trie, key) {
          xnode[at] = xsub;
       }
 
+      let minAffected, maxAffected;
+
       if (xsub.length < $.MIN_NODE_LEN) {
          let i = $.indexToMerge(xnode, at);
-         
-         let minAffected = (i === 0);
-         let maxAffected = i + 2 === xnode.length;
-         let newSubs = $.redestributeBetween(xnode[i], xnode[i + 1]);
-
+         minAffected = (i === 0);
+         maxAffected = i + 2 === xnode.length;
+         let newSubs = $.redestributeBetween(trie, xnode[i], xnode[i + 1]);
          xnode.splice(i, 2, ...newSubs);
-
-         if (minAffected) {
-            xnode.minKey = xnode[0].minKey;
-         }
-         if (maxAffected) {
-            xnode.maxKey = xnode[xnode.length - 1].maxKey;
-         }
       }
       else {
-         if (at === 0) {
-            xnode.minKey = xnode[0].minKey;
-         }
-         if (at + 1 === xnode.length) {
-            xnode.maxKey = xnode[xnode.length - 1].maxKey;
-         }
+         minAffected = (at === 0);
+         maxAffected = (at + 1 === xnode.length);
+      }
+
+      if (minAffected) {
+         xnode.minKey = xnode[0].minKey;
+      }
+      if (maxAffected) {
+         xnode.maxKey = xnode[xnode.length - 1].maxKey;
       }
       
       return xnode;
@@ -287,15 +381,8 @@ removeByKey ::= function (trie, key) {
    
    let xroot = removeFrom(trie.root);
 
-   if (xroot.isLeaf) {
-      if (xroot.length === 0) {
-         xroot = null;
-      }
-   }
-   else {
-      if (xroot.length === 1) {
-         xroot = xroot[0];
-      }
+   if (!xroot.isLeaf && xroot.length === 1) {
+      [xroot] = xroot;
    }
 
    trie.root = xroot;
@@ -304,131 +391,4 @@ removeByKey ::= function (trie, key) {
 }
 remove ::= function (trie, item) {
    return $.removeByKey(trie, trie.keyof(item));
-}
-isNodeFull ::= function (node) {
-   return node.length === $.MAX_NODE_LEN;
-}
-nodeKeyPlace ::= function (trie, node, key) {
-   let i = 0;
-   let j = node.length - 1;
-   
-   while (i <= j) {
-      let k = (i + j) >> 1;
-      let loKey, hiKey;
-      
-      // actually, the subnodes will either be all items or all nodes
-      if (node.isLeaf) {
-         loKey = hiKey = trie.keyof(node[k]);
-      }
-      else {
-         loKey = node[k].minKey;
-         hiKey = node[k].maxKey;
-      }
-      
-      if (trie.less(key, loKey)) {
-         j = k - 1;
-      }
-      else if (trie.less(hiKey, key)) {
-         i = k + 1;
-      }
-      else {
-         return {
-            at: k
-         };
-      }
-   }
-   
-   return {
-      left: j,
-      right: i
-   }
-}
-indexToMerge ::= function (parent, i) {
-   $.assert(parent.length >= 2);
-
-   let isLeft = (i > 0 && 
-      (i + 1 === parent.length || parent[i + 1].length >= parent[i - 1].length)
-   );
-
-   return isLeft ? i - 1 : i;
-}
-minKeyOf ::= function (trie, node) {
-   return node.isLeaf ? trie.keyof(node[0]) : node[0].minKey;
-}
-maxKeyOf ::= function (trie, node) {
-   return node.isLeaf ? trie.keyof(node[node.length - 1]) : node[node.length - 1].maxKey;
-}
-sizeOf ::= function (node) {
-   return node.isLeaf ? node.length : $.totalSize(node);
-}
-totalSize ::= function (nodes) {
-   return nodes.reduce((sum, nd) => sum + nd.size, 0);
-}
-splice ::= function (trie, node, index, deleteCount, ...insert) {
-   let firstAffected = (index === 0);
-   let lastAffected = (index + deleteCount >= node.length);
-   let result = node.splice(index, deleteCount, ...insert);
-
-   if (firstAffected) {
-      node.minKey = $.minKeyOf(trie, node);
-   }   
-   if (lastAffected) {
-      node.maxKey = $.maxKeyOf(trie, node);
-   }
-
-   return result;
-}
-splitNode ::= function (trie, node) {
-   $.assert(node.length > $.MAX_NODE_LEN);
-   $.assert(node.length <= 2 * $.MAX_NODE_LEN);  // no need to handle this
-
-   let lnode = node.slice(0, node.length >> 1);
-   let rnode = node.slice(node.length >> 1);
-   
-   lnode.isFresh = true;
-   lnode.isLeaf = node.isLeaf;
-   lnode.minKey = node.minKey;
-   lnode.maxKey = $.maxKeyOf(trie, lnode);
-   lnode.size = $.sizeOf(lnode);
-
-   rnode.isFresh = true;
-   rnode.isLeaf = node.isLeaf;
-   rnode.minKey = $.minKeyOf(trie, rnode);
-   rnode.maxKey = node.maxKey;
-   rnode.size = $.sizeOf(rnode);
-
-   return [lnode, rnode];
-}
-redestributeBetween ::= function (lnode, rnode) {
-   $.assert(lnode.isLeaf === rnode.isLeaf);
-
-   let merged = [...lnode, ...rnode];
-
-   merged.isFresh = true;
-   merged.isLeaf = lnode.isLeaf;
-   merged.size = lnode.size + rnode.size;
-   merged.minKey = lnode.minKey;
-   merged.maxKey = rnode.maxKey;
-
-   if (merged.length > $.MAX_NODE_LEN) {
-      return $.splitNode(merged);
-   }
-   else {
-      return [merged];
-   }
-}
-freshNode ::= function (node) {
-   if (node.isFresh) {
-      return node;
-   }
-
-   let xnode = Array.from(node);
-
-   xnode.isFresh = true;
-   xnode.isLeaf = node.isLeaf;
-   xnode.minKey = node.minKey;
-   xnode.maxKey = node.maxKey;
-   xnode.size = node.size;
-
-   return xnode;
 }

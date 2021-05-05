@@ -36,30 +36,32 @@ trie
 vector
    * as: vec
 -----
+delmark ::= Object.create(null)
 main ::= function (sendMessage) {
    let pendingRmodules = null;
 
    function handleMessage(msg) {
       if (pendingRmodules !== null) {
          if (msg['type'] !== 'modify-code-result') {
-            throw new Error(`Expected 'modify-code-result' message, got: ${msg}`);
+            throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
          }
          if (msg['success']) {
             $.loader.Rmodules = pendingRmodules;
-            $.rel.freeze($.loader.Rmodules);
             
-            for (let module of $.rel.facts($.loader.Rmodules)) {
-               let changedKeys = Object.keys(module.nsDelta);
-               if (changedKeys.length > 0) {
-                  for (let key of changedKeys) {
-                     module.ns[key] = module.nsDelta[key];
-                     delete module.nsDelta[key];
+            for (let module of $.loader.Rmodules) {
+               if (module.nsDelta !== null) {
+                  for (let [key, val] of Object.entries(module.nsDelta)) {
+                     if (val === $.delmark) {
+                        delete module.ns[key];
+                     }
+                     else {
+                        module.ns[key] = val;
+                     }
                   }
+                  
+                  module.nsDelta = null;
                }
             }
-         }
-         else {
-            console.warn(`Sublime could not modify code, rolling back`);
          }
 
          pendingRmodules = null;
@@ -76,7 +78,7 @@ main ::= function (sendMessage) {
       })();
 
       try {      
-         let Rmodules = $.rel.newIdentity($.loader.Rmodules);
+         let Rmodules = $.rel.copy($.loader.Rmodules);
          let result = $.operationHandlers[msg['op']](Rmodules, msg['args']);
          let actions = $.modulesDelta($.loader.Rmodules, Rmodules);
 
@@ -136,7 +138,7 @@ entryByName ::= function (module, name) {
    let entry = $.trie.find(module.entries.byName, name);
 
    if (entry === undefined) {
-      throw $.genericError(`Member '${name}' not found in module '${module.name}'`);
+      throw $.genericError(`Module '${module.name}': not found entry '${name}'`);
    }
 
    return entry;
@@ -146,6 +148,11 @@ moduleEval ::= function moduleEval(ns, code) {
    return fun.call(null, ns);
 }
 operationHandlers ::= ({
+   getNameAt: function (Rmodules, {module: moduleName, at}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+      return $.vec.at(module.members, at);
+   },
+   
    getDefinition: function (Rmodules, {module: moduleName, name}) {
       let module = $.moduleByName(Rmodules, moduleName);
       let entry = $.entryByName(module, name);
@@ -160,16 +167,48 @@ operationHandlers ::= ({
       newDef = newDef.trim();
       let newVal = $.moduleEval(module.ns, newDef);
 
-      module.nsDelta[name] = newVal;
-
-      $.rel.changeFact(Rmodules, module, {
-         ...module,
-         entries: $.rel.withFactChanged(module.entries, entry, {
-            ...entry,
+      $.rel.patchFact(Rmodules, module, {
+         nsDelta: {
+            [name]: newVal
+         },
+         entries: $.rel.update(module.entries, $.rel.patchFact, entry, {
             strDef: newDef,
             def: newDef
          })
       });
+   },
+   
+   renameEntry: function (Rmodules, {module: moduleName, index, newName}) {
+      let module = $.moduleByName(Rmodules, moduleName);
+      let oldName = $.vec.at(module.members, index);
+
+      if (oldName === undefined) {
+         throw $.genericError(
+            `Internal error: module '${module.name}': index out of bounds: '${index}'`
+         );
+      }
+
+      let entry = $.entryByName(module, oldName);
+      
+      if ($.trie.find(module.entries.byName, newName) !== undefined) {
+         throw $.genericError(`Module '${module.name}': entry '${newName}' already exists`);
+      }
+      
+      let xmodule = {
+         ...module,
+         nsDelta: {
+            [entry.name]: $.delmark,
+            [newName]: module.ns[entry.name]
+         },
+         members: $.vec.update(module.members, $.vec.setAt, index, newName),
+         entries: $.rel.update(module.entries, $.rel.patchFact, entry, {name: newName}),
+      };
+      
+      $.renameRefs(xmodule, oldName, newName);
+      
+      // TODO: change references in other modules
+      // TODO: change imports
+      $.rel.changeFact(Rmodules, module, xmodule);
    },
 
    addEntry: function (Rmodules, {module: moduleName, name, def, index}) {
@@ -184,16 +223,16 @@ operationHandlers ::= ({
       def = def.trim();
       let val = $.moduleEval(module.ns, def);
 
-      module.nsDelta[name] = val;
-
-      $.rel.changeFact(Rmodules, module, {
-         ...module,
-         entries: $.rel.withFactAdded(module.entries, {
+      $.rel.patchFact(Rmodules, module, {
+         nsDelta: {
+            [name]: val
+         },
+         entries: $.rel.update(module.entries, $.addFact, {
             name: name,
             strDef: def,
-            def: def
+            def: def            
          }),
-         members: $.vec.withInsertedAt(module.members, index, name)
+         members: $.vec.update(module.memers, $.insertAt, index, name)
       });
    },
    
@@ -210,16 +249,40 @@ operationHandlers ::= ({
                (i === 0 ? $.vec.size(module.members) - 1 : i - 1) :
                (i === $.vec.size(module.members) - 1 ? 0 : i + 1);
 
-      $.rel.changeFact(Rmodules, module, {
-         ...module,
-         members: $.vec.updated(module.members, members => {
-            // TODO:
+      $.rel.patchFact(Rmodules, module, {
+         members: $.vec.update(module.members, members => {
             $.vec.deleteAt(members, i);
             $.vec.insertAt(members, j, name);
          })
       });
    }
 })
+renameRefs ::= function (module, oldName, newName) {
+   let re = new RegExp(`(?<=\\$\\.)(?:${oldName})\\b`, 'g');
+   let xentries = $.rel.copy(module.entries);
+
+   if (module.nsDelta === null) {
+      module.nsDelta = {};
+   }
+
+   for (let entry of module.entries) {
+      let newDef = entry.def.replace(re, match => newName);
+      
+      if (entry.def === newDef) {
+         continue;
+      }
+
+      let newVal = $.moduleEval(module.ns, newDef);
+
+      module.nsDelta[entry.name] = newVal;
+      $.rel.patchFact(xentries, entry, {
+         def: newDef,
+         strDef: newDef
+      });
+   }
+
+   module.entries = xentries;
+}
 serialize ::= function (obj) {
    const inds = '   ';
 

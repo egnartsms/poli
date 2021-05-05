@@ -1,17 +1,17 @@
 -----
-greeter ::= function (name) {
-   return "Hello, " + name + "!";
-}
-combo ::= function (name) {
-   return $.greeter($.greeter(name));
-}
-curser ::= function (name) {
+cursiveDidNotChange ::= function (name) {
    return "Burn in hell, " + name + "!";
 }
-andMeToo ::= function () {
+privetor ::= function (name) {
+   return "Hello, " + name + "!";
+}
+greater ::= function () {
    let x = $.callme() * 2;
    return x + 1;
 }
-callme ::= function () {
-   return 'callme' + $.curser("Joe");
+combox ::= function (name) {
+   return $.privetor($.privetor(name));
+}
+callOut ::= function () {
+   return 'callme' + $.cursiveDidNotChange("Joe");
 }

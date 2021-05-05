@@ -9,6 +9,7 @@ from poli.common.misc import method_for
 from poli.exc import CodeError
 from poli.shared.command import StopCommand
 from poli.sublime import regedit
+from poli.sublime.misc import read_only_as_transaction
 from poli.sublime.selection import set_selection
 from poli.sublime.view_dict import make_view_dict
 
@@ -60,6 +61,13 @@ def quit_edit_mode(view):
     if cxt.saved_partial:
         view.run_command('save')
     highlight_unknown_names(view)
+
+
+@contextlib.contextmanager
+def quitting_edit_mode(view):
+    with read_only_as_transaction(view, False):
+        yield
+        quit_edit_mode(view)
 
 
 def terminate_edit_mode(view):

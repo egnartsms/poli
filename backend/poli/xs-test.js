@@ -180,16 +180,12 @@ perfTrie ::= function () {
       $.trie.add(map, [$.allKeys[i], $.allValues[i]]);
    }
 
-   $.trie.freeze(map);
-   
-   const N = 1_000_000;
+   const N = 5_000_000;
    console.time();
    for (let i = 0; i < N; i += 1) {
       let ikey = Math.floor(Math.random() * M);
       let ival = Math.floor(Math.random() * M);
-      map = $.trie.newIdentity(map);
       $.trie.add(map, [$.allKeys[ikey], $.allValues[ival]]);
-      $.trie.freeze(map);
       
       let s = $.trie.find(map, $.allKeys[Math.floor(Math.random() * M)]);
       if (s[0] === 'a') {
@@ -210,7 +206,7 @@ testTrie ::= function () {
       keyof: ([k, v]) => k,
       less: $.lessThan
    });
-   
+
    $.trie.add(t, ['germany', 'allemagne']);
    $.trie.add(t, ['spain', 'espagne']);
    $.trie.add(t, ['england', 'angleterre']);
@@ -223,13 +219,21 @@ testTrie ::= function () {
       ['england', 'germany', 'italy', 'russia', 'spain']
    );
 
-   $.trie.removeByKey(t, 'england');
-   $.trie.removeByKey(t, 'germany');
-   $.trie.removeByKey(t, 'russia');
-   $.trie.removeByKey(t, 'spain');
-   $.trie.removeByKey(t, 'italy');
+   let t2 = $.trie.copy(t);
 
-   $.check($.equal, t.root, null);
+   $.trie.removeByKey(t2, 'england');
+   $.trie.removeByKey(t2, 'germany');
+   $.trie.removeByKey(t2, 'russia');
+   $.trie.removeByKey(t2, 'spain');
+   $.trie.removeByKey(t2, 'italy');
+
+   $.check($.arraysEqual, t2.root, []);
+
+   $.check(
+      $.arraysEqual,
+      Array.from($.map(([k, v]) => k, $.trie.items(t))),
+      ['england', 'germany', 'italy', 'russia', 'spain']
+   );   
 
    console.log("Trie checkup done!")
 }
@@ -241,7 +245,7 @@ testVector ::= function () {
    }
    $.vec.freeze(v);
 
-   let w = $.vec.newIdentity(v);
+   let w = $.vec.copy(v);
 
    for (let i = 0; i < $.vec.MAX_NODE_SIZE; i += 1) {
       $.vec.pushBack(w, `New Element #${i}`);

@@ -36,7 +36,7 @@ main ::= function (modules) {
          entries: entries,
          members: members,
          ns: module.ns,
-         nsDelta: Object.create(null)
+         nsDelta: null
       };
    }
 

@@ -156,6 +156,6 @@ map ::= function* (fn, itbl) {
       yield fn(x);
    }
 }
-newObj ::= function (proto, props) {
-   return Object.assign(Object.create(proto), props);
+newObj ::= function (proto, ...props) {
+   return Object.assign(Object.create(proto), ...props);
 }

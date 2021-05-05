@@ -28,11 +28,8 @@ size ::= function (vec) {
 isMutated ::= function (vec) {
    return vec.root.isFresh;
 }
-newIdentity ::= function (vec) {
-   if ($.isMutated(vec)) {
-      throw new Error(`Attempt to copy the identity of a mutated Vector`);
-   }
-
+copy ::= function (vec) {
+   $.freeze(vec);
    return $.newObj($.proto, {root: vec.root});
 }
 freeze ::= function (vec) {
@@ -69,45 +66,33 @@ genSubtree ::= function* genSubtree(node) {
       }
    }   
 }
-genSlice ::= function* (vec, n) {
-   function* gen(node, n) {
+genSlice ::= function (vec, n) {
+   return (function* gen(node, n) {
       if (node.isLeaf) {
          yield* node.slice(n);
       }
       else {
-         let i = 0;
-         while (i < node.length && node[i].size <= n) {
-            n -= node[i].size;
-            i += 1;
+         let k = 0;
+         while (k < node.length && node[k].size <= n) {
+            n -= node[k].size;
+            k += 1;
          }
 
-         if (i < node.length) {
-            yield* gen(node[i], n);
-
-            i += 1;
-            while (i < node.length) {
-               yield* $.genSubtree(node[i]);
-               i += 1;
+         if (k < node.length) {
+            yield* gen(node[k], n);
+            k += 1;
+            while (k < node.length) {
+               yield* $.genSubtree(node[k]);
+               k += 1;
             }
          }
       }
-   }
-   
-   if (vec.root !== null) {
-      yield* gen(vec.root, n);
-   }
+   })(vec.root, n);
 }
 at ::= function (vec, index) {
-   if (vec.root === null) {
-      return undefined;
-   }
-   
-   return $.nodeAt(vec.root, index);
-}
-nodeAt ::= function (node, index) {
-   while (!node.isLeaf) {
-      $.assert(node.length > 0);
+   let node = vec.root;
 
+   while (!node.isLeaf) {
       let k = 0;
 
       while (k < node.length && node[k].size <= index) {
@@ -137,9 +122,7 @@ redestributeBetween ::= function (lnode, rnode) {
    $.assert(lnode.isLeaf === rnode.isLeaf);
 
    let merged = [...lnode, ...rnode];
-
    $.makeNode(merged, lnode.isLeaf);
-
    return $.splitNode(merged);
 }
 splitNode ::= function (node) {
@@ -246,27 +229,39 @@ modifyAt ::= function (vec, index, modifier) {
 
    vec.root = xroot;
 }
+checkIndex ::= function (ok) {
+   if (!ok) {
+      throw new Error(`Vector index out of range`);
+   }
+}
 pushBack ::= function (vec, item) {
    $.modifyAt(vec, vec.size, (leaf) => {
       leaf.push(item);
    });
 }
-insertAt ::= function (vec, index, item) {
-   $.modifyAt(vec, index, (leaf, i) => {
+insertAt ::= function (vec, at, item) {
+   $.checkIndex(at >= 0 && at <= $.size(vec));
+
+   $.modifyAt(vec, at, (leaf, i) => {
       leaf.splice(i, 0, item);
    });
 }
-deleteAt ::= function (vec, index) {
-   $.modifyAt(vec, index, (leaf, i) => {
+deleteAt ::= function (vec, at) {
+   $.checkIndex(at >= 0 && at < $.size(vec));
+   
+   $.modifyAt(vec, at, (leaf, i) => {
       leaf.splice(i, 1);
    });
 }
-updated ::= function (vec, fnMutator) {
-   let xvec = $.newIdentity(vec);
-   fnMutator(xvec);
-   $.freeze(xvec);
-   return xvec;
+setAt ::= function (vec, at, item) {
+   $.checkIndex(at >= 0 && at < $.size(vec));
+
+   $.modifyAt(vec, at, (leaf, i) => {
+      leaf[i] = item;
+   });
 }
-withInsertedAt ::= function (vec, index, item) {
-   return $.updated(vec, xvec => $.insertAt(xvec, index, item));
+update ::= function (vec, fn, ...restArgs) {
+   let xvec = $.copy(vec);
+   fn(xvec, ...restArgs);
+   return xvec;
 }

@@ -5,7 +5,6 @@ from poli.shared.command import TextCommand
 from poli.shared.misc import Kind
 from poli.shared.misc import poli_info
 from poli.sublime import regedit
-from poli.sublime.misc import read_only_as_transaction
 
 
 class ModuleTextCommandMixin:
@@ -28,9 +27,7 @@ class ModuleTextCommandMixin:
         else:
             raise RuntimeError
 
-        with read_only_as_transaction(self.view, False):
-            op.ensure_trailing_nl(self.view, edit)
-            op.save_module(self.view)
+        op.ensure_trailing_nl(self.view, edit)
 
         yield
 
