@@ -11,16 +11,17 @@ proto ::= ({
       return $.facts(this);
    }
 })
-Relation ::= function ({pk, uniques, facts=null}) {
-   let rel = $.newObj($.proto, {pk, uniques});
-   
-   for (let [name, prop] of Object.entries(uniques)) {
-      $.assert(!$.hasOwnProperty(rel, name));
+Relation ::= function ({pk, groupings, facts=null}) {
+   $.assert($.hasOwnProperty(groupings, pk));
 
-      rel[name] = $.trie.Trie({
-         keyof: fact => fact[prop],
-         less: $.lessThan
-      });
+   let rel = $.newObj($.proto, {
+      pk: pk,
+      groupings: $.prepareGroupings(groupings)
+   });
+
+   for (let [name, {cons}] of rel.groupings) {
+      $.assert(!$.hasOwnProperty(rel, name));
+      rel[name] = cons();
    }
 
    if (facts !== null) {
@@ -29,25 +30,89 @@ Relation ::= function ({pk, uniques, facts=null}) {
 
    return rel;
 }
-uniques ::= function (rel) {
-   return Object.keys(rel.uniques);
+prepareGroupings ::= function (groupings) {
+   function groupFn(prop) {
+      return typeof prop === 'string' ? (x => x[prop]) : prop;
+   }
+
+   function makeChain(props) {
+      if (!(props instanceof Array)) {
+         props = [props];
+      }
+
+      let head = {};
+      let link = head;
+
+      for (let i = 0; i < props.length - 1; i += 1) {
+         let prop = props[i];
+
+         let newLink = {
+            cons: $.trie.Map,
+            groupFn: groupFn(prop),
+            next: null
+         };
+
+         link.next = newLink;
+         link = newLink;
+      }
+
+      link.next = {
+         cons: () => $.trie.KeyedSet(groupFn(props[props.length - 1])),
+         next: null
+      };
+
+      return head.next;
+   }
+
+   return Object.entries(groupings).map(([name, props]) => [name, makeChain(props)]);
 }
 copy ::= function (rel) {
+   $.freeze(rel);
+   return $.newObj($.proto, rel);
+}
+freeze ::= function (rel) {
+   function freeze(map, link) {
+      map.isFresh = false;
+
+      if (link.next !== null) {
+         for (let val of $.trie.values(map)) {
+            if (val.isFresh) {
+               freeze(val, link.next);
+            }
+         }
+      }
+   }
+
+   for (let [name, link] of rel.groupings) {
+      if (rel[name].isFresh) {
+         freeze(rel[name], link);
+      }
+   }
+}
+alike ::= function (rel, facts=null) {
    let xrel = $.newObj($.proto, {
       pk: rel.pk,
-      uniques: rel.uniques
+      groupings: rel.groupings
    });
 
-   for (let name of $.uniques(rel)) {
-      xrel[name] = $.trie.copy(rel[name]);
+   for (let [name, {cons}] of rel.groupings) {
+      xrel[name] = cons();
+   }
+
+   if (facts !== null) {
+      $.addFacts(xrel, facts);
    }
 
    return xrel;
 }
-update ::= function (rel, fn, ...restArgs) {
-   let xrel = $.copy(rel);
-   fn(xrel, ...restArgs);
-   return xrel;
+ensureFresh ::= function (map) {
+   if (map.isFresh) {
+      return map;
+   }
+
+   let xmap = $.trie.copy(map);
+   xmap.isFresh = true;
+   return xmap;
 }
 facts ::= function (rel) {
    return $.trie.items(rel[rel.pk]);
@@ -59,19 +124,57 @@ addFacts ::= function (rel, facts) {
    }
 }
 addFact ::= function (rel, fact) {
-   for (let name of $.uniques(rel)) {
-      let wasNew = $.trie.add(rel[name], fact);
-      if (!wasNew) {
-         throw new Error(`Fact conflict`);
-      }
+   for (let [name, link] of rel.groupings) {
+      rel[name] = (function addTo(map, link) {
+         let xmap = $.ensureFresh(map);
+         
+         if (link.next === null) {
+            $.trie.addNew(xmap, fact);
+            return xmap;
+         }
+
+         let key = link.groupFn(fact);
+         let nextMap = $.trie.tryAt(xmap, key);
+
+         if (nextMap === undefined) {
+            nextMap = link.next.cons();
+            nextMap.isFresh = true;
+            $.trie.setAt(xmap, key, nextMap);
+         }
+         
+         let xNextMap = addTo(nextMap, link.next);
+
+         if (xNextMap !== nextMap) {
+            $.trie.setAt(xmap, key, xNextMap);
+         }
+
+         return xmap;
+      })(rel[name], link);
    }
 }
 removeFact ::= function (rel, fact) {
-   for (let name of $.uniques(rel)) {
-      let didRemove = $.trie.remove(rel[name], fact);
-      if (!didRemove) {
-         throw new Error(`Fact missing`);
-      }
+   for (let [name, link] of rel.groupings) {
+      rel[name] = (function removeFrom(map, link) {
+         let xmap = $.ensureFresh(map);
+
+         if (link.next === null) {
+            $.trie.remove(xmap, fact);
+            return xmap;
+         }
+         
+         let key = link.groupFn(fact);
+         let nextMap = $.trie.at(xmap, key);
+         let xNextMap = removeFrom(nextMap, link.next);
+
+         if ($.trie.isEmpty(xNextMap)) {
+            $.trie.removeAt(xmap, key);
+         }
+         else if (xNextMap !== nextMap) {
+            $.trie.setAt(xmap, key, xNextMap);
+         }
+
+         return xmap;
+      })(rel[name], link)
    }
 }
 changeFact ::= function (rel, fact, newFact) {
@@ -79,6 +182,10 @@ changeFact ::= function (rel, fact, newFact) {
    $.addFact(rel, newFact);
 }
 patchFact ::= function (rel, fact, patch) {
-   $.removeFact(rel, fact);
-   $.addFact(rel, {...fact, ...patch});
+   $.changeFact(rel, fact, {...fact, ...patch});
+}
+update ::= function (rel, fn, ...restArgs) {
+   let xrel = $.copy(rel);
+   fn(xrel, ...restArgs);
+   return xrel;
 }

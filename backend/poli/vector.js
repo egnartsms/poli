@@ -18,8 +18,14 @@ Vector ::= function (items=null) {
       $.makeNode(root, false);
    }
 
-   let vec = $.newObj($.proto, {root});
-   $.freeze(vec);
+   let vec = $.newObj($.proto, {
+      root,
+      // isFresh for Vector itself is used when the vector is nested into a higher-order
+      // structure. This structure is then entirely responsible for making use of
+      // this property (which logically is the same as nodes' isFresh).  Essentially,
+      // we're assigning it here to avoid adding properties to Vector objects later.
+      isFresh: false
+   });
    return vec;
 }
 size ::= function (vec) {
@@ -30,7 +36,7 @@ isMutated ::= function (vec) {
 }
 copy ::= function (vec) {
    $.freeze(vec);
-   return $.newObj($.proto, {root: vec.root});
+   return $.newObj($.proto, vec, {isFresh: false});
 }
 freeze ::= function (vec) {
    // Mark all fresh nodes as non-fresh
@@ -50,64 +56,6 @@ freeze ::= function (vec) {
    }
 
    freeze(vec.root);
-}
-items ::= function* (vec) {
-   if (vec.root !== null) {
-      yield* $.genSubtree(vec.root);
-   }
-}
-genSubtree ::= function* genSubtree(node) {
-   if (node.isLeaf) {
-      yield* node;
-   }
-   else {
-      for (let subnode of node) {
-         yield* genSubtree(subnode);
-      }
-   }   
-}
-genSlice ::= function (vec, n) {
-   return (function* gen(node, n) {
-      if (node.isLeaf) {
-         yield* node.slice(n);
-      }
-      else {
-         let k = 0;
-         while (k < node.length && node[k].size <= n) {
-            n -= node[k].size;
-            k += 1;
-         }
-
-         if (k < node.length) {
-            yield* gen(node[k], n);
-            k += 1;
-            while (k < node.length) {
-               yield* $.genSubtree(node[k]);
-               k += 1;
-            }
-         }
-      }
-   })(vec.root, n);
-}
-at ::= function (vec, index) {
-   let node = vec.root;
-
-   while (!node.isLeaf) {
-      let k = 0;
-
-      while (k < node.length && node[k].size <= index) {
-         index -= node[k].size;
-         k += 1;
-      }
-
-      if (k === node.length) {
-         return undefined;
-      }
-
-      node = node[k];
-   }
-
-   return node[index];
 }
 indexToMerge ::= function (parent, i) {
    $.assert(parent.length >= 2);
@@ -180,6 +128,69 @@ makeNode ::= function (array, isLeaf) {
       array.size = array.reduce((sum, nd) => sum + nd.size, 0);
    }
 }
+items ::= function* (vec) {
+   yield* $.genSubtree(vec.root);
+}
+genSubtree ::= function* genSubtree(node) {
+   if (node.isLeaf) {
+      yield* node;
+   }
+   else {
+      for (let subnode of node) {
+         yield* genSubtree(subnode);
+      }
+   }   
+}
+genSlice ::= function (vec, n) {
+   return (function* gen(node, n) {
+      if (node.isLeaf) {
+         yield* node.slice(n);
+      }
+      else {
+         let k = 0;
+         while (k < node.length && node[k].size <= n) {
+            n -= node[k].size;
+            k += 1;
+         }
+
+         if (k < node.length) {
+            yield* gen(node[k], n);
+            k += 1;
+            while (k < node.length) {
+               yield* $.genSubtree(node[k]);
+               k += 1;
+            }
+         }
+      }
+   })(vec.root, n);
+}
+throwIndexError ::= function () {
+   throw new Error(`Vector index out of range`);
+}
+at ::= function (vec, index) {
+   if (!(0 <= index && index < $.size(vec))) {
+      $.throwIndexError();
+   }
+
+   let node = vec.root;
+
+   while (!node.isLeaf) {
+      let k = 0;
+
+      while (k < node.length && node[k].size <= index) {
+         index -= node[k].size;
+         k += 1;
+      }
+
+      if (k === node.length) {
+         return undefined;
+      }
+
+      node = node[k];
+   }
+
+   return node[index];
+}
 modifyAt ::= function (vec, index, modifier) {
    function modify(node, index) {
       if (node.isLeaf) {
@@ -229,32 +240,33 @@ modifyAt ::= function (vec, index, modifier) {
 
    vec.root = xroot;
 }
-checkIndex ::= function (ok) {
-   if (!ok) {
-      throw new Error(`Vector index out of range`);
-   }
-}
 pushBack ::= function (vec, item) {
    $.modifyAt(vec, vec.size, (leaf) => {
       leaf.push(item);
    });
 }
 insertAt ::= function (vec, at, item) {
-   $.checkIndex(at >= 0 && at <= $.size(vec));
+   if (!(at >= 0 && at <= $.size(vec))) {
+      $.throwIndexError();
+   }
 
    $.modifyAt(vec, at, (leaf, i) => {
       leaf.splice(i, 0, item);
    });
 }
 deleteAt ::= function (vec, at) {
-   $.checkIndex(at >= 0 && at < $.size(vec));
+   if (!(at >= 0 && at < $.size(vec))) {
+      $.throwIndexError();
+   }
    
    $.modifyAt(vec, at, (leaf, i) => {
       leaf.splice(i, 1);
    });
 }
 setAt ::= function (vec, at, item) {
-   $.checkIndex(at >= 0 && at < $.size(vec));
+   if (!(at >= 0 && at < $.size(vec))) {
+      $.throwIndexError();
+   }
 
    $.modifyAt(vec, at, (leaf, i) => {
       leaf[i] = item;

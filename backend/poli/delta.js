@@ -21,7 +21,7 @@ moduleDelta ::= function (module, xmodule) {
    let names = Array.from(module.members);
    let defs = Array.from(
       module.members,
-      ename => $.trie.find(module.entries.byName, ename).strDef
+      ename => $.trie.at(module.entries.byName, ename).strDef
    );
    
    function rotateRight(i, j) {
@@ -80,7 +80,7 @@ moduleDelta ::= function (module, xmodule) {
       let i = 0;
 
       for (let name of xmodule.members) {
-         map.set($.trie.find(xmodule.entries.byName, name).strDef, i);
+         map.set($.trie.at(xmodule.entries.byName, name).strDef, i);
          i += 1;
       }
 
@@ -91,7 +91,7 @@ moduleDelta ::= function (module, xmodule) {
 
    while (i < $.vec.size(xmodule.members) && i < names.length) {
       let mustBeName = $.vec.at(xmodule.members, i);
-      let mustBeDef = $.trie.find(xmodule.entries.byName, mustBeName).strDef;
+      let mustBeDef = $.trie.at(xmodule.entries.byName, mustBeName).strDef;
       
       // 'j' is the index where we have what must be at the index 'i'
       let j = defs.indexOf(mustBeDef, i);
@@ -166,7 +166,7 @@ moduleDelta ::= function (module, xmodule) {
 
    while (i < $.vec.size(xmodule.members)) {
       let mustBeName = $.vec.at(xmodule.members, i);
-      let mustBeDef = $.trie.find(xmodule.entries.byName, mustBeName).strDef;
+      let mustBeDef = $.trie.at(xmodule.entries.byName, mustBeName).strDef;
 
       actions.push({
          type: 'insert',
@@ -187,7 +187,7 @@ modulesDelta ::= function (modules, xmodules) {
    let delta = [];
 
    for (let module of $.rel.facts(modules)) {
-      let xmodule = $.trie.find(xmodules.byName, module.name);
+      let xmodule = $.trie.at(xmodules.byName, module.name);
       let mdelta = $.moduleDelta(module, xmodule);
       if (mdelta.length > 0) {
          delta.push([module.name, mdelta]);

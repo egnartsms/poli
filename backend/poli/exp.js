@@ -2,7 +2,7 @@
 cursiveDidNotChange ::= function (name) {
    return "Burn in hell, " + name + "!";
 }
-privetor ::= function (name) {
+salutor ::= function (name) {
    return "Hello, " + name + "!";
 }
 greater ::= function () {
@@ -10,7 +10,7 @@ greater ::= function () {
    return x + 1;
 }
 combox ::= function (name) {
-   return $.privetor($.privetor(name));
+   return $.salutor($.salutor(name));
 }
 callOut ::= function () {
    return 'callme' + $.cursiveDidNotChange("Joe");

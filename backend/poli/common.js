@@ -8,6 +8,16 @@ assert ::= function (cond) {
       throw new Error(`Assert failed`);
    }
 }
+obj2id ::= new WeakMap()
+nextObjId ::= 1
+objId ::= function (obj) {
+   let id = $.obj2id.get(obj);
+   if (id === undefined) {
+      id = $.nextObjId++;
+      $.obj2id.set(obj, id);
+   }
+   return id;
+}
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }

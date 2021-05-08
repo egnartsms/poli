@@ -1,18 +1,21 @@
 common
    map
+   objId
 relation
    * as: rel
+trie
+   * as: trie
 vector
    * as: vec
 -----
 nextModuleId ::= 1
-Rmodules ::= null
+Gstate ::= null
 main ::= function (modules) {
    function makeModule(module) {
-      // module :: [{name, lang, imports, body, $}]
+      // module :: [{name, lang, imports, body, ns}]
       let entries = $.rel.Relation({
          pk: 'byName',
-         uniques: {byName: 'name'},
+         groupings: {byName: 'name'},
          facts: module.lang !== 'js' ? null :
             (function* () {
                for (let [name, code] of module.body) {
@@ -35,6 +38,8 @@ main ::= function (modules) {
          lang: module.lang,
          entries: entries,
          members: members,
+         imported: null, // KeyedSet: <import> [importedAs]
+         exported: null, // Map: entry => [<import>, ...]
          ns: module.ns,
          nsDelta: null
       };
@@ -42,14 +47,67 @@ main ::= function (modules) {
 
    let Rmodules = $.rel.Relation({
       pk: 'byId',
-      uniques: {
+      groupings: {
          byId: 'id',
-         byName: 'name'
+         byName: 'name',
       },
       facts: $.map(makeModule, modules)
    });
 
-   $.Rmodules = Rmodules;
+   let Rimports = $.rel.Relation({
+      pk: 'all',
+      groupings: {
+         all: $.objId,
+         into: ['recpid', 'importedAs'],
+         from: ['donorid', 'entry', $.objId]
+      },
+      facts: (function* () {
+         for (let {name: donorName, imports} of modules) {
+            let {id: recpid} = $.trie.at(Rmodules.byName, donorName);
+
+            for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
+               let {id: donorid} = $.trie.at(Rmodules.byName, donorName);
+
+               if (asterisk !== null) {
+                  yield {
+                     recpid,
+                     donorid,
+                     entry: null,
+                     alias: asterisk,
+                     importedAs: asterisk
+                  }
+               }
+
+               for (let {entry, alias} of entryImports) {
+                  yield {
+                     recpid,
+                     donorid,
+                     entry,
+                     alias,
+                     importedAs: alias || entry
+                  }
+               }
+            }
+         }
+      })()
+   });
+
+   Rmodules = $.rel.alike(
+      Rmodules,
+      $.map(
+         module => ({
+            ...module,
+            imported: $.trie.at(Rimports.into, module.id, () => $.trie.Map()),
+            exported: $.trie.at(Rimports.from, module.id, () => $.trie.Map())
+         }),
+         Rmodules
+      )
+   );
+   
+   $.Gstate = {
+      imports: Rimports,
+      modules: Rmodules
+   };
 }
 makeJsModule ::= function ({name, lang, imports, body, $}) {
    // Make JS module, evaluate its entries but don't do any imports yet

@@ -126,22 +126,14 @@ main ::= function (sendMessage) {
    return handleMessage;
 }
 moduleByName ::= function (Rmodules, name) {
-   let module = $.trie.find(Rmodules.byName, name);
-
-   if (module === undefined) {
+   return $.trie.at(Rmodules.byName, name, () => {
       throw $.genericError(`Unknown module name: '${name}'`);
-   }
-
-   return module;
+   });
 }
 entryByName ::= function (module, name) {
-   let entry = $.trie.find(module.entries.byName, name);
-
-   if (entry === undefined) {
+   return $.trie.at(module.entries.byName, name, () => {
       throw $.genericError(`Module '${module.name}': not found entry '${name}'`);
-   }
-
-   return entry;
+   });
 }
 moduleEval ::= function moduleEval(ns, code) {
    let fun = Function('$', `"use strict";\n   return (${code})`);
@@ -181,17 +173,12 @@ operationHandlers ::= ({
    renameEntry: function (Rmodules, {module: moduleName, index, newName}) {
       let module = $.moduleByName(Rmodules, moduleName);
       let oldName = $.vec.at(module.members, index);
-
-      if (oldName === undefined) {
-         throw $.genericError(
-            `Internal error: module '${module.name}': index out of bounds: '${index}'`
-         );
-      }
-
       let entry = $.entryByName(module, oldName);
       
-      if ($.trie.find(module.entries.byName, newName) !== undefined) {
-         throw $.genericError(`Module '${module.name}': entry '${newName}' already exists`);
+      if ($.trie.hasAt(module.entries.byName, newName)) {
+         throw $.genericError(
+            `Module '${module.name}': entry '${newName}' already exists`
+         );
       }
       
       let xmodule = {
