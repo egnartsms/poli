@@ -161,7 +161,7 @@ arraysEqual ::= function arraysEqual (A, B) {
    }
    return true;
 }
-map ::= function* (fn, itbl) {
+map ::= function* (itbl, fn) {
    for (let x of itbl) {
       yield fn(x);
    }

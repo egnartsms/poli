@@ -1,8 +1,8 @@
 -----
 cursiveDidNotChange ::= function (name) {
-   return "Burn in hell, " + name + "!";
+   return "Thrive in paradise, " + name + "!";
 }
-salutor ::= function (name) {
+saluter ::= function (name) {
    return "Hello, " + name + "!";
 }
 greater ::= function () {
@@ -10,7 +10,7 @@ greater ::= function () {
    return x + 1;
 }
 combox ::= function (name) {
-   return $.salutor($.salutor(name));
+   return $.saluter($.saluter(name));
 }
 callOut ::= function () {
    return 'callme' + $.cursiveDidNotChange("Joe");

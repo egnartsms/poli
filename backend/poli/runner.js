@@ -1,4 +1,5 @@
 common
+   assert
    hasOwnProperty
    dumpImportSection
    moduleNames
@@ -38,34 +39,40 @@ vector
 -----
 delmark ::= Object.create(null)
 main ::= function (sendMessage) {
-   let pendingRmodules = null;
+   let pendingState = null;
 
-   function handleMessage(msg) {
-      if (pendingRmodules !== null) {
-         if (msg['type'] !== 'modify-code-result') {
-            throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
-         }
-         if (msg['success']) {
-            $.loader.Rmodules = pendingRmodules;
-            
-            for (let module of $.loader.Rmodules) {
-               if (module.nsDelta !== null) {
-                  for (let [key, val] of Object.entries(module.nsDelta)) {
-                     if (val === $.delmark) {
-                        delete module.ns[key];
-                     }
-                     else {
-                        module.ns[key] = val;
-                     }
+   function commitPendingState(msg) {
+      $.assert(pendingState !== null);
+
+      if (msg['type'] !== 'modify-code-result') {
+         throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
+      }
+
+      if (msg['success']) {
+         $.loader.Gstate = pendingState;
+         
+         for (let module of $.loader.Gstate.modules) {
+            if (module.nsDelta !== null) {
+               for (let [key, val] of Object.entries(module.nsDelta)) {
+                  if (val === $.delmark) {
+                     delete module.ns[key];
                   }
-                  
-                  module.nsDelta = null;
+                  else {
+                     module.ns[key] = val;
+                  }
                }
+               
+               module.nsDelta = null;
             }
          }
+      }
 
-         pendingRmodules = null;
+      pendingState = null;
+   }
 
+   function handleMessage(msg) {
+      if (pendingState !== null) {
+         commitPendingState(msg);
          return;
       }
 
@@ -78,13 +85,13 @@ main ::= function (sendMessage) {
       })();
 
       try {      
-         let Rmodules = $.rel.copy($.loader.Rmodules);
-         let result = $.operationHandlers[msg['op']](Rmodules, msg['args']);
-         let actions = $.modulesDelta($.loader.Rmodules, Rmodules);
+         let newGstate = {...$.loader.Gstate};
+         let result = $.operationHandlers[msg['op']](newGstate, msg['args']);
+         let actions = $.modulesDelta($.loader.Gstate.modules, newGstate.modules);
 
          if (actions.length > 0) {
             console.log("Code modifications:", actions);
-            pendingRmodules = Rmodules;
+            pendingState = newGstate;
          }
 
          sendMessage({
@@ -140,26 +147,26 @@ moduleEval ::= function moduleEval(ns, code) {
    return fun.call(null, ns);
 }
 operationHandlers ::= ({
-   getNameAt: function (Rmodules, {module: moduleName, at}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   getNameAt: function (G, {module: moduleName, at}) {
+      let module = $.moduleByName(G.modules, moduleName);
       return $.vec.at(module.members, at);
    },
    
-   getDefinition: function (Rmodules, {module: moduleName, name}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   getDefinition: function (G, {module: moduleName, name}) {
+      let module = $.moduleByName(G.modules, moduleName);
       let entry = $.entryByName(module, name);
 
       return entry.strDef;
    },
 
-   editEntry: function (Rmodules, {module: moduleName, name, newDef}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   editEntry: function (G, {module: moduleName, name, newDef}) {
+      let module = $.moduleByName(G.modules, moduleName);
       let entry = $.entryByName(module, name);
       
       newDef = newDef.trim();
       let newVal = $.moduleEval(module.ns, newDef);
 
-      $.rel.patchFact(Rmodules, module, {
+      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
          nsDelta: {
             [name]: newVal
          },
@@ -170,8 +177,8 @@ operationHandlers ::= ({
       });
    },
    
-   renameEntry: function (Rmodules, {module: moduleName, index, newName}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   renameEntry: function (G, {module: moduleName, index, newName}) {
+      let module = $.moduleByName(G.modules, moduleName);
       let oldName = $.vec.at(module.members, index);
       let entry = $.entryByName(module, oldName);
       
@@ -195,13 +202,13 @@ operationHandlers ::= ({
       
       // TODO: change references in other modules
       // TODO: change imports
-      $.rel.changeFact(Rmodules, module, xmodule);
+      G.modules = $.rel.update(G.modules, $.rel.changeFact, module, xmodule);
    },
 
-   addEntry: function (Rmodules, {module: moduleName, name, def, index}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   addEntry: function (G, {module: moduleName, name, def, index}) {
+      let module = $.moduleByName(G.modules, moduleName);
 
-      if ($.trie.has(module.entries.byName, name)) {
+      if ($.trie.hasAt(module.entries.byName, name)) {
          throw $.genericError(
             `'${name}' already defined or imported in the module '${module.name}'`
          );
@@ -210,21 +217,21 @@ operationHandlers ::= ({
       def = def.trim();
       let val = $.moduleEval(module.ns, def);
 
-      $.rel.patchFact(Rmodules, module, {
+      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
          nsDelta: {
             [name]: val
          },
          entries: $.rel.update(module.entries, $.rel.addFact, {
             name: name,
             strDef: def,
-            def: def            
+            def: def
          }),
          members: $.vec.update(module.memers, $.vec.insertAt, index, name)
       });
    },
    
-   moveBy1: function (Rmodules, {module: moduleName, name, direction}) {
-      let module = $.moduleByName(Rmodules, moduleName);
+   moveBy1: function (G, {module: moduleName, name, direction}) {
+      let module = $.moduleByName(G.modules, moduleName);
       let entry = $.entryByName(module, name);
       
       if (direction !== 'up' && direction !== 'down') {
@@ -236,7 +243,7 @@ operationHandlers ::= ({
                (i === 0 ? $.vec.size(module.members) - 1 : i - 1) :
                (i === $.vec.size(module.members) - 1 ? 0 : i + 1);
 
-      $.rel.patchFact(Rmodules, module, {
+      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
          members: $.vec.update(module.members, members => {
             $.vec.deleteAt(members, i);
             $.vec.insertAt(members, j, name);

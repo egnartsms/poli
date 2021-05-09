@@ -215,7 +215,7 @@ testTrie ::= function () {
 
    $.check(
       $.arraysEqual,
-      Array.from($.map(([k, v]) => k, $.trie.items(t))),
+      Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']
    );
 
@@ -231,7 +231,7 @@ testTrie ::= function () {
 
    $.check(
       $.arraysEqual,
-      Array.from($.map(([k, v]) => k, $.trie.items(t))),
+      Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']
    );   
 

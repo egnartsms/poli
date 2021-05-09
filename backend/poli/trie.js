@@ -213,7 +213,14 @@ tryAt ::= function (trie, key) {
 }
 at ::= function (trie, key, ifmissing=null) {
    let item = $.itemAt(trie, key);
-   return item === undefined ? (ifmissing || $.throwKeyError)(key) : trie.valof(item);
+   if (item === undefined) {
+      if (ifmissing !== null) {
+         return ifmissing();
+      }
+      $.throwKeyError(key);
+   }
+   else
+      return trie.valof(item);
 }
 hasAt ::= function (trie, key) {
    return $.itemAt(trie, key) !== undefined;

@@ -29,7 +29,7 @@ main ::= function (modules) {
             }())
       });
       let members = $.vec.Vector(
-         module.lang !== 'js' ? null : $.map(([name, code]) => name, module.body)
+         module.lang !== 'js' ? null : $.map(module.body, ([name, code]) => name)
       );
 
       return {
@@ -51,7 +51,7 @@ main ::= function (modules) {
          byId: 'id',
          byName: 'name',
       },
-      facts: $.map(makeModule, modules)
+      facts: $.map(modules, makeModule)
    });
 
    let Rimports = $.rel.Relation({
@@ -94,14 +94,11 @@ main ::= function (modules) {
 
    Rmodules = $.rel.alike(
       Rmodules,
-      $.map(
-         module => ({
-            ...module,
-            imported: $.trie.at(Rimports.into, module.id, () => $.trie.Map()),
-            exported: $.trie.at(Rimports.from, module.id, () => $.trie.Map())
-         }),
-         Rmodules
-      )
+      $.map(Rmodules, module => ({
+         ...module,
+         imported: $.trie.at(Rimports.into, module.id, $.trie.Map),
+         exported: $.trie.at(Rimports.from, module.id, $.trie.Map)
+      }))
    );
    
    $.Gstate = {
