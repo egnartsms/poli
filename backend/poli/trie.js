@@ -2,6 +2,7 @@ common
    assert
    newObj
    lessThan
+   map
 -----
 MAX_NODE_LEN ::= 16
 MIN_NODE_LEN ::= 8
@@ -72,10 +73,8 @@ items ::= function* (trie) {
    
    yield* subtree(trie.root);
 }
-values ::= function* (trie) {
-   for (let [, val] of $.items(trie)) {
-      yield val;
-   }
+values ::= function (trie) {
+   return $.map($.items(trie), trie.valof);
 }
 nodeKeyPlace ::= function (trie, node, key) {
    let i = 0;

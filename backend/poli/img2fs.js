@@ -1,3 +1,5 @@
+trie
+   * as: trie
 xs-printer
    dumpsNext
 -----
@@ -46,42 +48,4 @@ dumpDef ::= function* (lang, def) {
    else {
       throw new Error;
    }
-}
-dumpModuleImportSection ::= function* (module) {
-   let imports = $.sortedImportsInto(module);
-   let curDonorName = null;
-
-   for (let {recp, donor, name, alias} of imports) {
-      if (donor.name !== curDonorName) {
-         curDonorName = donor.name;
-         yield curDonorName;
-         yield '\n';
-      }
-
-      yield $.ind;
-      yield name === null ? '*' : name;
-      if (alias) {
-         yield ` as: ${alias}`;
-      }
-      yield '\n';
-   }
-}
-sortedImportsInto ::= function (recp) {
-   let imports = Array.from(recp.imports);
-   imports.sort($.compareImports);
-   return imports;
-}
-compareImports ::= function (i1, i2) {
-   if (i1.donor.name !== i2.donor.name) {
-      return (i1.donor.name < i2.donor.name) ? -1 : 1;
-   }
-
-   if (i1.name === null) {
-      return -1;
-   }
-   if (i2.name === null) {
-      return 1;
-   }
-
-   return (i1.name < i2.name) ? -1 : i1.name > i2.name ? 1 : 0;
 }

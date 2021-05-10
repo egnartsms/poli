@@ -14,7 +14,7 @@ function run(rawModules) {
 
    console.log(Mloader.ns['Gstate']);
 
-   window.exp = modules.find(m => m.name === 'exp').ns;
+   window.exp = modules.find(m => m.name === 'common').ns;
 
    let Mrun = modules.find(m => m.name === RUN_MODULE);
 

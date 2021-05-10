@@ -2,6 +2,10 @@ img2fs
    dumpModuleImportSection
 import
    importsOf
+loader
+   G
+trie
+   * as: trie
 -----
 assert ::= function (cond) {
    if (!cond) {
@@ -31,20 +35,60 @@ moduleByName ::= function (name) {
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
 }
-dumpImportSection ::= function (module) {
-   let pieces = [];
-   for (let piece of $.dumpModuleImportSection(module)) {
-      pieces.push(piece);
-   }
-
-   return pieces.join('');
-}
 dumpImportSections ::= function (modules) {
    let result = {};
    for (let module of modules) {
       result[module.name] = $.dumpImportSection(module);
    }
    return result;
+}
+dumpImportSection ::= function (mid, G) {
+   let pieces = [];
+   for (let piece of $.dumpModuleImportSection(mid, G)) {
+      pieces.push(piece);
+   }
+
+   return pieces.join('');
+}
+dumpModuleImportSection ::= function* (mid, G) {
+   let imports = $.sortedImportsInto(mid, G);
+   let curDonorId = null;
+
+   for (let {recpid, donorid, entry, alias} of imports) {
+      if (donorid !== curDonorId) {
+         curDonorId = donorid;
+         yield $.trie.at(G.modules.byId, curDonorId).name;
+         yield '\n';
+      }
+
+      yield $.ind;
+      yield entry === null ? '*' : entry;
+      if (alias) {
+         yield ` as: ${alias}`;
+      }
+      yield '\n';
+   }
+}
+sortedImportsInto ::= function (mid, G) {
+   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid)));
+   imports.sort((i1, i2) => $.compareImports(i1, i2, G));
+   return imports;
+}
+compareImports ::= function (i1, i2, G) {
+   if (i1.donorid !== i2.donorid) {
+      let name1 = $.trie.at(G.modules.byId, i1.donorid);
+      let name2 = $.trie.at(G.modules.byId, i2.donorid);
+      return (name1 < name2) ? -1 : 1;
+   }
+
+   if (i1.entry === null) {
+      return -1;
+   }
+   if (i2.entry === null) {
+      return 1;
+   }
+
+   return (i1.entry < i2.entry) ? -1 : i1.entry > i2.entry ? 1 : 0;
 }
 propagateValueToRecipients ::= function (module, name) {
    let val = $.rtget(module, name);

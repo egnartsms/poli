@@ -1,5 +1,6 @@
 common
    map
+   newObj
    objId
 relation
    * as: rel
@@ -10,6 +11,22 @@ vector
 -----
 nextModuleId ::= 1
 Gstate ::= null
+G ::= ({
+   get modules() {
+      return $.Gstate.modules;
+   },
+   get imports() {
+      return $.Gstate.imports;
+   }
+})
+importProto ::= ({
+   get importedAs() {
+      return this.alias || this.name;
+   }
+})
+import ::= function (obj) {
+   return $.newObj($.importProto, obj);
+}
 main ::= function (modules) {
    function makeModule(module) {
       // module :: [{name, lang, imports, body, ns}]
@@ -38,8 +55,6 @@ main ::= function (modules) {
          lang: module.lang,
          entries: entries,
          members: members,
-         imported: null, // KeyedSet: <import> [importedAs]
-         exported: null, // Map: entry => [<import>, ...]
          ns: module.ns,
          nsDelta: null
       };
@@ -62,44 +77,33 @@ main ::= function (modules) {
          from: ['donorid', 'entry', $.objId]
       },
       facts: (function* () {
-         for (let {name: donorName, imports} of modules) {
-            let {id: recpid} = $.trie.at(Rmodules.byName, donorName);
+         for (let {name: recpName, imports} of modules) {
+            let {id: recpid} = $.trie.at(Rmodules.byName, recpName);
 
             for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
                let {id: donorid} = $.trie.at(Rmodules.byName, donorName);
 
                if (asterisk !== null) {
-                  yield {
+                  yield $.import({
                      recpid,
                      donorid,
                      entry: null,
                      alias: asterisk,
-                     importedAs: asterisk
-                  }
+                  });
                }
 
                for (let {entry, alias} of entryImports) {
-                  yield {
+                  yield $.import({
                      recpid,
                      donorid,
                      entry,
                      alias,
-                     importedAs: alias || entry
-                  }
+                  });
                }
             }
          }
       })()
    });
-
-   Rmodules = $.rel.alike(
-      Rmodules,
-      $.map(Rmodules, module => ({
-         ...module,
-         imported: $.trie.at(Rimports.into, module.id, $.trie.Map),
-         exported: $.trie.at(Rimports.from, module.id, $.trie.Map)
-      }))
-   );
    
    $.Gstate = {
       imports: Rimports,
