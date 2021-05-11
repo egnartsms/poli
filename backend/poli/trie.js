@@ -209,10 +209,6 @@ itemAt ::= function (trie, key) {
 throwKeyError ::= function (key) {
    throw new Error(`Trie key missing: '${key}'`);
 }
-tryAt ::= function (trie, key) {
-   let item = $.itemAt(trie, key);
-   return item === undefined ? undefined : trie.valof(item);
-}
 at ::= function (trie, key, ifmissing=null) {
    let item = $.itemAt(trie, key);
    if (item === undefined) {
@@ -224,12 +220,13 @@ at ::= function (trie, key, ifmissing=null) {
    else
       return trie.valof(item);
 }
-tryChain ::= function (trie, ...keys) {
+tryAt ::= function (trie, ...keys) {
    for (let key of keys) {
-      if (trie === undefined) {
-         break;
+      let item = $.itemAt(trie, key);
+      if (item === undefined) {
+         return undefined;
       }
-      trie = $.tryAt(trie, key);
+      trie = trie.valof(item);
    }
    
    return trie;
@@ -237,17 +234,15 @@ tryChain ::= function (trie, ...keys) {
 has ::= function (trie, item) {
    return $.hasAt(trie, trie.keyof(item));
 }
-hasAt ::= function (trie, key) {
-   return $.itemAt(trie, key) !== undefined;
-}
-hasChain ::= function (trie, ...keys) {
-   let last = keys.length - 1;
-   
-   for (let i = 0; trie !== undefined && i < last; i += 1) {
-      trie = $.tryAt(trie, keys[i]);
+hasAt ::= function (trie, ...keys) {
+   let butlast = keys.slice(0, -1);
+   let final = $.tryAt(trie, ...butlast);
+
+   if (final === undefined) {
+      return false;
    }
-   
-   return trie !== undefined && $.hasAt(trie, keys[last]);
+
+   return $.itemAt(final, keys[keys.length - 1]) !== undefined;
 }
 add ::= function (trie, item) {
    let wasNew;

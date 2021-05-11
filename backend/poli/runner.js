@@ -127,6 +127,12 @@ moduleEval ::= function (ns, code) {
    return fun.call(null, ns);
 }
 operationHandlers ::= ({
+   getModuleNames: function (G, {module: moduleName}) {
+      let module = $.moduleByName(G.modules, moduleName);
+      
+      return Array.from($.moduleNames(module, G.imports));
+   },
+
    getNameAt: function (G, {module: moduleName, at}) {
       let module = $.moduleByName(G.modules, moduleName);
       return $.vec.at(module.members, at);
@@ -148,7 +154,7 @@ operationHandlers ::= ({
          targetModule = module;
       }
       else {
-         let simp = $.trie.tryChain(G.imports.into, module.id, star);
+         let simp = $.trie.tryAt(G.imports.into, module.id, star);
          if (simp === undefined || simp.name !== null) {
             return [];
          }
@@ -165,6 +171,12 @@ operationHandlers ::= ({
       }
 
       return res;
+   },
+   
+   getImportables: function (G, {recp: recpName}) {
+      let recp = $.moduleByName(G.modules, recpName);
+
+      return $.importablesInto(recp, G.modules, G.imports);
    },
 
    editEntry: function (G, {module: moduleName, name, newDef}) {
@@ -257,8 +269,90 @@ operationHandlers ::= ({
             $.vec.insertAt(members, j, name);
          })
       });
-   }
+   },
+      
+   import: function (G, {recp: recpName, donor: donorName, name, alias}) {
+      let recp = $.moduleByName(G.modules, recpName);
+      let donor = $.moduleByName(G.modules, donorName);
+
+      if (name !== null) {
+         if (!$.trie.hasAt(donor.entries.byName, name)) {
+            throw $.genericError(
+               `Module '${recp.name}': cannot import '${entry}' from ` +
+               `'${donor.name}': no such definition`
+            );
+         }
+      }
+      else if (alias === null) {
+         throw $.genericError(
+            `Cannot star import '${donor.name}' into '${recp.name}' without alias`
+         );
+      }
+      
+      let imp = $.loader.import({
+         recpid: recp.id,
+         donorid: donor.id,
+         entry: name,
+         alias: alias
+      });
+      
+      if ($.isNameBound(recp, imp.importedAs, G.imports)) {
+         throw $.genericError(
+            `Module '${recp.name}': cannot import '${$.importSpec(imp)}' from ` +
+            `'${donor.name}': collides with another name`
+         );
+      }
+      
+      G.imports = $.rel.update(G.imports, $.rel.addFact, imp);
+      G.modules = $.rel.update(G.modules, $.rel.patchFact, recp, {
+         nsDelta: {
+            [imp.importedAs]: name === null ? donor.ns : donor.ns[name]
+         }
+      });
+   },
 })
+importSpec ::= function ({entry, alias}) {
+   if (entry === null) {
+      return `* as: ${alias}`;
+   }
+   else if (alias === null) {
+      return entry;
+   }
+   else {
+      return `${entry} as: ${alias}`
+   }
+}
+importablesInto ::= function (recp, modules, imports) {
+   function encodeEntry(moduleName, entryName) {
+      return JSON.stringify([moduleName, entryName]);
+   }
+
+   function decodeEntry(encoded) {
+      return JSON.parse(encoded);
+   }
+
+   let importables = new Set;
+
+   for (let module of modules) {
+      if (module.id === recp.id) {
+         continue;
+      }
+
+      for (let e of module.members) {
+         importables.add(encodeEntry(module.name, e));
+      }
+      importables.add(encodeEntry(module.name, null));
+   }
+
+   // Exclude those already imported
+   for (let imp of $.trie.values($.trie.at(imports.into, recp.id, $.trie.makeEmpty))) {
+      importables.delete(
+         encodeEntry($.trie.at(modules.byId, imp.donorid).name, imp.entry)
+      );
+   }
+
+   return Array.from(importables, decodeEntry);
+}
 renameRefs ::= function (module, oldName, newName) {
    let re = new RegExp(`(?<=\\$\\.)(?:${oldName})\\b`, 'g');
    let xentries = $.rel.copy(module.entries);
@@ -292,7 +386,7 @@ moduleNames ::= function* (module, imports) {
 isNameBound ::= function (module, name, imports) {
    return (
       $.trie.hasAt(module.entries.byName, name) ||
-      $.trie.hasChain(imports.into, module.id, name)
+      $.trie.hasAt(imports.into, module.id, name)
    );
 }
 isNameFree ::= function (module, name, imports) {

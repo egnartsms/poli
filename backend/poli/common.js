@@ -56,14 +56,14 @@ dumpModuleImportSection ::= function* (mid, G) {
    }
 }
 sortedImportsInto ::= function (mid, G) {
-   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid, $.trie.Map)));
+   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid, $.trie.makeEmpty)));
    imports.sort((i1, i2) => $.compareImports(i1, i2, G));
    return imports;
 }
 compareImports ::= function (i1, i2, G) {
    if (i1.donorid !== i2.donorid) {
-      let name1 = $.trie.at(G.modules.byId, i1.donorid);
-      let name2 = $.trie.at(G.modules.byId, i2.donorid);
+      let name1 = $.trie.at(G.modules.byId, i1.donorid).name;
+      let name2 = $.trie.at(G.modules.byId, i2.donorid).name;
       return (name1 < name2) ? -1 : 1;
    }
 

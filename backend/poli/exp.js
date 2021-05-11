@@ -1,3 +1,8 @@
+common
+   hasOwnProperty
+vector
+   * as: vec
+   at
 -----
 cursiveDidNotChange ::= function (name) {
    return "Thrive in paradise, " + name + "!";
@@ -13,5 +18,10 @@ combox ::= function (name) {
    return $.greeter($.greeter(name));
 }
 callHer ::= function () {
-   return 'callme' + $.cursiveDidNotChange("Joe");
+   let v = $.vec.Vector(['a', 'b', 'c']);
+   return $.vec.at(v, 2);
+}
+callHim ::= function () {
+   let v = ['a', 'b', 'c'];
+   return v[2];
 }
