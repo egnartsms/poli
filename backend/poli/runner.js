@@ -2,7 +2,6 @@ common
    assert
    hasOwnProperty
    dumpImportSection
-   moduleNames
    indexOf
 delta
    statesDelta
@@ -139,6 +138,34 @@ operationHandlers ::= ({
 
       return entry.strDef;
    },
+   
+   getCompletions: function (G, {module: moduleName, star, prefix}) {
+      let module = $.moduleByName(G.modules, moduleName);
+      
+      let targetModule;
+
+      if (star === null) {
+         targetModule = module;
+      }
+      else {
+         let simp = $.trie.tryChain(G.imports.into, module.id, star);
+         if (simp === undefined || simp.name !== null) {
+            return [];
+         }
+
+         targetModule = $.trie.at(G.modules.byId, simp.donorid);
+      }
+
+      let res = [];
+
+      for (let name of $.moduleNames(targetModule, G.imports)) {
+         if (name.startsWith(prefix)) {
+            res.push(name);
+         }
+      }
+
+      return res;
+   },
 
    editEntry: function (G, {module: moduleName, name, newDef}) {
       let module = $.moduleByName(G.modules, moduleName);
@@ -156,15 +183,6 @@ operationHandlers ::= ({
             def: newDef
          })
       });
-
-      if (module.name === 'exp') {
-         G.imports = $.rel.update(G.imports, $.rel.addFact, $.loader.import({
-            recpid: module.id,
-            donorid: $.trie.at(G.modules.byName, 'loader').id,
-            entry: 'importProto',
-            alias: null
-         }));
-      }
    },
    
    renameEntry: function (G, {module: moduleName, index, newName}) {
@@ -172,9 +190,9 @@ operationHandlers ::= ({
       let oldName = $.vec.at(module.members, index);
       let entry = $.entryByName(module, oldName);
       
-      if ($.trie.hasAt(module.entries.byName, newName)) {
+      if ($.isNameBound(module, newName, G.imports)) {
          throw $.genericError(
-            `Module '${module.name}': entry '${newName}' already exists`
+            `Module '${module.name}': name '${newName}' already defined or imported`
          );
       }
       
@@ -198,9 +216,9 @@ operationHandlers ::= ({
    addEntry: function (G, {module: moduleName, name, def, index}) {
       let module = $.moduleByName(G.modules, moduleName);
 
-      if ($.trie.hasAt(module.entries.byName, name)) {
+      if ($.isNameBound(module, name, G.imports)) {
          throw $.genericError(
-            `'${name}' already defined or imported in the module '${module.name}'`
+            `Module '${module.name}': name '${name}' already defined or imported`
          );
       }
 
@@ -216,7 +234,7 @@ operationHandlers ::= ({
             strDef: def,
             def: def
          }),
-         members: $.vec.update(module.memers, $.vec.insertAt, index, name)
+         members: $.vec.update(module.members, $.vec.insertAt, index, name)
       });
    },
    
@@ -266,6 +284,19 @@ renameRefs ::= function (module, oldName, newName) {
    }
 
    module.entries = xentries;
+}
+moduleNames ::= function* (module, imports) {
+   yield* module.members;
+   yield* $.trie.keys($.trie.at(imports.into, module.id, $.trie.makeEmpty));
+}
+isNameBound ::= function (module, name, imports) {
+   return (
+      $.trie.hasAt(module.entries.byName, name) ||
+      $.trie.hasChain(imports.into, module.id, name)
+   );
+}
+isNameFree ::= function (module, name, imports) {
+   return !$.isNameBound(module, name, imports);
 }
 serialize ::= function (obj) {
    const inds = '   ';

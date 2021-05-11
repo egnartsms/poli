@@ -73,6 +73,9 @@ items ::= function* (trie) {
    
    yield* subtree(trie.root);
 }
+keys ::= function (trie) {
+   return $.map($.items(trie), trie.keyof);
+}
 values ::= function (trie) {
    return $.map($.items(trie), trie.valof);
 }
@@ -221,11 +224,30 @@ at ::= function (trie, key, ifmissing=null) {
    else
       return trie.valof(item);
 }
-hasAt ::= function (trie, key) {
-   return $.itemAt(trie, key) !== undefined;
+tryChain ::= function (trie, ...keys) {
+   for (let key of keys) {
+      if (trie === undefined) {
+         break;
+      }
+      trie = $.tryAt(trie, key);
+   }
+   
+   return trie;
 }
 has ::= function (trie, item) {
    return $.hasAt(trie, trie.keyof(item));
+}
+hasAt ::= function (trie, key) {
+   return $.itemAt(trie, key) !== undefined;
+}
+hasChain ::= function (trie, ...keys) {
+   let last = keys.length - 1;
+   
+   for (let i = 0; trie !== undefined && i < last; i += 1) {
+      trie = $.tryAt(trie, keys[i]);
+   }
+   
+   return trie !== undefined && $.hasAt(trie, keys[last]);
 }
 add ::= function (trie, item) {
    let wasNew;
