@@ -1,7 +1,3 @@
-img2fs
-   dumpModuleImportSection
-import
-   importsOf
 loader
    G
 trie
@@ -25,23 +21,13 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
-moduleByName ::= function (name) {
-   let module = $.modules[name];
-   if (!module) {
-      throw new Error(`Unknown module name: ${name}`);
-   }
-   return module;
+patchObj ::= function (obj, patch) {
+   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj, patch);
 }
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
 }
-dumpImportSections ::= function (modules) {
-   let result = {};
-   for (let module of modules) {
-      result[module.name] = $.dumpImportSection(module);
-   }
-   return result;
-}
+ind ::= '   '
 dumpImportSection ::= function (mid, G) {
    let pieces = [];
    for (let piece of $.dumpModuleImportSection(mid, G)) {
@@ -70,7 +56,7 @@ dumpModuleImportSection ::= function* (mid, G) {
    }
 }
 sortedImportsInto ::= function (mid, G) {
-   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid)));
+   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid, $.trie.Map)));
    imports.sort((i1, i2) => $.compareImports(i1, i2, G));
    return imports;
 }

@@ -3,6 +3,7 @@ common
    hasOwnProperty
    lessThan
    newObj
+   patchObj
 trie
    * as: trie
 -----
@@ -182,7 +183,7 @@ changeFact ::= function (rel, fact, newFact) {
    $.addFact(rel, newFact);
 }
 patchFact ::= function (rel, fact, patch) {
-   $.changeFact(rel, fact, {...fact, ...patch});
+   $.changeFact(rel, fact, $.patchObj(fact, patch));
 }
 update ::= function (rel, fn, ...restArgs) {
    let xrel = $.copy(rel);

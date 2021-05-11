@@ -1,5 +1,4 @@
 import contextlib
-import functools
 import os.path
 import re
 import sublime
@@ -9,11 +8,9 @@ from .body import Body
 from .body import module_body
 from .body import reg_entry_name
 from .edit_mode import highlight_unknown_names
-from .edit_mode import save_module
 from .import_section import parse_import_section
 from .structure import reg_import_section
 
-from poli.common.misc import FreeObj
 from poli.common.misc import method_for
 from poli.config import backend_root
 from poli.shared.command import StopCommand
@@ -22,16 +19,14 @@ from poli.shared.misc import LANG_SUBLIME_SYNTAX
 from poli.shared.misc import poli_info
 from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
-from poli.sublime.misc import Regions
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import all_views
-from poli.sublime.misc import end_plus_1
+from poli.sublime.misc import end_plus_1, end_minus_1
 from poli.sublime.misc import insert_in
 from poli.sublime.misc import match_at
 from poli.sublime.misc import read_only_set_to
 from poli.sublime.selection import jump
 from poli.sublime.selection import set_selection
-from poli.sublime.view_dict import ViewDict
 from poli.sublime.view_dict import on_all_views_load
 from poli.sublime.view_dict import on_view_load
 
@@ -147,35 +142,6 @@ def set_connected_status(view, is_connected):
     view.set_status('is_connected', "Connected" if is_connected else "Disconnected")
 
 
-def replace_import_section_in_modules(window, data):
-    """data = {module_name: section_text}"""
-    with active_view_preserved(window):
-        views = [open_module(window, module_name) for module_name in data]
-
-    view_data = ViewDict(zip(views, data.values()))
-
-    def process_1(view, edit):
-        replace_import_section(view, edit, view_data[view])
-        save_module(view)
-
-    def proceed():
-        for view in views:
-            call_with_edit(view, functools.partial(process_1, view))
-        
-        sublime.status_message("{} modules' imports updated".format(len(views)))
-
-    on_all_views_load(views, proceed)
-
-
-def replace_import_section(view, edit, new_import_section):
-    with regedit.region_editing_suppressed(view):
-        view.replace(
-            edit,
-            reg_import_section(view),
-            new_import_section
-        )
-
-
 def ensure_trailing_nl(view, edit):
     if view.substr(view.size() - 1) != '\n':
         with read_only_set_to(view, False):
@@ -191,14 +157,6 @@ class ModificationConflict(Exception):
 def apply_code_modifications(modules_actions, committing_module_name, callback):
     assert modules_actions or committing_module_name is not None
 
-    if not modules_actions:
-        view = sublime.active_window().find_open_file(
-            module_filename(committing_module_name)
-        )
-        em.quit_edit_mode(view)
-        callback(True)
-        return
-
     modify_spec = []
 
     for module_name, action_list in modules_actions:
@@ -212,16 +170,11 @@ def apply_code_modifications(modules_actions, committing_module_name, callback):
                 "edit mode".format(module_name)
             )
 
-        modify_spec.append(
-            FreeObj(
-                view=view,
-                is_committing=is_committing,
-                action_list=action_list
-            )
-        )
+        modify_spec.append((view, action_list, is_committing))
 
     on_all_views_load(
-        [s.view for s in modify_spec], lambda: modify_modules(modify_spec, callback)
+        [view for view, *rest in modify_spec],
+        lambda: modify_modules(modify_spec, callback)
     )
 
 
@@ -239,39 +192,41 @@ def modify_modules(modify_spec, callback):
 
 def do_modify_modules(modify_spec):
     with contextlib.ExitStack() as stack:
-        for spec in modify_spec:
-            stack.enter_context(
-                modify_editing_module(spec.view, spec.action_list, spec.is_committing)
-                    if em.in_edit_mode(spec.view) else
-                modify_browsing_module(spec.view, spec.action_list)
-            )
+        for view, action_list, is_committing in modify_spec:
+            if em.in_edit_mode(view):
+                cxt = modify_editing_module(view, action_list, is_committing)
+            else:
+                cxt = modify_browsing_module(view, action_list)
+
+            stack.enter_context(cxt)
 
 
 @contextlib.contextmanager
 def modify_editing_module(view, action_list, is_committing):
     view.set_read_only(False)
     try:
-        committed = call_with_edit(view, lambda edit: apply_actions(
-            view, edit, action_list, 'committing' if is_committing else True
-        ))
+        call_with_edit(
+            view,
+            lambda edit: apply_actions(view, edit, action_list, True, is_committing)
+        )
         yield
     except:
         view.run_command('undo')
         em.adjust_edit_mode(view)
         raise
     else:
+        em.quit_edit_mode(view)
         em.save_module(view)
-        if committed:
-            em.quit_edit_mode(view)
-        else:
-            em.adjust_edit_mode(view)
 
 
 @contextlib.contextmanager
 def modify_browsing_module(view, action_list):
     view.set_read_only(False)
     try:
-        call_with_edit(view, lambda edit: apply_actions(view, edit, action_list, False))
+        call_with_edit(
+            view,
+            lambda edit: apply_actions(view, edit, action_list, False, False)
+        )
         yield
     except:
         view.run_command('undo')
@@ -282,27 +237,23 @@ def modify_browsing_module(view, action_list):
         view.set_read_only(True)
 
 
-def apply_actions(view, edit, action_list, under_edit):
+def apply_actions(view, edit, action_list, under_edit, is_committing):
+    assert not (is_committing and not under_edit)
+
     ensure_trailing_nl(view, edit)
 
-    committed = False
-
     for action in action_list:
-        committed |= apply_action(
-            view,
-            edit,
-            action,
-            ('committing' if not committed else False)
-                if under_edit == 'committing' else under_edit
-        )
-
-    return committed
+        committed = apply_action(view, edit, action, under_edit, is_committing)
+        # Once committed, this module behaves as if it's not under edit any more
+        if committed:
+            under_edit = False
+            is_committing = False
 
 
-def apply_action(view, edit, action, under_edit):
+def apply_action(view, edit, action, under_edit, is_committing):
     body = module_body(view)
 
-    if under_edit == 'committing' and em.edit_cxt_for[view].adding_new:
+    if is_committing and em.edit_cxt_for[view].adding_new:
         ephemeral_index = body.remove_ephemeral_entry()
     else:
         ephemeral_index = -1
@@ -312,7 +263,7 @@ def apply_action(view, edit, action, under_edit):
     if action['type'] == 'insert/replace':
         eOnto = body.entries[action['onto']]
         if under_edit and eOnto.is_def_under_edit():
-            if under_edit == 'committing':
+            if is_committing:
                 committed = True
             else:
                 raise ModificationConflict(view_module_name(view))
@@ -333,7 +284,7 @@ def apply_action(view, edit, action, under_edit):
     elif action['type'] == 'rename':
         entry = body.entries[action['at']]
         if under_edit and entry.is_name_under_edit():
-            if under_edit == 'committing':
+            if is_committing:
                 committed = True
             else:
                 raise ModificationConflict(view_module_name(view))
@@ -349,12 +300,11 @@ def apply_action(view, edit, action, under_edit):
         to = body.insertion_point(action['to'])
 
         with body.regions_tracked():
-            reg = insert_in(view, edit, to, eFrom.contents())
-            view.insert(edit, reg.end(), '\n')
+            reg = insert_in(view, edit, to, eFrom.contents_nl())
             if under_edit and eFrom.is_under_edit():
-                em.move_edit_region(view, to - eFrom.reg.begin())
+                em.move_edit_region(view, to - eFrom.reg.a)
             if eFrom.is_exclusively_selected():
-                set_selection(view, to=reg, show=True)
+                set_selection(view, to=end_minus_1(reg), show=True)
             view.erase(edit, eFrom.reg_nl)
     elif action['type'] == 'move/replace':
         if under_edit and eOnto.is_under_edit():
@@ -362,14 +312,14 @@ def apply_action(view, edit, action, under_edit):
 
         eFrom = body.entries[action['from']]
         eOnto = body.entries[action['onto']]
-        from_is_under_edit = under_edit and eFrom.is_under_edit()
 
-        with Regions(view, eFrom.reg_nl) as F:
-            text = view.substr(F.reg)
-            view.replace(edit, eOnto.reg_nl, text)
-            if from_is_under_edit:
-                em.move_edit_region(view, eOnto.reg.a - F.reg.a)
-            view.erase(edit, F.reg)
+        with body.regions_tracked():
+            view.replace(edit, eOnto.reg_nl, eFrom.contents_nl())
+            if under_edit and eFrom.is_under_edit():
+                em.move_edit_region(view, eOnto.reg.a - eFrom.reg.a)
+            view.erase(edit, eFrom.reg_nl)
+    elif action['type'] == 'replace-import-section':
+        view.replace(edit, reg_import_section(view), action['with'])
     else:
         raise RuntimeError
 

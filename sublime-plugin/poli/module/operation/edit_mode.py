@@ -83,14 +83,14 @@ def terminate_edit_mode(view):
 
 @method_for(Body)
 def remove_ephemeral_entry(self):
-    """Return index of the new entry to be added, otherwise -1.
+    """Return index of the new entry to be added.
 
     The view must be in edit mode, with 'adding_new=True'.
 
     We may or may not have included whatever the user entered as a new entry in 'body',
     depending on whether what the user entered satisfies the entry syntax. If yes, then
     exclude it because it doesn't yet exist in the Poli system so indexing would become
-    wrong.
+    wrong. In any case, return the index at which a new entry is gonna arrive.
     """
     ereg = edit_region_for[self.view]
     i = 0

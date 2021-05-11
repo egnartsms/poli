@@ -6,7 +6,7 @@ saluter ::= function (name) {
    return "Hello, " + name + "!";
 }
 greater ::= function () {
-   let x = $.callme() * 2;
+   let x = $.callhim() * 2;
    return x + 1;
 }
 combox ::= function (name) {

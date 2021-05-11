@@ -1,5 +1,6 @@
 common
    assert
+   dumpImportSection
    hasOwnProperty
    findIndex
 vector
@@ -9,7 +10,7 @@ relation
 trie
    * as: trie
 -----
-moduleDelta ::= function (module, xmodule) {
+entriesDelta ::= function (module, xmodule) {
    if (module === xmodule) {
       return [];
    }
@@ -183,12 +184,24 @@ moduleDelta ::= function (module, xmodule) {
 
    return actions;
 }
-modulesDelta ::= function (modules, xmodules) {
+statesDelta ::= function (G, xG) {
    let delta = [];
 
-   for (let module of $.rel.facts(modules)) {
-      let xmodule = $.trie.at(xmodules.byName, module.name);
-      let mdelta = $.moduleDelta(module, xmodule);
+   for (let module of G.modules) {
+      let xmodule = $.trie.at(xG.modules.byId, module.id);
+      let mdelta = $.entriesDelta(module, xmodule);
+      
+      let imports = $.trie.at(G.imports.into, module.id, $.trie.makeEmpty);
+      let ximports = $.trie.at(xG.imports.into, module.id, $.trie.makeEmpty);
+
+      if (imports !== ximports &&
+            !($.trie.isEmpty(imports) && $.trie.isEmpty(ximports))) {
+         mdelta.push({
+            type: 'replace-import-section',
+            with: $.dumpImportSection(module.id, xG)
+         })
+      }
+
       if (mdelta.length > 0) {
          delta.push([module.name, mdelta]);
       }

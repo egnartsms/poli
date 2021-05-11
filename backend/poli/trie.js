@@ -451,3 +451,6 @@ KeyedSet ::= function (keyof) {
       less: $.lessThan
    })
 }
+makeEmpty ::= function () {
+   return $.Map();
+}

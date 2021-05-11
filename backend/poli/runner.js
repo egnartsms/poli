@@ -5,31 +5,12 @@ common
    moduleNames
    indexOf
 delta
-   modulesDelta
+   statesDelta
 exc
    ApiError
    genericError
-img2fs
-   dumpModule
-import
-   importFor
 loader
    * as: loader
-module
-   entrySource
-op-edit
-   addEntry
-   editEntry
-op-import
-   * as: opImport
-op-module
-   * as: opModule
-op-move
-   * as: opMove
-op-query
-   * as: query
-op-refactor
-   * as: opRefactor
 relation
    * as: rel
 trie
@@ -87,7 +68,7 @@ main ::= function (sendMessage) {
       try {      
          let newGstate = {...$.loader.Gstate};
          let result = $.operationHandlers[msg['op']](newGstate, msg['args']);
-         let actions = $.modulesDelta($.loader.Gstate.modules, newGstate.modules);
+         let actions = $.statesDelta($.loader.Gstate, newGstate);
 
          if (actions.length > 0) {
             console.log("Code modifications:", actions);
@@ -142,7 +123,7 @@ entryByName ::= function (module, name) {
       throw $.genericError(`Module '${module.name}': not found entry '${name}'`);
    });
 }
-moduleEval ::= function moduleEval(ns, code) {
+moduleEval ::= function (ns, code) {
    let fun = Function('$', `"use strict";\n   return (${code})`);
    return fun.call(null, ns);
 }
@@ -175,6 +156,15 @@ operationHandlers ::= ({
             def: newDef
          })
       });
+
+      if (module.name === 'exp') {
+         G.imports = $.rel.update(G.imports, $.rel.addFact, $.loader.import({
+            recpid: module.id,
+            donorid: $.trie.at(G.modules.byName, 'loader').id,
+            entry: 'importProto',
+            alias: null
+         }));
+      }
    },
    
    renameEntry: function (G, {module: moduleName, index, newName}) {

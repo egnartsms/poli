@@ -151,6 +151,9 @@ class Entry:
     def contents(self):
         return self.body.view.substr(self.reg)
 
+    def contents_nl(self):
+        return self.body.view.substr(self.reg_nl)
+
     def is_exclusively_selected(self):
         if len(self.body.view.sel()) != 1:
             return False
