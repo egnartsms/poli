@@ -115,6 +115,10 @@ ensureFresh ::= function (map) {
    xmap.isFresh = true;
    return xmap;
 }
+at ::= function (group, ...keys) {
+   let map = $.trie.tryAt(group, ...keys);
+   return map === undefined ? $.trie.Map() : map;
+}
 facts ::= function (rel) {
    return $.trie.items(rel[rel.pk]);
 }
@@ -183,7 +187,23 @@ changeFact ::= function (rel, fact, newFact) {
    $.addFact(rel, newFact);
 }
 patchFact ::= function (rel, fact, patch) {
-   $.changeFact(rel, fact, $.patchObj(fact, patch));
+   $.alterFact(rel, fact, $.patchObj, patch);
+}
+patchFactByPk ::= function (rel, pk, patch) {
+   let fact = $.trie.at(rel[rel.pk], pk);
+   $.patchFact(rel, fact, patch);
+}
+alterFact ::= function (rel, fact, altfn, ...args) {
+   $.changeFact(rel, fact, altfn(fact, ...args));
+}
+alterFactByPk ::= function (rel, pk, altfn, ...args) {
+   let fact = $.trie.at(rel[rel.pk], pk);
+   $.alterFact(rel, fact, altfn, ...args);
+}
+alterFacts ::= function (rel, facts, altfn, ...args) {
+   for (let fact of facts) {
+      $.alterFact(rel, fact, altfn, ...args);
+   }
 }
 update ::= function (rel, fn, ...restArgs) {
    let xrel = $.copy(rel);

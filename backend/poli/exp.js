@@ -1,8 +1,17 @@
 common
+   * as: common
+   dumpImportSection
    hasOwnProperty
+exc
+   * as: exc
+   entourage as: dva
+loader
+   G
 vector
    * as: vec
    at
+xs-printer
+   dumpComment
 -----
 cursiveDidNotChange ::= function (name) {
    return "Thrive in paradise, " + name + "!";
@@ -22,6 +31,5 @@ callHer ::= function () {
    return $.vec.at(v, 2);
 }
 callHim ::= function () {
-   let v = ['a', 'b', 'c'];
-   return v[2];
+   return $.dva() + $.exc.entourage() + '!';
 }

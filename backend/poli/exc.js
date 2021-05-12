@@ -1,3 +1,5 @@
+exp
+   combox
 xs-reader
    ReaderError
 xs-tokenizer
@@ -31,4 +33,7 @@ rethrowCodeErrorsOn ::= function (source, callback) {
          throw e;
       }
    }
+}
+entourage ::= function () {
+   return 'deux';
 }

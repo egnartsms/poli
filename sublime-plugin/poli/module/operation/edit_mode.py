@@ -145,9 +145,12 @@ def is_def_under_edit(self):
 
 
 def save_module(view):
+    view.run_command('save')
+
     if in_edit_mode(view):
         edit_cxt_for[view].saved_partial = True
-    view.run_command('save')
+    else:
+        highlight_unknown_names(view)
 
 
 @contextlib.contextmanager

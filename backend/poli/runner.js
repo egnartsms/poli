@@ -1,8 +1,13 @@
 common
    assert
-   hasOwnProperty
+   concat
    dumpImportSection
+   hasOwnProperty
    indexOf
+   joindot
+   map
+   patchNullableObj
+   patchObj
 delta
    statesDelta
 exc
@@ -65,19 +70,24 @@ main ::= function (sendMessage) {
       })();
 
       try {      
-         let newGstate = {...$.loader.Gstate};
-         let result = $.operationHandlers[msg['op']](newGstate, msg['args']);
-         let actions = $.statesDelta($.loader.Gstate, newGstate);
+         let G = $.loader.Gstate;
+         let {dG, G: xG, ret} = $.operationHandlers[msg['op']](G, msg['args']);
+         
+         if (xG === undefined) {
+            xG = dG === undefined ? G : {...G, ...dG};
+         }
+
+         let actions = $.statesDelta(G, xG);
 
          if (actions.length > 0) {
             console.log("Code modifications:", actions);
-            pendingState = newGstate;
+            pendingState = xG;
          }
 
          sendMessage({
             type: 'api-call-result',
             success: true,
-            result: result === undefined ? null : result,
+            result: ret === undefined ? null : ret,
             modifyCode: actions
          });
 
@@ -130,19 +140,26 @@ operationHandlers ::= ({
    getModuleNames: function (G, {module: moduleName}) {
       let module = $.moduleByName(G.modules, moduleName);
       
-      return Array.from($.moduleNames(module, G.imports));
+      return {
+         ret: Array.from($.moduleNames(module, G.imports))
+      };
    },
 
    getNameAt: function (G, {module: moduleName, at}) {
       let module = $.moduleByName(G.modules, moduleName);
-      return $.vec.at(module.members, at);
+
+      return {
+         ret: $.vec.at(module.members, at)
+      };
    },
    
    getDefinition: function (G, {module: moduleName, name}) {
       let module = $.moduleByName(G.modules, moduleName);
       let entry = $.entryByName(module, name);
 
-      return entry.strDef;
+      return {
+         ret: entry.strDef
+      };
    },
    
    getCompletions: function (G, {module: moduleName, star, prefix}) {
@@ -155,8 +172,8 @@ operationHandlers ::= ({
       }
       else {
          let simp = $.trie.tryAt(G.imports.into, module.id, star);
-         if (simp === undefined || simp.name !== null) {
-            return [];
+         if (simp === undefined || simp.name) {
+            return {ret: []};
          }
 
          targetModule = $.trie.at(G.modules.byId, simp.donorid);
@@ -170,37 +187,34 @@ operationHandlers ::= ({
          }
       }
 
-      return res;
+      return {
+         ret: res
+      }
    },
    
    getImportables: function (G, {recp: recpName}) {
       let recp = $.moduleByName(G.modules, recpName);
 
-      return $.importablesInto(recp, G.modules, G.imports);
+      return {
+         ret: $.importablesInto(recp, G.modules, G.imports)
+      };
    },
 
    editEntry: function (G, {module: moduleName, name, newDef}) {
       let module = $.moduleByName(G.modules, moduleName);
       let entry = $.entryByName(module, name);
       
-      newDef = newDef.trim();
-      let newVal = $.moduleEval(module.ns, newDef);
-
-      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
-         nsDelta: {
-            [name]: newVal
-         },
-         entries: $.rel.update(module.entries, $.rel.patchFact, entry, {
-            strDef: newDef,
-            def: newDef
-         })
-      });
+      let mG = $.Gcopy(G);
+      
+      $.setEntryDef(mG, module.id, entry.name, newDef.trim());
+      
+      return {G: mG};
    },
    
    renameEntry: function (G, {module: moduleName, index, newName}) {
       let module = $.moduleByName(G.modules, moduleName);
       let oldName = $.vec.at(module.members, index);
-      let entry = $.entryByName(module, oldName);
+      $.entryByName(module, oldName);
       
       if ($.isNameBound(module, newName, G.imports)) {
          throw $.genericError(
@@ -208,21 +222,33 @@ operationHandlers ::= ({
          );
       }
       
-      let xmodule = {
-         ...module,
+      let mG = $.Gcopy(G);
+      
+      let offendingModules = Array.from(
+         $.offendingModulesOnRename(mG, module.id, oldName, newName)
+      );
+
+      if (offendingModules.length > 0) {
+         throw $.genericError(
+            `Cannot rename to "${newName}": cannot rename imports in ` +
+            `modules: ${offendingModules.map(m => m.name).join(',')}`
+         );
+      }
+
+      $.changeReferrersForRename(mG, module.id, oldName, newName);
+      $.changeImportsForRename(mG, module.id, oldName, newName);
+      $.rel.alterFactByPk(mG.modules, module.id, module => $.patchModule(module, {
          nsDelta: {
-            [entry.name]: $.delmark,
-            [newName]: module.ns[entry.name]
+            [oldName]: $.delmark,
+            [newName]: module.ns[oldName]
          },
          members: $.vec.update(module.members, $.vec.setAt, index, newName),
-         entries: $.rel.update(module.entries, $.rel.patchFact, entry, {name: newName}),
-      };
-      
-      $.renameRefs(xmodule, oldName, newName);
-      
-      // TODO: change references in other modules
-      // TODO: change imports
-      G.modules = $.rel.update(G.modules, $.rel.changeFact, module, xmodule);
+         entries: $.rel.update(
+            module.entries, $.rel.patchFactByPk, oldName, {name: newName}
+         ),
+      }));
+
+      return {G: mG}
    },
 
    addEntry: function (G, {module: moduleName, name, def, index}) {
@@ -237,17 +263,21 @@ operationHandlers ::= ({
       def = def.trim();
       let val = $.moduleEval(module.ns, def);
 
-      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
-         nsDelta: {
-            [name]: val
-         },
-         entries: $.rel.update(module.entries, $.rel.addFact, {
-            name: name,
-            strDef: def,
-            def: def
-         }),
-         members: $.vec.update(module.members, $.vec.insertAt, index, name)
-      });
+      return {
+         dG: {
+            modules: $.rel.update(G.modules, $.rel.alterFact, module, $.patchModule, {
+               nsDelta: {
+                  [name]: val
+               },
+               entries: $.rel.update(module.entries, $.rel.addFact, {
+                  name: name,
+                  strDef: def,
+                  def: def
+               }),
+               members: $.vec.update(module.members, $.vec.insertAt, index, name)
+            })
+         }
+      }
    },
    
    moveBy1: function (G, {module: moduleName, name, direction}) {
@@ -263,19 +293,23 @@ operationHandlers ::= ({
                (i === 0 ? $.vec.size(module.members) - 1 : i - 1) :
                (i === $.vec.size(module.members) - 1 ? 0 : i + 1);
 
-      G.modules = $.rel.update(G.modules, $.rel.patchFact, module, {
-         members: $.vec.update(module.members, members => {
-            $.vec.deleteAt(members, i);
-            $.vec.insertAt(members, j, name);
-         })
-      });
+      return {
+         dG: {
+            modules: $.rel.update(G.modules, $.rel.patchFact, module, {
+               members: $.vec.update(module.members, members => {
+                  $.vec.deleteAt(members, i);
+                  $.vec.insertAt(members, j, name);
+               })
+            })
+         }
+      }
    },
-      
+   
    import: function (G, {recp: recpName, donor: donorName, name, alias}) {
       let recp = $.moduleByName(G.modules, recpName);
       let donor = $.moduleByName(G.modules, donorName);
 
-      if (name !== null) {
+      if (name !== '') {
          if (!$.trie.hasAt(donor.entries.byName, name)) {
             throw $.genericError(
                `Module '${recp.name}': cannot import '${entry}' from ` +
@@ -303,14 +337,24 @@ operationHandlers ::= ({
          );
       }
       
-      G.imports = $.rel.update(G.imports, $.rel.addFact, imp);
-      G.modules = $.rel.update(G.modules, $.rel.patchFact, recp, {
-         nsDelta: {
-            [imp.importedAs]: name === null ? donor.ns : donor.ns[name]
+      return {
+         dG: {
+            imports: $.rel.update(G.imports, $.rel.addFact, imp),
+            modules: $.rel.update(G.modules, $.rel.alterFact, recp, $.patchModule, {
+               nsDelta: {
+                  [imp.importedAs]: name === '' ? donor.ns : donor.ns[name]
+               }
+            })
          }
-      });
+      }
    },
 })
+Gcopy ::= function (G) {
+   return {
+      modules: $.rel.copy(G.modules),
+      imports: $.rel.copy(G.imports)
+   }
+}
 importSpec ::= function ({entry, alias}) {
    if (entry === null) {
       return `* as: ${alias}`;
@@ -341,11 +385,11 @@ importablesInto ::= function (recp, modules, imports) {
       for (let e of module.members) {
          importables.add(encodeEntry(module.name, e));
       }
-      importables.add(encodeEntry(module.name, null));
+      importables.add(encodeEntry(module.name, ''));
    }
 
    // Exclude those already imported
-   for (let imp of $.trie.values($.trie.at(imports.into, recp.id, $.trie.makeEmpty))) {
+   for (let imp of $.trie.values($.rel.at(imports.into, recp.id))) {
       importables.delete(
          encodeEntry($.trie.at(modules.byId, imp.donorid).name, imp.entry)
       );
@@ -353,31 +397,98 @@ importablesInto ::= function (recp, modules, imports) {
 
    return Array.from(importables, decodeEntry);
 }
-renameRefs ::= function (module, oldName, newName) {
-   let re = new RegExp(`(?<=\\$\\.)(?:${oldName})\\b`, 'g');
-   let xentries = $.rel.copy(module.entries);
-
-   if (module.nsDelta === null) {
-      module.nsDelta = {};
+setEntryDef ::= function (mG, mid, entryName, newDef) {
+   let module = $.trie.at(mG.modules.byId, mid);
+   let newVal = $.moduleEval(module.ns, newDef);
+   
+   $.rel.alterFact(mG.modules, module, $.patchModule, {
+      nsDelta: {
+         [entryName]: newVal
+      },
+      entries: $.rel.update(module.entries, $.rel.patchFactByPk, entryName, {
+         strDef: newDef,
+         def: newDef
+      })
+   });
+   
+   // Propagate newVal to recipients
+   let eimps = $.rel.at(mG.imports.from, module.id, entryName);
+   
+   for (let imp of eimps) {
+      $.rel.alterFactByPk(mG.modules, imp.recpid, $.patchModule, {
+         nsDelta: {
+            [imp.importedAs]: newVal
+         }
+      })
    }
-
-   for (let entry of module.entries) {
-      let newDef = entry.def.replace(re, match => newName);
-      
-      if (entry.def === newDef) {
+}
+offendingModulesOnRename ::= function* (mG, mid, oldName, newName) {
+   let eimps = $.rel.at(mG.imports.from, mid, oldName);
+   
+   for (let imp of eimps) {
+      if (imp.alias === null) {
+         let recp = $.trie.at(mG.modules.byId, imp.recpid);
+         if ($.isNameBound(recp, newName, mG.imports)) {
+            yield recp;
+         }
+      }
+   }
+}
+changeImportsForRename ::= function (mG, mid, oldName, newName) {
+   let eimps = Array.from($.rel.at(mG.imports.from, mid, oldName));
+   
+   for (let imp of eimps) {
+      if (imp.alias !== null) {
          continue;
       }
-
-      let newVal = $.moduleEval(module.ns, newDef);
-
-      module.nsDelta[entry.name] = newVal;
-      $.rel.patchFact(xentries, entry, {
-         def: newDef,
-         strDef: newDef
-      });
+      
+      $.rel.alterFactByPk(mG.modules, imp.recpid, recp => $.patchModule(recp, {
+         nsDelta: {
+            [oldName]: $.delmark,
+            [newName]: recp.ns[oldName]
+         }
+      }));
    }
-
-   module.entries = xentries;
+   
+   $.rel.alterFacts(mG.imports, eimps, $.patchObj, {entry: newName});
+}
+changeReferrersForRename ::= function (mG, mid, oldName, newName) {
+   let emap = $.rel.at(mG.imports.from, mid, oldName);
+   let smap = $.rel.at(mG.imports.from, mid, '');
+   
+   let recpids = new Set($.concat($.trie.keys(emap), $.trie.keys(smap)));
+   
+   for (let recpid of recpids) {
+      let renames = new Map;
+      
+      let eimp = $.trie.tryAt(emap, recpid);
+      if (eimp !== undefined && eimp.alias === null) {
+         renames.set(oldName, newName);
+      }
+      
+      let simp = $.trie.tryAt(smap, recpid);
+      if (simp !== undefined) {
+         renames.set($.joindot(simp.alias, oldName), $.joindot(simp.alias, newName));
+      }
+      
+      $.renameRefs(mG, recpid, renames);
+   }
+}
+renameRefs ::= function (mG, mid, renames) {
+   if (renames.size === 0) {
+      return;
+   }
+   
+   let alts = Array.from(renames.keys(), name => name.replace(/\./g, '\\.'));
+   let re = new RegExp(`(?<=\\$\\.)(?:${alts.join('|')})\\b`, 'g');
+   
+   for (let entry of $.trie.at(mG.modules.byId, mid).entries) {
+      let newDef = entry.def.replace(re, renames.get.bind(renames));
+      
+      if (newDef !== entry.def) {
+         $.setEntryDef(mG, mid, entry.name, newDef);
+      }
+   }
 }
 moduleNames ::= function* (module, imports) {
    yield* module.members;
@@ -391,6 +502,10 @@ isNameBound ::= function (module, name, imports) {
 }
 isNameFree ::= function (module, name, imports) {
    return !$.isNameBound(module, name, imports);
+}
+patchModule ::= function (module, patch) {
+   let nsDelta = $.patchNullableObj(module.nsDelta, patch.nsDelta);
+   return {...module, ...patch, nsDelta};
 }
 serialize ::= function (obj) {
    const inds = '   ';

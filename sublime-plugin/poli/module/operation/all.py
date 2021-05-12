@@ -17,7 +17,6 @@ from poli.shared.command import StopCommand
 from poli.shared.misc import Kind
 from poli.shared.misc import LANG_SUBLIME_SYNTAX
 from poli.shared.misc import poli_info
-from poli.sublime import regedit
 from poli.sublime.edit import call_with_edit
 from poli.sublime.misc import active_view_preserved
 from poli.sublime.misc import all_views
@@ -157,20 +156,26 @@ class ModificationConflict(Exception):
 def apply_code_modifications(modules_actions, committing_module_name, callback):
     assert modules_actions or committing_module_name is not None
 
-    modify_spec = []
+    if modules_actions:
+        modify_spec = []
 
-    for module_name, action_list in modules_actions:
+        for module_name, action_list in modules_actions:
+            with active_view_preserved(sublime.active_window()):
+                view = open_module(sublime.active_window(), module_name)
+
+            is_committing = module_name == committing_module_name
+            if is_committing and not em.in_edit_mode(view):
+                raise RuntimeError(
+                    "Module '{}' is designated as committing but not in "
+                    "edit mode".format(module_name)
+                )
+
+            modify_spec.append((view, action_list, is_committing))
+    else:
         with active_view_preserved(sublime.active_window()):
-            view = open_module(sublime.active_window(), module_name)
+            view = open_module(sublime.active_window(), committing_module_name)
 
-        is_committing = module_name == committing_module_name
-        if is_committing and not em.in_edit_mode(view):
-            raise RuntimeError(
-                "Module '{}' is designated as committing but not in "
-                "edit mode".format(module_name)
-            )
-
-        modify_spec.append((view, action_list, is_committing))
+        modify_spec = [(view, [], True)]
 
     on_all_views_load(
         [view for view, *rest in modify_spec],
@@ -205,17 +210,22 @@ def do_modify_modules(modify_spec):
 def modify_editing_module(view, action_list, is_committing):
     view.set_read_only(False)
     try:
-        call_with_edit(
-            view,
-            lambda edit: apply_actions(view, edit, action_list, True, is_committing)
-        )
+        if action_list:
+            call_with_edit(
+                view,
+                lambda edit: apply_actions(view, edit, action_list, True, is_committing)
+            )
         yield
     except:
         view.run_command('undo')
         em.adjust_edit_mode(view)
         raise
     else:
-        em.quit_edit_mode(view)
+        if is_committing:
+            em.quit_edit_mode(view)
+        else:
+            em.adjust_edit_mode(view)
+
         em.save_module(view)
 
 

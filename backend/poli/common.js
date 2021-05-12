@@ -24,6 +24,13 @@ hasOwnProperty ::= function (obj, prop) {
 patchObj ::= function (obj, patch) {
    return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj, patch);
 }
+patchNullableObj ::= function (obj1, obj2) {
+   if (obj2 == null) {
+      return obj1;
+   }
+   
+   return {...obj1, ...obj2};
+}
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
 }
@@ -48,7 +55,7 @@ dumpModuleImportSection ::= function* (mid, G) {
       }
 
       yield $.ind;
-      yield entry === null ? '*' : entry;
+      yield entry === '' ? '*' : entry;
       if (alias) {
          yield ` as: ${alias}`;
       }
@@ -194,6 +201,11 @@ arraysEqual ::= function arraysEqual (A, B) {
 map ::= function* (itbl, fn) {
    for (let x of itbl) {
       yield fn(x);
+   }
+}
+concat ::= function* (...itbls) {
+   for (let itbl of itbls) {
+      yield* itbl;
    }
 }
 newObj ::= function (proto, ...props) {

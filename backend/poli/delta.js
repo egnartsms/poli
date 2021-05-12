@@ -185,6 +185,10 @@ entriesDelta ::= function (module, xmodule) {
    return actions;
 }
 statesDelta ::= function (G, xG) {
+   if (G === xG) {
+      return [];
+   }
+   
    let delta = [];
 
    for (let module of G.modules) {

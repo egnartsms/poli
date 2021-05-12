@@ -74,7 +74,7 @@ main ::= function (modules) {
       groupings: {
          all: $.objId,
          into: ['recpid', 'importedAs'],
-         from: ['donorid', 'entry', $.objId]
+         from: ['donorid', 'entry', 'recpid']
       },
       facts: (function* () {
          for (let {name: recpName, imports} of modules) {
@@ -87,7 +87,7 @@ main ::= function (modules) {
                   yield $.import({
                      recpid,
                      donorid,
-                     entry: null,
+                     entry: '',
                      alias: asterisk,
                   });
                }

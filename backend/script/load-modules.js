@@ -23,7 +23,13 @@ function loadModules(rawModules) {
       }
 
       for (let [name, code] of module.body) {
-         module.ns[name] = moduleEval(module.ns, code);
+         try {
+            module.ns[name] = moduleEval(module.ns, code);
+         }
+         catch (e) {
+            console.error(`'${module.name}': failed to eval '${name}'`);
+            throw e;
+         }
       }
    }
 
