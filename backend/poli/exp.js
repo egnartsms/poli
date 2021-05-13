@@ -15,10 +15,10 @@ xs-printer
    dumpComment
 -----
 callHim ::= function () {
-   return $.dva() + $.exc.detour() + '!';
+   return $.exc.detour() + '!';
 }
 cursiveDidNotChange ::= function (name) {
-   return "Thrive in paradise, " + name + "!";
+   return $.dva();
 }
 greeter ::= function (name) {
    return "Hello, " + name + "!";

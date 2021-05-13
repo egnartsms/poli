@@ -2,7 +2,8 @@ const {SRC_FOLDER} = require('./const');
 
 
 function loadModules(rawModules) {
-   function moduleEval(ns, code) {
+   function moduleEval(ns, entry, code) {
+      code = code.replace(/^ function \(/, () => ` function ${entry} (`);
       let fun = Function('$', `"use strict";\n   return (${code})`);
       return fun.call(null, ns);
    }
@@ -22,12 +23,12 @@ function loadModules(rawModules) {
          continue;
       }
 
-      for (let [name, code] of module.body) {
+      for (let [entry, code] of module.body) {
          try {
-            module.ns[name] = moduleEval(module.ns, code);
+            module.ns[entry] = moduleEval(module.ns, entry, code);
          }
          catch (e) {
-            console.error(`'${module.name}': failed to eval '${name}'`);
+            console.error(`'${module.name}': failed to eval '${entry}'`);
             throw e;
          }
       }

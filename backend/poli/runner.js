@@ -1,5 +1,6 @@
 common
    assert
+   compare
    concat
    dumpImportSection
    hasOwnProperty
@@ -25,101 +26,100 @@ vector
 delmark ::= Object.create(null)
 G ::= null
 main ::= function (sendMessage) {
-   let pendingState = null;
+   return msg => $.handleMessage(msg, sendMessage);
+}
+pendingState ::= null
+commitPendingState ::= function (msg) {
+   $.assert($.pendingState !== null);
 
-   function commitPendingState(msg) {
-      $.assert(pendingState !== null);
+   if (msg['type'] !== 'modify-code-result') {
+      throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
+   }
 
-      if (msg['type'] !== 'modify-code-result') {
-         throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
-      }
-
-      if (msg['success']) {
-         $.loader.Gstate = pendingState;
-         
-         for (let module of $.loader.Gstate.modules) {
-            if (module.nsDelta !== null) {
-               for (let [key, val] of Object.entries(module.nsDelta)) {
-                  if (val === $.delmark) {
-                     delete module.ns[key];
-                  }
-                  else {
-                     module.ns[key] = val;
-                  }
+   if (msg['success']) {
+      $.loader.Gstate = $.pendingState;
+      
+      for (let module of $.loader.Gstate.modules) {
+         if (module.nsDelta !== null) {
+            for (let [key, val] of Object.entries(module.nsDelta)) {
+               if (val === $.delmark) {
+                  delete module.ns[key];
                }
-               
-               module.nsDelta = null;
+               else {
+                  module.ns[key] = val;
+               }
             }
+            
+            module.nsDelta = null;
          }
-      }
-
-      pendingState = null;
-   }
-
-   function handleMessage(msg) {
-      if (pendingState !== null) {
-         commitPendingState(msg);
-         return;
-      }
-
-      let stopwatch = (() => {
-         let start = new Date;
-         return () => {
-            let elapsed = new Date - start;
-            return `${elapsed} ms`;
-         };
-      })();
-
-      try {      
-         let G = $.loader.Gstate;
-
-         $.G = $.Gcopy(G);
-
-         let result = $.operationHandlers[msg['op']](msg['args']);
-         let actions = $.statesDelta(G, $.G);
-
-         if (actions.length > 0) {
-            console.log("Code modifications:", actions);
-            pendingState = $.G;
-         }
-
-         sendMessage({
-            type: 'api-call-result',
-            success: true,
-            result: result === undefined ? null : result,
-            modifyCode: actions
-         });
-
-         console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
-      }
-      catch (e) {
-         let error, message, info;
-         
-         if (e instanceof $.ApiError) {
-            error = e.error;
-            message = e.message;
-            info = e.info;
-         }
-         else {
-            error = 'uncaught';
-            message = e.message;
-            info = {};
-         }
-
-         sendMessage({
-            type: 'api-call-result',
-            success: false,
-            error: error,
-            message: message,
-            info: info,
-         });
-
-         console.error(e);
-         console.log(msg['op'], `FAILURE`, `(${stopwatch()})`);
       }
    }
 
-   return handleMessage;
+   $.pendingState = null;
+}
+handleMessage ::= function (msg, sendMessage) {
+   if ($.pendingState !== null) {
+      $.commitPendingState(msg);
+      return;
+   }
+
+   let stopwatch = (() => {
+      let start = new Date;
+      return () => {
+         let elapsed = new Date - start;
+         return `${elapsed} ms`;
+      };
+   })();
+
+   try {      
+      let G = $.loader.Gstate;
+
+      $.G = $.Gcopy(G);
+
+      let result = $.operationHandlers[msg['op']](msg['args']);
+      let actions = $.statesDelta(G, $.G);
+
+      if (actions.length > 0) {
+         console.log("Code modifications:", actions);
+         $.pendingState = $.G;
+      }
+
+      $.G = null;
+
+      sendMessage({
+         type: 'api-call-result',
+         success: true,
+         result: result === undefined ? null : result,
+         modifyCode: actions
+      });
+
+      console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
+   }
+   catch (e) {
+      let error, message, info;
+      
+      if (e instanceof $.ApiError) {
+         error = e.error;
+         message = e.message;
+         info = e.info;
+      }
+      else {
+         error = 'uncaught';
+         message = e.message;
+         info = {};
+      }
+
+      sendMessage({
+         type: 'api-call-result',
+         success: false,
+         error: error,
+         message: message,
+         info: info,
+      });
+
+      console.error(e);
+      console.log(msg['op'], `FAILURE`, `(${stopwatch()})`);
+   }
 }
 moduleByName ::= function (name) {
    return $.trie.at($.G.modules.byName, name, () => {
@@ -136,6 +136,18 @@ moduleEval ::= function (ns, code) {
    return fun.call(null, ns);
 }
 operationHandlers ::= ({
+   getEntries: function () {
+      let res = [];
+      
+      for (let module of $.G.modules) {
+         for (let entryName of module.members) {
+            res.push([module.name, entryName]);
+         }
+      }
+      
+      return res;
+   },
+   
    getModuleNames: function ({module: moduleName}) {
       let module = $.moduleByName(moduleName);
       
@@ -189,6 +201,32 @@ operationHandlers ::= ({
       return $.importablesInto(mid);
    },
 
+   findReferences: function ({module: moduleName, star, name}) {
+      let {id: mid} = $.moduleByName(moduleName);
+      let {mid: oMid, entry: oEntry} = $.resolveReference(mid, star, name);
+      
+      if (oMid === undefined) {
+         return null;
+      }
+      
+      let res = [[$.trie.at($.G.modules.byId, oMid).name, oEntry]];
+      
+      for (let imp of $.importsOf(oMid, oEntry)) {
+         res.push([$.trie.at($.G.modules.byId, imp.recpid).name, imp.importedAs]);
+      }
+      
+      for (let imp of $.importsOf(oMid, '')) {
+         res.push([
+            $.trie.at($.G.modules.byId, imp.recpid).name,
+            $.joindot(imp.alias, oEntry)
+         ]);
+      }
+      
+      res.sort(([m1, n1], [m2, n2]) => m1 !== m2 ? $.compare(m1, m2) : $.compare(n1, n2));
+      
+      return res;
+   },
+   
    editEntry: function ({module: moduleName, name, newDef}) {
       let module = $.moduleByName(moduleName);
       $.entryByName(module, name);
@@ -213,8 +251,8 @@ operationHandlers ::= ({
 
       if (offendingModules.length > 0) {
          throw $.genericError(
-            `Cannot rename to "${newName}": cannot rename imports in ` +
-            `modules: ${offendingModules.map(m => m.name).join(',')}`
+            `Cannot rename to "${newName}": name conflict in modules: ` +
+            `${offendingModules.map(m => m.name).join(',')}`
          );
       }
 
@@ -335,6 +373,53 @@ importSpec ::= function ({entry, alias}) {
       return `${entry} as: ${alias}`
    }
 }
+whereNameCame ::= function (mid, name) {
+   if ($.trie.hasAt($.trie.at($.G.modules.byId, mid).entries.byName, name)) {
+      return {
+         mid: mid,
+         entry: name
+      };
+   }
+
+   let imp = $.trie.tryAt($.G.imports.into, mid, name);
+   if (imp !== undefined) {
+      return {
+         mid: imp.donorid,
+         entry: imp.entry
+      };
+   }
+   
+   return {};
+}
+resolveReference ::= function (mid, star, name) {
+   if (star !== null) {
+      let {mid: oMid, entry: oEntry} = $.whereNameCame(mid, star);
+      
+      if (oMid === undefined) {
+         return {};
+      }
+      
+      if (oEntry !== '') {
+         // this is '$$.member.field', so star is not really a star reference
+         return {
+            mid: oMid,
+            entry: oEntry
+         };
+      }
+      
+      if (!$.trie.hasAt($.trie.at($.G.modules.byId, oMid).entries.byName, name)) {
+         return {};
+      }
+      
+      return {
+         mid: oMid,
+         entry: name
+      };
+   }
+   else {
+      return $.whereNameCame(mid, name);
+   }
+}
 importablesInto ::= function (mid) {
    function encodeEntry(moduleName, entryName) {
       return JSON.stringify([moduleName, entryName]);
@@ -358,13 +443,19 @@ importablesInto ::= function (mid) {
    }
 
    // Exclude those already imported
-   for (let imp of Array.from($.trie.values($.rel.at($.G.imports.into, mid)))) {
+   for (let imp of $.importsInto(mid)) {
       importables.delete(
          encodeEntry($.trie.at($.G.modules.byId, imp.donorid).name, imp.entry)
       );
    }
 
    return Array.from(importables, decodeEntry);
+}
+importsOf ::= function (mid, entryName) {
+   return Array.from($.trie.values($.rel.groupAt($.G.imports.from, mid, entryName)));
+}
+importsInto ::= function (mid) {
+   return Array.from($.trie.values($.rel.groupAt($.G.imports.into, mid)));
 }
 setEntryDef ::= function (mid, entryName, newDef) {
    let module = $.trie.at($.G.modules.byId, mid);
@@ -381,7 +472,7 @@ setEntryDef ::= function (mid, entryName, newDef) {
    });
    
    // Propagate newVal to recipients
-   let eimps = Array.from($.trie.values($.rel.at($.G.imports.from, module.id, entryName)));
+   let eimps = $.importsOf(module.id, entryName);
    
    for (let imp of eimps) {
       $.rel.alterFactByPk($.G.modules, imp.recpid, $.patchModule, {
@@ -392,7 +483,7 @@ setEntryDef ::= function (mid, entryName, newDef) {
    }
 }
 offendingModulesOnRename ::= function* (mid, oldName, newName) {
-   let eimps = Array.from($.trie.values($.rel.at($.G.imports.from, mid, oldName)));
+   let eimps = $.importsOf(mid, oldName);
    
    for (let imp of eimps) {
       if (imp.alias === null) {
@@ -404,7 +495,7 @@ offendingModulesOnRename ::= function* (mid, oldName, newName) {
    }
 }
 changeImportsForRename ::= function (mid, oldName, newName) {
-   let eimps = Array.from($.trie.values($.rel.at($.G.imports.from, mid, oldName)));
+   let eimps = $.importsOf(mid, oldName);
    
    for (let imp of eimps) {
       if (imp.alias !== null) {
@@ -422,8 +513,8 @@ changeImportsForRename ::= function (mid, oldName, newName) {
    $.rel.alterFacts($.G.imports, eimps, $.patchObj, {entry: newName});
 }
 changeReferrersForRename ::= function (mid, oldName, newName) {
-   let emap = $.trie.copy($.rel.at($.G.imports.from, mid, oldName));
-   let smap = $.trie.copy($.rel.at($.G.imports.from, mid, ''));
+   let emap = $.trie.copy($.rel.groupAt($.G.imports.from, mid, oldName));
+   let smap = $.trie.copy($.rel.groupAt($.G.imports.from, mid, ''));
    
    let recpids = new Set($.concat($.trie.keys(emap), $.trie.keys(smap)));
    
@@ -442,6 +533,8 @@ changeReferrersForRename ::= function (mid, oldName, newName) {
       
       $.renameRefs(recpid, renames);
    }
+   
+   $.renameRefs(mid, new Map([[oldName, newName]]));
 }
 renameRefs ::= function (mid, renames) {
    if (renames.size === 0) {
@@ -461,7 +554,7 @@ renameRefs ::= function (mid, renames) {
 }
 moduleNames ::= function* (module) {
    yield* module.members;
-   yield* Array.from($.trie.keys($.rel.at($.G.imports.into, module.id)));
+   yield* Array.from($.trie.keys($.rel.groupAt($.G.imports.into, module.id)));
 }
 isNameBound ::= function (name, module) {
    return (

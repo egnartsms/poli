@@ -115,7 +115,7 @@ ensureFresh ::= function (map) {
    xmap.isFresh = true;
    return xmap;
 }
-at ::= function (group, ...keys) {
+groupAt ::= function (group, ...keys) {
    let map = $.trie.tryAt(group, ...keys);
    return map === undefined ? $.trie.Map() : map;
 }

@@ -24,7 +24,7 @@ importProto ::= ({
       return this.alias || this.entry;
    }
 })
-import ::= function (obj) {
+impobj ::= function (obj) {
    return $.newObj($.importProto, obj);
 }
 main ::= function (modules) {
@@ -84,7 +84,7 @@ main ::= function (modules) {
                let {id: donorid} = $.trie.at(Rmodules.byName, donorName);
 
                if (asterisk !== null) {
-                  yield $.import({
+                  yield $.impobj({
                      recpid,
                      donorid,
                      entry: '',
@@ -93,7 +93,7 @@ main ::= function (modules) {
                }
 
                for (let {entry, alias} of entryImports) {
-                  yield $.import({
+                  yield $.impobj({
                      recpid,
                      donorid,
                      entry,

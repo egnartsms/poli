@@ -31,6 +31,9 @@ patchNullableObj ::= function (obj1, obj2) {
    
    return {...obj1, ...obj2};
 }
+compare ::= function (x1, x2) {
+   return x1 < x2 ? -1 : x1 > x2 ? 1 : 0;
+}
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
 }
