@@ -4,7 +4,8 @@ common
    hasOwnProperty
 exc
    * as: exc
-   entourage as: dva
+   ApiError
+   detour as: dva
 loader
    G
 vector
@@ -13,6 +14,9 @@ vector
 xs-printer
    dumpComment
 -----
+callHim ::= function () {
+   return $.dva() + $.exc.detour() + '!';
+}
 cursiveDidNotChange ::= function (name) {
    return "Thrive in paradise, " + name + "!";
 }
@@ -29,7 +33,4 @@ combox ::= function (name) {
 callHer ::= function () {
    let v = $.vec.Vector(['a', 'b', 'c']);
    return $.vec.at(v, 2);
-}
-callHim ::= function () {
-   return $.dva() + $.exc.entourage() + '!';
 }

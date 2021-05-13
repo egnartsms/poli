@@ -34,6 +34,6 @@ rethrowCodeErrorsOn ::= function (source, callback) {
       }
    }
 }
-entourage ::= function () {
-   return 'deux';
+detour ::= function () {
+   return 'fuck';
 }
