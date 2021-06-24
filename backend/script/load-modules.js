@@ -3,45 +3,45 @@ const {SRC_FOLDER} = require('./const');
 
 function loadModules(rawModules) {
    function moduleEval(ns, entry, code) {
-      code = code.replace(/^ function \(/, () => ` function ${entry} (`);
+      // code = code.replace(/^ function \(/, () => ` function ${entry} (`);
       let fun = Function('$', `"use strict";\n   return (${code})`);
       return fun.call(null, ns);
    }
 
    console.time('load');
    
-   let modules = Array.from(
-      parseModules(rawModules), module => ({
-         ...module,
+   let minfos = Array.from(
+      parseModules(rawModules), minfo => ({
+         ...minfo,
          ns: Object.create(null)
       })
    );
 
    // Evaluate bodies
-   for (let module of modules) {
-      if (module.lang !== 'js') {
+   for (let minfo of minfos) {
+      if (minfo.lang !== 'js') {
          continue;
       }
 
-      for (let [entry, code] of module.body) {
+      for (let [entry, code] of minfo.body) {
          try {
-            module.ns[entry] = moduleEval(module.ns, entry, code);
+            minfo.ns[entry] = moduleEval(minfo.ns, entry, code);
          }
          catch (e) {
-            console.error(`'${module.name}': failed to eval '${entry}'`);
+            console.error(`'${minfo.name}': failed to eval '${entry}'`);
             throw e;
          }
       }
    }
 
    // Perform the imports
-   for (let recp of modules) {
+   for (let recp of minfos) {
       if (recp.lang !== 'js') {
          continue;
       }
 
       for (let {donor: donorName, asterisk, imports} of recp.imports) {
-         let donor = modules.find(m => m.name === donorName);
+         let donor = minfos.find(m => m.name === donorName);
 
          if (donor === undefined) {
             throw new Error(
@@ -85,7 +85,7 @@ function loadModules(rawModules) {
 
    console.timeEnd('load');
    
-   return modules;
+   return minfos;
 }
 
 

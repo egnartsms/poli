@@ -1,7 +1,8 @@
 common
    assert
    compare
-   concat
+   compareArrays
+   iconcat
    dumpImportSection
    hasOwnProperty
    indexOf
@@ -9,57 +10,62 @@ common
    map
    patchNullableObj
    patchObj
-delta
-   statesDelta
+code-modify
+   globalCodeModifications
 exc
    ApiError
    genericError
-loader
-   * as: loader
-relation
-   * as: rel
 trie
    * as: trie
 vector
    * as: vec
+world
+   delta
+   groups
+   commit
+   rollback
+   patchBox
+   setBox
 -----
 delmark ::= Object.create(null)
-G ::= null
 main ::= function (sendMessage) {
    return msg => $.handleMessage(msg, sendMessage);
 }
-pendingState ::= null
-commitPendingState ::= function (msg) {
-   $.assert($.pendingState !== null);
+pendingCodeModifications ::= false
+commitPendingCodeModifications ::= function (msg) {
+   $.assert($.pendingCodeModifications);
 
    if (msg['type'] !== 'modify-code-result') {
       throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
    }
 
    if (msg['success']) {
-      $.loader.Gstate = $.pendingState;
-      
-      for (let module of $.loader.Gstate.modules) {
-         if (module.nsDelta !== null) {
-            for (let [key, val] of Object.entries(module.nsDelta)) {
+      for (let {v: mval} of $.delta['module'].changed) {
+         if (mval.nsDelta !== null) {
+            for (let [key, val] of Object.entries(mval.nsDelta)) {
                if (val === $.delmark) {
-                  delete module.ns[key];
+                  delete mval.ns[key];
                }
                else {
-                  module.ns[key] = val;
+                  mval.ns[key] = val;
                }
             }
             
-            module.nsDelta = null;
+            mval.nsDelta = null;
          }
       }
+
+      $.commit();
+   }
+   else {
+      $.rollback();
    }
 
-   $.pendingState = null;
+   $.pendingCodeModifications = false;
 }
 handleMessage ::= function (msg, sendMessage) {
-   if ($.pendingState !== null) {
-      $.commitPendingState(msg);
+   if ($.pendingCodeModifications) {
+      $.commitPendingCodeModifications(msg);
       return;
    }
 
@@ -72,25 +78,19 @@ handleMessage ::= function (msg, sendMessage) {
    })();
 
    try {      
-      let G = $.loader.Gstate;
-
-      $.G = $.Gcopy(G);
-
       let result = $.operationHandlers[msg['op']](msg['args']);
-      let actions = $.statesDelta(G, $.G);
+      let codeModifications = $.globalCodeModifications();
 
-      if (actions.length > 0) {
-         console.log("Code modifications:", actions);
-         $.pendingState = $.G;
+      if (codeModifications.length > 0) {
+         console.log("Code modifications:", codeModifications);
+         $.pendingCodeModifications = true;
       }
-
-      $.G = null;
 
       sendMessage({
          type: 'api-call-result',
          success: true,
          result: result === undefined ? null : result,
-         modifyCode: actions
+         modifyCode: codeModifications
       });
 
       console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
@@ -122,26 +122,32 @@ handleMessage ::= function (msg, sendMessage) {
    }
 }
 moduleByName ::= function (name) {
-   return $.trie.at($.G.modules.byName, name, () => {
+   return $.trie.at($.groups['module.name'].v, name, () => {
       throw $.genericError(`Unknown module name: '${name}'`);
    });
 }
 entryByName ::= function (module, name) {
-   return $.trie.at(module.entries.byName, name, () => {
-      throw $.genericError(`Module '${module.name}': not found entry '${name}'`);
+   return $.trie.at(module.entries.v, name, () => {
+      throw $.genericError(`Module '${module.v.name}': not found entry '${name}'`);
    });
 }
 moduleEval ::= function (ns, code) {
    let fun = Function('$', `"use strict";\n   return (${code})`);
    return fun.call(null, ns);
 }
+isStarEntry ::= function (entry) {
+   return entry.v.name === null;
+}
+isStarImport ::= function (imp) {
+   return $.isStarEntry(imp.entry);
+}
 operationHandlers ::= ({
    getEntries: function () {
       let res = [];
       
-      for (let module of $.G.modules) {
-         for (let entryName of module.members) {
-            res.push([module.name, entryName]);
+      for (let module of $.trie.ivalues($.groups['module.name'].v)) {
+         for (let entry of module.v.members) {
+            res.push([module.v.name, entry.v.name]);
          }
       }
       
@@ -157,14 +163,14 @@ operationHandlers ::= ({
    getNameAt: function ({module: moduleName, at}) {
       let module = $.moduleByName(moduleName);
 
-      return $.vec.at(module.members, at);
+      return $.vec.at(module.v.members, at).v.name;
    },
    
    getDefinition: function ({module: moduleName, name}) {
       let module = $.moduleByName(moduleName);
       let entry = $.entryByName(module, name);
 
-      return entry.strDef;
+      return entry.v.strDef;
    },
    
    getCompletions: function ({module: moduleName, star, prefix}) {
@@ -176,12 +182,13 @@ operationHandlers ::= ({
          targetModule = module;
       }
       else {
-         let simp = $.trie.tryAt($.G.imports.into, module.id, star);
-         if (simp === undefined || simp.name) {
+         let simp = $.trie.atOr(module.imports.v, star);
+
+         if (!$.isStarImport(simp)) {
             return [];
          }
 
-         targetModule = $.trie.at($.G.modules.byId, simp.donorid);
+         targetModule = simp.entry.v.module;
       }
 
       let res = [];
@@ -196,63 +203,56 @@ operationHandlers ::= ({
    },
    
    getImportables: function ({recp: recpName}) {
-      let {id: mid} = $.moduleByName(recpName);
+      let module = $.moduleByName(recpName);
 
-      return $.importablesInto(mid);
+      return $.importablesInto(module);
    },
 
    findReferences: function ({module: moduleName, star, name}) {
-      let {id: mid} = $.moduleByName(moduleName);
-      let {mid: oMid, entry: oEntry} = $.resolveReference(mid, star, name);
+      let module = $.moduleByName(moduleName);
+      let entry = $.resolveReference(module, [star, name]);
       
-      if (oMid === undefined) {
+      if (entry === null || $.isStarEntry(entry)) {
          return null;
       }
       
-      let res = [[$.trie.at($.G.modules.byId, oMid).name, oEntry]];
+      let res = [[entry.v.module.v.name, entry.v.name]];
       
-      for (let imp of $.importsOf(oMid, oEntry)) {
-         res.push([$.trie.at($.G.modules.byId, imp.recpid).name, imp.importedAs]);
+      for (let imp of $.trie.ivalues(entry.imports.v)) {
+         res.push([imp.recp.v.name, imp.as]);
       }
       
-      for (let imp of $.importsOf(oMid, '')) {
-         res.push([
-            $.trie.at($.G.modules.byId, imp.recpid).name,
-            $.joindot(imp.alias, oEntry)
-         ]);
+      for (let imp of $.trie.ivalues(entry.v.module.starEntry.imports.v)) {
+         res.push([imp.recp.v.name, $.joindot(imp.alias, entry.v.name)]);
       }
       
-      res.sort(([m1, n1], [m2, n2]) => m1 !== m2 ? $.compare(m1, m2) : $.compare(n1, n2));
+      res.sort($.compareArrays);
       
       return res;
    },
    
    editEntry: function ({module: moduleName, name, newDef}) {
       let module = $.moduleByName(moduleName);
-      $.entryByName(module, name);
+      let entry = $.entryByName(module, name);
       
-      $.setEntryDef(module.id, name, newDef.trim());
+      $.setEntryDef(entry, newDef.trim());
    },
    
    renameEntry: function ({module: moduleName, index, newName}) {
       let module = $.moduleByName(moduleName);
-      let oldName = $.vec.at(module.members, index);
-      $.entryByName(module, oldName);
-      
-      if ($.isNameBound(newName, module)) {
+      let entry = $.vec.at(module.v.members, index);
+
+      if ($.isNameBound(module, newName)) {
          throw $.genericError(
-            `Module '${module.name}': name '${newName}' already defined or imported`
+            `Module '${module.v.name}': name '${newName}' already defined or imported`
          );
       }
       
-      let offendingModules = Array.from(
-         $.offendingModulesOnRename(module.id, oldName, newName)
-      );
-
+      let offendingModules = $.offendingModulesOnRename(entry, newName);
       if (offendingModules.length > 0) {
          throw $.genericError(
             `Cannot rename to "${newName}": name conflict in modules: ` +
-            `${offendingModules.map(m => m.name).join(',')}`
+            `${offendingModules.map(m => m.v.name).join(',')}`
          );
       }
 
@@ -334,7 +334,7 @@ operationHandlers ::= ({
          );
       }
       
-      let imp = $.loader.import({
+      let imp = $.impobj({
          recpid: recp.id,
          donorid: donor.id,
          entry: name,
@@ -355,13 +355,16 @@ operationHandlers ::= ({
          }
       });
    },
+   
+   move: function ({
+      src: srcModuleName,
+      entry: entryName,
+      dest: destModuleName,
+      index: index
+   }) {
+      return 0;
+   },
 })
-Gcopy ::= function (G) {
-   return {
-      modules: $.rel.copy(G.modules),
-      imports: $.rel.copy(G.imports)
-   }
-}
 importSpec ::= function ({entry, alias}) {
    if (entry === null) {
       return `* as: ${alias}`;
@@ -373,83 +376,67 @@ importSpec ::= function ({entry, alias}) {
       return `${entry} as: ${alias}`
    }
 }
-whereNameCame ::= function (mid, name) {
-   if ($.trie.hasAt($.trie.at($.G.modules.byId, mid).entries.byName, name)) {
-      return {
-         mid: mid,
-         entry: name
-      };
+resolveName ::= function (module, name) {
+   let entry = $.trie.atOr(module.entries.v, name);
+   if (entry !== undefined) {
+      return entry;
    }
 
-   let imp = $.trie.tryAt($.G.imports.into, mid, name);
+   let imp = $.trie.atOr(module.imports.v, name);
    if (imp !== undefined) {
-      return {
-         mid: imp.donorid,
-         entry: imp.entry
-      };
+      return imp.entry;
    }
    
-   return {};
+   return null;
 }
-resolveReference ::= function (mid, star, name) {
-   if (star !== null) {
-      let {mid: oMid, entry: oEntry} = $.whereNameCame(mid, star);
-      
-      if (oMid === undefined) {
-         return {};
-      }
-      
-      if (oEntry !== '') {
-         // this is '$$.member.field', so star is not really a star reference
-         return {
-            mid: oMid,
-            entry: oEntry
-         };
-      }
-      
-      if (!$.trie.hasAt($.trie.at($.G.modules.byId, oMid).entries.byName, name)) {
-         return {};
-      }
-      
-      return {
-         mid: oMid,
-         entry: name
-      };
+resolveReference ::= function (module, ref) {
+   let [star, name] = ref;
+   
+   if (star === null) {
+      return $.resolveName(module, name);
    }
-   else {
-      return $.whereNameCame(mid, name);
-   }
-}
-importablesInto ::= function (mid) {
-   function encodeEntry(moduleName, entryName) {
-      return JSON.stringify([moduleName, entryName]);
-   }
+   
+   let entry = $.resolveName(module, star);
 
-   function decodeEntry(encoded) {
-      return JSON.parse(encoded);
+   if (entry === null) {
+      return null;
+   }
+     
+   if ($.isStarEntry(entry)) {
+      return $.trie.atOr(entry.v.module.entries.v, name);
+   }
+   
+   // this is '$$.member.field', so star is not really a star reference but an entry
+   // reference. We then must fix 'ref' in-place
+   ref[0] = null;
+   ref[1] = star;
+
+   return entry;
+}
+importablesInto ::= function (module) {
+   function encodeEntry(entry) {
+      return JSON.stringify([entry.v.module.v.name, entry.v.name]);
    }
 
    let importables = new Set;
 
-   for (let module of $.G.modules) {
-      if (module.id === mid) {
+   for (let xmod of $.trie.ivalues($.groups['module.name'])) {
+      if (xmod === module) {
          continue;
       }
 
-      for (let e of module.members) {
-         importables.add(encodeEntry(module.name, e));
+      for (let e of $.trie.ivalues(xmod.entries)) {
+         importables.add(encodeEntry(e));
       }
-      importables.add(encodeEntry(module.name, ''));
+      importables.add(encodeEntry(xmod.starEntry));
    }
 
    // Exclude those already imported
-   for (let imp of $.importsInto(mid)) {
-      importables.delete(
-         encodeEntry($.trie.at($.G.modules.byId, imp.donorid).name, imp.entry)
-      );
+   for (let {entry} of $.trie.ivalues(module.imports)) {
+      importables.delete(encodeEntry(entry));
    }
 
-   return Array.from(importables, decodeEntry);
+   return Array.from(importables, JSON.parse);
 }
 importsOf ::= function (mid, entryName) {
    return Array.from($.trie.values($.rel.groupAt($.G.imports.from, mid, entryName)));
@@ -457,42 +444,52 @@ importsOf ::= function (mid, entryName) {
 importsInto ::= function (mid) {
    return Array.from($.trie.values($.rel.groupAt($.G.imports.into, mid)));
 }
-setEntryDef ::= function (mid, entryName, newDef) {
-   let module = $.trie.at($.G.modules.byId, mid);
-   let newVal = $.moduleEval(module.ns, newDef);
+referringsTo ::= function (mid, entryName) {
+   let emap = $.rel.groupAt($.G.imports.from, mid, entryName);
+   let smap = $.rel.groupAt($.G.imports.from, mid, '');
    
-   $.rel.alterFact($.G.modules, module, $.patchModule, {
-      nsDelta: {
-         [entryName]: newVal
-      },
-      entries: $.rel.update(module.entries, $.rel.patchFactByPk, entryName, {
-         strDef: newDef,
-         def: newDef
-      })
+   let recpids = new Set($.concat($.trie.keys(emap), $.trie.keys(smap)));
+   
+   return Array.from(recpids, recpid => ({
+      eimp: $.trie.tryAt(emap, recpid),
+      simp: $.trie.tryAt(smap, recpid),
+      recpid
+   }));
+}
+setEntryDef ::= function (entry, newDef) {
+   let newVal = $.moduleEval(entry.v.module.v.ns, newDef);
+   
+   $.patchBox(entry, {
+      strDef: newDef,
+      def: newDef
    });
-   
+   $.updateBox(entry.v.module, $.patchModule, {
+      nsDelta: {
+         [entry.v.name]: newVal
+      }
+   });
+  
    // Propagate newVal to recipients
-   let eimps = $.importsOf(module.id, entryName);
-   
-   for (let imp of eimps) {
-      $.rel.alterFactByPk($.G.modules, imp.recpid, $.patchModule, {
+   for (let imp of $.trie.ivalues(entry.imports.v)) {
+      $.updateBox(imp.recp, $.patchModule, {
          nsDelta: {
-            [imp.importedAs]: newVal
+            [imp.as]: newVal
          }
-      })
+      });
    }
 }
-offendingModulesOnRename ::= function* (mid, oldName, newName) {
-   let eimps = $.importsOf(mid, oldName);
+offendingModulesOnRename ::= function (entry, newName) {
+   let offendingModules = [];
    
-   for (let imp of eimps) {
-      if (imp.alias === null) {
-         let recp = $.trie.at($.G.modules.byId, imp.recpid);
-         if ($.isNameBound(newName, recp)) {
-            yield recp;
+   for (let {alias, recp} of $.trie.ivalues(entry.imports.v)) {
+      if (alias === null) {
+         if ($.isNameBound(recp, newName)) {
+            offendingModules.push(recp);
          }
       }
    }
+
+   return offendingModules;
 }
 changeImportsForRename ::= function (mid, oldName, newName) {
    let eimps = $.importsOf(mid, oldName);
@@ -513,63 +510,399 @@ changeImportsForRename ::= function (mid, oldName, newName) {
    $.rel.alterFacts($.G.imports, eimps, $.patchObj, {entry: newName});
 }
 changeReferrersForRename ::= function (mid, oldName, newName) {
-   let emap = $.trie.copy($.rel.groupAt($.G.imports.from, mid, oldName));
-   let smap = $.trie.copy($.rel.groupAt($.G.imports.from, mid, ''));
-   
-   let recpids = new Set($.concat($.trie.keys(emap), $.trie.keys(smap)));
-   
-   for (let recpid of recpids) {
-      let renames = new Map;
+   for (let {eimp, simp, recpid} of $.referringsTo(mid, oldName)) {
+      let renames = [];
       
-      let eimp = $.trie.tryAt(emap, recpid);
       if (eimp !== undefined && eimp.alias === null) {
-         renames.set(oldName, newName);
+         renames.push([oldName, newName]);
       }
       
-      let simp = $.trie.tryAt(smap, recpid);
       if (simp !== undefined) {
-         renames.set($.joindot(simp.alias, oldName), $.joindot(simp.alias, newName));
+         renames.push([[simp.alias, oldName], [simp.alias, newName]]);
       }
       
       $.renameRefs(recpid, renames);
    }
    
-   $.renameRefs(mid, new Map([[oldName, newName]]));
+   $.renameRefs(mid, [[oldName, newName]]);
+}
+doimport ::= function (imp) {
+   $.rel.addFact($.G.imports, imp);
+   
+   let donor = $.trie.at($.G.modules.byId, imp.donorid);
+   let recp = $.trie.at($.G.modules.byId, imp.recpid);
+
+   $.rel.alterFact($.G.modules, recp, $.patchModule, {
+      nsDelta: {
+         [imp.importedAs]: imp.entry === '' ? donor.ns : donor.ns[imp.entry]
+      }
+   });
+}
+unimport ::= function (imp) {
+   $.rel.removeFact($.G.imports, imp);
+   
+   $.rel.alterFactByPk($.G.modules, imp.recpid, $.patchModule, {
+      nsDelta: {
+         [imp.importedAs]: $.delmark
+      }
+   });
+}
+splitRef ::= function (sref) {
+   let pref = sref.split('.');
+
+   if (pref.length === 1) {
+      pref.unshift(null);
+   }
+   
+   return pref;
+}
+joinRef ::= function (ref, wth='.') {
+   if (ref[0] === null)
+      return ref[1];
+   else
+      return ref[0] + wth + ref[1];
 }
 renameRefs ::= function (mid, renames) {
-   if (renames.size === 0) {
+   if (renames.length === 0) {
       return;
    }
    
-   let alts = Array.from(renames.keys(), name => name.replace(/\./g, '\\.'));
-   let re = new RegExp(`(?<=\\$\\.)(?:${alts.join('|')})\\b`, 'g');
+   let alts = [];
+   let map = new Map;
+   
+   function normalizeRef(ref) {
+      return (typeof ref === 'string') ? [null, ref] : ref;
+   }
+   
+   for (let [oref, nref] of renames) {
+      oref = normalizeRef(oref);
+      nref = normalizeRef(nref);
+      
+      alts.push($.joinRef(oref, '\\.'));
+      map.set($.joinRef(oref), $.joinRef(nref));
+   }
+   
+   let re = new RegExp(`(?<![\\w$])(?<=\\$\\.)${alts.join('|')}\\b`, 'g');
    
    for (let entry of $.trie.at($.G.modules.byId, mid).entries) {
-      let newDef = entry.def.replace(re, renames.get.bind(renames));
+      let newDef = entry.def.replace(re, map.get.bind(map));
       
       if (newDef !== entry.def) {
          $.setEntryDef(mid, entry.name, newDef);
       }
    }
 }
-moduleNames ::= function* (module) {
-   yield* module.members;
-   yield* Array.from($.trie.keys($.rel.groupAt($.G.imports.into, module.id)));
+extractRefs ::= function (strDef) {
+   let re = /(?<![\w$])(?<=\$\.)(\w+(?:\.\w+)?)\b/g;
+   let srefs = new Set(strDef.match(re));
+   
+   return Array.from(srefs, $.splitRef);
 }
-isNameBound ::= function (name, module) {
+hasModuleRef ::= function (mid, ref, exceptEntry=null) {
+   let re = new RegExp(`(?<![\\w$])(?<=\\$\\.)${$.joinRef(ref, '\\.')}\\b`);
+
+   for (let {name, def} of $.trie.at($.G.modules.byId, mid).entries) {
+      if (name !== exceptEntry && re.test(def)) {
+         return true;
+      }
+   }
+   
+   return false;
+}
+computeForwardModificationsOnMoveEntry ::= function (srcmid, entryName, dstmid) {
+   let danglingRefs = [];
+   let offendingRefs = [];
+   let renames = [];
+   let importsToAdd = [];
+   
+   let {def: entryDef} = 
+      $.trie.at($.trie.at($.G.modules.byId, srcmid).entries.byName, entryName);
+
+   for (let ref of $.extractRefs(entryDef)) {
+      let {mid: oMid, entry: oEntryName} = $.resolveReference(srcmid, ref);
+
+      if (oMid === undefined) {
+         danglingRefs.push(ref);
+         continue;
+      }
+
+      if (oMid === dstmid) {
+         // The reference "comes home"
+         renames.push([ref, oEntryName]);
+         continue;
+      }
+
+      // See whether the entry is already imported directly from oMid into dstmid
+      let eimp = $.trie.tryAt($.G.imports.from, oMid, oEntryName, dstmid);
+      if (eimp !== undefined) {
+         renames.push([ref, eimp.importedAs]);
+         continue;
+      }
+      
+      // If not imported directly then the oMid may have already been star-imported
+      let simp = $.trie.tryAt($.G.imports.from, oMid, '', dstmid);
+      if (simp !== undefined) {
+         renames.push([ref, [simp.alias, oEntryName]]);
+         continue;
+      }
+
+      // Must import it directly then
+      if ($.isNameFree($.trie.at($.G.modules.byId, dstmid), ref[1])) {
+         importsToAdd.push(
+            $.impobj({
+               donorid: oMid,
+               recpid: dstmid,
+               entry: oEntryName,
+               alias: ref[1] === oEntryName ? null : ref[1]
+            })
+         );
+         continue;
+      }
+      
+      // If all else fails, we cannot do anything about this ref
+      offendingRefs.push(ref);
+   }
+
+   return {
+      offendingRefs,
+      danglingRefs,
+      renames,
+      importsToAdd
+   };
+}
+computeBackwardModificationsOnMoveEntry ::= function (srcmid, entryName, dstmid) {
+   let blockingReferrers = [];
+   let moduleRenames = [];
+   let importsToAdd = [];
+   let importsToRemove = [];
+
+   for (let {recpid, eimp, simp} of $.referringsTo(srcmid, entryName)) {
+      if (recpid === dstmid) {
+         // Dest module was importing from src module
+         let renames = [];
+
+         if (eimp !== undefined) {
+            importsToRemove.push(eimp);
+            if (eimp.importedAs !== entryName) {
+               renames.push([eimp.importedAs, entryName]);
+            }
+         }
+
+         if (simp !== undefined) {
+            renames.push([[simp.alias, entryName], entryName]);
+         }
+
+         moduleRenames.push({
+            mid: dstmid,
+            renames: renames
+         });
+
+         continue;
+      }
+      
+      if (eimp !== undefined) {
+         importsToRemove.push(eimp);
+         importsToAdd.push($.impobj({...eimp, donorid: dstmid}));
+      }
+
+      if (simp !== undefined && $.hasModuleRef(recpid, [simp.alias, entryName])) {
+         let simpd = $.trie.tryAt($.G.imports.from, dstmid, '', recpid);
+         
+         if (simpd !== undefined) {
+            moduleRenames.push({
+               mid: recpid,
+               rename: [[simp.alias, entryName], [simpd.alias, entryName]]
+            });
+         }
+         else if (eimp) {
+            moduleRenames.push({
+               mid: recpid,
+               rename: [[simp.alias, entryName], [null, eimp.importedAs]]
+            });
+         }
+         else {
+            blockingReferrers.push(recpid);
+         }
+      }
+   }
+
+   // Examine srcmid itself 
+   if ($.hasModuleRef(srcmid, [null, entryName], entryName)) {
+      let simp = $.trie.tryAt($.G.imports.from, dstmid, '', srcmid);
+
+      if (simp !== undefined) {
+         moduleRenames.push({
+            mid: srcmid,
+            rename: [[null, entryName], [simp.alias, entryName]]
+         });
+      }
+      else {
+         importsToAdd.push(
+            $.impobj({
+               donorid: dstmid,
+               recpid: srcmid,
+               entry: entryName,
+               alias: null
+            })
+         );
+      }
+   }
+
+   return {
+      blockingReferrers,
+      moduleRenames,
+      importsToAdd,
+      importsToRemove,
+   };
+}
+removeEntryFromModule ::= function (module, entryName) {
+   return $.patchModule(module, {
+      nsDelta: {
+         [entryName]: $.delmark
+      },
+      entries: $.rel.update(module.entries, $.rel.removeFactByPk, entryName),
+      members: $.vec.update(module.members, $.vec.remove, entryName)
+   });
+}
+moveEntry ::= function (srcmid, entryName, dstmid, index) {
+   if (srcmid === dstmid) {
+      throw $.genericError(`Cannot move inside a single module`);
+   }
+
+   let src = $.trie.at($.G.modules.byId, srcmid);
+   let dst = $.trie.at($.G.modules.byId, dstmid);
+
+   $.entryByName(src, entryName);
+   
+   if (!$.isNameFree(entryName, dst)) {
+      // There may actually be an import of entry from src into dst, in which case it
+      // must be possible to move the entry (just delete the import)
+      let imp = $.trie.tryAt($.G.imports.from, srcmid, entryName, dstmid);
+      if (!(imp !== undefined && imp.importedAs === entryName)) {
+         throw $.genericError(
+            `Module '${dst.name}': name '${entryName}' already imported or defined`
+         );
+      }
+   }
+
+   let fwd = $.computeForwardModificationsOnMoveEntry(srcmid, entry, dstmid);
+   let bwd = $.computeBackwardModificationsOnMoveEntry(srcmid, entry, dstmid);
+
+   if (fwd.offendingRefs.length > 0 || bwd.blockingReferrers.length > 0) {
+      return {
+         moved: false,
+         offendingRefs: Array.from(fwd.offendingRefs, ref => $.joinRef(ref)),
+         blockingReferrers: Array.from(
+            bwd.blockingReferrers,
+            mid => $.trie.at($.G.modules.byId, mid).name
+         )
+      };
+   }
+
+   // Now, effectuate the changes. Our primary concern here is that $.renameRefs
+   // processes all the entries of a module, but we must avoid processing the entry
+   // that's being moved itself 'cause it has its own rename map. So we must first
+   // delete 'entryName' from 'srcmid'.
+   $.rel.alterFactByPk($.G.modules, srcmid, $.removeEntryFromModule, entryName);
+   
+   return;
+   $.rel.removeFacts($.G.imports, bwd.importsToRemove);
+
+   
+   // Stage 3. Modify modules (do rename in definitions)
+   let modifiedModules = new Map;
+   for (let {module, rnmap} of bwd.defnRenames) {
+      let modifiedEntries = $.renameRefsIn(module, rnmap);
+      if (modifiedEntries.length > 0) {
+         modifiedModules.set(module, modifiedEntries);
+      }
+   }
+
+   // Stage 4. Install new definition into destModule
+   let newCode;
+
+   if (fwd.renameMap.size > 0) {
+      let alts = 
+         Array.from(fwd.renameMap.keys(), r => `(?:${r.replace(/\./g, '\\.')})`)
+         .join('|');
+      let sre = `(?<=\\$\\.)${alts}`;
+      let re = new RegExp(sre, 'g');
+
+      newCode = oldCode.replace(re, ref => fwd.renameMap.get(ref));
+   }
+   else {
+      newCode = oldCode;
+   }
+
+   let newVal = $.moduleEval(destModule, newCode);
+
+   destModule.defs[entry] = newCode;
+   $.rtset(destModule, entry, newVal);
+
+   let iAnchor;
+
+   if (anchor === null) {
+      iAnchor = 0;
+   }
+   else if (anchor === false) {
+      iAnchor = 0;
+   }
+   else if (anchor === true) {
+      iAnchor = destModule.entries.length;
+   }
+   else {
+      iAnchor = destModule.entries.indexOf(anchor);
+      iAnchor = before ? iAnchor : iAnchor + 1;
+   }
+   
+   destModule.entries.splice(iAnchor, 0, entry);
+
+   // Stage 5. Add imports
+   for (let imp of [...fwd.importsToAdd, ...bwd.importsToAdd]) {
+      $.import(imp);
+   }
+
+   let importSectionAffected = bwd.importSectionAffected;
+   if (fwd.importsToAdd.length > 0) {
+      importSectionAffected.add(destModule);
+   }
+
+   let modulesToReport = new Set([...modifiedModules.keys(), ...importSectionAffected]);
+
+   return {
+      moved: true,
+      danglingRefs: fwd.danglingRefs,
+      newCode: newCode,
+      modifiedModules: Array.from(modulesToReport, module => ({
+         module: module.name,
+         importSection:
+            importSectionAffected.has(module) ? $.dumpImportSection(module) : null,
+         modifiedEntries: modifiedModules.get(module) || null
+      }))
+   };
+}
+moduleNames ::= function* (module) {
+   yield* $.trie.ikeys(module.entries.v);
+   yield* $.trie.ikeys(module.imports.v);
+}
+isNameBound ::= function (module, name) {
    return (
-      $.trie.hasAt(module.entries.byName, name) ||
-      $.trie.hasAt($.G.imports.into, module.id, name)
+      $.trie.hasAt(module.entries.v, name) ||
+      $.trie.hasAt(module.imports.v, name)
    );
 }
-isNameFree ::= function (name, module) {
-   return !$.isNameBound(name, module);
+isNameFree ::= function (module, name) {
+   return !$.isNameBound(module, name);
 }
 patchModule ::= function (module, patch) {
+   let nsDelta = patch.nsDelta == null ? 
+      module.nsDelta :
+      Object.assign(module.nsDelta || {}, patch.nsDelta)
+
    return {
       ...module,
       ...patch,
-      nsDelta: $.patchNullableObj(module.nsDelta, patch.nsDelta)
+      nsDelta
    };
 }
 serialize ::= function (obj) {

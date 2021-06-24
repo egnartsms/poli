@@ -1,5 +1,5 @@
 module.exports = {
    SRC_FOLDER: 'poli',
-   LOADER_MODULE: 'loader',
+   WORLD_MODULE: 'world',
    RUN_MODULE: 'runner'
 };

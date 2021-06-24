@@ -1,5 +1,3 @@
-loader
-   G
 trie
    * as: trie
 -----
@@ -34,57 +32,62 @@ patchNullableObj ::= function (obj1, obj2) {
 compare ::= function (x1, x2) {
    return x1 < x2 ? -1 : x1 > x2 ? 1 : 0;
 }
+compareArrays ::= function (a1, a2) {
+   for (let i = 0; i < a1.length && i < a2.length; i += 1) {
+      let c = $.compare(a1[i], a2[i]);
+      if (c !== 0) {
+         return c;
+      }
+   }
+
+   return (i === a1.length) ? (i === a2.length ? 0 : -1) : 1;
+}
 joindot ::= function (starName, entryName) {
    return starName + '.' + entryName;
 }
 ind ::= '   '
 dumpImportSection ::= function (mid, G) {
    let pieces = [];
-   for (let piece of $.dumpModuleImportSection(mid, G)) {
+   for (let piece of $.genImportSection(mid, G)) {
       pieces.push(piece);
    }
 
    return pieces.join('');
 }
-dumpModuleImportSection ::= function* (mid, G) {
-   let imports = $.sortedImportsInto(mid, G);
-   let curDonorId = null;
+genImportSection ::= function* (module) {
+   let imports = $.trie.valuesArray(module.imports);
+   imports.sort($.compareImports);
 
-   for (let {recpid, donorid, entry, alias} of imports) {
-      if (donorid !== curDonorId) {
-         curDonorId = donorid;
-         yield $.trie.at(G.modules.byId, curDonorId).name;
+   let curDonor = null;
+
+   for (let {entry, recp, alias, as} of imports) {
+      if (entry.v.module !== curDonor) {
+         curDonor = entry.v.module;
+         yield entry.v.module.v.name;
          yield '\n';
       }
 
       yield $.ind;
-      yield entry === '' ? '*' : entry;
+      yield entry.v.name === null ? '*' : entry.v.name;
       if (alias) {
          yield ` as: ${alias}`;
       }
       yield '\n';
    }
 }
-sortedImportsInto ::= function (mid, G) {
-   let imports = Array.from($.trie.values($.trie.at(G.imports.into, mid, $.trie.makeEmpty)));
-   imports.sort((i1, i2) => $.compareImports(i1, i2, G));
-   return imports;
-}
-compareImports ::= function (i1, i2, G) {
-   if (i1.donorid !== i2.donorid) {
-      let name1 = $.trie.at(G.modules.byId, i1.donorid).name;
-      let name2 = $.trie.at(G.modules.byId, i2.donorid).name;
-      return (name1 < name2) ? -1 : 1;
+compareImports ::= function (i1, i2) {
+   if (i1.entry.v.module !== i2.entry.v.module) {
+      return $.compare(i1.entry.v.module.v.name, i2.entry.v.module.v.name);
    }
 
-   if (i1.entry === null) {
+   if (i1.entry.v.name === null) {
       return -1;
    }
-   if (i2.entry === null) {
+   if (i2.entry.v.name === null) {
       return 1;
    }
 
-   return (i1.entry < i2.entry) ? -1 : i1.entry > i2.entry ? 1 : 0;
+   return $.compare(i1.entry.v.name, i2.entry.v.name);
 }
 propagateValueToRecipients ::= function (module, name) {
    let val = $.rtget(module, name);
@@ -153,6 +156,9 @@ parameterize ::= function (tobind, callback) {
 lessThan ::= function (a, b) {
    return a < b;
 }
+objLessThan ::= function (objA, objB) {
+   return $.objId(objA) < $.objId(objB);
+}
 equal ::= function equal(a, b) {
    return a === b;
 }
@@ -206,7 +212,7 @@ map ::= function* (itbl, fn) {
       yield fn(x);
    }
 }
-concat ::= function* (...itbls) {
+iconcat ::= function* (...itbls) {
    for (let itbl of itbls) {
       yield* itbl;
    }

@@ -6,8 +6,6 @@ exc
    * as: exc
    ApiError
    detour as: dva
-loader
-   G
 vector
    * as: vec
    at

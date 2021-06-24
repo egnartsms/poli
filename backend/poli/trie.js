@@ -6,43 +6,21 @@ common
 -----
 MAX_NODE_LEN ::= 16
 MIN_NODE_LEN ::= 8
-proto ::= ({
-   [Symbol.iterator] () {
-      return $.items(this);
-   }
-})
-Trie ::= function ({keyof, less, valof}) {
-   return $.newObj($.proto, {
-      keyof,
-      less,
-      valof,
-      // used when the trie is nested into a higher-order structure
-      isFresh: false,
-      root: Object.assign([], {
-         isLeaf: true,
-         isFresh: true,
-         minKey: null,
-         maxKey: null,
-         size: 0
-      })
+emptyRoot ::= function () {
+   return Object.assign([], {
+      isLeaf: true,
+      isFresh: true,
+      minKey: null,
+      maxKey: null,
+      size: 0
    });
-}
-size ::= function (trie) {
-   return trie.root.size;
 }
 isEmpty ::= function (trie) {
    return trie.root.size === 0;
 }
-isMutated ::= function (trie) {
-   return trie.root.isFresh;
-}
-copy ::= function (trie) {
-   $.freeze(trie);
-   return $.newObj($.proto, trie);
-}
-freeze ::= function (trie) {
+freeze ::= function (root) {
    // Mark all fresh nodes as non-fresh
-   if (!$.isMutated(trie)) {
+   if (!root.isFresh) {
       return;
    }
    
@@ -57,9 +35,9 @@ freeze ::= function (trie) {
       }
    }
 
-   freeze(trie.root);
+   freeze(root);
 }
-items ::= function* (trie) {
+items ::= function* (root) {
    function* subtree(node) {
       if (node.isLeaf) {
          yield* node;
@@ -71,15 +49,9 @@ items ::= function* (trie) {
       }
    }
    
-   yield* subtree(trie.root);
+   yield* subtree(root);
 }
-keys ::= function (trie) {
-   return $.map($.items(trie), trie.keyof);
-}
-values ::= function (trie) {
-   return $.map($.items(trie), trie.valof);
-}
-nodeKeyPlace ::= function (trie, node, key) {
+nodeKeyPlace ::= function (node, key, opts) {
    let i = 0;
    let j = node.length - 1;
    
@@ -89,17 +61,17 @@ nodeKeyPlace ::= function (trie, node, key) {
       
       // actually, the subnodes will either be all items or all nodes
       if (node.isLeaf) {
-         loKey = hiKey = trie.keyof(node[k]);
+         loKey = hiKey = opts.keyof(node[k]);
       }
       else {
          loKey = node[k].minKey;
          hiKey = node[k].maxKey;
       }
       
-      if (trie.less(key, loKey)) {
+      if (opts.less(key, loKey)) {
          j = k - 1;
       }
-      else if (trie.less(hiKey, key)) {
+      else if (opts.less(hiKey, key)) {
          i = k + 1;
       }
       else {
@@ -189,11 +161,11 @@ freshNode ::= function (node) {
 
    return xnode;
 }
-itemAt ::= function (trie, key) {
-   let node = trie.root;
+itemAt ::= function (root, key, opts) {
+   let node = root;
 
    for (;;) {
-      let {at} = $.nodeKeyPlace(trie, node, key);
+      let {at} = $.nodeKeyPlace(node, key, opts);
       
       if (at === undefined) {
          return undefined;
@@ -206,66 +178,33 @@ itemAt ::= function (trie, key) {
       node = node[at];
    }
 }
-throwKeyError ::= function (key) {
-   throw new Error(`Trie key missing: '${key}'`);
-}
-at ::= function (trie, key, ifmissing=null) {
-   let item = $.itemAt(trie, key);
-   if (item === undefined) {
-      if (ifmissing !== null) {
-         return ifmissing();
-      }
-      $.throwKeyError(key);
-   }
-   else
-      return trie.valof(item);
-}
-tryAt ::= function (trie, ...keys) {
-   for (let key of keys) {
-      let item = $.itemAt(trie, key);
-      if (item === undefined) {
-         return undefined;
-      }
-      trie = trie.valof(item);
-   }
-   
-   return trie;
-}
-has ::= function (trie, item) {
-   return $.hasAt(trie, trie.keyof(item));
-}
-hasAt ::= function (trie, ...keys) {
-   let butlast = keys.slice(0, -1);
-   let final = $.tryAt(trie, ...butlast);
-
-   if (final === undefined) {
-      return false;
-   }
-
-   return $.itemAt(final, keys[keys.length - 1]) !== undefined;
-}
-add ::= function (trie, item) {
-   let wasNew;
-   let itemKey = trie.keyof(item);
+addItem ::= function (root, item, opts, replace=true) {
+   let itemKey = opts.keyof(item);
 
    function addTo(node) {
       return (node.isLeaf ? addToLeaf : addToInterior)(node);
    }   
 
    function addToLeaf(node) {
+      let {at, right} = $.nodeKeyPlace(node, itemKey, opts);
+      let shouldAdd = (typeof replace !== 'function') ?
+         Boolean(replace) :
+         replace(at === undefined ? undefined : node[at]);
+
+      if (!shouldAdd) {
+         return node;
+      }
+
       let xnode = $.freshNode(node);
-      let {at, right} = $.nodeKeyPlace(trie, xnode, itemKey);
       let minAffected, maxAffected;
 
       if (at !== undefined) {
-         wasNew = false;
          minAffected = at === 0;
          maxAffected = at === xnode.length - 1;
          
          xnode.splice(at, 1, item);
       }
       else {
-         wasNew = true;
          minAffected = right === 0;
          maxAffected = right === xnode.length;
          
@@ -275,10 +214,10 @@ add ::= function (trie, item) {
       xnode.size = xnode.length;
 
       if (minAffected) {
-         xnode.minKey = trie.keyof(xnode[0]);
+         xnode.minKey = opts.keyof(xnode[0]);
       }
       if (maxAffected) {
-         xnode.maxKey = trie.keyof(xnode[xnode.length - 1]);
+         xnode.maxKey = opts.keyof(xnode[xnode.length - 1]);
       }
       
       return xnode;      
@@ -286,7 +225,7 @@ add ::= function (trie, item) {
 
    function addToInterior(node) {
       let index;
-      let {at, left, right} = $.nodeKeyPlace(trie, node, itemKey);
+      let {at, left, right} = $.nodeKeyPlace(node, itemKey, opts);
       
       if (at !== undefined) {
          index = at;
@@ -312,7 +251,7 @@ add ::= function (trie, item) {
       let xsub = addTo(sub);  // remember, xsub may be === sub or not
 
       if (xsub.length > $.MAX_NODE_LEN) {
-         let [lsub, rsub] = $.splitNode(xsub, trie.keyof);
+         let [lsub, rsub] = $.splitNode(xsub, opts.keyof);
          xnode.splice(index, 1, lsub, rsub);
       }
       else if (xsub !== sub) {
@@ -331,12 +270,12 @@ add ::= function (trie, item) {
       return xnode;
    }
 
-   let xroot = addTo(trie.root);
+   let xroot = addTo(root);
 
    if (xroot.length > $.MAX_NODE_LEN) {
       let lsub, rsub;
 
-      xroot = [lsub, rsub] = $.splitNode(xroot, trie.keyof);
+      xroot = [lsub, rsub] = $.splitNode(xroot, opts.keyof);
       xroot.isFresh = true;
       xroot.isLeaf = false;
       xroot.size = lsub.size + rsub.size;
@@ -344,25 +283,10 @@ add ::= function (trie, item) {
       xroot.maxKey = rsub.maxKey;
    }
 
-   trie.root = xroot;
-
-   return wasNew;
+   return xroot;
 }
-addNew ::= function (trie, item) {
-   let wasNew = $.add(trie, item);
-   if (!wasNew) {
-      throw new Error(`Trie item added was not new`);
-   }
-}
-setAt ::= function (trie, key, val) {
-   return $.add(trie, [key, val]);
-}
-discardAt ::= function (trie, key) {
-   let didRemove = false;
-
+removeItemAt ::= function (root, key, opts) {
    function removeFromLeaf(node, at) {
-      didRemove = true;
-
       let xnode = $.freshNode(node);
       
       xnode.splice(at, 1);
@@ -373,10 +297,10 @@ discardAt ::= function (trie, key) {
       }
       else {
          if (at === 0) {
-            xnode.minKey = trie.keyof(xnode[0]);
+            xnode.minKey = opts.keyof(xnode[0]);
          }
          if (at === xnode.length) {
-            xnode.maxKey = trie.keyof(xnode[xnode.length - 1]);
+            xnode.maxKey = opts.keyof(xnode[xnode.length - 1]);
          }
       }
       
@@ -406,7 +330,7 @@ discardAt ::= function (trie, key) {
          let i = $.indexToMerge(xnode, at);
          minAffected = (i === 0);
          maxAffected = i + 2 === xnode.length;
-         let newSubs = $.redestributeBetween(xnode[i], xnode[i + 1], trie.keyof);
+         let newSubs = $.redestributeBetween(xnode[i], xnode[i + 1], opts.keyof);
          xnode.splice(i, 2, ...newSubs);
       }
       else {
@@ -425,49 +349,163 @@ discardAt ::= function (trie, key) {
    }
 
    function removeFrom(node) {
-      let {at} = $.nodeKeyPlace(trie, node, key);
+      let {at} = $.nodeKeyPlace(node, key, opts);
       
       return (at === undefined)
          ? node
          : (node.isLeaf ? removeFromLeaf : removeFromInterior)(node, at);
    }
    
-   let xroot = removeFrom(trie.root);
+   let xroot = removeFrom(root);
 
    if (!xroot.isLeaf && xroot.length === 1) {
-      [xroot] = xroot;
+      xroot = xroot[0];
    }
 
-   trie.root = xroot;
-
-   return didRemove;
+   return xroot;
 }
-removeAt ::= function (trie, key) {
-   let didRemove = $.discardAt(trie, key);
-   if (!didRemove) {
+Map ::= function (less=$.lessThan) {
+   return $.newObj($.protoMap, {
+      keyof: ([key, val]) => key,
+      less: less,
+      root: $.emptyRoot()
+   });
+}
+protoMap ::= ({
+   [Symbol.for('poli.trie.valueOf')] (item) {
+      return item[1];
+   },
+
+   [Symbol.iterator] () {
+      return $.items(this.root);
+   }
+})
+KeyedSet ::= function (keyof, less=$.lessThan) {
+   return $.newObj($.protoKeyedSet, {
+      keyof: keyof,
+      less: less,
+      root: $.emptyRoot()
+   });
+}
+protoKeyedSet ::= ({
+   [Symbol.for('poli.trie.valueOf')] (item) {
+      return item;
+   },
+
+   [Symbol.iterator] () {
+      return $.items(this.root);
+   }
+})
+size ::= function (trie) {
+   return trie.root.size;
+}
+keysEqual ::= function (key1, key2, trie) {
+   return !trie.less(key1, key2) && !trie.less(key2, key1);
+}
+throwKeyError ::= function (key) {
+   throw new Error(`Trie key missing: '${key}'`);
+}
+valueOf ::= function (trie, item) {
+   return trie[Symbol.for('poli.trie.valueOf')](item);
+}
+ikeys ::= function (trie) {
+   let itor = $.map($.items(trie.root), trie.keyof);
+
+   return !trie.root.isFresh ? itor : Array.from(itor)[Symbol.iterator]();
+}
+ivalues ::= function (trie) {
+   let itor = $.map($.items(trie.root), item => $.valueOf(trie, item));
+
+   return !trie.root.isFresh ? itor : Array.from(itor)[Symbol.iterator]();
+}
+valuesArray ::= function (trie) {
+   return Array.from($.items(trie.root), item => $.valueOf(trie, item));
+}
+at ::= function (trie, key, ifmissing) {
+   let item = $.itemAt(trie.root, key, trie);
+   if (item === undefined) {
+      if (ifmissing !== undefined) {
+         return ifmissing();
+      }
       $.throwKeyError(key);
    }
+   else
+      return $.valueOf(trie, item);
 }
-discard ::= function (trie, item) {
-   return $.discardAt(trie, trie.keyof(item));
+atOr ::= function (trie, key, dfault) {
+   let item = $.itemAt(trie.root, key, trie);
+   return item === undefined ? dfault : $.valueOf(trie, item);
 }
-remove ::= function (trie, item) {
-   $.removeAt(trie, trie.keyof(item));
+copy ::= function (trie) {
+   $.freeze(trie.root);
+   return $.newObj(Object.getPrototypeOf(trie), trie);
 }
-Map ::= function () {
-   return $.Trie({
-      keyof: ([key, val]) => key,
-      valof: ([key, val]) => val,
-      less: $.lessThan
-   })
+has ::= function (keyedSet, item) {
+   return $.hasAt(keyedSet, keyedSet.keyof(item));
 }
-KeyedSet ::= function (keyof) {
-   return $.Trie({
-      keyof,
-      valof: item => item,
-      less: $.lessThan
-   })
+hasAt ::= function (trie, key) {
+   return $.itemAt(trie.root, key, trie) !== undefined;
 }
-makeEmpty ::= function () {
-   return $.Map();
+addNew ::= function (keyedSet, item) {
+   keyedSet.root = $.addItem(keyedSet.root, item, keyedSet, (oldval) => {
+      if (oldval !== undefined) {
+         throw new Error(`KeyedSet item to be added is already there: ${item}`);
+      }
+      return true;
+   });
+}
+removeExisting ::= function (keyedSet, item) {
+   let oldSize = keyedSet.root.size;
+   let xroot = $.removeAt(keyedSet.root, keyedSet.keyof(item), keyedSet);
+
+   if (xroot.size === oldSize) {
+      throw new Error(`KeyedSet item to be removed is not there: ${item}`);
+   }
+   
+   keyedSet.root = xroot;
+}
+setAt ::= function (map, key, val) {
+   map.root = $.addItem(map.root, [key, val], map);
+}
+setNewAt ::= function (map, key, val) {
+   map.root = $.addItem(map.root, [key, val], map, (oldval) => {
+      if (oldval !== undefined) {
+         throw new Error(`Map key to be added is already there: ${key}`);
+      }
+      return true;
+   });
+}
+removeAt ::= function (map, key) {
+   map.root = $.removeItemAt(map.root, key, map);
+}
+removeExistingAt ::= function (map, key) {
+   let oldSize = map.root.size;
+   let xroot = $.removeItemAt(map.root, key, map);
+
+   if (xroot.size === oldSize) {
+      throw new Error(`Map key to be removed is not there: ${key}`);
+   }
+
+   map.root = xroot;
+}
+equal ::= function (ksA, ksB, itemsEqual) {
+   if ($.size(ksA) !== $.size(ksB)) {
+      return false;
+   }
+
+   function treesEqual(nodeA, nodeB) {
+      if (nodeA.isLeaf !== nodeB.isLeaf || nodeA.length !== nodeB.length) {
+         return false;
+      }
+
+      let fnequal = nodeA.isLeaf ? itemsEqual : treesEqual;
+
+      for (let i = 0; i < nodeA.length; i += 1) {
+         if (!fnequal(nodeA[i], nodeB[i])) {
+            return false;
+         }
+      }
+
+      return true;
+   }
 }

@@ -4,9 +4,9 @@ common
 -----
 MAX_NODE_LEN ::= 16
 MIN_NODE_LEN ::= 8
-proto ::= ({
+protoVector ::= ({
    [Symbol.iterator] () {
-      return $.items(this);
+      return $.items(this.root);
    }
 })
 Vector ::= function (items=null) {
@@ -18,29 +18,18 @@ Vector ::= function (items=null) {
       $.makeNode(root, false);
    }
 
-   let vec = $.newObj($.proto, {
-      root,
-      // isFresh for Vector itself is used when the vector is nested into a higher-order
-      // structure. This structure is then entirely responsible for making use of
-      // this property (which logically is the same as nodes' isFresh).  Essentially,
-      // we're assigning it here to avoid adding properties to Vector objects later.
-      isFresh: false
-   });
-   return vec;
+   return $.newObj($.protoVector, {root});
 }
 size ::= function (vec) {
    return vec.root.size;
 }
-isMutated ::= function (vec) {
-   return vec.root.isFresh;
-}
 copy ::= function (vec) {
-   $.freeze(vec);
-   return $.newObj($.proto, vec, {isFresh: false});
+   $.freeze(vec.root);
+   return $.newObj($.protoVector, vec);
 }
-freeze ::= function (vec) {
+freeze ::= function (root) {
    // Mark all fresh nodes as non-fresh
-   if (!$.isMutated(vec)) {
+   if (!root.isFresh) {
       return;
    }
    
@@ -55,7 +44,7 @@ freeze ::= function (vec) {
       }
    }
 
-   freeze(vec.root);
+   freeze(root);
 }
 indexToMerge ::= function (parent, i) {
    $.assert(parent.length >= 2);
@@ -128,21 +117,18 @@ makeNode ::= function (array, isLeaf) {
       array.size = array.reduce((sum, nd) => sum + nd.size, 0);
    }
 }
-items ::= function* (vec) {
-   yield* $.genSubtree(vec.root);
-}
-genSubtree ::= function* genSubtree(node) {
+items ::= function* items(node) {
    if (node.isLeaf) {
       yield* node;
    }
    else {
       for (let subnode of node) {
-         yield* genSubtree(subnode);
+         yield* items(subnode);
       }
    }   
 }
-genSlice ::= function (vec, n) {
-   return (function* gen(node, n) {
+slice ::= function (vec, n) {
+   function* gen(node, n) {
       if (node.isLeaf) {
          yield* node.slice(n);
       }
@@ -157,12 +143,14 @@ genSlice ::= function (vec, n) {
             yield* gen(node[k], n);
             k += 1;
             while (k < node.length) {
-               yield* $.genSubtree(node[k]);
+               yield* $.items(node[k]);
                k += 1;
             }
          }
       }
-   })(vec.root, n);
+   }
+
+   return gen(vec.root, n);
 }
 throwIndexError ::= function () {
    throw new Error(`Vector index out of range`);
@@ -190,6 +178,17 @@ at ::= function (vec, index) {
    }
 
    return node[index];
+}
+indexOf ::= function (vec, item, start=0) {
+   let i = start;
+   for (let x of $.slice(vec, start)) {
+      if (x === item) {
+         return i;
+      }
+      i += 1;
+   }
+
+   return -1;
 }
 modifyAt ::= function (vec, index, modifier) {
    function modify(node, index) {
@@ -271,6 +270,21 @@ setAt ::= function (vec, at, item) {
    $.modifyAt(vec, at, (leaf, i) => {
       leaf[i] = item;
    });
+}
+remove ::= function (vec, item) {
+   // TODO: may be implement smarter algorithm: traverse and remember current path
+   let index = $.indexOf(vec, item);
+
+   if (index === -1) {
+      throw new Error(`Vector does not have specified item`);
+   }
+   
+   $.deleteAt(vec, index);
+}
+move ::= function (vec, i, j) {
+   let item = $.at(vec, i);
+   $.deleteAt(vec, i);
+   $.insertAt(vec, i < j ? j - 1 : j, item);
 }
 update ::= function (vec, fn, ...restArgs) {
    let xvec = $.copy(vec);

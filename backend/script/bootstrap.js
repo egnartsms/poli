@@ -3,51 +3,51 @@ var poli = (function () {
 
    var _const = {
       SRC_FOLDER: 'poli',
-      LOADER_MODULE: 'loader',
+      WORLD_MODULE: 'world',
       RUN_MODULE: 'runner'
    };
 
    function loadModules(rawModules) {
       function moduleEval(ns, entry, code) {
-         code = code.replace(/^ function \(/, () => ` function ${entry} (`);
+         // code = code.replace(/^ function \(/, () => ` function ${entry} (`);
          let fun = Function('$', `"use strict";\n   return (${code})`);
          return fun.call(null, ns);
       }
 
       console.time('load');
       
-      let modules = Array.from(
-         parseModules(rawModules), module => ({
-            ...module,
+      let minfos = Array.from(
+         parseModules(rawModules), minfo => ({
+            ...minfo,
             ns: Object.create(null)
          })
       );
 
       // Evaluate bodies
-      for (let module of modules) {
-         if (module.lang !== 'js') {
+      for (let minfo of minfos) {
+         if (minfo.lang !== 'js') {
             continue;
          }
 
-         for (let [entry, code] of module.body) {
+         for (let [entry, code] of minfo.body) {
             try {
-               module.ns[entry] = moduleEval(module.ns, entry, code);
+               minfo.ns[entry] = moduleEval(minfo.ns, entry, code);
             }
             catch (e) {
-               console.error(`'${module.name}': failed to eval '${entry}'`);
+               console.error(`'${minfo.name}': failed to eval '${entry}'`);
                throw e;
             }
          }
       }
 
       // Perform the imports
-      for (let recp of modules) {
+      for (let recp of minfos) {
          if (recp.lang !== 'js') {
             continue;
          }
 
          for (let {donor: donorName, asterisk, imports} of recp.imports) {
-            let donor = modules.find(m => m.name === donorName);
+            let donor = minfos.find(m => m.name === donorName);
 
             if (donor === undefined) {
                throw new Error(
@@ -91,7 +91,7 @@ var poli = (function () {
 
       console.timeEnd('load');
       
-      return modules;
+      return minfos;
    }
 
 
@@ -201,24 +201,22 @@ var poli = (function () {
 
    var loadModules_1 = loadModules;
 
-   const {LOADER_MODULE, RUN_MODULE} = _const;
+   const {WORLD_MODULE, RUN_MODULE} = _const;
 
 
    function run(rawModules) {
-      let modules = loadModules_1(rawModules);
+      let minfos = loadModules_1(rawModules);
       
-      let Mloader = modules.find(m => m.name === LOADER_MODULE);
-      Mloader.ns['main'](modules);
+      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+      Mworld.ns['load'](minfos);
       
-      // let xsTest = modules.find(m => m.name === 'xs-test');
+      // let xsTest = minfos.find(m => m.name === 'xs-test');
       // xsTest.ns['testTrie']();
       // return;
 
-      console.log(Mloader.ns['Gstate']);
+      window.exp = minfos.find(m => m.name === 'exp').ns;
 
-      window.exp = modules.find(m => m.name === 'exp').ns;
-
-      let Mrun = modules.find(m => m.name === RUN_MODULE);
+      let Mrun = minfos.find(m => m.name === RUN_MODULE);
 
       // That's our contract with RUN_MODULE:
       //   * we give it the way to send a message over the wire

@@ -1,22 +1,20 @@
 const loadModules = require('./load-modules');
-const {LOADER_MODULE, RUN_MODULE} = require('./const');
+const {WORLD_MODULE, RUN_MODULE} = require('./const');
 
 
 function run(rawModules) {
-   let modules = loadModules(rawModules);
+   let minfos = loadModules(rawModules);
    
-   let Mloader = modules.find(m => m.name === LOADER_MODULE);
-   Mloader.ns['main'](modules);
+   let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+   Mworld.ns['load'](minfos);
    
-   // let xsTest = modules.find(m => m.name === 'xs-test');
+   // let xsTest = minfos.find(m => m.name === 'xs-test');
    // xsTest.ns['testTrie']();
    // return;
 
-   console.log(Mloader.ns['Gstate']);
+   window.exp = minfos.find(m => m.name === 'exp').ns;
 
-   window.exp = modules.find(m => m.name === 'exp').ns;
-
-   let Mrun = modules.find(m => m.name === RUN_MODULE);
+   let Mrun = minfos.find(m => m.name === RUN_MODULE);
 
    // That's our contract with RUN_MODULE:
    //   * we give it the way to send a message over the wire
