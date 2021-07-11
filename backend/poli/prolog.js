@@ -1,5 +1,6 @@
 common
    assert
+   find
    hasOwnProperty
    iconcat
    selectProps
@@ -216,6 +217,7 @@ updateProjection ::= function (proj) {
    if (proj.base.next === null && $.versionEmpty(proj.base)) {
       // 'base' is newest and there's nothing beyond 'base' => nothing to do
       proj.isValid = true;
+      proj.relation.validProjs.add(proj);
       return;
    }
 
@@ -226,7 +228,9 @@ updateProjection ::= function (proj) {
 
    $.reduceVersions(proj.base);
 
-   let delta = proj.curver.delta;
+   // Optimization: if nobody else needs our current version, there's no point in
+   // computing delta for it.  Just update the 'value' and 'deps'
+   let delta = proj.curver.refcount > 1 ? proj.curver.delta : null;
 
    for (let [fact, action] of proj.base.delta) {
       if (action === 'remove') {
@@ -234,21 +238,25 @@ updateProjection ::= function (proj) {
             let tuple = $.selectProps(fact, proj.freeAttrs);
             proj.value.add(tuple);
             proj.deps.set(fact, tuple);
-            delta.set(tuple, 'remove');
+            if (delta !== null) {
+               delta.set(tuple, 'remove');
+            }
          }
       }
       else if (proj.deps.has(fact)) {
          let tuple = proj.deps.get(fact);
          proj.value.delete(tuple);
          proj.deps.delete(fact);
-         delta.set(tuple, 'add');
+         if (delta !== null) {
+            delta.set(tuple, 'add');
+         }
       }
    }
 
    $.releaseVersion(proj.base);
    proj.base = newBase;  // already reffed it
 
-   if (delta.size > 0) {
+   if (delta !== null && delta.size > 0) {
       let newver = {
          num: 0,
          next: null,
@@ -335,13 +343,21 @@ invalidateProjs ::= function (rel) {
 
    rel.validProjs.clear();
 }
-test ::= function () {
+test_general ::= function () {
    console.log($.query($.country, ['name'], {continent: 'Europe'}));
-   
+
    let t_italy = {name: 'Italy', continent: 'Europe'}
    $.addFact($.country, t_italy);
    console.log($.query($.country, ['name'], {continent: 'Europe'}));
-   
+
    $.removeFact($.country, t_italy);
+   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+
+   let t_poland = $.find($.country.facts, f => f.name === 'Poland');
+   $.removeFact($.country, t_poland);
+   $.addFact($.country, t_poland);
+   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+
+   $.removeFact($.country, t_poland);
    console.log($.query($.country, ['name'], {continent: 'Europe'}));
 }

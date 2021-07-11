@@ -174,6 +174,13 @@ itorFinal ::= function (itor) {
 
    return finalItem;
 }
+find ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (pred(x)) {
+         return x;
+      }
+   }
+}
 findIndex ::= function (itbl, pred) {
    let i = -1;
 
