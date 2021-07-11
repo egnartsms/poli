@@ -361,3 +361,11 @@ test_general ::= function () {
    $.removeFact($.country, t_poland);
    console.log($.query($.country, ['name'], {continent: 'Europe'}));
 }
+test_no_free_vars ::= function () {
+   console.log("Free vars")
+   console.log($.query($.country, [], {name: 'India', continent: 'Asia'}));
+
+   let t_india = $.find($.country.facts, f => f.name === 'India');
+   $.removeFact($.country, t_india);
+   console.log($.query($.country, [], {name: 'India', continent: 'Asia'}));
+}
