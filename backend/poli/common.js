@@ -19,6 +19,9 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
+selectProps ::= function (obj, props) {
+   return Object.fromEntries(props.map(p => [p, obj[p]]));
+}
 patchObj ::= function (obj, patch) {
    return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj, patch);
 }
@@ -215,6 +218,13 @@ map ::= function* (itbl, fn) {
 iconcat ::= function* (...itbls) {
    for (let itbl of itbls) {
       yield* itbl;
+   }
+}
+ifilter ::= function* (itbl, filter) {
+   for (let x of itbl) {
+      if (filter(x)) {
+         yield x;
+      }
    }
 }
 newObj ::= function (proto, ...props) {

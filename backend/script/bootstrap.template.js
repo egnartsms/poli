@@ -5,29 +5,31 @@ const {WORLD_MODULE, RUN_MODULE} = require('./const');
 function run(rawModules) {
    let minfos = loadModules(rawModules);
    
-   let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-   Mworld.ns['load'](minfos);
+   // let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+   // Mworld.ns['load'](minfos);
    
-   // let xsTest = minfos.find(m => m.name === 'xs-test');
-   // xsTest.ns['testTrie']();
-   // return;
+   let mprolog = minfos.find(m => m.name === 'prolog');
+   mprolog.ns['initialize']();
+   window.pl = mprolog.ns;
+   mprolog.ns['test']();
+   return;
 
-   window.exp = minfos.find(m => m.name === 'exp').ns;
+   // window.exp = minfos.find(m => m.name === 'exp').ns;
 
-   let Mrun = minfos.find(m => m.name === RUN_MODULE);
+   // let Mrun = minfos.find(m => m.name === RUN_MODULE);
 
-   // That's our contract with RUN_MODULE:
-   //   * we give it the way to send a message over the wire
-   //   * it gives us operation handler which we call on incoming operation request
-   let websocket = makeWebsocket();
+   // // That's our contract with RUN_MODULE:
+   // //   * we give it the way to send a message over the wire
+   // //   * it gives us operation handler which we call on incoming operation request
+   // let websocket = makeWebsocket();
 
-   let handleMessage = Mrun.ns['main'](
-      message => websocket.send(JSON.stringify(message))
-   );
+   // let handleMessage = Mrun.ns['main'](
+   //    message => websocket.send(JSON.stringify(message))
+   // );
 
-   websocket.addEventListener('message', ev => {
-      handleMessage(JSON.parse(ev.data));
-   });
+   // websocket.addEventListener('message', ev => {
+   //    handleMessage(JSON.parse(ev.data));
+   // });
 }
 
 
