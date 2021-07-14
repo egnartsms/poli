@@ -122,7 +122,7 @@ projByQuery ::= function (rel, freeAttrs, boundAttrs) {
    return map;
 }
 makeProjection ::= function (rel, freeAttrs, boundAttrs) {
-   let base = $.frelRefCurrentState(rel);
+   let base = $.tableRefCurrentState(rel);
 
    let proj = {
       relation: rel,
@@ -163,7 +163,7 @@ factSatisfies ::= function (fact, boundAttrs) {
 
    return true;
 }
-frelRefCurrentState ::= function (rel) {
+tableRefCurrentState ::= function (rel) {
    if (rel.curver === null) {
       rel.curver = {
          num: 1,
@@ -172,7 +172,7 @@ frelRefCurrentState ::= function (rel) {
          delta: new Map,
       }
    }
-   else if ($.versionEmpty(rel.curver)) {
+   else if ($.isVersionEmpty(rel.curver)) {
       rel.curver.refcount += 1;
    }
    else {
@@ -188,7 +188,7 @@ frelRefCurrentState ::= function (rel) {
 
    return rel.curver;
 }
-versionEmpty ::= function (ver) {
+isVersionEmpty ::= function (ver) {
    return ver.delta.size === 0;
 }
 linkNewHeadVersion ::= function (ver0, ver1) {
@@ -214,14 +214,14 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if (proj.base.next === null && $.versionEmpty(proj.base)) {
+   if (proj.base.next === null && $.isVersionEmpty(proj.base)) {
       // 'base' is newest and there's nothing beyond 'base' => nothing to do
       proj.isValid = true;
       proj.relation.validProjs.add(proj);
       return;
    }
 
-   let newBase = $.frelRefCurrentState(proj.relation);
+   let newBase = $.tableRefCurrentState(proj.relation);
 
    // if they're the same we would have fallen into the if branch above
    $.assert(proj.base !== newBase);
@@ -233,13 +233,13 @@ updateProjection ::= function (proj) {
    let delta = proj.curver.refcount > 1 ? proj.curver.delta : null;
 
    for (let [fact, action] of proj.base.delta) {
-      if (action === 'remove') {
+      if (action === 'add') {
          if ($.factSatisfies(fact, proj.boundAttrs)) {
             let tuple = $.selectProps(fact, proj.freeAttrs);
             proj.value.add(tuple);
             proj.deps.set(fact, tuple);
             if (delta !== null) {
-               delta.set(tuple, 'remove');
+               delta.set(tuple, 'add');
             }
          }
       }
@@ -248,7 +248,7 @@ updateProjection ::= function (proj) {
          proj.value.delete(tuple);
          proj.deps.delete(fact);
          if (delta !== null) {
-            delta.set(tuple, 'add');
+            delta.set(tuple, 'remove');
          }
       }
    }
@@ -303,13 +303,14 @@ mergeDelta ::= function (dstD, srcD) {
 }
 addFact ::= function (rel, fact) {
    if (rel.facts.has(fact)) {
-      throw new Error(`Duplicate fact`);
+      // throw new Error(`Duplicate fact`);
+      return;
    }
 
    rel.facts.add(fact);
 
    if (rel.curver !== null) {
-      $.deltaAdd(rel.curver.delta, fact, 'remove');
+      $.deltaAdd(rel.curver.delta, fact, 'add');
       $.invalidateProjs(rel);
    }
 }
@@ -317,11 +318,12 @@ removeFact ::= function (rel, fact) {
    let wasRemoved = rel.facts.delete(fact);
 
    if (!wasRemoved) {
-      throw new Error(`Missing fact`);
+      // throw new Error(`Missing fact`);
+      return
    }
 
    if (rel.curver !== null) {
-      $.deltaAdd(rel.curver.delta, fact, 'add');
+      $.deltaAdd(rel.curver.delta, fact, 'remove');
       $.invalidateProjs(rel);
    }
 }
