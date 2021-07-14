@@ -2,14 +2,13 @@ common
    assert
    find
    hasOwnProperty
+   hasNoEnumerableProps
    iconcat
    selectProps
 -----
-continent ::= null
-country ::= null
-city ::= null
+relations ::= ({})
 initialize ::= function () {
-   $.continent = $.relation({
+   let continent = $.factualRelation({
       name: 'continent',
       attrs: ['name'],
       facts: new Set([
@@ -19,7 +18,7 @@ initialize ::= function () {
       ])
    });
 
-   $.country = $.relation({
+   let country = $.factualRelation({
       name: 'country',
       attrs: ['name', 'continent'],
       facts: new Set([
@@ -34,7 +33,7 @@ initialize ::= function () {
       ])
    });
 
-   $.city = $.relation({
+   let city = $.factualRelation({
       name: 'city',
       attrs: ['name', 'country', 'population'],
       facts: new Set([
@@ -67,8 +66,32 @@ initialize ::= function () {
          {country: 'Canada', name: 'Vancouver', population: 2.463}
       ])
    });
+
+   let continent_city = $.inferredRelation(v => ({
+      name: 'continent_city',
+      attrs: {
+         continent: v`Continent`,
+         city: v`City`
+      },
+      body: [
+         {
+            rel: continent,
+            attrs: {name: v`Continent`}
+         },
+         {
+            rel: country,
+            attrs: {continent: v`Continent`, name: v`Country`}
+         },
+         {
+            rel: city,
+            attrs: {country: v`Country`, name: v`City`}
+         }
+      ]
+   }));
+
+   Object.assign($.relations, {continent, country, city, continent_city});
 }
-relation ::= function ({name, attrs, facts}) {
+factualRelation ::= function ({name, attrs, facts}) {
    return {
       isFactual: true,
       name: name,
@@ -80,12 +103,10 @@ relation ::= function ({name, attrs, facts}) {
       curver: null,
    }
 }
-attrOmitted ::= new Object
-attrFree ::= new Object
 query ::= function (rel, freeAttrs, boundAttrs) {
    let proj = $.projByQuery(rel, freeAttrs, boundAttrs);
    $.updateProjection(proj);
-   return Array.from(proj.value);
+   return proj.value;
 }
 projByQuery ::= function (rel, freeAttrs, boundAttrs) {
    let map = rel.query2proj;
@@ -108,7 +129,7 @@ projByQuery ::= function (rel, freeAttrs, boundAttrs) {
          map = map.get(key);
       }
       else if (i === rel.attrs.length - 1) {
-         let proj = $.makeProjection(rel, freeAttrs, boundAttrs);
+         let proj = $.projection(rel, freeAttrs, boundAttrs);
          map.set(key, proj);
          map = proj;
       }
@@ -121,38 +142,67 @@ projByQuery ::= function (rel, freeAttrs, boundAttrs) {
 
    return map;
 }
-makeProjection ::= function (rel, freeAttrs, boundAttrs) {
-   let base = $.tableRefCurrentState(rel);
+attrOmitted ::= ({
+   [Symbol.toStringTag]: '_'
+})
+attrFree ::= ({
+   [Symbol.toStringTag]: 'v'
+})
+projection ::= function (rel, freeAttrs, boundAttrs) {
+   $.assert(rel.isFactual);
 
-   let proj = {
-      relation: rel,
-      isValid: true,
-      freeAttrs: freeAttrs,
-      boundAttrs: boundAttrs,
-      base: base,
-      deps: new Map,
-      curver: {
-         num: 1,
-         next: null,
-         refcount: 1,  // projection refs its curver
-         // this will be populated when the next version is created
-         delta: new Map
-      },
-      value: new Set
-   };
+   let base = $.refFactualRelationCurrentState(rel);
+   let proj;
 
-   for (let fact of rel.facts) {
-      if ($.factSatisfies(fact, boundAttrs)) {
-         let tuple = $.selectProps(fact, freeAttrs)
-         proj.value.add(tuple);
-         proj.deps.set(fact, tuple);
+   if ($.hasNoEnumerableProps(boundAttrs)) {
+      proj = {
+         relation: rel,
+         isValid: true,
+         freeAttrs: freeAttrs,
+         boundAttrs: null,
+         base: base,
+         curver: base,
+         value: rel.facts
+      };
+   }
+   else {
+      proj = {
+         relation: rel,
+         isValid: true,
+         freeAttrs: freeAttrs,
+         boundAttrs: boundAttrs,
+         base: base,
+         deps: new Map,
+         curver: {
+            num: 1,
+            next: null,
+            refcount: 1,  // projection refs its curver
+            // this will be populated when the next version is created
+            delta: new Map
+         },
+         value: new Set
+      };
+
+      for (let fact of rel.facts) {
+         if ($.factSatisfies(fact, boundAttrs)) {
+            let tuple = $.selectProps(fact, freeAttrs)
+            proj.value.add(tuple);
+            proj.deps.set(fact, tuple);
+         }
       }
    }
    
    rel.projs.add(proj);
-   rel.validProjs.add(proj);
+   $.markProjectionValid(proj);
 
    return proj;
+}
+isUnfilteredProjection ::= function (proj) {
+   return proj.boundAttrs === null;
+}
+markProjectionValid ::= function (proj) {
+   proj.isValid = true;
+   proj.relation.validProjs.add(proj);
 }
 factSatisfies ::= function (fact, boundAttrs) {
    for (let [attr, val] of Object.entries(boundAttrs)) {
@@ -163,7 +213,9 @@ factSatisfies ::= function (fact, boundAttrs) {
 
    return true;
 }
-tableRefCurrentState ::= function (rel) {
+refFactualRelationCurrentState ::= function (rel) {
+   $.assert(rel.isFactual);
+
    if (rel.curver === null) {
       rel.curver = {
          num: 1,
@@ -191,6 +243,9 @@ tableRefCurrentState ::= function (rel) {
 isVersionEmpty ::= function (ver) {
    return ver.delta.size === 0;
 }
+isVersionNewest ::= function (ver) {
+   return ver.next === null;
+}
 linkNewHeadVersion ::= function (ver0, ver1) {
    ver1.num = ver0.num + 1;
    ver0.next = ver1;
@@ -214,17 +269,26 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if (proj.base.next === null && $.isVersionEmpty(proj.base)) {
-      // 'base' is newest and there's nothing beyond 'base' => nothing to do
-      proj.isValid = true;
-      proj.relation.validProjs.add(proj);
+   if ($.isVersionNewest(proj.base) && $.isVersionEmpty(proj.base)) {
+      $.markProjectionValid(proj);
       return;
    }
 
-   let newBase = $.tableRefCurrentState(proj.relation);
+   let newBase = $.refFactualRelationCurrentState(proj.relation);
 
    // if they're the same we would have fallen into the if branch above
    $.assert(proj.base !== newBase);
+
+   if ($.isUnfilteredProjection(proj)) {
+      $.releaseVersion(proj.base);
+
+      proj.base = newBase;  // already reffed it
+      proj.curver = proj.base;  // always refers to the same version as 'proj.base'
+
+      $.markProjectionValid(proj);
+
+      return;
+   }
 
    $.reduceVersions(proj.base);
 
@@ -268,8 +332,7 @@ updateProjection ::= function (proj) {
       proj.curver = newver;
    }
 
-   proj.isValid = true;
-   proj.relation.validProjs.add(proj);
+   $.markProjectionValid(proj);
 }
 reduceVersions ::= function (ver) {
    if (ver.next === null || ver.next.next === null) {
@@ -303,8 +366,7 @@ mergeDelta ::= function (dstD, srcD) {
 }
 addFact ::= function (rel, fact) {
    if (rel.facts.has(fact)) {
-      // throw new Error(`Duplicate fact`);
-      return;
+      throw new Error(`Duplicate fact`);
    }
 
    rel.facts.add(fact);
@@ -318,8 +380,7 @@ removeFact ::= function (rel, fact) {
    let wasRemoved = rel.facts.delete(fact);
 
    if (!wasRemoved) {
-      // throw new Error(`Missing fact`);
-      return
+      throw new Error(`Missing fact`);
    }
 
    if (rel.curver !== null) {
@@ -345,29 +406,128 @@ invalidateProjs ::= function (rel) {
 
    rel.validProjs.clear();
 }
-test_general ::= function () {
-   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+inferredRelation ::= function (callback) {
+   let varmap = new Map;
 
-   let t_italy = {name: 'Italy', continent: 'Europe'}
-   $.addFact($.country, t_italy);
-   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+   let {name, attrs, body} = callback(function (strings) {
+      if (strings.length !== 1) {
+         throw new Error(`Logical variable names don't support inline expressions`);
+      }
 
-   $.removeFact($.country, t_italy);
-   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+      let [name] = strings;
 
-   let t_poland = $.find($.country.facts, f => f.name === 'Poland');
-   $.removeFact($.country, t_poland);
-   $.addFact($.country, t_poland);
-   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+      if (!varmap.has(name)) {
+         varmap.set(name, {[$.lvarSym]: name});
+      }
 
-   $.removeFact($.country, t_poland);
-   console.log($.query($.country, ['name'], {continent: 'Europe'}));
+      return varmap.get(name);
+   });
+
+   let vars = [...varmap.values()];
+   let unsoundVars = $.unsoundVars(vars, attrs, body);
+
+   if (unsoundVars.size > 0) {
+      let varnames = [...unsoundVars.keys()].map(lvar => lvar[$.lvarSym]);
+      throw new Error(`Relation '${name}': unsound variables: ${varnames.join(', ')}`);
+   }
+
+   return {
+      isFactual: false,
+      name: name,
+      attrs: attrs,
+      body: body,
+      query2proj: new Map,
+      projs: new Set,
+      validProjs: new Set,
+   }
 }
-test_no_free_vars ::= function () {
-   console.log("Free vars")
-   console.log($.query($.country, [], {name: 'India', continent: 'Asia'}));
+lvarSym ::= Symbol.for('poli.lvar')
+isLvar ::= function (obj) {
+   return obj != null && obj[$.lvarSym] !== undefined;
+}
+unsoundVars ::= function (vars, attrs, body) {
+   // var -> {'unknown', 'appeared', 'used'}
+   let seen = new Map();
 
-   let t_india = $.find($.country.facts, f => f.name === 'India');
-   $.removeFact($.country, t_india);
-   console.log($.query($.country, [], {name: 'India', continent: 'Asia'}));
+   for (let lvar of vars) {
+      seen.set(lvar, 'unknown');
+   }
+
+   function met(lvar) {
+      let state = seen.get(lvar);
+      switch (state) {
+         case 'unknown':
+            seen.set(lvar, 'appeared');
+            break;
+         case 'appeared':
+            seen.set(lvar, 'used');
+            break;
+         case 'used':
+            break;
+         default:
+            throw new Error(`Extraneous lvar met: '${lvar}'`);
+      }
+   }
+
+   for (let lvar of Object.values(attrs)) {
+      met(lvar);
+   }
+
+   for (let cond of body) {
+      for (let lvar of Object.values(cond.attrs)) {
+         if ($.isLvar(lvar)) {
+            met(lvar);
+         }
+      }
+   }
+
+   let unsoundVars = new Map;
+
+   for (let lvar of vars) {
+      let state = seen.get(lvar);
+      if (state !== 'used') {
+         unsoundVars.set(lvar, state);
+      }
+   }
+
+   return unsoundVars;
+}
+inferredRelationProjection ::= function (rel, freeAttrs, boundAttrs) {
+   // if ($.hasNoEnumerableProps(boundAttrs)) {
+   //    proj = {
+   //       relation: rel,
+   //       isValid: true,
+   //       freeAttrs: freeAttrs,
+   //       boundAttrs: null,
+   //       base: base,
+   //       curver: base,
+   //       value: rel.facts
+   //    };
+   // }
+   // else {
+   //    proj = {
+   //       relation: rel,
+   //       isValid: true,
+   //       freeAttrs: freeAttrs,
+   //       boundAttrs: boundAttrs,
+   //       base: base,
+   //       deps: new Map,
+   //       curver: {
+   //          num: 1,
+   //          next: null,
+   //          refcount: 1,  // projection refs its curver
+   //          // this will be populated when the next version is created
+   //          delta: new Map
+   //       },
+   //       value: new Set
+   //    };
+
+   //    for (let fact of rel.facts) {
+   //       if ($.factSatisfies(fact, boundAttrs)) {
+   //          let tuple = $.selectProps(fact, freeAttrs)
+   //          proj.value.add(tuple);
+   //          proj.deps.set(fact, tuple);
+   //       }
+   //    }
+   // }
 }

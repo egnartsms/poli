@@ -12,7 +12,8 @@ function run(rawModules) {
    mprolog.ns['initialize']();
    window.pl = mprolog.ns;
 
-   for (let [name, val] of Object.entries(mprolog.ns)) {
+   let mtestprolog = minfos.find(m => m.name === 'test-prolog');
+   for (let [name, val] of Object.entries(mtestprolog.ns)) {
       if (name.startsWith('test_')) {
          val();
       }

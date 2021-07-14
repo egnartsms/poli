@@ -217,6 +217,66 @@ arraysEqual ::= function arraysEqual (A, B) {
    }
    return true;
 }
+isLike ::= function isLike(A, B) {
+   if (A === B) {
+      return true;
+   }
+   if (A instanceof Array) {
+      if (!(B instanceof Array) || A.length !== B.length) {
+         return false;
+      }
+      for (let i = 0; i < A.length; i += 1) {
+         if (!isLike(A[i], B[i])) {
+            return false;
+         }
+      }
+      return true;
+   }
+   if (A instanceof Set) {
+      if (!(B instanceof Array)) {
+         return false;
+      }
+
+      B = new Set(B);
+
+      if (A.size !== B.size) {
+         return false;
+      }
+
+      loop:
+      for (let a of A) {
+         for (let b of B) {
+            if (isLike(a, b)) {
+               B.delete(b);
+               continue loop;
+            }
+         }
+         return false;
+      }
+
+      return true;
+   }
+
+   if (typeof A === 'object') {
+      if (typeof B !== 'object') {
+         return false;
+      }
+
+      if (A === null || B === null) {
+         return false;
+      }
+
+      for (let [p, b] of Object.entries(B)) {
+         if (!$.hasOwnProperty(A, p) || !isLike(A[p], b)) {
+            return false;
+         }
+      }
+
+      return true;
+   }
+
+   return false;
+}
 map ::= function* (itbl, fn) {
    for (let x of itbl) {
       yield fn(x);
@@ -236,4 +296,11 @@ ifilter ::= function* (itbl, filter) {
 }
 newObj ::= function (proto, ...props) {
    return Object.assign(Object.create(proto), ...props);
+}
+hasNoEnumerableProps ::= function (obj) {
+   for (let prop in obj) {
+      return false;
+   }
+
+   return true;
 }
