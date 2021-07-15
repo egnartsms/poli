@@ -294,6 +294,21 @@ ifilter ::= function* (itbl, filter) {
       }
    }
 }
+trackingFinal ::= function* (itbl) {
+   let itor = itbl[Symbol.iterator]();
+   let {value, done} = itor.next();
+
+   while (!done) {
+      let nextValue;
+
+      ({value: nextValue, done} = itor.next());
+      
+      yield [value, done];
+      value = nextValue;     
+   }
+
+   return value;
+}
 newObj ::= function (proto, ...props) {
    return Object.assign(Object.create(proto), ...props);
 }

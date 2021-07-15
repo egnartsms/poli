@@ -9,6 +9,7 @@ prolog
    removeFact
    relations as: rels
    isUnfilteredProjection
+   updateProjection
 -----
 test_projection_updates ::= function () {
    $.assert($.isLike(
@@ -64,10 +65,11 @@ test_projection_updates ::= function () {
    ));
 }
 test_proj_no_free_vars ::= function () {
+   // No free vars but we still store references to facts themselves
    $.assert($.isLike(
       $.query($.rels.country, [], {name: 'India', continent: 'Asia'}),
       [
-         {}
+         {name: 'India', continent: 'Asia'}
       ]
    ));
 
@@ -101,4 +103,18 @@ test_unfiltered_projections ::= function () {
          {name: 'America'}
       ]
    ));
+
+   let proj;
+
+   proj = $.projByQuery($.rels.country, ['continent'], {});
+   $.updateProjection(proj);
+   $.assert(proj.base === $.rels.country.curver);
+   
+   proj = $.projByQuery($.rels.country, ['continent', 'name'], {});
+   $.updateProjection(proj);
+   $.assert(proj.base === $.rels.country.curver);
+
+   proj = $.projByQuery($.rels.country, ['name'], {});
+   $.updateProjection(proj);
+   $.assert(proj.base === $.rels.country.curver);
 }

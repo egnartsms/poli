@@ -16,6 +16,7 @@ function run(rawModules) {
    for (let [name, val] of Object.entries(mtestprolog.ns)) {
       if (name.startsWith('test_')) {
          val();
+         console.log(`${name} passed`)
       }
    }
    

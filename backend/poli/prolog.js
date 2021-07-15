@@ -5,22 +5,31 @@ common
    hasNoEnumerableProps
    iconcat
    selectProps
+prolog-index
+   indexBuild
 -----
 relations ::= ({})
 initialize ::= function () {
    let continent = $.factualRelation({
       name: 'continent',
       attrs: ['name'],
+      indices: [
+         Object.assign(['name'], {unique: true})
+      ],
       facts: new Set([
          {name: 'Europe'},
          {name: 'Asia'},
          {name: 'America'}
-      ])
+      ]),
    });
 
    let country = $.factualRelation({
       name: 'country',
       attrs: ['name', 'continent'],
+      indices: [
+         Object.assign(['name'], {unique: true}),
+         ['continent']
+      ],
       facts: new Set([
          {continent: 'Europe', name: 'France'},
          {continent: 'Europe', name: 'Poland'},
@@ -30,12 +39,15 @@ initialize ::= function () {
          {continent: 'Asia', name: 'Turkey'},
          {continent: 'America', name: 'Canada'},
          {continent: 'America', name: 'USA'}
-      ])
+      ]),
    });
 
    let city = $.factualRelation({
       name: 'city',
       attrs: ['name', 'country', 'population'],
+      indices: [
+         ['country']
+      ],
       facts: new Set([
          {country: 'France', name: 'Paris', population: 13.024},
          {country: 'France', name: 'Marseille', population: 1.761},
@@ -91,11 +103,18 @@ initialize ::= function () {
 
    Object.assign($.relations, {continent, country, city, continent_city});
 }
-factualRelation ::= function ({name, attrs, facts}) {
+factualRelation ::= function ({name, attrs, indices, facts}) {
+   $.assert(facts instanceof Set);
+
+   for (let index of indices) {
+      $.indexBuild(index, facts);
+   }
+   
    return {
       isFactual: true,
       name: name,
       attrs: attrs,
+      indices: indices,
       query2proj: new Map,
       projs: new Set,
       validProjs: new Set,
@@ -172,7 +191,6 @@ projection ::= function (rel, freeAttrs, boundAttrs) {
          freeAttrs: freeAttrs,
          boundAttrs: boundAttrs,
          base: base,
-         deps: new Map,
          curver: {
             num: 1,
             next: null,
@@ -185,9 +203,7 @@ projection ::= function (rel, freeAttrs, boundAttrs) {
 
       for (let fact of rel.facts) {
          if ($.factSatisfies(fact, boundAttrs)) {
-            let tuple = $.selectProps(fact, freeAttrs)
-            proj.value.add(tuple);
-            proj.deps.set(fact, tuple);
+            proj.value.add(fact);
          }
       }
    }
@@ -220,7 +236,7 @@ refFactualRelationCurrentState ::= function (rel) {
       rel.curver = {
          num: 1,
          next: null,
-         refcount: 1,
+         refcount: 1,  // that's the reference that this func adds
          delta: new Map,
       }
    }
@@ -293,26 +309,22 @@ updateProjection ::= function (proj) {
    $.reduceVersions(proj.base);
 
    // Optimization: if nobody else needs our current version, there's no point in
-   // computing delta for it.  Just update the 'value' and 'deps'
+   // computing delta for it.  Just update the 'value'
    let delta = proj.curver.refcount > 1 ? proj.curver.delta : null;
 
    for (let [fact, action] of proj.base.delta) {
       if (action === 'add') {
          if ($.factSatisfies(fact, proj.boundAttrs)) {
-            let tuple = $.selectProps(fact, proj.freeAttrs);
-            proj.value.add(tuple);
-            proj.deps.set(fact, tuple);
+            proj.value.add(fact);
             if (delta !== null) {
-               delta.set(tuple, 'add');
+               delta.set(fact, 'add');
             }
          }
       }
-      else if (proj.deps.has(fact)) {
-         let tuple = proj.deps.get(fact);
-         proj.value.delete(tuple);
-         proj.deps.delete(fact);
+      else if (proj.value.has(fact)) {
+         proj.value.delete(fact);
          if (delta !== null) {
-            delta.set(tuple, 'remove');
+            delta.set(fact, 'remove');
          }
       }
    }
@@ -427,7 +439,7 @@ inferredRelation ::= function (callback) {
    let unsoundVars = $.unsoundVars(vars, attrs, body);
 
    if (unsoundVars.size > 0) {
-      let varnames = [...unsoundVars.keys()].map(lvar => lvar[$.lvarSym]);
+      let varnames = Array.from(unsoundVars.keys(), lvar => lvar[$.lvarSym]);
       throw new Error(`Relation '${name}': unsound variables: ${varnames.join(', ')}`);
    }
 
@@ -446,7 +458,7 @@ isLvar ::= function (obj) {
    return obj != null && obj[$.lvarSym] !== undefined;
 }
 unsoundVars ::= function (vars, attrs, body) {
-   // var -> {'unknown', 'appeared', 'used'}
+   // var -> 'unknown' OR 'appeared' OR 'used'
    let seen = new Map();
 
    for (let lvar of vars) {
@@ -481,16 +493,13 @@ unsoundVars ::= function (vars, attrs, body) {
       }
    }
 
-   let unsoundVars = new Map;
-
    for (let lvar of vars) {
-      let state = seen.get(lvar);
-      if (state !== 'used') {
-         unsoundVars.set(lvar, state);
+      if (seen.get(lvar) === 'used') {
+         seen.delete(lvar);
       }
    }
 
-   return unsoundVars;
+   return seen;
 }
 inferredRelationProjection ::= function (rel, freeAttrs, boundAttrs) {
    // if ($.hasNoEnumerableProps(boundAttrs)) {
