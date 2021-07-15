@@ -1,6 +1,5 @@
-bootstrap
-   assert
 common
+   assert
    yreExec
    yreTest
 -----

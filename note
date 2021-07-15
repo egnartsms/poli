@@ -79,3 +79,25 @@ Syntax objects
    nl: 0,
    sub: [...]
 }
+
+
+
+========
+per module relation: {name, def, ...}
+
+imports relation: {donorid, entryName, recpid, alias}
+modules relation: {id, name, lang, entries, ...}
+   modules.byName: {name => <module fact>}
+   modules.byId: {moduleid => <module fact>}
+
+
+module = {
+   id,
+   name,
+   lang,
+
+   entries: [name],
+      entries.byName: {name => <entry fact>},
+   
+   name2import: {name => <import fact>}
+}

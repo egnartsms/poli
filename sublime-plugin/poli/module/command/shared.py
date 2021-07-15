@@ -1,4 +1,5 @@
 from poli.common.wrapping_method import aroundmethod
+from poli.module import operation as op
 from poli.shared.command import StopCommand
 from poli.shared.command import TextCommand
 from poli.shared.misc import Kind
@@ -14,7 +15,7 @@ class ModuleTextCommandMixin:
         return info is not None and info['kind'] == Kind.module
 
     @aroundmethod
-    def run(self, *args, **kwargs):
+    def run(self, edit, *args, **kwargs):
         if self.only_in_mode is None:
             pass
         elif self.only_in_mode == 'browse':
@@ -25,6 +26,8 @@ class ModuleTextCommandMixin:
                 raise StopCommand
         else:
             raise RuntimeError
+
+        op.ensure_trailing_nl(self.view, edit)
 
         yield
 

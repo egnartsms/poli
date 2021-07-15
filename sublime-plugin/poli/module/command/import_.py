@@ -49,15 +49,13 @@ class PoliImport(ModuleTextCommand):
     def run(self, edit, entry, alias):
         module_name, entry_name = entry
 
-        new_import_section = comm.op('import', {
+        comm.op('import', {
             'recp': op.view_module_name(self.view),
             'donor': module_name,
             'name': entry_name,
             'alias': alias,
         })
 
-        op.replace_import_section(self.view, edit, new_import_section)
-        op.save_module(self.view)
 
     def input(self, args):
         return chain_input_handlers(self.view, args, [

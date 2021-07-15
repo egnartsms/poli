@@ -17,20 +17,20 @@ CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 class RegEdit:
     """Region edit context.
 
-    :param edit_region: an object that's used like this:
-       reg = edit_region[view]
-       edit_region[view] = reg
-       del edit_region[view]
+    :param edit_region_for: an object that's used like this:
+       reg = edit_region_for[view]
+       edit_region_for[view] = reg
+       del edit_region_for[view]
     """
-    def __init__(self, view, edit_region):
+    def __init__(self, view, edit_region_for):
         self.view = view
-        self.edit_region = edit_region
+        self.edit_region_for = edit_region_for
         self.pre, self.post, self.rowcol = self._get_state()
 
     def _get_state(self):
         """Get current state of editing region"""
 
-        reg = self.edit_region[self.view]
+        reg = self.edit_region_for[self.view]
         return reg.a, self.view.size() - reg.b, self.view.rowcol(reg.a)
 
     def _is_after_insertion_at_reg_begin(self, delta):
@@ -58,7 +58,7 @@ class RegEdit:
             return False
 
         pt = sel.a
-        reg = self.edit_region[self.view]
+        reg = self.edit_region_for[self.view]
         
         if pt == reg.a:
             return True
@@ -94,7 +94,7 @@ class RegEdit:
             return False
 
         pt = sel.a
-        reg = self.edit_region[self.view]
+        reg = self.edit_region_for[self.view]
 
         if pt == reg.b + delta:
             return True
@@ -124,14 +124,14 @@ class RegEdit:
             elif pre > self.pre and post == self.post and \
                     self._is_after_insertion_at_reg_begin(pre - self.pre):
                 delta = pre - self.pre
-                reg = self.edit_region[self.view]
-                self.edit_region[self.view] = sublime.Region(reg.a - delta, reg.b)
+                reg = self.edit_region_for[self.view]
+                self.edit_region_for[self.view] = sublime.Region(reg.a - delta, reg.b)
                 break
             elif post > self.post and pre == self.pre and \
                     self._is_after_insertion_at_reg_end(post - self.post):
                 delta = post - self.post
-                reg = self.edit_region[self.view]
-                self.edit_region[self.view] = sublime.Region(reg.a, reg.b + delta)
+                reg = self.edit_region_for[self.view]
+                self.edit_region_for[self.view] = sublime.Region(reg.a, reg.b + delta)
                 break
 
             with read_only_set_to(self.view, False):
@@ -144,7 +144,7 @@ class RegEdit:
             print("Too many iterations in undoing loop regedit")
 
     def is_selection_within(self):
-        ereg = self.edit_region[self.view]
+        ereg = self.edit_region_for[self.view]
         return all(ereg.contains(r) for r in self.view.sel())
     
     def set_read_only(self):
@@ -167,22 +167,26 @@ def is_active_in(view):
     return view in regedit_for
 
 
-def establish(view, region, edit_region=EditRegion()):
-    edit_region[view] = region
-    regedit_for[view] = RegEdit(view, edit_region)
+def establish(view, edit_region_for=EditRegion()):
+    regedit_for[view] = RegEdit(view, edit_region_for)
     regedit_for[view].set_read_only()
+
+
+def establish_in(view, region, edit_region_for=EditRegion()):
+    edit_region_for[view] = region
+    establish(view, edit_region_for)
 
 
 def discard(view, read_only):
     assert is_active_in(view)
 
-    del regedit_for[view].edit_region[view]
+    del regedit_for[view].edit_region_for[view]
     del regedit_for[view]
     view.set_read_only(read_only)
 
 
 def editing_region(view):
-    return regedit_for[view].edit_region[view]
+    return regedit_for[view].edit_region_for[view]
 
 
 @contextlib.contextmanager
@@ -198,14 +202,14 @@ def region_editing_suppressed(view):
             yield
             return
 
-    edit_region = regedit_for[view].edit_region
+    edit_region_for = regedit_for[view].edit_region_for
     del regedit_for[view]
     view.set_read_only(False)
 
     try:
         yield
     finally:
-        regedit_for[view] = RegEdit(view, edit_region)
+        regedit_for[view] = RegEdit(view, edit_region_for)
         regedit_for[view].set_read_only()
 
 

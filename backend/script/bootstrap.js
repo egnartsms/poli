@@ -1,115 +1,245 @@
-(function () {
-	'use strict';
+var poli = (function () {
+   'use strict';
 
-	function createCommonjsModule(fn, module) {
-		return module = { exports: {} }, fn(module, module.exports), module.exports;
-	}
+   function loadModules(rawModules) {
+      function moduleEval(ns, entry, code) {
+         // code = code.replace(/^ function \(/, () => ` function ${entry} (`);
+         let fun = Function('$', `"use strict";\n   return (${code})`);
+         return fun.call(null, ns);
+      }
 
-	var _const = {
-	   SRC_FOLDER: 'poli',
-	   BOOTSTRAP_MODULE: 'bootstrap',
-	   RUN_MODULE: 'run'
-	};
+      console.time('load');
+      
+      let minfos = Array.from(
+         parseModules(rawModules), minfo => ({
+            ...minfo,
+            ns: Object.create(null)
+         })
+      );
 
-	var load = createCommonjsModule(function (module, exports) {
-	const {BOOTSTRAP_MODULE} = _const;
+      // Evaluate bodies
+      for (let minfo of minfos) {
+         if (minfo.lang !== 'js') {
+            continue;
+         }
 
+         for (let [entry, code] of minfo.body) {
+            try {
+               minfo.ns[entry] = moduleEval(minfo.ns, entry, code);
+            }
+            catch (e) {
+               console.error(`'${minfo.name}': failed to eval '${entry}'`);
+               throw e;
+            }
+         }
+      }
 
-	function loadPoli(rawModules) {
-	   console.time('load');
+      // Perform the imports
+      for (let recp of minfos) {
+         if (recp.lang !== 'js') {
+            continue;
+         }
 
-	   let $_ = {
-	      matchAllHeaderBodyPairs,
-	      parseBody,
-	      // fs,  // FIXME: in Browser, that won't be available
-	      BOOTSTRAP_MODULE
-	   };
+         for (let {donor: donorName, asterisk, imports} of recp.imports) {
+            let donor = minfos.find(m => m.name === donorName);
 
-	   let $ = Object.create(null);
+            if (donor === undefined) {
+               throw new Error(
+                  `Module '${recp.name}': cannot import from '${donorName}:' ` +
+                  `no such module`
+               );
+            }
 
-	   function moduleEval(code) {
-	      let fun = Function('$_, $', `"use strict"; return (${code})`);
-	      return fun.call(null, $_, $);
-	   }
+            if (asterisk !== null) {
+               if (asterisk in recp.ns) {
+                  throw new Error(
+                     `Module '${recp.name}': cannot import '* as ${asterisk}' from ` +
+                     `'${donor.name}': collides with another name`
+                  );
+               }
 
-	   let entries = parseBody(rawModules[BOOTSTRAP_MODULE].contents);
+               recp.ns[asterisk] = donor.ns;
+            }
 
-	   for (let [name, code] of entries) {
-	      $[name] = moduleEval(code);
-	   }
+            for (let {entry, alias} of imports) {
+               if (!(entry in donor.ns)) {
+                  throw new Error(
+                     `Module '${recp.name}': cannot import '${entry}' from ` +
+                     `'${donor.name}': no such definition`
+                  );
+               }
 
-	   let modules = $['load'](rawModules);
-	   console.timeEnd('load');
-	   return modules;
-	}
+               let importedAs = alias || entry;
 
+               if (importedAs in recp.ns) {
+                  throw new Error(
+                     `Module '${recp.name}': cannot import '${importedAs}' from ` +
+                     `'${donor.name}': collides with another name`
+                  );
+               }
 
-	function parseBody(str) {
-	   const re = /^(\S+?)\s+::=(?=\s)/gm;
-	   // Here we parse loosely but still require at least 1 space before and after '::='.
-	   // (::= can actually be followed immediately by a newline which is a whitespace, too)
-	   return Array.from(matchAllHeaderBodyPairs(str, re), ([mtch, def]) => [mtch[1], def]);
-	}
+               recp.ns[importedAs] = donor.ns[entry];
+            }
+         }
+      }
 
-
-	/**
-	 * Parse any kind of text separated with headers into header/body pairs:
-	      HEADER ... HEADER ... HEADER ...
-
-	   Everything following a header before the next header or the end of string is considered
-	   a body that belongs to that header.
-	*/
-	function* matchAllHeaderBodyPairs(str, reHeader) {
-	   let prev_i = null, prev_mtch = null;
-
-	   for (let mtch of str.matchAll(reHeader)) {
-	      if (prev_mtch !== null) {
-	         yield [prev_mtch, str.slice(prev_i, mtch.index)];
-	      }
-	      prev_i = mtch.index + mtch[0].length;
-	      prev_mtch = mtch;
-	   }
-
-	   if (prev_mtch !== null) {
-	      yield [prev_mtch, str.slice(prev_i)];
-	   }
-	}
-
-
-	Object.assign(exports, {loadPoli});
-	});
-
-	const {loadPoli} = load;
-	const {RUN_MODULE} = _const;
-
-
-	function run(rawModules) {
-	   let modules = loadPoli(rawModules);
-	   let url = new URL('/browser', window.location.href);
-	   url.protocol = 'ws';
-
-	   let websocket = new WebSocket(url);
-	   
-	   // That's our protocol with RUN_MODULE:
-	   //   * we give it the way to send a message over the wire
-	   //   * it gives us operation handler which we call on incoming operation request
-	   let handleOperation = modules[RUN_MODULE].rtobj['main'](
-	      message => websocket.send(JSON.stringify(message))
-	   );
-
-	   websocket.addEventListener('message', ev => {
-	      handleOperation(JSON.parse(ev.data));
-	   });
-	}
+      console.timeEnd('load');
+      
+      return minfos;
+   }
 
 
-	window.raw_modules = ("%RAW_MODULES%");
-	run(window.raw_modules);
+   function parseModules(rawModules) {
+      let modules = [];
 
-	var bootstrap_template = {
+      for (let raw of rawModules) {
+         let {imports, body} = parseModule(raw.contents);
 
-	};
+         modules.push({
+            name: raw.name,
+            lang: raw.lang,
+            imports: imports,
+            body: body
+         });
+      }
 
-	return bootstrap_template;
+      return modules;
+   }
+
+
+   function parseModule(str) {
+      let mtch = str.match(/^-+\n/m);
+      if (!mtch) {
+         throw new Error(`Bad module: not found the ----- separator`);
+      }
+
+      let rawImports = str.slice(0, mtch.index);
+      let rawBody = str.slice(mtch.index + mtch[0].length);
+
+      let imports = parseImports(rawImports);
+      let body = parseBody(rawBody);
+
+      return {imports, body};
+   }
+
+
+   function parseImports(str) {
+      let res = [];
+
+      for (let [[,donor], rawImports] of matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
+         let imports = Array.from(
+            rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
+         );
+
+         if (imports.length === 0) {
+            // This should not normally happen but not an error
+            continue;
+         }
+
+         let asterisk = null;
+
+         // TODO: check for asterisk at any index
+
+         if (imports[0].groups.entry === '*') {
+            asterisk = imports[0].groups.alias;
+            imports.shift();
+         }
+
+         res.push({
+            donor,
+            asterisk,
+            imports: Array.from(imports, imp => ({
+               entry: imp.groups.entry,
+               alias: imp.groups.alias || null,
+            }))
+         });
+      }
+
+      return res;
+   }
+
+
+   function parseBody(str) {
+      const re = /^(\S+?)\s+::=(?=\s)/gm;
+      // Here we parse loosely but still require at least 1 space before and after '::='.
+      // (::= can actually be followed immediately by a newline which is a whitespace, too)
+      return Array.from(matchAllHeaderBodyPairs(str, re), ([mtch, def]) => [mtch[1], def]);
+   }
+
+
+   /**
+    * Parse any kind of text separated with headers into header/body pairs:
+         HEADER ... HEADER ... HEADER ...
+
+      Everything following a header before the next header or the end of string is considered
+      a body that belongs to that header.
+
+      Yield pairs [header_match, body]
+   */
+   function* matchAllHeaderBodyPairs(str, reHeader) {
+      let prev_i = null, prev_mtch = null;
+
+      for (let mtch of str.matchAll(reHeader)) {
+         if (prev_mtch !== null) {
+            yield [prev_mtch, str.slice(prev_i, mtch.index)];
+         }
+         prev_i = mtch.index + mtch[0].length;
+         prev_mtch = mtch;
+      }
+
+      if (prev_mtch !== null) {
+         yield [prev_mtch, str.slice(prev_i)];
+      }
+   }
+
+
+   var loadModules_1 = loadModules;
+
+   function run(rawModules) {
+      let minfos = loadModules_1(rawModules);
+      
+      // let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+      // Mworld.ns['load'](minfos);
+      
+      let mprolog = minfos.find(m => m.name === 'prolog');
+      mprolog.ns['initialize']();
+      window.pl = mprolog.ns;
+
+      let mtestprolog = minfos.find(m => m.name === 'test-prolog');
+      for (let [name, val] of Object.entries(mtestprolog.ns)) {
+         if (name.startsWith('test_')) {
+            val();
+            console.log(`${name} passed`);
+         }
+      }
+      
+      return;
+
+      // window.exp = minfos.find(m => m.name === 'exp').ns;
+
+      // let Mrun = minfos.find(m => m.name === RUN_MODULE);
+
+      // // That's our contract with RUN_MODULE:
+      // //   * we give it the way to send a message over the wire
+      // //   * it gives us operation handler which we call on incoming operation request
+      // let websocket = makeWebsocket();
+
+      // let handleMessage = Mrun.ns['main'](
+      //    message => websocket.send(JSON.stringify(message))
+      // );
+
+      // websocket.addEventListener('message', ev => {
+      //    handleMessage(JSON.parse(ev.data));
+      // });
+   }
+
+
+   run(/*RAW_MODULES*/);
+
+   var bootstrap_template = {
+
+   };
+
+   return bootstrap_template;
 
 }());

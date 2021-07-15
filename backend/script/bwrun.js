@@ -5,7 +5,7 @@ const url = require('url');
 
 
 const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const {readRawModules} = require('./raw');
+const readRawModules = require('./read-raw-modules');
 
 
 function run() {
@@ -125,7 +125,7 @@ function run() {
          let rawModules = readRawModules();
          let bootstrap = fs
             .readFileSync('./script/bootstrap.js', 'utf8')
-            .replace(/"%RAW_MODULES%"/, () => JSON.stringify(rawModules, null, 2));
+            .replace(/\/\*RAW_MODULES\*\//, () => JSON.stringify(rawModules, null, 2));
 
          resp.writeHead(200, {
             'content-type': 'text/javascript'

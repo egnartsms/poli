@@ -68,5 +68,8 @@ def on_all_views_load(views, callback):
         if n == 0:
             callback()
 
-    for view in views:
-        on_view_load(view, load_1)
+    if views:
+        for view in views:
+            on_view_load(view, load_1)
+    else:
+        callback()

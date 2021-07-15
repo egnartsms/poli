@@ -1,3 +1,4 @@
+import contextlib
 import sublime
 
 from .structure import def_regions
@@ -6,7 +7,8 @@ from .structure import reg_body
 
 from poli.shared.command import StopCommand
 from poli.shared.misc import single_selected_region
-from poli.sublime import regedit
+from poli.sublime.misc import add_hidden_regions
+from poli.sublime.misc import end_minus_1
 
 
 def module_body(view):
@@ -21,13 +23,47 @@ def module_body(view):
 
 
 class Body:
-    def __init__(self, view, reg_names, reg_defs_nl, body_start):
+    KEY_NAMES = 'poli_names'
+    KEY_DEFS = 'poli_defs'
+
+    def __init__(self, view, name_regs, def_regs_nl, body_start):
         self.view = view
         self.body_start = body_start
-        self.entries = [
-            Entry(self, reg_name=reg_name, reg_def=reg_no_trailing_nl(reg_def_nl))
-            for reg_name, reg_def_nl in zip(reg_names, reg_defs_nl)
-        ]
+        self.cached_name_regs = name_regs
+        self.cached_def_regs_nl = def_regs_nl
+        self.change_count = None
+
+        self.entries = [Entry(self, i) for i, name_reg in enumerate(name_regs)]
+    
+    @property
+    def name_regs(self):
+        self.refresh_regions()
+        return self.cached_name_regs
+
+    @property
+    def def_regs_nl(self):
+        self.refresh_regions()
+        return self.cached_def_regs_nl
+
+    @contextlib.contextmanager
+    def regions_tracked(self):
+        add_hidden_regions(self.view, self.KEY_NAMES, self.cached_name_regs)
+        add_hidden_regions(self.view, self.KEY_DEFS, self.cached_def_regs_nl)
+        self.change_count = self.view.change_count()
+
+        try:
+            yield
+        finally:
+            self.change_count = None
+            self.view.erase_regions(self.KEY_DEFS)
+            self.view.erase_regions(self.KEY_NAMES)
+
+    def refresh_regions(self):
+        if self.change_count is not None and \
+                self.change_count != self.view.change_count():
+            self.cached_name_regs = self.view.get_regions(self.KEY_NAMES)
+            self.cached_def_regs_nl = self.view.get_regions(self.KEY_DEFS)
+            self.change_count = self.view.change_count()
 
     def cursor_location(self, reg):
         """Return either CursorLocation instance or None
@@ -41,16 +77,16 @@ class Body:
             return None
 
         for entry in self.entries:
-            if entry.reg_entry.contains(reg):
+            if entry.reg.contains(reg):
                 return CursorLocation(
                     entry=entry,
                     is_inside_name=entry.reg_name.contains(reg),
                     is_inside_def=entry.reg_def.contains(reg),
-                    is_fully_selected=(entry.reg_entry == reg)
+                    is_fully_selected=(entry.reg == reg)
                 )
 
         # Special case: past the last entry is considered the last entry        
-        if self.entries and reg.begin() == reg.end() == self.view.size():
+        if self.entries and reg.begin() >= self.entries[-1].reg_nl.end():
             return CursorLocation(
                 entry=self.entries[-1],
                 is_inside_name=False,
@@ -81,38 +117,49 @@ class Body:
 
 
 class Entry:
-    def __init__(self, body, reg_name, reg_def):
+    def __init__(self, body, index):
         self.body = body
-        self.reg_name = reg_name
-        self.reg_def = reg_def
+        self.myindex = index
 
     @property
     def reg_def_nl(self):
-        return reg_plus_trailing_nl(self.reg_def)
+        return self.body.def_regs_nl[self.myindex]
+    
+    @property
+    def reg_def(self):
+        return end_minus_1(self.reg_def_nl)
 
     @property
-    def reg_entry(self):
+    def is_last(self):
+        return self.myindex == len(self.body.entries) - 1
+
+    @property
+    def reg_name(self):
+        return self.body.name_regs[self.myindex]
+
+    @property
+    def reg(self):
         return self.reg_name.cover(self.reg_def)
 
     @property
-    def reg_entry_nl(self):
+    def reg_nl(self):
         return self.reg_name.cover(self.reg_def_nl)
 
     def name(self):
         return self.body.view.substr(self.reg_name)
 
     def contents(self):
-        return self.body.view.substr(self.reg_entry)
+        return self.body.view.substr(self.reg)
 
-    def is_under_edit(self):
-        if not regedit.is_active_in(self.body.view):
+    def contents_nl(self):
+        return self.body.view.substr(self.reg_nl)
+
+    def is_exclusively_selected(self):
+        if len(self.body.view.sel()) != 1:
             return False
 
-        return regedit.editing_region(self.body.view).intersects(self.reg_entry)
-
-    @property
-    def myindex(self):
-        return self.body.entries.index(self)
+        [reg] = self.body.view.sel()
+        return reg == self.reg
 
 
 class CursorLocation:
@@ -134,13 +181,8 @@ class CursorLocation:
 
 
 def reg_no_trailing_nl(reg):
-    """Exclude the trailing \n from region (don't check whether it's actually \n char)"""
+    """Exclude the trailing \n from region if it is there"""
     return sublime.Region(reg.begin(), reg.end() - 1)
-
-
-def reg_plus_trailing_nl(reg):
-    """Include 1 more char (assumingly \n) in the end of the region"""
-    return sublime.Region(reg.begin(), reg.end() + 1)
 
 
 def sel_cursor_location(view, require_fully_selected=False):
@@ -148,11 +190,6 @@ def sel_cursor_location(view, require_fully_selected=False):
     return module_body(view).cursor_location_or_stop(
         reg, require_fully_selected=require_fully_selected
     )
-
-
-def known_entries(view):
-    regs = name_regions(view)
-    return {view.substr(reg) for reg in regs}
 
 
 def reg_entry_name(view, name):

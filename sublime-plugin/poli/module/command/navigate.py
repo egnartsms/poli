@@ -123,6 +123,6 @@ class PoliGotoEntry(WindowCommand):
             op.goto_module_entry(self.window, module, entry)
 
         self.window.show_quick_panel(
-            [entry for module, entry in data],
+            [[entry, module] for module, entry in data],
             proceed
         )

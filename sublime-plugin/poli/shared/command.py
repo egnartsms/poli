@@ -4,7 +4,7 @@ import sublime_plugin
 
 from poli.common.wrapping_method import WrappingMethodClass
 from poli.common.wrapping_method import aroundmethod
-from poli.exc import BackendError
+from poli.exc import ApiError
 from poli.sublime.edit import call_with_edit_token
 
 
@@ -19,8 +19,8 @@ class TextCommand(sublime_plugin.TextCommand, metaclass=WrappingMethodClass):
             yield
         except StopCommand:
             pass
-        except BackendError as e:
-            sublime.error_message(e.message)
+        except ApiError as e:
+            sublime.error_message(str(e))
 
 
 class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass):
@@ -30,8 +30,8 @@ class WindowCommand(sublime_plugin.WindowCommand, metaclass=WrappingMethodClass)
             yield
         except StopCommand:
             pass
-        except BackendError as e:
-            sublime.error_message(e.message)
+        except ApiError as e:
+            sublime.error_message(str(e))
 
 
 class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMethodClass):
@@ -41,8 +41,8 @@ class ApplicationCommand(sublime_plugin.ApplicationCommand, metaclass=WrappingMe
             yield
         except StopCommand:
             pass
-        except BackendError as e:
-            sublime.error_message(e.message)
+        except ApiError as e:
+            sublime.error_message(str(e))
 
 
 class InterruptibleTextCommand(sublime_plugin.TextCommand):
@@ -53,8 +53,8 @@ class InterruptibleTextCommand(sublime_plugin.TextCommand):
                 gen.send(args)
             except (StopIteration, StopCommand):
                 pass
-            except BackendError as e:
-                sublime.status_message("BE error: " + e.message)
+            except ApiError as e:
+                sublime.error_message(str(e))
             finally:
                 edit.edit_token = 0
 

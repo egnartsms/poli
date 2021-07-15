@@ -34,8 +34,8 @@ class PoliMoveBy1(ModuleTextCommand):
     only_in_mode = 'browse'
 
     def run(self, edit, direction):
-        mcont = op.module_body(self.view)
-        loc = mcont.cursor_location_or_stop(
+        body = op.module_body(self.view)
+        loc = body.cursor_location_or_stop(
             single_selected_region(self.view), require_fully_selected=True
         )
         comm.op('moveBy1', {
@@ -44,29 +44,29 @@ class PoliMoveBy1(ModuleTextCommand):
             'direction': direction
         })
 
-        # OK, now synchronize the view itself
-        i = loc.entry.myindex
+        # # OK, now synchronize the view itself
+        # i = loc.entry.myindex
 
-        if direction == 'up':
-            if i == 0:
-                insert_at = mcont.entries[-1].reg_entry_nl.end()
-            else:
-                insert_at = mcont.entries[i - 1].reg_entry_nl.begin()
-        else:
-            if i + 1 == len(mcont.entries):
-                insert_at = mcont.body_start
-            else:
-                insert_at = mcont.entries[i + 1].reg_entry_nl.end()
+        # if direction == 'up':
+        #     if i == 0:
+        #         insert_at = body.entries[-1].reg_entry_nl.end()
+        #     else:
+        #         insert_at = body.entries[i - 1].reg_entry_nl.begin()
+        # else:
+        #     if i + 1 == len(body.entries):
+        #         insert_at = body.body_start
+        #     else:
+        #         insert_at = body.entries[i + 1].reg_entry_nl.end()
 
-        with read_only_set_to(self.view, False), \
-                Regions(self.view, insert_at) as insert_marker:
-            text = loc.entry.contents()
-            self.view.erase(edit, loc.entry.reg_entry_nl)
-            reg_new = insert_in(self.view, edit, insert_marker.pos, text)
-            self.view.insert(edit, reg_new.end(), '\n')
-            set_selection(self.view, to=reg_new, show=True)
+        # with read_only_set_to(self.view, False), \
+        #         Regions(self.view, insert_at) as insert_marker:
+        #     text = loc.entry.contents()
+        #     self.view.erase(edit, loc.entry.reg_entry_nl)
+        #     reg_new = insert_in(self.view, edit, insert_marker.pos, text)
+        #     self.view.insert(edit, reg_new.end(), '\n')
+        #     set_selection(self.view, to=reg_new, show=True)
 
-        op.save_module(self.view)
+        # op.save_module(self.view)
 
 
 class PoliMove(WindowCommand):
