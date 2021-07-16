@@ -2,15 +2,20 @@ common
    map
    trackingFinal
 -----
-indexBuild ::= function (index, facts) {
-   index.value = new Map;
+buildIndices ::= function (indices, facts) {
+   return new Map($.map(indices, index => [index, $.buildIndex(index, facts)]));
+}
+buildIndex ::= function (index, facts) {
+   let idxval = new Map;
 
    for (let fact of facts) {
-      $.indexAdd(index, fact);
+      $.indexAdd(index, idxval, fact);
    }
+
+   return idxval;
 }
-indexAdd ::= function (index, fact) {
-   let map = index.value;
+indexAdd ::= function (index, idxval, fact) {
+   let map = idxval;
 
    for (let [attr, isFinal] of $.trackingFinal(index)) {
       let val = fact[attr];
@@ -38,5 +43,37 @@ indexAdd ::= function (index, fact) {
 
          map = next;
       }
+   }
+}
+projectionIndices ::= function (indices, boundAttrs) {
+   let projIndices = [];
+   let isScalar = false;
+
+   for (let index of indices) {
+      let projIndex = [];
+
+      for (let attr of index) {
+         if (boundAttrs[attr] === undefined) {
+            projIndex.push(attr);
+         }
+      }
+
+      if (projIndex.length === 0) {
+         if (index.unique) {
+            isScalar = true;
+         }
+      }
+      else {
+         if (index.unique === true) {
+            projIndex.unique = true;
+         }
+
+         projIndices.push(projIndex);
+      }
+   }
+
+   return {
+      indices: projIndices,
+      isScalar: isScalar
    }
 }
