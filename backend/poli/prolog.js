@@ -4,9 +4,12 @@ common
    hasOwnProperty
    hasNoEnumerableProps
    iconcat
+   map
    selectProps
+   trackingFinal
 prolog-index
-   indexBuild
+   buildIndices
+   projectionIndices
 -----
 relations ::= ({})
 initialize ::= function () {
@@ -106,49 +109,38 @@ initialize ::= function () {
 factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
 
-   for (let index of indices) {
-      $.indexBuild(index, facts);
-   }
-   
    return {
       isFactual: true,
       name: name,
       attrs: attrs,
       indices: indices,
-      query2proj: new Map,
+      projmap: new Map,
       projs: new Set,
       validProjs: new Set,
       facts: facts,
+      idxs: $.buildIndices(indices, facts),
       curver: null,
    }
 }
-query ::= function (rel, freeAttrs, boundAttrs) {
-   let proj = $.projByQuery(rel, freeAttrs, boundAttrs);
+query ::= function (rel, boundAttrs) {
+   $.assert(rel.isFactual);
+
+   let proj = $.projectionFor(rel, boundAttrs);
    $.updateProjection(proj);
+
    return proj.value;
 }
-projByQuery ::= function (rel, freeAttrs, boundAttrs) {
-   let map = rel.query2proj;
+projectionFor ::= function (rel, boundAttrs) {
+   let map = rel.projmap;
    
-   for (let i = 0; i < rel.attrs.length; i += 1) {
-      let attr = rel.attrs[i];
-      let key;
-
-      if ($.hasOwnProperty(boundAttrs, attr)) {
-         key = boundAttrs[attr];
-      }
-      else if (freeAttrs.includes(attr)) {
-         key = $.attrFree;
-      }
-      else {
-         key = $.attrOmitted;
-      }
+   for (let [attr, isFinal] of $.trackingFinal(rel.attrs)) {
+      let key = boundAttrs[attr] !== undefined ? boundAttrs[attr] : $.attrFree;
 
       if (map.has(key)) {
          map = map.get(key);
       }
-      else if (i === rel.attrs.length - 1) {
-         let proj = $.projection(rel, freeAttrs, boundAttrs);
+      else if (isFinal) {
+         let proj = $.projection(rel, boundAttrs);
          map.set(key, proj);
          map = proj;
       }
@@ -167,7 +159,7 @@ attrOmitted ::= ({
 attrFree ::= ({
    [Symbol.toStringTag]: 'v'
 })
-projection ::= function (rel, freeAttrs, boundAttrs) {
+projection ::= function (rel, boundAttrs) {
    $.assert(rel.isFactual);
 
    let base = $.refFactualRelationCurrentState(rel);
@@ -177,19 +169,24 @@ projection ::= function (rel, freeAttrs, boundAttrs) {
       proj = {
          relation: rel,
          isValid: true,
-         freeAttrs: freeAttrs,
          boundAttrs: null,
+         indices: rel.indices,
+         isScalar: false,
          base: base,
          curver: base,
-         value: rel.facts
+         value: rel.facts,
+         idxs: rel.idxs,
       };
    }
    else {
+      let {indices, isScalar} = $.projectionIndices(rel.indices, boundAttrs);
+
       proj = {
          relation: rel,
          isValid: true,
-         freeAttrs: freeAttrs,
          boundAttrs: boundAttrs,
+         indices: indices,
+         isScalar: isScalar,
          base: base,
          curver: {
             num: 1,
@@ -198,16 +195,21 @@ projection ::= function (rel, freeAttrs, boundAttrs) {
             // this will be populated when the next version is created
             delta: new Map
          },
-         value: new Set
+         value: new Set(
+            function* {
+               for (let fact of rel.facts) {
+                  if ($.factSatisfies(fact, boundAttrs)) {
+                     proj.value.add(fact);
+                  }
+               }
+            }()
+         ),
+         idxs: null,
       };
 
-      for (let fact of rel.facts) {
-         if ($.factSatisfies(fact, boundAttrs)) {
-            proj.value.add(fact);
-         }
-      }
+      proj.idxs = $.buildIndices(proj.indices, proj.value);
    }
-   
+
    rel.projs.add(proj);
    $.markProjectionValid(proj);
 
