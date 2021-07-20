@@ -4,16 +4,16 @@ common
    find
 prolog
    query
-   projByQuery
+   projectionFor
    addFact
    removeFact
    relations as: rels
-   isUnfilteredProjection
+   isFullProjection
    updateProjection
 -----
 test_projection_updates ::= function () {
    $.assert($.isLike(
-      $.query($.rels.country, ['name'], {continent: 'Europe'}),
+      $.query($.rels.country, {continent: 'Europe'}),
       [
          {name: 'Poland'},
          {name: 'Ruthenia'},
@@ -24,7 +24,7 @@ test_projection_updates ::= function () {
    let t_italy = {name: 'Italy', continent: 'Europe'}
    $.addFact($.rels.country, t_italy);
    $.assert($.isLike(
-      $.query($.rels.country, ['name'], {continent: 'Europe'}),
+      $.query($.rels.country, {continent: 'Europe'}),
       [
          {name: 'Poland'},
          {name: 'Ruthenia'},
@@ -35,7 +35,7 @@ test_projection_updates ::= function () {
 
    $.removeFact($.rels.country, t_italy);
    $.assert($.isLike(
-      $.query($.rels.country, ['name'], {continent: 'Europe'}),
+      $.query($.rels.country, {continent: 'Europe'}),
       [
          {name: 'Poland'},
          {name: 'Ruthenia'},
@@ -47,7 +47,7 @@ test_projection_updates ::= function () {
    $.removeFact($.rels.country, t_poland);
    $.addFact($.rels.country, t_poland);
    $.assert($.isLike(
-      $.query($.rels.country, ['name'], {continent: 'Europe'}),
+      $.query($.rels.country, {continent: 'Europe'}),
       [
          {name: 'Poland'},
          {name: 'Ruthenia'},
@@ -57,7 +57,7 @@ test_projection_updates ::= function () {
 
    $.removeFact($.rels.country, t_poland);
    $.assert($.isLike(
-      $.query($.rels.country, ['name'], {continent: 'Europe'}),
+      $.query($.rels.country, {continent: 'Europe'}),
       [
          {name: 'Ruthenia'},
          {name: 'France'},
@@ -67,7 +67,7 @@ test_projection_updates ::= function () {
 test_proj_no_free_vars ::= function () {
    // No free vars but we still store references to facts themselves
    $.assert($.isLike(
-      $.query($.rels.country, [], {name: 'India', continent: 'Asia'}),
+      $.query($.rels.country, {name: 'India', continent: 'Asia'}),
       [
          {name: 'India', continent: 'Asia'}
       ]
@@ -76,27 +76,15 @@ test_proj_no_free_vars ::= function () {
    let t_india = $.find($.rels.country.facts, f => f.name === 'India');
    $.removeFact($.rels.country, t_india);
    $.assert($.isLike(
-      $.query($.rels.country, [], {name: 'India', continent: 'Asia'}),
+      $.query($.rels.country, {name: 'India', continent: 'Asia'}),
       []
    ));
 }
 test_unfiltered_projections ::= function () {
-   $.assert($.isUnfilteredProjection($.projByQuery($.rels.continent, [], {})));
-   $.assert($.isUnfilteredProjection($.projByQuery($.rels.continent, ['name'], {})));
-   $.assert($.isUnfilteredProjection($.projByQuery($.rels.country, [], {})));
-   $.assert($.isUnfilteredProjection($.projByQuery($.rels.country, ['continent'], {})));
+   $.assert($.isFullProjection($.projectionFor($.rels.continent, {})));
 
    $.assert($.isLike(
-      $.query($.rels.continent, ['name'], {}),
-      [
-         {name: 'Europe'},
-         {name: 'Asia'},
-         {name: 'America'}
-      ]
-   ));
-
-   $.assert($.isLike(
-      $.query($.rels.continent, [], {}),
+      $.query($.rels.continent, {}),
       [
          {name: 'Europe'},
          {name: 'Asia'},
@@ -106,15 +94,7 @@ test_unfiltered_projections ::= function () {
 
    let proj;
 
-   proj = $.projByQuery($.rels.country, ['continent'], {});
+   proj = $.projectionFor($.rels.country, {});
    $.updateProjection(proj);
    $.assert(proj.base === $.rels.country.curver);
-   
-   proj = $.projByQuery($.rels.country, ['continent', 'name'], {});
-   $.updateProjection(proj);
-   $.assert(proj.base === $.rels.country.curver);
-
-   proj = $.projByQuery($.rels.country, ['name'], {});
-   $.updateProjection(proj);
-   $.assert(proj.base === $.rels.country.curver);
-}
+   }

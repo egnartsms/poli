@@ -319,3 +319,11 @@ hasNoEnumerableProps ::= function (obj) {
 
    return true;
 }
+commonArrayPrefixLength ::= function (A1, A2) {
+   let i = 0;
+   while (i < A1.length && i < A2.length && A1[i] === A2[i]) {
+      i += 1;
+   }
+
+   return i;
+}

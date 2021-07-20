@@ -2,20 +2,15 @@ common
    map
    trackingFinal
 -----
-buildIndices ::= function (indices, facts) {
-   return new Map($.map(indices, index => [index, $.buildIndex(index, facts)]));
-}
 buildIndex ::= function (index, facts) {
-   let idxval = new Map;
+   index.value = new Map;
 
    for (let fact of facts) {
-      $.indexAdd(index, idxval, fact);
+      $.indexAdd(index, fact);
    }
-
-   return idxval;
 }
-indexAdd ::= function (index, idxval, fact) {
-   let map = idxval;
+indexAdd ::= function (index, fact) {
+   let map = index.value;
 
    for (let [attr, isFinal] of $.trackingFinal(index)) {
       let val = fact[attr];
@@ -45,9 +40,44 @@ indexAdd ::= function (index, idxval, fact) {
       }
    }
 }
-projectionIndices ::= function (indices, boundAttrs) {
+indexRemove ::= function (index, fact) {
+   let map = index.value;
+
+   for (let [attr, isFinal] of $.trackingFinal(index)) {
+      let val = fact[attr];
+
+      if (!map.has(val)) {
+         throw new Error(`Index missing fact`);
+      }
+
+      if (isFinal) {
+         map.delete(val);
+         if (map.has(val)) {
+            if (index.unique) {
+               throw new Error(`Unique index violation`);
+            }
+            else {
+               map.get(val).push(fact);
+            }
+         }
+         else {
+            map.set(val, index.unique ? fact : [fact]);
+         }
+      }
+      else {
+         let next = map.get(val);
+
+         if (next === undefined) {
+            next = new Map;
+            map.set(val, next);
+         }
+
+         map = next;
+      }
+   }
+}
+factualProjectionIndices ::= function (indices, boundAttrs) {
    let projIndices = [];
-   let isScalar = false;
 
    for (let index of indices) {
       let projIndex = [];
@@ -60,20 +90,14 @@ projectionIndices ::= function (indices, boundAttrs) {
 
       if (projIndex.length === 0) {
          if (index.unique) {
-            isScalar = true;
+            return null;
          }
       }
       else {
-         if (index.unique === true) {
-            projIndex.unique = true;
-         }
-
+         projIndex.unique = index.unique;
          projIndices.push(projIndex);
       }
    }
 
-   return {
-      indices: projIndices,
-      isScalar: isScalar
-   }
+   return projIndices;
 }
