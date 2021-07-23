@@ -13,6 +13,8 @@ prolog-index
    factualProjectionIndices
 prolog-infer
    inferredRelation
+   computeIncrementalUpdatePlan
+   visualizeIncrementalUpdatePlan
 -----
 relations ::= ({})
 initialize ::= function () {
@@ -34,6 +36,7 @@ initialize ::= function () {
       attrs: ['name', 'continent'],
       indices: [
          Object.assign(['name'], {unique: true}),
+         // ['name'],
          ['continent']
       ],
       facts: new Set([
@@ -106,22 +109,21 @@ initialize ::= function () {
 
    Object.assign($.relations, {continent, country, city, continent_city});
 
-   console.log(continent_city.indices);
+   console.log($.visualizeIncrementalUpdatePlan(continent_city));
 }
 factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
 
    let uniqueIndices = [];
-   let normalIndices = [];
 
    for (let index of indices) {
       index.unique = !!index.unique;
-      // (index.unique ? uniqueIndices : normalIndices).push(index);
 
       // Build only unique indices. Normal indices will be built when the full projection
       // of this relation is needed (if ever).
       if (index.unique) {
          $.buildIndex(index, facts);
+         uniqueIndices.push(index);
       }
    }
 
@@ -130,6 +132,7 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
       name: name,
       attrs: attrs,
       indices: indices,
+      uniqueIndices: uniqueIndices,
       projmap: new Map,
       projs: new Set,
       validProjs: new Set,

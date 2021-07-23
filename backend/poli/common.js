@@ -282,6 +282,14 @@ map ::= function* (itbl, fn) {
       yield fn(x);
    }
 }
+mapfilter ::= function* (itbl, fn) {
+   for (let x of itbl) {
+      let y = fn(x);
+      if (y !== undefined) {
+         yield y;
+      }
+   }
+}
 iconcat ::= function* (...itbls) {
    for (let itbl of itbls) {
       yield* itbl;
@@ -326,4 +334,7 @@ commonArrayPrefixLength ::= function (A1, A2) {
    }
 
    return i;
+}
+singleQuoteJoinComma ::= function (strs) {
+   return Array.from(strs, s => `'${s}'`).join(', ');
 }
