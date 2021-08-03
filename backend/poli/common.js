@@ -19,6 +19,9 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
+isObjectWithOwnProperty ::= function (obj, prop) {
+   return obj != null && $.hasOwnProperty(obj, prop);
+}
 selectProps ::= function (obj, props) {
    return Object.fromEntries(props.map(p => [p, obj[p]]));
 }
@@ -175,6 +178,10 @@ itorFinal ::= function (itor) {
    return finalItem;
 }
 find ::= function (itbl, pred) {
+   if (Array.isArray(itbl)) {
+      return itbl.find(pred);
+   }
+   
    for (let x of itbl) {
       if (pred(x)) {
          return x;
@@ -205,7 +212,7 @@ indexOf ::= function (itbl, item) {
 
    return -1;
 }
-arraysEqual ::= function arraysEqual (A, B) {
+areArraysEqual ::= function (A, B) {
    if (A.length !== B.length) {
       return false;
    }
@@ -290,12 +297,12 @@ mapfilter ::= function* (itbl, fn) {
       }
    }
 }
-iconcat ::= function* (...itbls) {
+concat ::= function* (...itbls) {
    for (let itbl of itbls) {
       yield* itbl;
    }
 }
-ifilter ::= function* (itbl, filter) {
+filter ::= function* (itbl, filter) {
    for (let x of itbl) {
       if (filter(x)) {
          yield x;

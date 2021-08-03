@@ -1,5 +1,5 @@
 common
-   arraysEqual
+   areArraysEqual
    assert
    equal
    lessThan
@@ -214,7 +214,7 @@ testTrie ::= function () {
    $.trie.add(t, ['italy', 'italie']);
 
    $.check(
-      $.arraysEqual,
+      $.areArraysEqual,
       Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']
    );
@@ -227,10 +227,10 @@ testTrie ::= function () {
    $.trie.removeByKey(t2, 'spain');
    $.trie.removeByKey(t2, 'italy');
 
-   $.check($.arraysEqual, t2.root, []);
+   $.check($.areArraysEqual, t2.root, []);
 
    $.check(
-      $.arraysEqual,
+      $.areArraysEqual,
       Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']
    );   

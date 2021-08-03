@@ -17,7 +17,7 @@ indexAdd ::= function (index, fact) {
 
       if (isFinal) {
          if (map.has(val)) {
-            if (index.unique) {
+            if (index.isUnique) {
                throw new Error(`Unique index violation`);
             }
             else {
@@ -25,7 +25,7 @@ indexAdd ::= function (index, fact) {
             }
          }
          else {
-            map.set(val, index.unique ? fact : [fact]);
+            map.set(val, index.isUnique ? fact : [fact]);
          }
       }
       else {
@@ -52,20 +52,9 @@ indexRemove ::= function (index, fact) {
 
       if (isFinal) {
          map.delete(val);
-         if (map.has(val)) {
-            if (index.unique) {
-               throw new Error(`Unique index violation`);
-            }
-            else {
-               map.get(val).push(fact);
-            }
-         }
-         else {
-            map.set(val, index.unique ? fact : [fact]);
-         }
       }
       else {
-         let next = map.get(val);
+         map = map.get(val);
 
          if (next === undefined) {
             next = new Map;
@@ -75,29 +64,4 @@ indexRemove ::= function (index, fact) {
          map = next;
       }
    }
-}
-factualProjectionIndices ::= function (indices, boundAttrs) {
-   let projIndices = [];
-
-   for (let index of indices) {
-      let projIndex = [];
-
-      for (let attr of index) {
-         if (boundAttrs[attr] === undefined) {
-            projIndex.push(attr);
-         }
-      }
-
-      if (projIndex.length === 0) {
-         if (index.unique) {
-            return null;
-         }
-      }
-      else {
-         projIndex.unique = index.unique;
-         projIndices.push(projIndex);
-      }
-   }
-
-   return projIndices;
 }

@@ -2,7 +2,7 @@ common
    assert
    compare
    compareArrays
-   iconcat
+   concat
    dumpImportSection
    hasOwnProperty
    indexOf

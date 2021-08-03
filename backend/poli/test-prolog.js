@@ -2,7 +2,7 @@ common
    assert
    isLike
    find
-prolog
+prolog-fact
    query
    projectionFor
    addFact
