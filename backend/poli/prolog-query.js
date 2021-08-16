@@ -1,3 +1,5 @@
+common
+   assert
 prolog-fact
    projectionFor
    releaseProjection

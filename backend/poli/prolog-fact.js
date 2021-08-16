@@ -9,6 +9,7 @@ common
    selectProps
    trackingFinal
 prolog-index
+   initIndex
    buildIndex
    indexAdd
    indexRemove
@@ -20,29 +21,31 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
 
    let uniqueIndices = [];
+   let allIndices = [];
 
    for (let index of indices) {
-      index.unique = !!index.unique;
+      let idx = $.initIndex(index);
 
-      // Build only unique indices. Normal indices will be built when the full projection
-      // of this relation is needed (if ever).
-      if (index.unique) {
-         $.buildIndex(index, facts);
-         uniqueIndices.push(index);
+      // Build only unique indices. Non-unique indices will be built by concrete
+      // projections when needed.
+      if (idx.isUnique) {
+         $.buildIndex(idx, facts);
+         uniqueIndices.push(idx);
       }
+
+      allIndices.push(idx);
    }
 
    return {
       isFactual: true,
       name: name,
       attrs: attrs,
-      indices: indices,
+      indices: allIndices,
       uniqueIndices: uniqueIndices,
       indmap: [],
       projmap: new Map,
-      projs: new Set,
       validProjs: new Set,
-      curver: null,
+      latestVersion: null,
       facts: facts,
    }
 }
@@ -81,7 +84,7 @@ makeProjection ::= function (rel, boundAttrs) {
          isValid: true,
          boundAttrs: null,
          base: base,
-         curver: base,  // just to resemble partial projections
+         latestVersion: null,
          value: rel.facts,  
       };
    }
@@ -92,27 +95,29 @@ makeProjection ::= function (rel, boundAttrs) {
          isValid: true,
          boundAttrs: boundAttrs,
          base: base,
-         curver: {
-            num: 1,
-            next: null,
-            refcount: 1,  // projection refs its curver
-            // this will be populated when the next version is created
-            delta: new Map
-         },
+         latestVersion: null,
          value: new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
       };
    }
 
-   rel.projs.add(proj);
    $.markProjectionValid(proj);
 
    return proj;
 }
+releaseProjection ::= function (proj) {
+   $.assert(proj.refcount > 0);
+
+   proj.refcount -= 1;
+
+   if (proj.refcount === 0) {
+      $.forgetProjection(proj);
+   }
+}
 forgetProjection ::= function (proj) {
+   $.assert(proj.refcount === 0);
+
    let rel = proj.rel;
 
-   $.assert(rel.isFactual);
-   
    (function go(i, map) {
       if (i === rel.attrs.length) {
          return;
@@ -131,15 +136,8 @@ forgetProjection ::= function (proj) {
          }
       }
    })(0, rel.projmap);
-}
-releaseProjection ::= function (proj) {
-   $.assert(proj.refcount > 0);
 
-   proj.refcount -= 1;
-
-   if (proj.refcount === 0) {
-      $.forgetProjection(proj);
-   }
+   rel.validProjs.delete(proj);
 }
 isFullProjection ::= function (proj) {
    return proj.boundAttrs === null;
@@ -157,40 +155,38 @@ factSatisfies ::= function (fact, boundAttrs) {
 
    return true;
 }
-refCurrentState ::= function (rel) {
-   $.assert(rel.isFactual);
-
-   if (rel.curver === null) {
-      rel.curver = {
+refCurrentState ::= function (parent) {
+   // 'parent' is a factual relation or its projection
+   if (parent.latestVersion === null) {
+      parent.latestVersion = {
+         parent: parent,
          num: 1,
          next: null,
          refcount: 1,  // that's the reference that this func adds
          delta: new Map,
       }
    }
-   else if ($.isVersionEmpty(rel.curver)) {
-      rel.curver.refcount += 1;
+   else if ($.isVersionUpToDate(parent.latestVersion)) {
+      parent.latestVersion.refcount += 1;
    }
    else {
       let newver = {
+         parent: parent,
          num: 0,
          next: null,
          refcount: 1,  // that's the reference that this func adds
          delta: new Map,
       };
-      $.linkNewHeadVersion(rel.curver, newver);
-      rel.curver = newver;
+      $.linkVersions(parent.latestVersion, newver);
+      parent.latestVersion = newver;
    }
 
-   return rel.curver;
+   return parent.latestVersion;
 }
-isVersionEmpty ::= function (ver) {
+isVersionUpToDate ::= function (ver) {
    return ver.delta.size === 0;
 }
-isVersionNewest ::= function (ver) {
-   return ver.next === null;
-}
-linkNewHeadVersion ::= function (ver0, ver1) {
+linkVersions ::= function (ver0, ver1) {
    ver1.num = ver0.num + 1;
    ver0.next = ver1;
    ver1.refcount += 1;
@@ -202,91 +198,75 @@ releaseVersion ::= function (ver) {
 
    ver.refcount -= 1;
 
-   if (ver.refcount === 0 && ver.next !== null) {
-      $.releaseVersion(ver.next);
+   if (ver.refcount === 0) {
+      if (ver.parent.latestVersion === ver) {
+         ver.parent.latestVersion = null;
+      }
+
+      if (ver.next !== null) {
+         $.releaseVersion(ver.next);
+      }
    }
 }
 updateProjection ::= function (proj) {
-   $.assert(proj.rel.isFactual);
-
    if (proj.isValid) {
       return;
    }
 
-   if ($.isVersionNewest(proj.base) && $.isVersionEmpty(proj.base)) {
+   if ($.isVersionUpToDate(proj.base)) {
       $.markProjectionValid(proj);
       return;
    }
 
-   let newBase = $.refCurrentState(proj.rel);
+   let newBase = $.refCurrentState(proj.rel);  // reference already added for 'newBase'
 
-   // if they're the same we would have fallen into the if branch above
+   // if they were the same we would have fallen into the if branch above
    $.assert(proj.base !== newBase);
 
+   $.unchainVersions(proj.base);
+
+   let delta = proj.latestVersion !== null ? proj.latestVersion.delta : null;
+
    if ($.isFullProjection(proj)) {
-      $.releaseVersion(proj.base);
-
-      proj.base = newBase;  // already reffed it
-      proj.curver = proj.base;  // always refers to the same version as 'proj.base'
-
-      $.markProjectionValid(proj);
-
-      return;
+      $.mergeDelta(proj.latestVersion.delta, proj.base.delta);
    }
-
-   $.reduceVersions(proj.base);
-
-   // Optimization: if nobody else needs our current version, there's no point in
-   // computing delta for it.  Just update the 'value'
-   let delta = proj.curver.refcount > 1 ? proj.curver.delta : null;
-
-   for (let [fact, action] of proj.base.delta) {
-      if (action === 'add') {
-         if ($.factSatisfies(fact, proj.boundAttrs)) {
-            proj.value.add(fact);
+   else {
+      for (let [fact, action] of proj.base.delta) {
+         if (action === 'add') {
+            if ($.factSatisfies(fact, proj.boundAttrs)) {
+               proj.value.add(fact);
+               if (delta !== null) {
+                  $.deltaAdd(delta, fact, 'add');
+               }
+            }
+         }
+         else if (proj.value.has(fact)) {
+            proj.value.delete(fact);
             if (delta !== null) {
-               delta.set(fact, 'add');
+               $.deltaAdd(delta, fact, 'remove');
             }
          }
       }
-      else if (proj.value.has(fact)) {
-         proj.value.delete(fact);
-         if (delta !== null) {
-            delta.set(fact, 'remove');
-         }
-      }
    }
-
+   
    $.releaseVersion(proj.base);
    proj.base = newBase;  // already reffed it
 
-   if (delta !== null && delta.size > 0) {
-      let newver = {
-         num: 0,
-         next: null,
-         refcount: 1,  // projection always references its curver
-         delta: new Map,
-      };
-      $.linkNewHeadVersion(proj.curver, newver);
-      $.releaseVersion(proj.curver);
-      proj.curver = newver;
-   }
-
    $.markProjectionValid(proj);
 }
-reduceVersions ::= function (ver) {
+unchainVersions ::= function (ver) {
    if (ver.next === null || ver.next.next === null) {
       return;
    }
 
    let next = ver.next;
 
-   $.reduceVersions(next);
+   $.unchainVersions(next);
 
    if (next.refcount === 1 && ver.delta.size < next.delta.size) {
-      // The "next" version is only referenced by "ver" which means that after
+      // The 'next' version is only referenced by 'ver' which means that after
       // this reduction operation it will be thrown away, which means we can reuse
-      // its "delta" map if it's bigger than "ver.delta".
+      // its 'delta' map if it's bigger than 'ver.delta'.
       $.mergeDelta(next.delta, ver.delta);
       ver.delta = next.delta;
       next.delta = null;
@@ -304,6 +284,17 @@ mergeDelta ::= function (dstD, srcD) {
       $.deltaAdd(dstD, tuple, action);
    }
 }
+deltaAdd ::= function (delta, tuple, action) {
+   let existingAction = delta.get(tuple);
+
+   if (existingAction !== undefined) {
+      $.assert(existingAction !== action);
+      delta.delete(tuple);
+   }
+   else {
+      delta.set(tuple, action);
+   }
+}
 addFact ::= function (rel, fact) {
    if (rel.facts.has(fact)) {
       throw new Error(`Duplicate fact`);
@@ -311,8 +302,8 @@ addFact ::= function (rel, fact) {
 
    rel.facts.add(fact);
 
-   if (rel.curver !== null) {
-      $.deltaAdd(rel.curver.delta, fact, 'add');
+   if (rel.latestVersion !== null) {
+      $.deltaAdd(rel.latestVersion.delta, fact, 'add');
       for (let index of rel.uniqueIndices) {
          $.indexAdd(index, fact);
       }
@@ -326,23 +317,12 @@ removeFact ::= function (rel, fact) {
       throw new Error(`Missing fact`);
    }
 
-   if (rel.curver !== null) {
-      $.deltaAdd(rel.curver.delta, fact, 'remove');
+   if (rel.latestVersion !== null) {
+      $.deltaAdd(rel.latestVersion.delta, fact, 'remove');
       for (let index of rel.uniqueIndices) {
          $.indexRemove(index, fact);
       }
       $.invalidateProjs(rel);
-   }
-}
-deltaAdd ::= function (delta, tuple, action) {
-   let existingAction = delta.get(tuple);
-
-   if (existingAction !== undefined) {
-      $.assert(existingAction !== action);
-      delta.delete(tuple);
-   }
-   else {
-      delta.set(tuple, action);
    }
 }
 invalidateProjs ::= function (rel) {

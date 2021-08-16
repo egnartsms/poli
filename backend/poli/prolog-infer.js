@@ -8,10 +8,13 @@ common
    singleQuoteJoinComma
    map
    mapfilter
+   filter
+prolog-index
+   superIndexOfAnother
+   copyIndex
+   indexBindAttr
+   isIndexCovered
 -----
-isObjectWithProp ::= function (obj) {
-   return obj != null && obj[$.lvname] !== undefined;
-}
 inferredRelation ::= function (callback) {
    let lvname = Symbol('lvar');
    let vpool = new Map;
@@ -60,7 +63,8 @@ inferredRelation ::= function (callback) {
 
       if (dupVar !== null) {
          throw new Error(
-            `Relation '${relspec.name}': duplicate var '${dupVar}' in conjunct '${conj.rel.name}'`
+            `Relation '${relspec.name}': duplicate var '${dupVar}' in conjunct ` +
+            `'${conj.rel.name}'`
          );
       }
    }
@@ -83,7 +87,14 @@ inferredRelation ::= function (callback) {
       }
    }
    
-   let config0 = [];
+   let cfg0 = new Map(
+      $.map(body, conj => ({
+         jplinks: [],
+         jpath: []
+      }))
+   );
+
+   $.assert(relspec.indices === undefined);
 
    return {
       isFactual: false,
@@ -91,13 +102,11 @@ inferredRelation ::= function (callback) {
       attrs: relspec.attrs,
       lvars: lvars,
       body: body,
-      indices: relspec.indices || [],
-      updateScheme: $.computeIncrementalUpdateScheme(relspec.name, config0, body),
-      config0: config0,
+      indices: [],  // TODO: implement indices
+      scheme0: $.computeIncrementalUpdateScheme(relspec.name, body),
       projmap: new Map,
       projs: new Set,
-      validProjs: new Set,
-      project0: null
+      validProjs: new Set
    };
 }
 conjunctSpecInvalidAttrs ::= function ({attrs, rel}) {
@@ -108,10 +117,10 @@ conjunctFromSpec ::= function ({attrs, rel}, lvname) {
       return $.isObjectWithOwnProperty(obj, lvname);
    }
 
-   let firmAttrs = Object.fromEntries(
-      Object.entries(attrs) .filter(([attr, val]) => !isLvar(val))
+   let firmAttrs = new Map(
+      $.filter(Object.entries(attrs), ([attr, val]) => !isLvar(val))
    );
-   let looseAttrs = Object.fromEntries(
+   let looseAttrs = new Map(
       $.mapfilter(Object.entries(attrs), ([attr, lvar]) => {
          if (isLvar(lvar)) {
             return [attr, lvar[lvname]];
@@ -120,7 +129,7 @@ conjunctFromSpec ::= function ({attrs, rel}, lvname) {
    );
 
    let indices = Array.from(rel.indices, $.copyIndex);
-   for (let attr of Object.keys(firmAttrs)) {
+   for (let attr of firmAttrs.keys()) {
       for (let index of indices) {
          $.indexBindAttr(index, attr);
       }
@@ -137,15 +146,15 @@ conjunctFromSpec ::= function ({attrs, rel}, lvname) {
       rel,
       firmAttrs,
       looseAttrs,
+      lvars: new Map($.map(looseAttrs, ([attr, lvar]) => [lvar, attr])),
       indices,
-      shrunk,
-      joinPathLinks: []
+      shrunk
    }
 }
 conjunctDuplicateVar ::= function (conj) {
    let lvars = new Set;
 
-   for (let lvar of Object.values(conj.looseAttrs)) {
+   for (let lvar of conj.looseAttrs.values()) {
       if (lvars.has(lvar)) {
          return lvar;
       }
@@ -176,38 +185,12 @@ varUsageSanity ::= function (lvars, attrs, body) {
    }
 
    for (let conj of body) {
-      for (let lvar of Object.values(conj.looseAttrs)) {
+      for (let lvar of conj.looseAttrs.values()) {
          meet(lvar);
       }
    }
 
    return {unmet, met};
-}
-superIndexOfAnother ::= function (index1, index2) {
-   let len = $.commonArrayPrefixLength(index1, index2);
-   if (len === index2.length) {
-      return index1;
-   }
-   else if (len === index1.length) {
-      return index2;
-   }
-   else {
-      return null;
-   }
-}
-copyIndex ::= function (index) {
-   let copy = Array.from(index);
-   copy.isUnique = index.isUnique;
-   return copy;
-}
-indexBindAttr ::= function (index, attr) {
-   let i = index.indexOf(attr);
-   if (i !== -1) {
-      index.splice(i, 1);
-   }
-}
-isIndexCovered ::= function (index) {
-   return index.length === 0;
 }
 visualizeIncrementalUpdateScheme ::= function (rel) {
    console.log(
@@ -233,17 +216,27 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       console.log(Array.from(gen(dconj, path)).join(''));
    }
 }
-computeIncrementalUpdateScheme ::= function (relname, config0, body) {
-   let scheme = new Map(
-      $.map(body, dconj => [
-         dconj, $.joinPathForDelta(relname, config0, body, dconj)
-      ])
-   );
-   $.assignSlotsToJoinPathLinks(config0, scheme);
+computeIncrementalUpdateScheme ::= function (relname, body) {
+   let scheme0 = {
+      slots: [],
+      forConj: new Map($.map(body, conj => [conj, {
+         jplinks: [],
+         jpath: null,
+         slots: []
+      }]))
+   };
+
+   for (let dconj of body) {
+      let jpath = $.joinPathForDelta(relname, dconj, body, scheme0.forConj);
+
+      scheme0.forConj.get(dconj).jpath = jpath;
+   }
+
+   $.renumerateSlots(body, scheme0);
    
-   return scheme;
+   return scheme0;
 }
-joinPathForDelta ::= function (relname, config0, body, dconj) {
+joinPathForDelta ::= function (relname, dconj, body, forConj) {
    let unjoined = new Set($.mapfilter(body, conj => {
       if (conj !== dconj) {
          return $.makeConjunctFulfillment(conj);
@@ -251,24 +244,24 @@ joinPathForDelta ::= function (relname, config0, body, dconj) {
    }));
 
    function bindLvars(lvars) {
-      for (let cjff of unjoined) {
-         for (let lvar of lvars) {
+      for (let lvar of lvars) {
+         for (let cjff of unjoined) {
             $.cjffBindLvar(cjff, lvar);
          }
       }
    }
 
-   bindLvars(Object.values(dconj.looseAttrs));
+   bindLvars(dconj.lvars.keys());
 
-   let path = [];
+   let jpath = [];
 
    while (unjoined.size > 0) {
-      let useFF = null;
-      let useIndex = null;
+      let Xff = null;
+      let Xindex = null;
 
       // Take first from 'unjoined' that we can join
       for (let cjff of unjoined) {
-         let usableIndices = cjff.indices.filter($.isIndexCovered);
+         let usableIndices = cjff.idxffs.filter($.isIndexCovered);
          
          if (usableIndices.length === 0) {
             continue;
@@ -276,84 +269,77 @@ joinPathForDelta ::= function (relname, config0, body, dconj) {
 
          let unique = usableIndices.find(idx => idx.original.isUnique);
          if (unique !== undefined) {
-            useFF = cjff;
-            useIndex = unique.original;
+            Xff = cjff;
+            Xindex = unique.original;
             break;
          }
          
-         if (useFF === null) {
-            useFF = cjff;
-            useIndex = usableIndices[0].original;
+         if (Xff === null) {
+            Xff = cjff;
+            Xindex = usableIndices[0].original;
          }
       }
 
-      if (useFF === null) {
+      if (Xff === null) {
          // Some conjunct may be already shrunk by some index due to firmAttrs. For these
          // conjuncts, we can join them without any index.
-         useFF = unjoined.find(({shrunk}) => ['index', 'scalar'].includes(shrunk)) || null;
-         if (useFF === null) {
+         Xff = $.find(unjoined, ({shrunk}) => shrunk === 'index' || shrunk === 'scalar');
+
+         if (Xff === undefined) {
             throw new Error(
                `Relation '${relname}': cannot build join path from '${dconj.rel.name}'`
             );
          }
       }
 
-      path.push(
-         $.internJoinPathLink(useFF.conj, {
-            index: useIndex,
-            checkAttrs: $.cjffCheckAttrs(useFF, useIndex),
-            extractAttrs: $.cjffExtractAttrs(useFF)
+      jpath.push(
+         $.internJoinPathLink(Xff.conj, forConj.get(Xff.conj), {
+            index: Xindex,
+            checkAttrs: $.cjffCheckAttrs(Xff, Xindex),
+            extractAttrs: $.cjffExtractAttrs(Xff)
          })
       );
 
-      unjoined.delete(useFF);
-      bindLvars(useFF.freeLvars);
+      unjoined.delete(Xff);
+      bindLvars(Xff.freeLvars);
    }
 
-   return path;
+   return jpath;
 }
 makeConjunctFulfillment ::= function (conj) {
    return {
       conj: conj,
-      freeLvars: new Set(Object.values(conj.looseAttrs)),
+      freeLvars: new Set(conj.looseAttrs.values()),
       boundLvars: new Set,
-      indices: Array.from(conj.indices, $.makeIndexFulfillment)
+      idxffs: Array.from(conj.indices, $.makeIndexFulfillment)
    }
 }
 makeIndexFulfillment ::= function (index) {
-   let fulfillment = Array.from(index);
-   fulfillment.original = index;
-   return fulfillment;
+   let idxff = Array.from(index);
+   idxff.original = index;
+   return idxff;
 }
 cjffBindLvar ::= function (cjff, lvar) {
    if (!cjff.freeLvars.has(lvar)) {
       return;
    }
 
-   let attr = $.conjAttrByLvar(cjff.conj, lvar);
+   let attr = cjff.conj.lvars.get(lvar);
 
-   for (let index of cjff.indices) {
-      $.indexBindAttr(index, attr);
+   for (let idxff of cjff.idxffs) {
+      $.indexBindAttr(idxff, attr);
    }
 
    cjff.freeLvars.delete(lvar);
    cjff.boundLvars.add(lvar);
 }
-conjAttrByLvar ::= function (conj, lvar) {
-   for (let [attr, v] of Object.entries(conj.looseAttrs)) {
-      if (v === lvar) {
-         return attr;
-      }
-   }
-
-   return null;
-}
 cjffCheckAttrs ::= function (cjff, index) {
    let checkAttrs = [];
 
-   for (let [attr, lvar] of Object.entries(cjff.conj.looseAttrs)) {
-      if (cjff.boundLvars.has(lvar) && !index.includes(attr)) {
-         checkAttrs.push(attr);
+   for (let lvar of cjff.boundLvars) {
+      let attr = cjff.conj.lvars.get(lvar);
+      if (index === null || !index.includes(attr)) {
+         checkAttrs.push([attr, lvar]);
       }
    }
 
@@ -362,64 +348,71 @@ cjffCheckAttrs ::= function (cjff, index) {
 cjffExtractAttrs ::= function (cjff) {
    let extractAttrs = [];
 
-   for (let [attr, lvar] of Object.entries(cjff.conj.looseAttrs)) {
-      if (cjff.freeLvars.has(lvar)) {
-         extractAttrs.push(attr);
-      }
+   for (let lvar of cjff.freeLvars) {
+      let attr = cjff.conj.lvars.get(lvar);
+      extractAttrs.push([attr, lvar]);
    }
    
    return extractAttrs;   
 }
-internJoinPathLink ::= function (conj, linkProps) {
-   let link = $.find(
-      conj.joinPathLinks, link => $.areJoinPathLinksEqual(link, linkProps)
-   );
+internJoinPathLink ::= function (conj, forConj, linkProps) {
+   let jplink = $.find(forConj.jplinks, $.sameLinkPred(linkProps));
 
-   if (link !== undefined) {
-      return link;
+   if (jplink === undefined) {
+      jplink = {
+         ...linkProps,
+         slot: $.internSlot(conj, forConj, linkProps.index)
+      };
+      forConj.jplinks.push(jplink);
    }
 
-   link = {
-      ...linkProps,
-      conj: conj,
-      slot: null,  // this will be set later
-   };
-   conj.joinPathLinks.push(link);
-
-   return link;
+   return jplink;
 }
-areJoinPathLinksEqual ::= function (link1, link2) {
-   return (
-      link1.index === link2.index &&
-      $.areArraysEqual(link1.checkAttrs, link2.checkAttrs) &&
-      $.areArraysEqual(link1.extractAttrs, link2.extractAttrs)
+internSlot ::= function (conj, forConj, index) {
+   let slot = $.find(forConj.slots, slot => slot.index === index);
+
+   if (slot === undefined) {
+      slot = {
+         conj: conj,
+         index: index,
+         num: -1
+      };
+
+      if (index === null) {
+         forConj.slots.unshift(slot);
+      }
+      else {
+         forConj.slots.push(slot);
+      }
+   }
+
+   return slot;
+}
+sameLinkPred ::= function ({index, checkAttrs, extractAttrs}) {
+   return jplink => (
+      // To be precise, it's only enough to compare index && checkAttrs or
+      // index && extractAttrs since their union is always equal to the set of conjunct's
+      // loose attributes.
+      jplink.index === index &&
+      $.areArraysEqual(jplink.checkAttrs, checkAttrs, $.firstItemsEqual) &&
+      $.areArraysEqual(jplink.extractAttrs, extractAttrs, $.firstItemsEqual)
    );
 }
-assignSlotsToJoinPathLinks ::= function (config, updateScheme) {
-   let conjSlots = new Map;
+firstItemsEqual ::= function ([a0], [b0]) {
+   return a0 === b0;
+}
+renumerateSlots ::= function (body, scheme) {
+   let nslots = 0;
 
-   for (let joinPath of updateScheme.values()) {
-      for (let link of joinPath) {
-         let slots = conjSlots.get(link.conj);
-         if (slots === undefined) {
-            slots = [];
-            conjSlots.set(link.conj, slots);
-         }
-
-         let slot = $.find(slots, slot => slot.target === link.index);
-
-         if (slot === undefined) {
-            slot = {
-               target: link.index,
-               number: config.length
-            };
-
-            slots.push(slot);
-            config.push(slot);
-         }
-
-         link.slot = slot;
+   scheme.slots = Array.from(function* () {
+      for (let conj of body) {
+         yield* scheme.forConj.get(conj).slots;
       }
+   }.call(null));
+
+   for (let slot of scheme.slots) {
+      slot.num = nslots;
+      nslots += 1;
    }
 }
 makeZeroProjection ::= function (rel) {

@@ -2,12 +2,14 @@ common
    assert
    isLike
    find
-prolog-fact
+prolog
+   relations as: rels
+prolog-query
    query
+prolog-fact
    projectionFor
    addFact
    removeFact
-   relations as: rels
    isFullProjection
    updateProjection
 -----
@@ -96,5 +98,5 @@ test_unfiltered_projections ::= function () {
 
    proj = $.projectionFor($.rels.country, {});
    $.updateProjection(proj);
-   $.assert(proj.base === $.rels.country.curver);
-   }
+   $.assert(proj.base === $.rels.country.latestVersion);
+}

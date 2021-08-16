@@ -212,13 +212,13 @@ indexOf ::= function (itbl, item) {
 
    return -1;
 }
-areArraysEqual ::= function (A, B) {
+areArraysEqual ::= function (A, B, itemsEqual=$.equal) {
    if (A.length !== B.length) {
       return false;
    }
 
    for (let i = 0; i < A.length; i += 1) {
-      if (A[i] !== B[i]) {
+      if (!itemsEqual(A[i], B[i])) {
          return false;
       }
    }
@@ -289,6 +289,13 @@ map ::= function* (itbl, fn) {
       yield fn(x);
    }
 }
+filter ::= function* (itbl, filter) {
+   for (let x of itbl) {
+      if (filter(x)) {
+         yield x;
+      }
+   }
+}
 mapfilter ::= function* (itbl, fn) {
    for (let x of itbl) {
       let y = fn(x);
@@ -300,13 +307,6 @@ mapfilter ::= function* (itbl, fn) {
 concat ::= function* (...itbls) {
    for (let itbl of itbls) {
       yield* itbl;
-   }
-}
-filter ::= function* (itbl, filter) {
-   for (let x of itbl) {
-      if (filter(x)) {
-         yield x;
-      }
    }
 }
 trackingFinal ::= function* (itbl) {

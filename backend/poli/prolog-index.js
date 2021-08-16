@@ -2,6 +2,37 @@ common
    map
    trackingFinal
 -----
+initIndex ::= function (idxspec) {
+   let idx = Array.from(idxspec);
+   idx.isUnique = !!idxspec.isUnique;
+   return idx;
+}
+superIndexOfAnother ::= function (index1, index2) {
+   let len = $.commonArrayPrefixLength(index1, index2);
+   if (len === index2.length) {
+      return index1;
+   }
+   else if (len === index1.length) {
+      return index2;
+   }
+   else {
+      return null;
+   }
+}
+copyIndex ::= function (index) {
+   let copy = Array.from(index);
+   copy.isUnique = index.isUnique;
+   return copy;
+}
+indexBindAttr ::= function (index, attr) {
+   let i = index.indexOf(attr);
+   if (i !== -1) {
+      index.splice(i, 1);
+   }
+}
+isIndexCovered ::= function (index) {
+   return index.length === 0;
+}
 buildIndex ::= function (index, facts) {
    index.value = new Map;
 
