@@ -212,7 +212,7 @@ indexOf ::= function (itbl, item) {
 
    return -1;
 }
-areArraysEqual ::= function (A, B, itemsEqual=$.equal) {
+arraysEqual ::= function (A, B, itemsEqual=$.equal) {
    if (A.length !== B.length) {
       return false;
    }
@@ -284,6 +284,23 @@ isLike ::= function isLike(A, B) {
 
    return false;
 }
+enumerate ::= function* (itbl) {
+   let i = 0;
+
+   for (let x of itbl) {
+      yield [i, x];
+      i += 1;
+   }
+}
+any ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (pred(x)) {
+         return true;
+      }
+   }
+
+   return false;
+}
 map ::= function* (itbl, fn) {
    for (let x of itbl) {
       yield fn(x);
@@ -324,8 +341,22 @@ trackingFinal ::= function* (itbl) {
 
    return value;
 }
+produceArray ::= function (N, producer) {
+   let array = new Array(N);
+   for (let i = 0; i < N; i += 1) {
+      array[i] = producer(i);
+   }
+   return array;
+}
 newObj ::= function (proto, ...props) {
    return Object.assign(Object.create(proto), ...props);
+}
+keyForValue ::= function (obj, val) {
+   for (let [k, v] of Object.entries(obj)) {
+      if (v === val) {
+         return k;
+      }
+   }
 }
 hasNoEnumerableProps ::= function (obj) {
    for (let prop in obj) {

@@ -1,9 +1,12 @@
 prolog-fact
+   * as: fact
    factualRelation
-   projectionFor
    releaseProjection
 prolog-infer
+   * as: infer
    inferredRelation
+prolog-update-scheme
+   visualizeIncrementalUpdateScheme
 -----
 relations ::= ({})
 initialize ::= function () {
@@ -96,192 +99,197 @@ initialize ::= function () {
       ]
    }));
 
-   let ord_order = $.factualRelation({
-      name: 'ord_order',
-      attrs: ['id', 'created', 'profile_revision_id'],
-      indices: [
-         Object.assign(['id'], {isUnique: true}),
-         ['profile_revision_id']
-      ],
-      facts: new Set
-   });
-   // let eve_pointofsale = $.factualRelation({
-   //    name: 'eve_pointofsale',
-   //    attrs: ['id'],
-   //    indices: [],
+   // let ord_order = $.factualRelation({
+   //    name: 'ord_order',
+   //    attrs: ['id', 'created', 'profile_revision_id'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true}),
+   //       ['profile_revision_id']
+   //    ],
    //    facts: new Set
    // });
-   let cli_profile_revision = $.factualRelation({
-      name: 'cli_profile_revision',
-      attrs: ['id', 'email', 'first_name', 'last_name'],
-      indices: [
-         Object.assign(['id'], {isUnique: true})
-      ],
-      facts: new Set
-   });
-   let ord_orderline = $.factualRelation({
-      name: 'ord_orderline',
-      attrs: ['id', 'order_id', 'product_id'],
-      indices: [
-         Object.assign(['id'], {isUnique: true}),
-         ['order_id'],
-         ['product_id']
-      ],
-      facts: new Set
-   });
-   let prd_product = $.factualRelation({
-      name: 'prd_product',
-      attrs: ['id', 'name_id', 'subtitle_id'],
-      indices: [
-         Object.assign(['id'], {isUnique: true}),
-         ['name_id'],
-         ['subtitle_id']
-      ],
-      facts: new Set
-   });
-   let core_dict_word = $.factualRelation({
-      name: 'core_dict_word',
-      attrs: ['id', 'en', 'fr', 'ru'],
-      indices: [
-         Object.assign(['id'], {isUnique: true})
-      ],
-      facts: new Set
-   });
-   let tkt_ticket = $.factualRelation({
-      name: 'tkt_ticket',
-      attrs: ['id', 'code_id', 'profile_revision_id'],
-      indices: [
-         Object.assign(['id'], {isUnique: true}),
-         Object.assign(['code_id'], {isUnique: true}),
-         ['profile_revision_id']
-      ],
-      facts: new Set
-   });
-   let tkt_code = $.factualRelation({
-      name: 'tkt_code',
-      attrs: ['id', 'code', 'orderline_id', 'invalidated_on', 'invalidating_user_id'],
-      indices: [
-         Object.assign(['id'], {isUnique: true}),
-         ['orderline_id'],
-         ['invalidating_user_id']
-      ],
-      facts: new Set
-   });
-   let authbo_user = $.factualRelation({
-      name: 'authbo_user',
-      attrs: ['id', 'email', 'first_name', 'last_name'],
-      indices: [
-         Object.assign(['id'], {isUnique: true})
-      ],
-      facts: new Set
-   });
+   // let cli_profile_revision = $.factualRelation({
+   //    name: 'cli_profile_revision',
+   //    attrs: ['id', 'email', 'first_name', 'last_name'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true})
+   //    ],
+   //    facts: new Set
+   // });
+   // let ord_orderline = $.factualRelation({
+   //    name: 'ord_orderline',
+   //    attrs: ['id', 'order_id', 'product_id'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true}),
+   //       ['order_id'],
+   //       ['product_id']
+   //    ],
+   //    facts: new Set
+   // });
+   // let prd_product = $.factualRelation({
+   //    name: 'prd_product',
+   //    attrs: ['id', 'name_id', 'subtitle_id'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true}),
+   //       ['name_id'],
+   //       ['subtitle_id']
+   //    ],
+   //    facts: new Set
+   // });
+   // let core_dict_word = $.factualRelation({
+   //    name: 'core_dict_word',
+   //    attrs: ['id', 'en', 'fr', 'ru'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true})
+   //    ],
+   //    facts: new Set
+   // });
+   // let tkt_ticket = $.factualRelation({
+   //    name: 'tkt_ticket',
+   //    attrs: ['id', 'code_id', 'profile_revision_id'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true}),
+   //       Object.assign(['code_id'], {isUnique: true}),
+   //       ['profile_revision_id']
+   //    ],
+   //    facts: new Set
+   // });
+   // let tkt_code = $.factualRelation({
+   //    name: 'tkt_code',
+   //    attrs: ['id', 'code', 'orderline_id', 'invalidated_on', 'invalidating_user_id'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true}),
+   //       ['orderline_id'],
+   //       ['invalidating_user_id']
+   //    ],
+   //    facts: new Set
+   // });
+   // let authbo_user = $.factualRelation({
+   //    name: 'authbo_user',
+   //    attrs: ['id', 'email', 'first_name', 'last_name'],
+   //    indices: [
+   //       Object.assign(['id'], {isUnique: true})
+   //    ],
+   //    facts: new Set
+   // });
 
-   let canceled_barcodes = $.inferredRelation(v => ({
-      name: 'canceled_barcodes',
-      attrs: [
-         'order_id',
-         'order_created',
-         'buyer_first_name',
-         'buyer_last_name',
-         'buyer_email',
-         'product_name',
-         'product_subtitle',
-         'barcode',
-         'ticket_first_name',
-         'ticket_last_name',
-         'ticket_email',
-         'invalidation_date',
-         'invalidating_user_first_name',
-         'invalidating_user_last_name',
-         'invalidating_user_email'
-      ],
-      body: [
-         {
-            rel: ord_order,
-            attrs: {
-               id: v`order_id`,
-               created: v`order_created`,
-               profile_revision_id: v`opr_id`
-            }
-         },
-         {
-            rel: cli_profile_revision,
-            attrs: {
-               id: v`opr_id`,
-               first_name: v`buyer_first_name`,
-               last_name: v`buyer_last_name`,
-               email: v`buyer_email`
-            }
-         },
-         {
-            rel: ord_orderline,
-            attrs: {
-               id: v`orderline_id`,
-               order_id: v`order_id`,
-               product_id: v`product_id`
-            }
-         },
-         {
-            rel: prd_product,
-            attrs: {
-               id: v`product_id`,
-               name_id: v`product_name_id`,
-               subtitle_id: v`product_subtitle_id`
-            }
-         },
-         {
-            rel: core_dict_word,
-            attrs: {
-               id: v`product_name_id`,
-               en: v`product_name`
-            }
-         },
-         {
-            rel: core_dict_word,
-            attrs: {
-               id: v`product_subtitle_id`,
-               en: v`product_subtitle`
-            }
-         },
-         {
-            rel: tkt_code,
-            attrs: {
-               id: v`code_id`,
-               code: v`barcode`,
-               orderline_id: v`orderline_id`,
-               invalidating_user_id: v`inv_user_id`,
-               invalidated_on: v`invalidation_date`
-            }
-         },
-         {
-            rel: tkt_ticket,
-            attrs: {
-               code_id: v`code_id`,
-               profile_revision_id: v`tpr_id`
-            }
-         },
-         {
-            rel: cli_profile_revision,
-            attrs: {
-               id: v`tpr_id`,
-               first_name: v`ticket_first_name`,
-               last_name: v`ticket_last_name`,
-               email: v`ticket_email`,
-            }
-         },
-         {
-            rel: authbo_user,
-            attrs: {
-               id: v`inv_user_id`,
-               first_name: v`invalidating_user_first_name`,
-               last_name: v`invalidating_user_last_name`,
-               email: v`invalidating_user_email`
-            }
-         }
-      ]
-   }));
+   // let canceled_barcodes = $.inferredRelation(v => ({
+   //    name: 'canceled_barcodes',
+   //    attrs: [
+   //       'order_id',
+   //       'order_created',
+   //       'buyer_first_name',
+   //       'buyer_last_name',
+   //       'buyer_email',
+   //       'product_name',
+   //       'product_subtitle',
+   //       'barcode',
+   //       'ticket_first_name',
+   //       'ticket_last_name',
+   //       'ticket_email',
+   //       'invalidation_date',
+   //       'invalidating_user_first_name',
+   //       'invalidating_user_last_name',
+   //       'invalidating_user_email'
+   //    ],
+   //    body: [
+   //       {
+   //          rel: ord_order,
+   //          attrs: {
+   //             id: v`order_id`,
+   //             created: v`order_created`,
+   //             profile_revision_id: v`opr_id`
+   //          }
+   //       },
+   //       {
+   //          rel: cli_profile_revision,
+   //          attrs: {
+   //             id: v`opr_id`,
+   //             first_name: v`buyer_first_name`,
+   //             last_name: v`buyer_last_name`,
+   //             email: v`buyer_email`
+   //          }
+   //       },
+   //       {
+   //          rel: ord_orderline,
+   //          attrs: {
+   //             id: v`orderline_id`,
+   //             order_id: v`order_id`,
+   //             product_id: v`product_id`
+   //          }
+   //       },
+   //       {
+   //          rel: prd_product,
+   //          attrs: {
+   //             id: v`product_id`,
+   //             name_id: v`product_name_id`,
+   //             subtitle_id: v`product_subtitle_id`
+   //          }
+   //       },
+   //       {
+   //          rel: core_dict_word,
+   //          attrs: {
+   //             id: v`product_name_id`,
+   //             en: v`product_name`
+   //          }
+   //       },
+   //       {
+   //          rel: core_dict_word,
+   //          attrs: {
+   //             id: v`product_subtitle_id`,
+   //             en: v`product_subtitle`
+   //          }
+   //       },
+   //       {
+   //          rel: tkt_code,
+   //          attrs: {
+   //             id: v`code_id`,
+   //             code: v`barcode`,
+   //             orderline_id: v`orderline_id`,
+   //             invalidating_user_id: v`inv_user_id`,
+   //             invalidated_on: v`invalidation_date`
+   //          }
+   //       },
+   //       {
+   //          rel: tkt_ticket,
+   //          attrs: {
+   //             code_id: v`code_id`,
+   //             profile_revision_id: v`tpr_id`
+   //          }
+   //       },
+   //       {
+   //          rel: cli_profile_revision,
+   //          attrs: {
+   //             id: v`tpr_id`,
+   //             first_name: v`ticket_first_name`,
+   //             last_name: v`ticket_last_name`,
+   //             email: v`ticket_email`,
+   //          }
+   //       },
+   //       {
+   //          rel: authbo_user,
+   //          attrs: {
+   //             id: v`inv_user_id`,
+   //             first_name: v`invalidating_user_first_name`,
+   //             last_name: v`invalidating_user_last_name`,
+   //             email: v`invalidating_user_email`
+   //          }
+   //       }
+   //    ]
+   // }));
 
    Object.assign($.relations, {continent, country, city, continent_city});
 
-   // $.visualizeIncrementalUpdateScheme(canceled_barcodes);
+   $.visualizeIncrementalUpdateScheme(continent_city);
+
+   let proj = $.projectionFor(continent_city, {});
+   console.log(proj);
+}
+projectionFor ::= function (rel, boundAttrs) {
+   if (rel.isFactual) {
+      return $.fact.projectionFor(rel, boundAttrs);
+   }
+   else {
+      return $.infer.projectionFor(rel, boundAttrs);
+   }
 }

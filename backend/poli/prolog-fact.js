@@ -1,4 +1,5 @@
 common
+   arraysEqual
    assert
    filter
    find
@@ -8,14 +9,21 @@ common
    map
    selectProps
    trackingFinal
+prolog-version
+   refCurrentState
+   isVersionUpToDate
+   mergeDelta
+   deltaAdd
+   unchainVersions
+   releaseVersion
 prolog-index
    initIndex
+   copyIndex
    buildIndex
    indexAdd
    indexRemove
 prolog-infer
    inferredRelation
-   visualizeIncrementalUpdateScheme
 -----
 factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
@@ -26,10 +34,12 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
    for (let index of indices) {
       let idx = $.initIndex(index);
 
-      // Build only unique indices. Non-unique indices will be built by concrete
-      // projections when needed.
+      // Build only unique indices. Non-unique indices will only be built by concrete
+      // projections when needed.  Unique indices are also build separately for
+      // projections (except the full one which reuses the relation's unique indices).
       if (idx.isUnique) {
          $.buildIndex(idx, facts);
+         idx.refcount = 1;  // the index is always kept alive
          uniqueIndices.push(idx);
       }
 
@@ -42,7 +52,6 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
       attrs: attrs,
       indices: allIndices,
       uniqueIndices: uniqueIndices,
-      indmap: [],
       projmap: new Map,
       validProjs: new Set,
       latestVersion: null,
@@ -72,8 +81,6 @@ projmapKey ::= function (boundAttrs, attr) {
    return $.hasOwnProperty(boundAttrs, attr) ? boundAttrs[attr] : $.attrFree;
 }
 makeProjection ::= function (rel, boundAttrs) {
-   $.assert(rel.isFactual);
-
    let base = $.refCurrentState(rel);
    let proj;
 
@@ -85,7 +92,8 @@ makeProjection ::= function (rel, boundAttrs) {
          boundAttrs: null,
          base: base,
          latestVersion: null,
-         value: rel.facts,  
+         value: rel.facts,
+         indices: []
       };
    }
    else {
@@ -97,6 +105,7 @@ makeProjection ::= function (rel, boundAttrs) {
          base: base,
          latestVersion: null,
          value: new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
+         indices: []
       };
    }
 
@@ -110,6 +119,7 @@ releaseProjection ::= function (proj) {
    proj.refcount -= 1;
 
    if (proj.refcount === 0) {
+      $.assert(proj.indices.length === 0);
       $.forgetProjection(proj);
    }
 }
@@ -139,12 +149,12 @@ forgetProjection ::= function (proj) {
 
    rel.validProjs.delete(proj);
 }
-isFullProjection ::= function (proj) {
-   return proj.boundAttrs === null;
-}
 markProjectionValid ::= function (proj) {
    proj.isValid = true;
    proj.rel.validProjs.add(proj);
+}
+isFullProjection ::= function (proj) {
+   return proj.boundAttrs === null;
 }
 factSatisfies ::= function (fact, boundAttrs) {
    for (let [attr, val] of Object.entries(boundAttrs)) {
@@ -154,59 +164,6 @@ factSatisfies ::= function (fact, boundAttrs) {
    }
 
    return true;
-}
-refCurrentState ::= function (parent) {
-   // 'parent' is a factual relation or its projection
-   if (parent.latestVersion === null) {
-      parent.latestVersion = {
-         parent: parent,
-         num: 1,
-         next: null,
-         refcount: 1,  // that's the reference that this func adds
-         delta: new Map,
-      }
-   }
-   else if ($.isVersionUpToDate(parent.latestVersion)) {
-      parent.latestVersion.refcount += 1;
-   }
-   else {
-      let newver = {
-         parent: parent,
-         num: 0,
-         next: null,
-         refcount: 1,  // that's the reference that this func adds
-         delta: new Map,
-      };
-      $.linkVersions(parent.latestVersion, newver);
-      parent.latestVersion = newver;
-   }
-
-   return parent.latestVersion;
-}
-isVersionUpToDate ::= function (ver) {
-   return ver.delta.size === 0;
-}
-linkVersions ::= function (ver0, ver1) {
-   ver1.num = ver0.num + 1;
-   ver0.next = ver1;
-   ver1.refcount += 1;
-}
-releaseVersion ::= function (ver) {
-   // Drop version's refcount by 1.  Works for both factual relation versions and
-   // projection versions
-   $.assert(ver.refcount > 0);
-
-   ver.refcount -= 1;
-
-   if (ver.refcount === 0) {
-      if (ver.parent.latestVersion === ver) {
-         ver.parent.latestVersion = null;
-      }
-
-      if (ver.next !== null) {
-         $.releaseVersion(ver.next);
-      }
-   }
 }
 updateProjection ::= function (proj) {
    if (proj.isValid) {
@@ -228,13 +185,20 @@ updateProjection ::= function (proj) {
    let delta = proj.latestVersion !== null ? proj.latestVersion.delta : null;
 
    if ($.isFullProjection(proj)) {
-      $.mergeDelta(proj.latestVersion.delta, proj.base.delta);
+      if (delta !== null) {
+         $.mergeDelta(delta, proj.base.delta);
+      }
    }
    else {
       for (let [fact, action] of proj.base.delta) {
          if (action === 'add') {
             if ($.factSatisfies(fact, proj.boundAttrs)) {
                proj.value.add(fact);
+
+               for (let index of proj.indices) {
+                  $.indexAdd(index, fact);
+               }
+
                if (delta !== null) {
                   $.deltaAdd(delta, fact, 'add');
                }
@@ -242,6 +206,11 @@ updateProjection ::= function (proj) {
          }
          else if (proj.value.has(fact)) {
             proj.value.delete(fact);
+
+            for (let index of proj.indices) {
+               $.indexRemove(index, fact);
+            }
+
             if (delta !== null) {
                $.deltaAdd(delta, fact, 'remove');
             }
@@ -254,47 +223,6 @@ updateProjection ::= function (proj) {
 
    $.markProjectionValid(proj);
 }
-unchainVersions ::= function (ver) {
-   if (ver.next === null || ver.next.next === null) {
-      return;
-   }
-
-   let next = ver.next;
-
-   $.unchainVersions(next);
-
-   if (next.refcount === 1 && ver.delta.size < next.delta.size) {
-      // The 'next' version is only referenced by 'ver' which means that after
-      // this reduction operation it will be thrown away, which means we can reuse
-      // its 'delta' map if it's bigger than 'ver.delta'.
-      $.mergeDelta(next.delta, ver.delta);
-      ver.delta = next.delta;
-      next.delta = null;
-   }
-   else {
-      $.mergeDelta(ver.delta, next.delta);
-   }
-
-   ver.next = next.next;
-   ver.next.refcount += 1;
-   $.releaseVersion(next);
-}
-mergeDelta ::= function (dstD, srcD) {
-   for (let [tuple, action] of srcD) {
-      $.deltaAdd(dstD, tuple, action);
-   }
-}
-deltaAdd ::= function (delta, tuple, action) {
-   let existingAction = delta.get(tuple);
-
-   if (existingAction !== undefined) {
-      $.assert(existingAction !== action);
-      delta.delete(tuple);
-   }
-   else {
-      delta.set(tuple, action);
-   }
-}
 addFact ::= function (rel, fact) {
    if (rel.facts.has(fact)) {
       throw new Error(`Duplicate fact`);
@@ -302,11 +230,12 @@ addFact ::= function (rel, fact) {
 
    rel.facts.add(fact);
 
+   for (let index of rel.uniqueIndices) {
+      $.indexAdd(index, fact);
+   }
+
    if (rel.latestVersion !== null) {
       $.deltaAdd(rel.latestVersion.delta, fact, 'add');
-      for (let index of rel.uniqueIndices) {
-         $.indexAdd(index, fact);
-      }
       $.invalidateProjs(rel);
    }
 }
@@ -317,11 +246,12 @@ removeFact ::= function (rel, fact) {
       throw new Error(`Missing fact`);
    }
 
+   for (let index of rel.uniqueIndices) {
+      $.indexRemove(index, fact);
+   }
+
    if (rel.latestVersion !== null) {
       $.deltaAdd(rel.latestVersion.delta, fact, 'remove');
-      for (let index of rel.uniqueIndices) {
-         $.indexRemove(index, fact);
-      }
       $.invalidateProjs(rel);
    }
 }
@@ -331,4 +261,40 @@ invalidateProjs ::= function (rel) {
    }
 
    rel.validProjs.clear();
+}
+refIndex ::= function (proj, indexedColumns) {
+   for (let index of proj.indices) {
+      if ($.arraysEqual(index, indexedColumns)) {
+         index.refcount += 1;
+         return index;
+      }
+   }
+
+   if ($.isFullProjection(proj) && indexedColumns.isUnique) {
+      // For full projections we simply reuse unique indices
+      let index = proj.rel.uniqueIndices.find(idx => $.arraysEqual(idx, indexedColumns));      
+      index.refcount += 1;
+      return index;
+   }
+
+   let index = $.copyIndex(indexedColumns);
+
+   index.refcount = 1;
+   index.parent = proj;
+   proj.indices.push(index);
+
+   $.buildIndex(index, proj.value);
+
+   return index;
+}
+releaseIndex ::= function (index) {
+   $.assert(index.refcount > 0);
+
+   index.refcount -= 1;
+
+   if (index.refcount === 0) {
+      let i = index.parent.indices.indexOf(index);
+      $.assert(i !== -1);
+      index.parent.indices.splice(i, 1);
+   }
 }
