@@ -47,11 +47,6 @@ releaseProjection ::= function (proj) {
       $.assert(proj.latestVersion === null);
       // Indices should've been released before the projection itself
       $.assert(proj.indices.length === 0);
-      // Strictly speaking, there must not be either valid or invalid projections that
-      // depend on this one if its reference counts drops to 0. That would be logical
-      // error in our code. But we don't track invalid reverse dependencies, so at least
-      // make an assert for valid ones.
-      $.assert(proj.validRevDeps.size === 0);
 
       let rel = proj.rel;
 
@@ -79,4 +74,21 @@ releaseProjection ::= function (proj) {
 }
 freeProjection ::= function (proj) {
    (proj.rel.isFactual ? $.fact.freeProjection : $.infer.freeProjection)(proj);
+}
+invalidateProjections ::= function (...rootProjs) {
+   let stack = rootProjs;
+
+   while (stack.length > 0) {
+      let proj = stack.pop();
+
+      for (let revdep of proj.validRevDeps) {
+         stack.push(revdep);
+      }
+
+      proj.validRevDeps.clear();
+      proj.isValid = false;
+   }
+}
+updateProjection ::= function (proj) {
+   (proj.rel.isFactual ? $.fact.updateProjection : $.infer.updateProjection)(proj);
 }

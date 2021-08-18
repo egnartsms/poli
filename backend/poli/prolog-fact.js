@@ -26,6 +26,7 @@ prolog-infer
    inferredRelation
 prolog-projection
    isFullProjection
+   invalidateProjections
 -----
 factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
@@ -166,7 +167,7 @@ addFact ::= function (rel, fact) {
 
    if (rel.latestVersion !== null) {
       $.deltaAdd(rel.latestVersion.delta, fact, 'add');
-      $.invalidateProjs(rel);
+      $.invalidate(rel);
    }
 }
 removeFact ::= function (rel, fact) {
@@ -182,14 +183,11 @@ removeFact ::= function (rel, fact) {
 
    if (rel.latestVersion !== null) {
       $.deltaAdd(rel.latestVersion.delta, fact, 'remove');
-      $.invalidateProjs(rel);
+      $.invalidate(rel);
    }
 }
-invalidateProjs ::= function (rel) {
-   for (let proj of rel.validRevDeps) {
-      proj.isValid = false;
-   }
-
+invalidate ::= function (rel) {
+   $.invalidateProjections(...rel.validRevDeps);
    rel.validRevDeps.clear();
 }
 refIndex ::= function (proj, indexedColumns) {

@@ -159,6 +159,16 @@ parameterize ::= function (tobind, callback) {
       }
    }
 }
+setDefault ::= function (map, key, producer) {
+   if (map.has(key)) {
+      return map.get(key);
+   }
+   else {
+      let val = producer();
+      map.set(key, val);
+      return val;
+   }
+}
 lessThan ::= function (a, b) {
    return a < b;
 }

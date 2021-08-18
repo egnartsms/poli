@@ -1,8 +1,10 @@
 prolog-projection
    projectionFor
    releaseProjection
+   updateProjection
 prolog-fact
    factualRelation
+   removeFact
 prolog-infer
    inferredRelation
 prolog-update-scheme
@@ -10,6 +12,7 @@ prolog-update-scheme
 -----
 relations ::= ({})
 initialize ::= function () {
+   let f_europe;
    let continent = $.factualRelation({
       name: 'continent',
       attrs: ['name'],
@@ -17,11 +20,13 @@ initialize ::= function () {
          Object.assign(['name'], {isUnique: true})
       ],
       facts: new Set([
-         {name: 'Europe'},
+         f_europe = {name: 'Europe'},
          {name: 'Asia'},
          {name: 'America'}
       ]),
    });
+
+   let f_ruthenia;
 
    let country = $.factualRelation({
       name: 'country',
@@ -34,7 +39,7 @@ initialize ::= function () {
       facts: new Set([
          {continent: 'Europe', name: 'France'},
          {continent: 'Europe', name: 'Poland'},
-         {continent: 'Europe', name: 'Ruthenia'},
+         f_ruthenia = {continent: 'Europe', name: 'Ruthenia'},
          {continent: 'Asia', name: 'China'},
          {continent: 'Asia', name: 'India'},
          {continent: 'Asia', name: 'Turkey'},
@@ -43,6 +48,7 @@ initialize ::= function () {
       ]),
    });
 
+   let f_dnipro;
    let city = $.factualRelation({
       name: 'city',
       attrs: ['name', 'country', 'population'],
@@ -60,7 +66,7 @@ initialize ::= function () {
 
          {country: 'Ruthenia', name: 'Kyiv', population: 3.375},
          {country: 'Ruthenia', name: 'Lviv', population: 0.720},
-         {country: 'Ruthenia', name: 'Dnipro', population: 0.993},
+         f_dnipro = {country: 'Ruthenia', name: 'Dnipro', population: 0.993},
 
          {country: 'China', name: 'Beijing', population: 21.707},
          {country: 'China', name: 'Chongqing', population: 30.165},
@@ -283,9 +289,17 @@ initialize ::= function () {
    $.visualizeIncrementalUpdateScheme(continent_city);
 
    let proj = $.projectionFor(continent_city, {});
-   console.log(proj);
-
    proj.refcount += 1;
+
+   console.log(Array.from(proj.value));
+
+   $.removeFact(country, f_ruthenia);
+   // $.removeFact(continent, f_europe);
+   $.removeFact(city, f_dnipro);
+   $.updateProjection(proj);
+
+   console.log(Array.from(proj.value));   
+   
    $.releaseProjection(proj);
-   // console.log(proj);
+   
 }
