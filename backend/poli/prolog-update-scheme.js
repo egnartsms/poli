@@ -55,12 +55,12 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
          let coll = appliedFor[jplink.conj.num];
          let cindex = $.find(coll, idx => $.arraysEqual(idx, jplink.index));
 
-         if (cindex !== undefined) {
-            jplink.index = cindex;
+         if (cindex === undefined) {
+            cindex = $.copyIndex(jplink.index);
+            coll.push(cindex);
          }
-         else {
-            coll.push(jplink.index);
-         }
+
+         jplink.index = cindex;
       }
    }
 

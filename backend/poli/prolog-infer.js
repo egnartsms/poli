@@ -5,12 +5,14 @@ common
    commonArrayPrefixLength
    find
    isObjectWithOwnProperty
+   hasNoEnumerableProps
    singleQuoteJoinComma
    map
    mapfilter
    filter
-prolog
-   projectionFor as: gProjectionFor
+prolog-projection
+   projectionFor
+   releaseProjection
 prolog-conjunct
    * as: conjunct
 prolog-fact
@@ -18,6 +20,7 @@ prolog-fact
    releaseIndex
 prolog-version
    refCurrentState
+   releaseVersion
 prolog-index
    copyIndex
    isIndexCovered
@@ -114,61 +117,64 @@ inferredRelation ::= function (callback) {
       indices: [],  // TODO: implement indices
       jpaths: jpaths,
       appliedIndices: appliedIndices,
-      projmap: null,  // TODO: implement proper projections
-      validProjs: new Set
+      projmap: new Map,
    };
 }
-projectionFor ::= function (rel, boundAttrs) {
-   $.assert(Object.keys(boundAttrs).length === 0);
+makeProjection ::= function (rel, boundAttrs) {
+   $.assert($.hasNoEnumerableProps(boundAttrs));
 
-   if (rel.projmap === null) {
-      rel.projmap = $.makeFullProjection(rel);
-   }
-
-   return rel.projmap;
-}
-makeFullProjection ::= function (rel) {
    let subprojs = [];
    let basevers = [];
 
    for (let conj of rel.conjs) {
-      let proj = $.gProjectionFor(conj.rel, conj.firmAttrs);
+      let proj = $.projectionFor(conj.rel, conj.firmAttrs);
+
       proj.refcount += 1;
-      
       subprojs.push(proj);
       basevers.push($.refCurrentState(proj));
    }
 
-   let idxObjs = [];
-
-   debugger;
+   let idxobjs = [];
 
    for (let index of rel.appliedIndices) {
-      idxObjs.push($.refIndex(subprojs[index.numConj], index));
+      idxobjs.push($.refIndex(subprojs[index.numConj], index));
    }
 
    let proj = {
       rel: rel,
       refcount: 0,
       isValid: true,
-      boundAttrs: null,
+      boundAttrs: boundAttrs,
       subprojs: subprojs,
       basevers: basevers,
-      idxObjs: idxObjs,
+      idxobjs: idxobjs,
       latestVersion: null,
       value: null,  // will be initialized shortly
-      indices: []
+      indices: [],
+      validRevDeps: new Set,
    };
 
-   $.markProjectionValid(proj);
+   for (let subproj of subprojs) {
+      subproj.validRevDeps.add(proj);
+   }
 
    proj.value = $.runProjection(proj);
 
    return proj;
 }
-markProjectionValid ::= function (proj) {
-   proj.isValid = true;
-   proj.rel.validProjs.add(proj);
+freeProjection ::= function (proj) {
+   for (let idxobj of proj.idxobjs) {
+      $.releaseIndex(idxobj);
+   }
+
+   for (let ver of proj.basevers) {
+      $.releaseVersion(ver);
+   }
+
+   for (let subproj of proj.subprojs) {
+      subproj.validRevDeps.delete(proj);
+      $.releaseProjection(subproj);
+   }
 }
 runProjection ::= function (proj) {
    let {rel} = proj;
@@ -183,10 +189,14 @@ runProjection ::= function (proj) {
 
    function* gen(i) {
       if (i === jpath.length) {
-         yield {
-            ...ns,
-            [$.symDeps]: Array.from(subtuples)
-         };
+         let tuple = Object.fromEntries($.map(rel.attrs, a => [a, ns[a]]));
+
+         Object.defineProperty(tuple, $.symDeps, {
+            value: Array.from(subtuples)
+         });
+         
+         yield tuple;
+
          return;
       }
 
@@ -197,7 +207,7 @@ runProjection ::= function (proj) {
          source = proj.subprojs[jplink.conj.num].value;
       }
       else {
-         let idxobj = proj.idxObjs[jplink.indexNum];
+         let idxobj = proj.idxobjs[jplink.indexNum];
 
          source = idxobj.value;
          

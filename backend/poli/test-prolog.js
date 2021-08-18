@@ -6,8 +6,9 @@ prolog
    relations as: rels
 prolog-query
    query
-prolog-fact
+prolog-projection
    projectionFor
+prolog-fact
    addFact
    removeFact
    isFullProjection

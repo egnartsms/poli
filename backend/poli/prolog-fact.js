@@ -3,8 +3,8 @@ common
    assert
    filter
    find
-   hasOwnProperty
    hasNoEnumerableProps
+   hasOwnProperty
    concat
    map
    selectProps
@@ -24,6 +24,8 @@ prolog-index
    indexRemove
 prolog-infer
    inferredRelation
+prolog-projection
+   isFullProjection
 -----
 factualRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
@@ -53,108 +55,36 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
       indices: allIndices,
       uniqueIndices: uniqueIndices,
       projmap: new Map,
-      validProjs: new Set,
       latestVersion: null,
       facts: facts,
+      validRevDeps: new Set,  // 'revdeps' here means projections
    }
-}
-projectionFor ::= function (rel, boundAttrs) {
-   let map = rel.projmap;
-   
-   for (let [attr, isFinal] of $.trackingFinal(rel.attrs)) {
-      let key = $.projmapKey(boundAttrs, attr);
-
-      if (map.has(key)) {
-         map = map.get(key);
-      }
-      else {
-         let next = isFinal ? $.makeProjection(rel, boundAttrs) : new Map;
-         map.set(key, next);
-         map = next;
-      }
-   }
-
-   return map;
-}
-attrFree ::= new Object
-projmapKey ::= function (boundAttrs, attr) {
-   return $.hasOwnProperty(boundAttrs, attr) ? boundAttrs[attr] : $.attrFree;
 }
 makeProjection ::= function (rel, boundAttrs) {
-   let base = $.refCurrentState(rel);
-   let proj;
-
-   if (Object.keys(boundAttrs).length === 0) {
-      proj = {
-         rel: rel,
-         refcount: 0,
-         isValid: true,
-         boundAttrs: null,
-         base: base,
-         latestVersion: null,
-         value: rel.facts,
-         indices: []
-      };
-   }
-   else {
-      proj = {
-         rel: rel,
-         refcount: 0,
-         isValid: true,
-         boundAttrs: boundAttrs,
-         base: base,
-         latestVersion: null,
-         value: new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
-         indices: []
-      };
-   }
+   let proj = {
+      rel: rel,
+      refcount: 0,
+      isValid: true,
+      boundAttrs: boundAttrs,
+      base: $.refCurrentState(rel),
+      latestVersion: null,
+      value: $.hasNoEnumerableProps(boundAttrs) ?
+         rel.facts :
+         new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
+      indices: [],
+      validRevDeps: new Set,
+   };
 
    $.markProjectionValid(proj);
 
    return proj;
 }
-releaseProjection ::= function (proj) {
-   $.assert(proj.refcount > 0);
-
-   proj.refcount -= 1;
-
-   if (proj.refcount === 0) {
-      $.assert(proj.indices.length === 0);
-      $.forgetProjection(proj);
-   }
-}
-forgetProjection ::= function (proj) {
-   $.assert(proj.refcount === 0);
-
-   let rel = proj.rel;
-
-   (function go(i, map) {
-      if (i === rel.attrs.length) {
-         return;
-      }
-
-      let key = $.projmapKey(proj.boundAttrs, rel.attrs[i]);
-
-      if (i === rel.attrs.length - 1) {
-         map.delete(key);
-      }
-      else {
-         let next = map.get(key);
-         go(i + 1, next);
-         if (next.size === 0) {
-            map.delete(key);
-         }
-      }
-   })(0, rel.projmap);
-
-   rel.validProjs.delete(proj);
+freeProjection ::= function (proj) {
+   proj.rel.validRevDeps.delete(proj);
 }
 markProjectionValid ::= function (proj) {
    proj.isValid = true;
-   proj.rel.validProjs.add(proj);
-}
-isFullProjection ::= function (proj) {
-   return proj.boundAttrs === null;
+   proj.rel.validRevDeps.add(proj);
 }
 factSatisfies ::= function (fact, boundAttrs) {
    for (let [attr, val] of Object.entries(boundAttrs)) {
@@ -256,11 +186,11 @@ removeFact ::= function (rel, fact) {
    }
 }
 invalidateProjs ::= function (rel) {
-   for (let proj of rel.validProjs) {
+   for (let proj of rel.validRevDeps) {
       proj.isValid = false;
    }
 
-   rel.validProjs.clear();
+   rel.validRevDeps.clear();
 }
 refIndex ::= function (proj, indexedColumns) {
    for (let index of proj.indices) {

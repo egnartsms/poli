@@ -1,8 +1,9 @@
 common
    assert
-prolog-fact
+prolog-projection
    projectionFor
    releaseProjection
+prolog-fact
    updateProjection
 -----
 time ::= 0

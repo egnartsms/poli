@@ -1,9 +1,9 @@
-prolog-fact
-   * as: fact
-   factualRelation
+prolog-projection
+   projectionFor
    releaseProjection
+prolog-fact
+   factualRelation
 prolog-infer
-   * as: infer
    inferredRelation
 prolog-update-scheme
    visualizeIncrementalUpdateScheme
@@ -284,12 +284,8 @@ initialize ::= function () {
 
    let proj = $.projectionFor(continent_city, {});
    console.log(proj);
-}
-projectionFor ::= function (rel, boundAttrs) {
-   if (rel.isFactual) {
-      return $.fact.projectionFor(rel, boundAttrs);
-   }
-   else {
-      return $.infer.projectionFor(rel, boundAttrs);
-   }
+
+   proj.refcount += 1;
+   $.releaseProjection(proj);
+   // console.log(proj);
 }
