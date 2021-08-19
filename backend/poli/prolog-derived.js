@@ -17,7 +17,7 @@ prolog-projection
    updateProjection as: gUpdateProjection
 prolog-conjunct
    * as: conjunct
-prolog-fact
+prolog-base
    refIndex
    releaseIndex
 prolog-version
@@ -32,7 +32,7 @@ prolog-index
 prolog-update-scheme
    computeIncrementalUpdateScheme
 -----
-inferredRelation ::= function (callback) {
+derivedRelation ::= function (callback) {
    let lvname = Symbol('lvar');
    let vpool = new Map;
 
@@ -114,7 +114,7 @@ inferredRelation ::= function (callback) {
    let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relspec.name, conjs);
 
    return {
-      isFactual: false,
+      isBase: false,
       name: relspec.name,
       attrs: relspec.attrs,
       lvars: lvars,
@@ -129,14 +129,14 @@ makeProjection ::= function (rel, boundAttrs) {
    $.assert($.hasNoEnumerableProps(boundAttrs));
 
    let subprojs = [];
-   let baseVers = [];
+   let depVers = [];
 
    for (let conj of rel.conjs) {
       let proj = $.projectionFor(conj.rel, conj.firmAttrs);
 
       proj.refcount += 1;
       subprojs.push(proj);
-      baseVers.push(null);
+      depVers.push(null);
    }
 
    let idxobjs = [];
@@ -151,12 +151,12 @@ makeProjection ::= function (rel, boundAttrs) {
       isValid: false,
       boundAttrs: boundAttrs,
       subprojs: subprojs,
-      baseVers: baseVers,
+      depVers: depVers,
       idxobjs: idxobjs,
-      latestVersion: null,
+      myVer: null,
       value: null,
       tupleDeps: new Map,
-      indices: [],  // TODO: implement indices for inferred projections
+      indices: [],  // TODO: implement indices for derived projections
       validRevDeps: new Set,
    };
 
@@ -169,7 +169,7 @@ freeProjection ::= function (proj) {
       $.releaseIndex(idxobj);
    }
 
-   for (let ver of proj.baseVers) {
+   for (let ver of proj.depVers) {
       $.releaseVersion(ver);
    }
 
@@ -188,7 +188,7 @@ markProjectionValid ::= function (proj) {
 }
 rebuildProjection ::= function (proj) {
    // It is only possible to rebuild a projection that nobody refers to.
-   $.assert(proj.latestVersion === null);
+   $.assert(proj.myVer === null);
 
    let {rel} = proj;
    let {conjs: [conj0], jpaths: [jpath0]} = rel;
@@ -198,15 +198,15 @@ rebuildProjection ::= function (proj) {
       $.gUpdateProjection(subproj);
    }
 
-   for (let i = 0; i < proj.baseVers.length; i += 1) {
+   for (let i = 0; i < proj.depVers.length; i += 1) {
       // First create a new version, then release a reference to the old version.
       // This ensures that when there's only 1 version for the 'subprojs[i]', we don't
       // re-create the version object.
       let newVer = $.refCurrentState(proj.subprojs[i]);
-      if (proj.baseVers[i] !== null) {
-         $.releaseVersion(proj.baseVers[i]);
+      if (proj.depVers[i] !== null) {
+         $.releaseVersion(proj.depVers[i]);
       }
-      proj.baseVers[i] = newVer;
+      proj.depVers[i] = newVer;
    }
 
    let ns = Object.fromEntries(
@@ -214,7 +214,7 @@ rebuildProjection ::= function (proj) {
    );
    let subtuples = [];
 
-   function gen(k) {
+   function run(k) {
       if (k === jpath0.length) {
          let tuple = Object.fromEntries($.map(rel.attrs, a => [a, ns[a]]));
 
@@ -263,7 +263,7 @@ rebuildProjection ::= function (proj) {
          }
 
          subtuples.push(tuple);
-         gen(k + 1);
+         run(k + 1);
          subtuples.pop();
       }
    }
@@ -276,7 +276,7 @@ rebuildProjection ::= function (proj) {
       }
 
       subtuples.push(tuple);
-      gen(0);
+      run(0);
       subtuples.pop(tuple);
    }
   
@@ -288,7 +288,7 @@ updateProjection ::= function (proj) {
    }
 
    if (proj.value === null) {
-      // This is an 'empty' projection
+      // This is a 'lean' projection
       $.rebuildProjection(proj);
       return;
    }
@@ -297,40 +297,36 @@ updateProjection ::= function (proj) {
       $.gUpdateProjection(subproj);
    }
 
-   let newBaseVers = new Array(proj.subprojs.length);
-   let numSubChanged = 0;
+   // newDepVers: conj => newDepVer
+   // Invariant: all 'conj' go in increasing number (conj0.num < conj1.num < ...)
+   let newDepVers = new Map;
 
-   for (let i = 0; i < proj.subprojs.length; i += 1) {
-      let subproj = proj.subprojs[i];
-      let baseVer = proj.baseVers[i];
-      let newBaseVer = null;
-
-      if (!$.isVersionUpToDate(baseVer)) {
-         newBaseVer = $.refCurrentState(subproj);  // reference already added
-
-         $.assert(baseVer !== newBaseVer);
-
-         $.unchainVersions(baseVer);
-         numSubChanged += 1;
+   for (let conj of proj.rel.conjs) {
+      let depVer = proj.depVers[conj.num];
+      
+      if ($.isVersionUpToDate(depVer)) {
+         continue;
       }
 
-      newBaseVers[i] = newBaseVer;
+      let subproj = proj.subprojs[conj.num];
+      let newDepVer = $.refCurrentState(subproj);  // reference already added
+
+      $.assert(depVer !== newDepVer);
+
+      $.unchainVersions(depVer);
+      newDepVers.set(conj, newDepVer);
    }
 
-   if (numSubChanged === 0) {
+   if (newDepVers.size === 0) {
       $.markProjectionValid(proj);
       return;
    }
 
-   // First handle all deletions
-   let delta = proj.latestVersion !== null ? proj.latestVersion.delta : null;
+   // Remove
+   let delta = proj.myVer !== null ? proj.myVer.delta : null;
 
-   for (let i = 0; i < proj.subprojs.length; i += 1) {
-      if (newBaseVers[i] === null) {
-         continue;
-      }
-
-      let subdelta = proj.baseVers[i].delta;
+   for (let conj of newDepVers.keys()) {
+      let subdelta = proj.depVers[conj.num].delta;
       $.assert(subdelta.size > 0);
 
       for (let [subtuple, action] of subdelta) {
@@ -352,19 +348,16 @@ updateProjection ::= function (proj) {
       }
    }
 
-   for (let i = 0; i < proj.subprojs.length; i += 1) {
-      if (newBaseVers[i] === null) {
-         continue;
-      }
-
-      let jpath = proj.rel.jpaths[i];
+   // Add
+   for (let dconj of newDepVers.keys()) {
+      let jpath = proj.rel.jpaths[dconj.num];
 
       let ns = Object.fromEntries(
-         $.map($.conjunct.lvarsIn(proj.rel.conjs[i]), lvar => [lvar, undefined])
+         $.map($.conjunct.lvarsIn(dconj), lvar => [lvar, undefined])
       );
       let subtuples = [];
 
-      function gen(k) {
+      function run(k) {
          if (k === jpath.length) {
             let tuple = Object.fromEntries($.map(proj.rel.attrs, a => [a, ns[a]]));
 
@@ -404,10 +397,13 @@ updateProjection ::= function (proj) {
             }
          }
 
+         // noDelta is used to exclude tuples that belong to deltas of already-processed
+         // conjuncts (as we process in order, an already processed is the one with lesser
+         // number)
          let noDelta;
 
-         if (conj.num < i && newBaseVers[conj.num] !== null) {
-            noDelta = proj.baseVers[conj.num].delta;
+         if (conj.num < dconj.num && newDepVers.has(conj)) {
+            noDelta = proj.depVers[conj.num].delta;
          }
          else {
             noDelta = new Map;
@@ -430,32 +426,30 @@ updateProjection ::= function (proj) {
             }
 
             subtuples.push(tuple);
-            gen(k + 1);
+            run(k + 1);
             subtuples.pop();
          }
       }
 
-      let subdelta = proj.baseVers[i].delta;
+      let subdelta = proj.depVers[dconj.num].delta;
 
       for (let [subtuple, action] of subdelta) {
          if (action === 'add') {
-            for (let [attr, lvar] of Object.entries(proj.rel.conjs[i].looseAttrs)) {
+            for (let [attr, lvar] of Object.entries(dconj.looseAttrs)) {
                ns[lvar] = subtuple[attr];
             }
             
             subtuples.push(subtuple);
-            gen(0);
+            run(0);
             subtuples.pop();
          }
       }
    }
 
-   // Finally release old base versions
-   for (let i = 0; i < proj.subprojs.length; i += 1) {
-      if (newBaseVers[i] !== null) {
-         $.releaseVersion(proj.baseVers[i]);
-         proj.baseVers[i] = newBaseVers[i];
-      }
+   // Finally release old dependent versions
+   for (let [conj, newDepVer] of newDepVers) {
+      $.releaseVersion(proj.depVers[conj.num]);
+      proj.depVers[conj.num] = newDepVer;
    }
 
    $.markProjectionValid(proj);

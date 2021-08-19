@@ -8,7 +8,7 @@ prolog-query
    query
 prolog-projection
    projectionFor
-prolog-fact
+prolog-base
    addFact
    removeFact
    isFullProjection
@@ -99,5 +99,5 @@ test_unfiltered_projections ::= function () {
 
    proj = $.projectionFor($.rels.country, {});
    $.updateProjection(proj);
-   $.assert(proj.base === $.rels.country.latestVersion);
+   $.assert(proj.depVer === $.rels.country.myVer);
 }

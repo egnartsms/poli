@@ -22,13 +22,11 @@ prolog-index
    buildIndex
    indexAdd
    indexRemove
-prolog-infer
-   inferredRelation
 prolog-projection
    isFullProjection
    invalidateProjections
 -----
-factualRelation ::= function ({name, attrs, indices, facts}) {
+baseRelation ::= function ({name, attrs, indices, facts}) {
    $.assert(facts instanceof Set);
 
    let uniqueIndices = [];
@@ -50,13 +48,13 @@ factualRelation ::= function ({name, attrs, indices, facts}) {
    }
 
    return {
-      isFactual: true,
+      isBase: true,
       name: name,
       attrs: attrs,
       indices: allIndices,
       uniqueIndices: uniqueIndices,
       projmap: new Map,
-      latestVersion: null,
+      myVer: null,
       facts: facts,
       validRevDeps: new Set,  // 'revdeps' here means projections
    }
@@ -67,8 +65,8 @@ makeProjection ::= function (rel, boundAttrs) {
       refcount: 0,
       isValid: true,
       boundAttrs: boundAttrs,
-      base: $.refCurrentState(rel),
-      latestVersion: null,
+      depVer: $.refCurrentState(rel),
+      myVer: null,
       value: $.hasNoEnumerableProps(boundAttrs) ?
          rel.facts :
          new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
@@ -101,27 +99,27 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if ($.isVersionUpToDate(proj.base)) {
+   if ($.isVersionUpToDate(proj.depVer)) {
       $.markProjectionValid(proj);
       return;
    }
 
-   let newBase = $.refCurrentState(proj.rel);  // reference already added for 'newBase'
+   let newDepVer = $.refCurrentState(proj.rel);  // reference already added for 'newDepVer'
 
    // if they were the same we would have fallen into the if branch above
-   $.assert(proj.base !== newBase);
+   $.assert(proj.depVer !== newDepVer);
 
-   $.unchainVersions(proj.base);
+   $.unchainVersions(proj.depVer);
 
-   let delta = proj.latestVersion !== null ? proj.latestVersion.delta : null;
+   let delta = proj.myVer !== null ? proj.myVer.delta : null;
 
    if ($.isFullProjection(proj)) {
       if (delta !== null) {
-         $.mergeDelta(delta, proj.base.delta);
+         $.mergeDelta(delta, proj.depVer.delta);
       }
    }
    else {
-      for (let [fact, action] of proj.base.delta) {
+      for (let [fact, action] of proj.depVer.delta) {
          if (action === 'add') {
             if ($.factSatisfies(fact, proj.boundAttrs)) {
                proj.value.add(fact);
@@ -143,14 +141,14 @@ updateProjection ::= function (proj) {
 
    // Update index instances for this projection
    for (let index of proj.indices) {
-      for (let [fact, action] of proj.base.delta) {
+      for (let [fact, action] of proj.depVer.delta) {
          (action === 'add' ? $.indexAdd : $.indexRemove)(index, fact);
       }
    }
 
    
-   $.releaseVersion(proj.base);
-   proj.base = newBase;  // already reffed it
+   $.releaseVersion(proj.depVer);
+   proj.depVer = newDepVer;  // already reffed it
 
    $.markProjectionValid(proj);
 }
@@ -165,8 +163,8 @@ addFact ::= function (rel, fact) {
       $.indexAdd(index, fact);
    }
 
-   if (rel.latestVersion !== null) {
-      $.deltaAdd(rel.latestVersion.delta, fact, 'add');
+   if (rel.myVer !== null) {
+      $.deltaAdd(rel.myVer.delta, fact, 'add');
       $.invalidate(rel);
    }
 }
@@ -181,8 +179,8 @@ removeFact ::= function (rel, fact) {
       $.indexRemove(index, fact);
    }
 
-   if (rel.latestVersion !== null) {
-      $.deltaAdd(rel.latestVersion.delta, fact, 'remove');
+   if (rel.myVer !== null) {
+      $.deltaAdd(rel.myVer.delta, fact, 'remove');
       $.invalidate(rel);
    }
 }

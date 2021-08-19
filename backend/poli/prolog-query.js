@@ -3,15 +3,13 @@ common
 prolog-projection
    projectionFor
    releaseProjection
-prolog-fact
+prolog-base
    updateProjection
 -----
 time ::= 0
 projectionCache ::= new Map
 recencyList ::= null
 query ::= function (rel, boundAttrs) {
-   $.assert(rel.isFactual);
-
    let proj = $.projectionFor(rel, boundAttrs);
    let rec = $.projectionCache.get(proj);
 

@@ -2,10 +2,9 @@ common
    assert
 -----
 refCurrentState ::= function (parent) {
-   // 'parent' is a factual relation or a projection of either factual or inferred
-   // relation
-   if (parent.latestVersion === null) {
-      parent.latestVersion = {
+   // 'parent' is a base relation or a projection of either base or derived relation
+   if (parent.myVer === null) {
+      parent.myVer = {
          parent: parent,
          num: 1,
          next: null,
@@ -13,8 +12,8 @@ refCurrentState ::= function (parent) {
          delta: new Map,
       }
    }
-   else if ($.isVersionUpToDate(parent.latestVersion)) {
-      parent.latestVersion.refcount += 1;
+   else if ($.isVersionUpToDate(parent.myVer)) {
+      parent.myVer.refcount += 1;
    }
    else {
       let newver = {
@@ -24,11 +23,11 @@ refCurrentState ::= function (parent) {
          refcount: 1,  // that's the reference that this func adds
          delta: new Map,
       };
-      $.linkVersions(parent.latestVersion, newver);
-      parent.latestVersion = newver;
+      $.linkVersions(parent.myVer, newver);
+      parent.myVer = newver;
    }
 
-   return parent.latestVersion;
+   return parent.myVer;
 }
 isVersionUpToDate ::= function (ver) {
    return ver.delta.size === 0;
@@ -39,15 +38,15 @@ linkVersions ::= function (ver0, ver1) {
    ver1.refcount += 1;
 }
 releaseVersion ::= function (ver) {
-   // Drop version's refcount by 1.  Works for both factual relation versions and
+   // Drop version's refcount by 1.  Works for both base relation versions and
    // projection versions
    $.assert(ver.refcount > 0);
 
    ver.refcount -= 1;
 
    if (ver.refcount === 0) {
-      if (ver.parent.latestVersion === ver) {
-         ver.parent.latestVersion = null;
+      if (ver.parent.myVer === ver) {
+         ver.parent.myVer = null;
       }
 
       if (ver.next !== null) {

@@ -2,19 +2,19 @@ prolog-projection
    projectionFor
    releaseProjection
    updateProjection
-prolog-fact
-   factualRelation
+prolog-base
+   baseRelation
    addFact
    removeFact
-prolog-infer
-   inferredRelation
+prolog-derived
+   derivedRelation
 prolog-update-scheme
    visualizeIncrementalUpdateScheme
 -----
 relations ::= ({})
 initialize ::= function () {
    let f_europe;
-   let continent = $.factualRelation({
+   let continent = $.baseRelation({
       name: 'continent',
       attrs: ['name'],
       indices: [
@@ -29,7 +29,7 @@ initialize ::= function () {
 
    let f_ruthenia;
 
-   let country = $.factualRelation({
+   let country = $.baseRelation({
       name: 'country',
       attrs: ['name', 'continent'],
       indices: [
@@ -50,7 +50,7 @@ initialize ::= function () {
    });
 
    let f_dnipro;
-   let city = $.factualRelation({
+   let city = $.baseRelation({
       name: 'city',
       attrs: ['name', 'country', 'population'],
       indices: [
@@ -87,7 +87,7 @@ initialize ::= function () {
       ])
    });
 
-   let continent_city = $.inferredRelation(v => ({
+   let continent_city = $.derivedRelation(v => ({
       name: 'continent_city',
       attrs: ['continent', 'city'],
       body: [
