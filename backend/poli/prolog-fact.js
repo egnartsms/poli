@@ -126,10 +126,6 @@ updateProjection ::= function (proj) {
             if ($.factSatisfies(fact, proj.boundAttrs)) {
                proj.value.add(fact);
 
-               for (let index of proj.indices) {
-                  $.indexAdd(index, fact);
-               }
-
                if (delta !== null) {
                   $.deltaAdd(delta, fact, 'add');
                }
@@ -138,16 +134,20 @@ updateProjection ::= function (proj) {
          else if (proj.value.has(fact)) {
             proj.value.delete(fact);
 
-            for (let index of proj.indices) {
-               $.indexRemove(index, fact);
-            }
-
             if (delta !== null) {
                $.deltaAdd(delta, fact, 'remove');
             }
          }
       }
    }
+
+   // Update index instances for this projection
+   for (let index of proj.indices) {
+      for (let [fact, action] of proj.base.delta) {
+         (action === 'add' ? $.indexAdd : $.indexRemove)(index, fact);
+      }
+   }
+
    
    $.releaseVersion(proj.base);
    proj.base = newBase;  // already reffed it
@@ -199,7 +199,7 @@ refIndex ::= function (proj, indexedColumns) {
    }
 
    if ($.isFullProjection(proj) && indexedColumns.isUnique) {
-      // For full projections we simply reuse unique indices
+      // For full projections we simply reuse unique indices of the relation
       let index = proj.rel.uniqueIndices.find(idx => $.arraysEqual(idx, indexedColumns));      
       index.refcount += 1;
       return index;

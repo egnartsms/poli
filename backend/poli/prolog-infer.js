@@ -155,7 +155,7 @@ makeProjection ::= function (rel, boundAttrs) {
       idxobjs: idxobjs,
       latestVersion: null,
       value: null,
-      tupleDeps: null,
+      tupleDeps: new Map,
       indices: [],  // TODO: implement indices for inferred projections
       validRevDeps: new Set,
    };
@@ -177,6 +177,7 @@ freeProjection ::= function (proj) {
       subproj.validRevDeps.delete(proj);
       $.releaseProjection(subproj);
    }
+
 }
 markProjectionValid ::= function (proj) {
    for (let subproj of proj.subprojs) {
@@ -208,28 +209,23 @@ rebuildProjection ::= function (proj) {
       proj.baseVers[i] = newVer;
    }
 
-   let tupleDeps = new Map;
    let ns = Object.fromEntries(
       $.map($.conjunct.lvarsIn(conj0), lvar => [lvar, undefined])
    );
    let subtuples = [];
 
-   function* gen(i) {
-      if (i === jpath0.length) {
+   function gen(k) {
+      if (k === jpath0.length) {
          let tuple = Object.fromEntries($.map(rel.attrs, a => [a, ns[a]]));
 
-         tupleDeps.set(tuple, Array.from(subtuples));
+         $.depTuple(proj.tupleDeps, tuple, subtuples);
 
-         for (let subtuple of subtuples) {
-            $.setDefault(tupleDeps, subtuple, () => new Set).add(tuple);
-         }
-         
-         yield tuple;
+         proj.value.add(tuple);
 
          return;
       }
 
-      let jplink = jpath0[i];
+      let jplink = jpath0[k];
       let source;
 
       if (jplink.index === null) {
@@ -267,26 +263,23 @@ rebuildProjection ::= function (proj) {
          }
 
          subtuples.push(tuple);
-         yield* gen(i + 1);
+         gen(k + 1);
          subtuples.pop();
       }
    }
 
-   function* gen0() {
-      for (let tuple of subproj0.value) {
-         for (let [attr, lvar] of Object.entries(conj0.looseAttrs)) {
-            ns[lvar] = tuple[attr];
-         }
+   proj.value = new Set();
 
-         subtuples.push(tuple);
-         yield* gen(0);
-         subtuples.pop(tuple);
+   for (let tuple of subproj0.value) {
+      for (let [attr, lvar] of Object.entries(conj0.looseAttrs)) {
+         ns[lvar] = tuple[attr];
       }
+
+      subtuples.push(tuple);
+      gen(0);
+      subtuples.pop(tuple);
    }
-
-   proj.value = new Set(gen0());
-   proj.tupleDeps = tupleDeps;
-
+  
    $.markProjectionValid(proj);
 }
 updateProjection ::= function (proj) {
@@ -329,8 +322,6 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   // TODO: also update index objects of proj on all modifications
-
    // First handle all deletions
    let delta = proj.latestVersion !== null ? proj.latestVersion.delta : null;
 
@@ -344,7 +335,7 @@ updateProjection ::= function (proj) {
 
       for (let [subtuple, action] of subdelta) {
          if (action === 'remove') {
-            let tuples = $.removeSubtuple(proj.tupleDeps, subtuple);
+            let tuples = $.undepSubtuple(proj.tupleDeps, subtuple);
 
             for (let tuple of tuples) {
                proj.value.delete(tuple);
@@ -361,7 +352,103 @@ updateProjection ::= function (proj) {
       }
    }
 
-   // TODO: handle additions
+   for (let i = 0; i < proj.subprojs.length; i += 1) {
+      if (newBaseVers[i] === null) {
+         continue;
+      }
+
+      let jpath = proj.rel.jpaths[i];
+
+      let ns = Object.fromEntries(
+         $.map($.conjunct.lvarsIn(proj.rel.conjs[i]), lvar => [lvar, undefined])
+      );
+      let subtuples = [];
+
+      function gen(k) {
+         if (k === jpath.length) {
+            let tuple = Object.fromEntries($.map(proj.rel.attrs, a => [a, ns[a]]));
+
+            $.depTuple(proj.tupleDeps, tuple, subtuples);
+
+            proj.value.add(tuple);
+
+            if (delta !== null) {
+               $.deltaAdd(delta, tuple, 'add');
+            }
+
+            return;
+         }
+
+         let {conj, index, indexNum, checkAttrs, extractAttrs} = jpath[k];
+         let source;
+
+         if (index === null) {
+            source = proj.subprojs[conj.num].value;
+         }
+         else {
+            let idxobj = proj.idxobjs[indexNum];
+
+            source = idxobj.value;
+            
+            for (let attr of idxobj) {
+               let lvar = conj.looseAttrs[attr];
+               source = source.get(ns[lvar]);
+
+               if (source === undefined) {
+                  return;
+               }
+            }
+
+            if (idxobj.isUnique) {
+               source = [source];
+            }
+         }
+
+         let noDelta;
+
+         if (conj.num < i && newBaseVers[conj.num] !== null) {
+            noDelta = proj.baseVers[conj.num].delta;
+         }
+         else {
+            noDelta = new Map;
+         }
+         
+         outer:
+         for (let tuple of source) {
+            if (noDelta.has(tuple)) {
+               continue;
+            }
+
+            for (let [attr, lvar] of checkAttrs) {
+               if (tuple[attr] !== ns[lvar]) {
+                  continue outer;
+               }
+            }
+
+            for (let [attr, lvar] of extractAttrs) {
+               ns[lvar] = tuple[attr];
+            }
+
+            subtuples.push(tuple);
+            gen(k + 1);
+            subtuples.pop();
+         }
+      }
+
+      let subdelta = proj.baseVers[i].delta;
+
+      for (let [subtuple, action] of subdelta) {
+         if (action === 'add') {
+            for (let [attr, lvar] of Object.entries(proj.rel.conjs[i].looseAttrs)) {
+               ns[lvar] = subtuple[attr];
+            }
+            
+            subtuples.push(subtuple);
+            gen(0);
+            subtuples.pop();
+         }
+      }
+   }
 
    // Finally release old base versions
    for (let i = 0; i < proj.subprojs.length; i += 1) {
@@ -373,7 +460,7 @@ updateProjection ::= function (proj) {
 
    $.markProjectionValid(proj);
 }
-removeSubtuple ::= function (deps, subtuple) {
+undepSubtuple ::= function (deps, subtuple) {
    let tupleSet = deps.get(subtuple);
 
    if (tupleSet === undefined) {
@@ -383,12 +470,12 @@ removeSubtuple ::= function (deps, subtuple) {
    let tuples = Array.from(tupleSet);
 
    for (let tuple of tuples) {
-      $.removeTuple(deps, tuple);
+      $.undepTuple(deps, tuple);
    }
 
    return tuples;
 }
-removeTuple ::= function (deps, tuple) {
+undepTuple ::= function (deps, tuple) {
    let subs = deps.get(tuple);
 
    for (let sub of subs) {
@@ -402,4 +489,11 @@ removeTuple ::= function (deps, tuple) {
    }
 
    deps.delete(tuple);
+}
+depTuple ::= function (deps, tuple, subtuples) {
+   deps.set(tuple, Array.from(subtuples));
+
+   for (let subtuple of subtuples) {
+      $.setDefault(deps, subtuple, () => new Set).add(tuple);
+   }
 }
