@@ -8,6 +8,7 @@ common
    mapfilter
    produceArray
    keyForValue
+   zip
 prolog-conjunct
    lvarsIn
 prolog-index
@@ -22,10 +23,10 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       for (let link of jpath) {
          yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
          if (link.checkAttrs.length > 0) {
-            yield ` checking (${link.checkAttrs.map(x => x[0]).join(', ')})`;
+            yield ` checking (${link.checkAttrs.join(', ')})`;
          }
          if (link.extractAttrs.length > 0) {
-            yield ` getting (${link.extractAttrs.map(x => x[0]).join(', ')})`;
+            yield ` getting (${link.extractAttrs.join(', ')})`;
          }
       }
       yield '\n';
@@ -51,12 +52,13 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
          if (jplink.index === null) {
             continue;
          }
-         
+
          let coll = appliedFor[jplink.conj.num];
          let cindex = $.find(coll, idx => $.arraysEqual(idx, jplink.index));
 
          if (cindex === undefined) {
             cindex = $.copyIndex(jplink.index);
+            cindex.forConj = jplink.conj;
             coll.push(cindex);
          }
 
@@ -66,16 +68,10 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
 
    let appliedIndices = [];
 
-   for (let [numConj, coll] of $.enumerate(appliedFor)) {
+   for (let [conj, coll] of $.zip(conjs, appliedFor)) {
       for (let idx of coll) {
-         idx.numConj = numConj;
+         idx.num = appliedIndices.length;
          appliedIndices.push(idx);
-      }
-   }
-
-   for (let jpath of jpaths) {
-      for (let jplink of jpath) {
-         jplink.indexNum = appliedIndices.indexOf(jplink.index);
       }
    }
 
@@ -142,7 +138,6 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
       jpath.push({
          conj: Xff.conj,
          index: Xindex,
-         indexNum: -1,  // will set later when we have all employed indices
          checkAttrs: $.cjffCheckAttrs(Xff, Xindex),
          extractAttrs: $.cjffExtractAttrs(Xff)
       });
@@ -181,24 +176,13 @@ cjffBindLvar ::= function (cjff, lvar) {
    cjff.boundLvars.add(lvar);
 }
 cjffCheckAttrs ::= function (cjff, index) {
-   let checkAttrs = [];
-
-   for (let lvar of cjff.boundLvars) {
+   return Array.from(cjff.boundLvars, lvar => {
       let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
       if (index === null || !index.includes(attr)) {
-         checkAttrs.push([attr, lvar]);
+         return attr;
       }
-   }
-
-   return checkAttrs;
+   });
 }
 cjffExtractAttrs ::= function (cjff) {
-   let extractAttrs = [];
-
-   for (let lvar of cjff.freeLvars) {
-      let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
-      extractAttrs.push([attr, lvar]);
-   }
-   
-   return extractAttrs;   
+   return Array.from(cjff.freeLvars, lvar => $.keyForValue(cjff.conj.looseAttrs, lvar));
 }

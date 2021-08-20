@@ -24,6 +24,7 @@ prolog-version
    deltaAdd
    unchainVersions
 prolog-index
+   indexOn
    copyIndex
    isIndexCovered
    indexAdd
@@ -111,8 +112,6 @@ derivedRelation ::= function (callback) {
       }
    }
    
-   $.assert(relspec.indices === undefined);
-
    let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relspec.name, conjs);
 
    return {
@@ -121,7 +120,7 @@ derivedRelation ::= function (callback) {
       attrs: relspec.attrs,
       lvars: lvars,
       conjs: conjs,
-      indices: [],  // TODO: implement indices
+      indices: Array.from(relspec.indices || [], $.indexOn),
       jpaths: jpaths,
       appliedIndices: appliedIndices,
       projmap: new Map,
@@ -142,7 +141,8 @@ makeProjection ::= function (rel, boundAttrs) {
    }
 
    let depIndexInstances = Array.from(
-      rel.appliedIndices, index => $.refIndexInstance(subprojs[index.numConj], index)
+      rel.appliedIndices,
+      index => $.refIndexInstance(subprojs[index.forConj.num], index)
    );
 
    let proj = {
@@ -177,7 +177,6 @@ freeProjection ::= function (proj) {
       subproj.validRevDeps.delete(proj);
       $.releaseProjection(subproj);
    }
-
 }
 markProjectionValid ::= function (proj) {
    for (let subproj of proj.subprojs) {
@@ -225,19 +224,19 @@ rebuildProjection ::= function (proj) {
          return;
       }
 
-      let jplink = jpath0[k];
+      let {conj, index, checkAttrs, extractAttrs} = jpath0[k];
       let source;
 
-      if (jplink.index === null) {
-         source = proj.subprojs[jplink.conj.num].value;
+      if (index === null) {
+         source = proj.subprojs[conj.num].value;
       }
       else {
-         let idxInst = proj.depIndexInstances[jplink.indexNum];
+         let idxInst = proj.depIndexInstances[index.num];
 
          source = idxInst.value;
          
          for (let attr of idxInst) {
-            let lvar = jplink.conj.looseAttrs[attr];
+            let lvar = conj.looseAttrs[attr];
             source = source.get(ns[lvar]);
 
             if (source === undefined) {
@@ -252,13 +251,15 @@ rebuildProjection ::= function (proj) {
       
       outer:
       for (let tuple of source) {
-         for (let [attr, lvar] of jplink.checkAttrs) {
+         for (let attr of checkAttrs) {
+            let lvar = conj.looseAttrs[attr];
             if (tuple[attr] !== ns[lvar]) {
                continue outer;
             }
          }
 
-         for (let [attr, lvar] of jplink.extractAttrs) {
+         for (let attr of extractAttrs) {
+            let lvar = conj.looseAttrs[attr];
             ns[lvar] = tuple[attr];
          }
 
@@ -380,14 +381,14 @@ updateProjection ::= function (proj) {
             return;
          }
 
-         let {conj, index, indexNum, checkAttrs, extractAttrs} = jpath[k];
+         let {conj, index, checkAttrs, extractAttrs} = jpath[k];
          let source;
 
          if (index === null) {
             source = proj.subprojs[conj.num].value;
          }
          else {
-            let idxInst = proj.depIndexInstances[indexNum];
+            let idxInst = proj.depIndexInstances[index.num];
 
             source = idxInst.value;
             
@@ -423,13 +424,15 @@ updateProjection ::= function (proj) {
                continue;
             }
 
-            for (let [attr, lvar] of checkAttrs) {
+            for (let attr of checkAttrs) {
+               let lvar = conj.looseAttrs[attr];
                if (tuple[attr] !== ns[lvar]) {
                   continue outer;
                }
             }
 
-            for (let [attr, lvar] of extractAttrs) {
+            for (let attr of extractAttrs) {
+               let lvar = conj.looseAttrs[attr];
                ns[lvar] = tuple[attr];
             }
 

@@ -302,6 +302,21 @@ enumerate ::= function* (itbl) {
       i += 1;
    }
 }
+zip ::= function* (itbl1, itbl2) {
+   let it1 = itbl1[Symbol.iterator]();
+   let it2 = itbl2[Symbol.iterator]();
+
+   for (;;) {
+      let {done: done1, value: v1} = it1.next();
+      let {done: done2, value: v2} = it2.next();
+
+      if (done1 || done2) {
+         break;
+      }
+
+      yield [v1, v2];
+   }
+}
 any ::= function (itbl, pred) {
    for (let x of itbl) {
       if (pred(x)) {
