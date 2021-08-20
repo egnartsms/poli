@@ -17,7 +17,7 @@ prolog-version
    unchainVersions
    releaseVersion
 prolog-index
-   initIndex
+   indexOn
    copyIndex
    buildIndex
    indexAdd
@@ -33,7 +33,7 @@ baseRelation ::= function ({name, attrs, indices, facts}) {
    let allIndices = [];
 
    for (let index of indices) {
-      let idx = $.initIndex(index);
+      let idx = $.indexOn(index);
 
       // Build only unique indices. Non-unique indices will only be built by concrete
       // projections when needed.  Unique indices are also build separately for
@@ -70,7 +70,7 @@ makeProjection ::= function (rel, boundAttrs) {
       value: $.hasNoEnumerableProps(boundAttrs) ?
          rel.facts :
          new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
-      indices: [],
+      indexInstances: [],
       validRevDeps: new Set,
    };
 
@@ -140,13 +140,12 @@ updateProjection ::= function (proj) {
    }
 
    // Update index instances for this projection
-   for (let index of proj.indices) {
+   for (let idxInst of proj.indexInstances) {
       for (let [fact, action] of proj.depVer.delta) {
-         (action === 'add' ? $.indexAdd : $.indexRemove)(index, fact);
+         (action === 'add' ? $.indexAdd : $.indexRemove)(idxInst, fact);
       }
    }
 
-   
    $.releaseVersion(proj.depVer);
    proj.depVer = newDepVer;  // already reffed it
 
@@ -187,40 +186,4 @@ removeFact ::= function (rel, fact) {
 invalidate ::= function (rel) {
    $.invalidateProjections(...rel.validRevDeps);
    rel.validRevDeps.clear();
-}
-refIndex ::= function (proj, indexedColumns) {
-   for (let index of proj.indices) {
-      if ($.arraysEqual(index, indexedColumns)) {
-         index.refcount += 1;
-         return index;
-      }
-   }
-
-   if ($.isFullProjection(proj) && indexedColumns.isUnique) {
-      // For full projections we simply reuse unique indices of the relation
-      let index = proj.rel.uniqueIndices.find(idx => $.arraysEqual(idx, indexedColumns));      
-      index.refcount += 1;
-      return index;
-   }
-
-   let index = $.copyIndex(indexedColumns);
-
-   index.refcount = 1;
-   index.parent = proj;
-   proj.indices.push(index);
-
-   $.buildIndex(index, proj.value);
-
-   return index;
-}
-releaseIndex ::= function (index) {
-   $.assert(index.refcount > 0);
-
-   index.refcount -= 1;
-
-   if (index.refcount === 0) {
-      let i = index.parent.indices.indexOf(index);
-      $.assert(i !== -1);
-      index.parent.indices.splice(i, 1);
-   }
 }

@@ -10,6 +10,11 @@ prolog-derived
    derivedRelation
 prolog-update-scheme
    visualizeIncrementalUpdateScheme
+prolog-index
+   indexOn
+prolog-index-instance
+   refIndexInstance
+   releaseIndexInstance
 -----
 relations ::= ({})
 initialize ::= function () {
@@ -18,7 +23,7 @@ initialize ::= function () {
       name: 'continent',
       attrs: ['name'],
       indices: [
-         Object.assign(['name'], {isUnique: true})
+         $.indexOn(['name'], {isUnique: true})
       ],
       facts: new Set([
          f_europe = {name: 'Europe'},
@@ -33,7 +38,7 @@ initialize ::= function () {
       name: 'country',
       attrs: ['name', 'continent'],
       indices: [
-         Object.assign(['name'], {isUnique: true}),
+         $.indexOn(['name'], {isUnique: true}),
          // ['name'],
          ['continent']
       ],
@@ -54,7 +59,7 @@ initialize ::= function () {
       name: 'city',
       attrs: ['name', 'country', 'population'],
       indices: [
-         ['country']
+         $.indexOn(['country'])
       ],
       facts: new Set([
          {country: 'France', name: 'Paris', population: 13.024},
@@ -126,13 +131,13 @@ initialize ::= function () {
    // console.log(Array.from(proj.value));
 
    $.addFact(city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
-   $.updateProjection(proj);
-   console.log(Array.from(proj.value));
-
    $.addFact(continent, f_europe);
    $.updateProjection(proj);
    console.log(Array.from(proj.value));
 
+   let idx = $.refIndexInstance(proj, $.indexOn(['continent']));
+   console.log(idx);
 
+   $.releaseIndexInstance(idx);
    $.releaseProjection(proj);   
 }

@@ -2,9 +2,9 @@ common
    map
    trackingFinal
 -----
-initIndex ::= function (idxspec) {
-   let idx = Array.from(idxspec);
-   idx.isUnique = !!idxspec.isUnique;
+indexOn ::= function (attrs, options={}) {
+   let idx = Array.from(attrs);
+   idx.isUnique = !!options.isUnique;
    return idx;
 }
 superIndexOfAnother ::= function (index1, index2) {

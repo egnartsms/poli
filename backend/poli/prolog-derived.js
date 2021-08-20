@@ -17,9 +17,6 @@ prolog-projection
    updateProjection as: gUpdateProjection
 prolog-conjunct
    * as: conjunct
-prolog-base
-   refIndex
-   releaseIndex
 prolog-version
    refCurrentState
    releaseVersion
@@ -29,6 +26,11 @@ prolog-version
 prolog-index
    copyIndex
    isIndexCovered
+   indexAdd
+   indexRemove
+prolog-index-instance
+   refIndexInstance
+   releaseIndexInstance
 prolog-update-scheme
    computeIncrementalUpdateScheme
 -----
@@ -139,11 +141,9 @@ makeProjection ::= function (rel, boundAttrs) {
       depVers.push(null);
    }
 
-   let idxobjs = [];
-
-   for (let index of rel.appliedIndices) {
-      idxobjs.push($.refIndex(subprojs[index.numConj], index));
-   }
+   let depIndexInstances = Array.from(
+      rel.appliedIndices, index => $.refIndexInstance(subprojs[index.numConj], index)
+   );
 
    let proj = {
       rel: rel,
@@ -152,11 +152,11 @@ makeProjection ::= function (rel, boundAttrs) {
       boundAttrs: boundAttrs,
       subprojs: subprojs,
       depVers: depVers,
-      idxobjs: idxobjs,
+      depIndexInstances: depIndexInstances,
       myVer: null,
       value: null,
       tupleDeps: new Map,
-      indices: [],  // TODO: implement indices for derived projections
+      indexInstances: [],
       validRevDeps: new Set,
    };
 
@@ -165,8 +165,8 @@ makeProjection ::= function (rel, boundAttrs) {
    return proj;
 }
 freeProjection ::= function (proj) {
-   for (let idxobj of proj.idxobjs) {
-      $.releaseIndex(idxobj);
+   for (let idxInst of proj.depIndexInstances) {
+      $.releaseIndexInstance(idxInst);
    }
 
    for (let ver of proj.depVers) {
@@ -232,11 +232,11 @@ rebuildProjection ::= function (proj) {
          source = proj.subprojs[jplink.conj.num].value;
       }
       else {
-         let idxobj = proj.idxobjs[jplink.indexNum];
+         let idxInst = proj.depIndexInstances[jplink.indexNum];
 
-         source = idxobj.value;
+         source = idxInst.value;
          
-         for (let attr of idxobj) {
+         for (let attr of idxInst) {
             let lvar = jplink.conj.looseAttrs[attr];
             source = source.get(ns[lvar]);
 
@@ -245,7 +245,7 @@ rebuildProjection ::= function (proj) {
             }
          }
 
-         if (idxobj.isUnique) {
+         if (idxInst.isUnique) {
             source = [source];
          }
       }
@@ -343,7 +343,11 @@ updateProjection ::= function (proj) {
                }
             }
 
-            // TODO: update indices
+            for (let idxInst of proj.indexInstances) {
+               for (let tuple of tuples) {
+                  $.indexRemove(idxInst, tuple);
+               }
+            }
          }
       }
    }
@@ -369,6 +373,10 @@ updateProjection ::= function (proj) {
                $.deltaAdd(delta, tuple, 'add');
             }
 
+            for (let idxInst of proj.indexInstances) {
+               $.indexAdd(idxInst, tuple);
+            }
+
             return;
          }
 
@@ -379,11 +387,11 @@ updateProjection ::= function (proj) {
             source = proj.subprojs[conj.num].value;
          }
          else {
-            let idxobj = proj.idxobjs[indexNum];
+            let idxInst = proj.depIndexInstances[indexNum];
 
-            source = idxobj.value;
+            source = idxInst.value;
             
-            for (let attr of idxobj) {
+            for (let attr of idxInst) {
                let lvar = conj.looseAttrs[attr];
                source = source.get(ns[lvar]);
 
@@ -392,7 +400,7 @@ updateProjection ::= function (proj) {
                }
             }
 
-            if (idxobj.isUnique) {
+            if (idxInst.isUnique) {
                source = [source];
             }
          }

@@ -45,8 +45,8 @@ releaseProjection ::= function (proj) {
       // By the time a projection's refcount drops to 0, nobody must be using it
       // (otherwise the refcount would not have dropped to 0).
       $.assert(proj.myVer === null);
-      // Indices should've been released before the projection itself
-      $.assert(proj.indices.length === 0);
+      // Index instances should've been released before the projection itself
+      $.assert(proj.indexInstances.length === 0);
 
       let rel = proj.rel;
 
