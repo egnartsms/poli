@@ -195,12 +195,14 @@ cjffBindLvar ::= function (cjff, lvar) {
    cjff.boundLvars.add(lvar);
 }
 cjffCheckAttrs ::= function (cjff, index) {
-   return Array.from(cjff.boundLvars, lvar => {
-      let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
-      if (index === null || !index.includes(attr)) {
-         return attr;
-      }
-   });
+   return Array.from(
+      $.mapfilter(cjff.boundLvars, lvar => {
+         let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
+         if (index === null || !index.includes(attr)) {
+            return attr;
+         }
+      })
+   );
 }
 cjffExtractAttrs ::= function (cjff) {
    return Array.from(cjff.freeLvars, lvar => $.keyForValue(cjff.conj.looseAttrs, lvar));
@@ -228,7 +230,7 @@ narrowConfig ::= function (config, boundAttrs) {
          }
 
          n_jpath.push({
-            conj: conj,
+            conj: n_conjs[conj.num],
             index: n_index,
             checkAttrs: $.narrowAttrList(conj, checkAttrs, boundAttrs),
             extractAttrs: $.narrowAttrList(conj, extractAttrs, boundAttrs),

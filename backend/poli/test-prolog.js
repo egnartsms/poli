@@ -66,7 +66,8 @@ recreateRelations ::= function () {
       name: 'city',
       attrs: ['name', 'country', 'population'],
       indices: [
-         $.indexOn(['country'])
+         $.indexOn(['name'], {isUnique: true}),
+         $.indexOn(['country']),
       ],
       facts: new Set([
          {country: 'France', name: 'Paris', population: 13.024},
@@ -102,6 +103,9 @@ recreateRelations ::= function () {
    let continent_city = $.derivedRelation(v => ({
       name: 'continent_city',
       attrs: ['continent', 'city'],
+      indices: [
+         $.indexOn(['city'], {isUnique: true})
+      ],
       body: [
          {
             rel: continent,
@@ -118,7 +122,22 @@ recreateRelations ::= function () {
       ]
    }));
 
-   return {continent, country, city, continent_city};
+   let continent_pop = $.derivedRelation(v => ({
+      name: 'continent_pop',
+      attrs: ['continent', 'pop'],
+      body: [
+         {
+            rel: continent_city,
+            attrs: {continent: v`continent`, city: v`city`}
+         },
+         {
+            rel: city,
+            attrs: {name: v`city`, population: v`pop`}
+         }
+      ]
+   }));
+
+   return {continent, country, city, continent_city, continent_pop};
 }
 test_base_projection_update ::= function ({country}) {
    $.assert($.isLike(
@@ -279,4 +298,43 @@ test_derived_scalar_updates ::= function ({continent_city, city}) {
    $.updateProjection(proj);
 
    $.assert(proj.value.size === 1);
+}
+test_derived_of_derived_updates ::= function ({continent_pop, city}) {
+   let proj = $.projectionFor(continent_pop, {continent: 'America'});
+   proj.refcount += 1;
+
+   $.assert($.isLike(
+      proj.value,
+      [
+         {pop: 6.417},
+         {pop: 4.247},
+         {pop: 2.463},
+      ]
+   ));
+
+   let f_newyork = {country: 'USA', name: 'New York', population: 20};
+   $.addFact(city, f_newyork);
+   $.updateProjection(proj);
+
+   $.assert($.isLike(
+      proj.value,
+      [
+         {pop: 6.417},
+         {pop: 4.247},
+         {pop: 2.463},
+         {pop: 20}
+      ]
+   ));
+
+   $.removeFact(city, f_newyork);
+   $.updateProjection(proj);
+
+   $.assert($.isLike(
+      proj.value,
+      [
+         {pop: 6.417},
+         {pop: 4.247},
+         {pop: 2.463},
+      ]
+   ));
 }
