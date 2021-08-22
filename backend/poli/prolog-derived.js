@@ -34,7 +34,9 @@ prolog-index-instance
    releaseIndexInstance
 prolog-update-scheme
    computeIncrementalUpdateScheme
+   narrowConfig
 -----
+MAX_REL_ATTRS ::= 30
 derivedRelation ::= function (callback) {
    let lvname = Symbol('lvar');
    let vpool = new Map;
@@ -58,6 +60,10 @@ derivedRelation ::= function (callback) {
 
       return getvar(name);
    });
+
+   if (relspec.attrs.length > $.MAX_REL_ATTRS) {
+      throw new Error(`Relation '${relspec.name}': too many attributes`);
+   }
 
    // Ensure the implicit lvars that correspond to the attrs are in the pool. If they are
    // not by now, this is an error anyways, but we still want them to be in the vpool.
@@ -113,6 +119,12 @@ derivedRelation ::= function (callback) {
    }
    
    let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relspec.name, conjs);
+   let config0 = {
+      conjs: conjs,
+      attrs: relspec.attrs,
+      jpaths: jpaths,
+      appliedIndices: appliedIndices,
+   };
 
    return {
       isBase: false,
@@ -121,18 +133,17 @@ derivedRelation ::= function (callback) {
       lvars: lvars,
       conjs: conjs,
       indices: Array.from(relspec.indices || [], $.indexOn),
-      jpaths: jpaths,
-      appliedIndices: appliedIndices,
+      configs: {0: config0},
       projmap: new Map,
    };
 }
 makeProjection ::= function (rel, boundAttrs) {
-   $.assert($.hasNoEnumerableProps(boundAttrs));
+   let config = $.configFor(rel, boundAttrs);
 
    let subprojs = [];
    let depVers = [];
 
-   for (let conj of rel.conjs) {
+   for (let conj of config.conjs) {
       let proj = $.projectionFor(conj.rel, conj.firmAttrs);
 
       proj.refcount += 1;
@@ -141,7 +152,7 @@ makeProjection ::= function (rel, boundAttrs) {
    }
 
    let depIndexInstances = Array.from(
-      rel.appliedIndices,
+      config.appliedIndices,
       index => $.refIndexInstance(subprojs[index.forConj.num], index)
    );
 
@@ -150,6 +161,7 @@ makeProjection ::= function (rel, boundAttrs) {
       refcount: 0,
       isValid: false,
       boundAttrs: boundAttrs,
+      config: config,
       subprojs: subprojs,
       depVers: depVers,
       depIndexInstances: depIndexInstances,
@@ -185,12 +197,32 @@ markProjectionValid ::= function (proj) {
 
    proj.isValid = true;
 }
+configFor ::= function (rel, boundAttrs) {
+   let cfgkey = $.boundAttrs2ConfigKey(rel.attrs, boundAttrs);
+
+   if (!$.hasOwnProperty(rel.configs, cfgkey)) {
+      rel.configs[cfgkey] = $.narrowConfig(rel.configs[0], boundAttrs);
+   }
+   
+   return rel.configs[cfgkey];
+}
+boundAttrs2ConfigKey ::= function (attrs, boundAttrs) {
+   let cfgkey = 0;
+
+   for (let i = 0; i < attrs.length; i += 1) {
+      if ($.hasOwnProperty(boundAttrs, attrs[i])) {
+         cfgkey |= (1 << i);
+      }
+   }
+
+   return cfgkey;
+}
 rebuildProjection ::= function (proj) {
    // It is only possible to rebuild a projection that nobody refers to.
    $.assert(proj.myVer === null);
 
    let {rel} = proj;
-   let {conjs: [conj0], jpaths: [jpath0]} = rel;
+   let {conjs: [conj0], jpaths: [jpath0]} = proj.config;
    let [subproj0] = proj.subprojs;
 
    for (let subproj of proj.subprojs) {
@@ -215,7 +247,7 @@ rebuildProjection ::= function (proj) {
 
    function run(k) {
       if (k === jpath0.length) {
-         let tuple = Object.fromEntries($.map(rel.attrs, a => [a, ns[a]]));
+         let tuple = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
 
          $.depTuple(proj.tupleDeps, tuple, subtuples);
 
@@ -300,9 +332,11 @@ updateProjection ::= function (proj) {
 
    // newDepVers: conj => newDepVer
    // Invariant: all 'conj' go in increasing number (conj0.num < conj1.num < ...)
+   // ?TODO: restructure to work across an array of deltas (which may be 0-sized) instead
+   // of new versions?
    let newDepVers = new Map;
 
-   for (let conj of proj.rel.conjs) {
+   for (let conj of proj.config.conjs) {
       let depVer = proj.depVers[conj.num];
       
       if ($.isVersionUpToDate(depVer)) {
@@ -355,7 +389,7 @@ updateProjection ::= function (proj) {
 
    // Add
    for (let dconj of newDepVers.keys()) {
-      let jpath = proj.rel.jpaths[dconj.num];
+      let jpath = proj.config.jpaths[dconj.num];
 
       let ns = Object.fromEntries(
          $.map($.conjunct.lvarsIn(dconj), lvar => [lvar, undefined])
@@ -364,7 +398,7 @@ updateProjection ::= function (proj) {
 
       function run(k) {
          if (k === jpath.length) {
-            let tuple = Object.fromEntries($.map(proj.rel.attrs, a => [a, ns[a]]));
+            let tuple = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
 
             $.depTuple(proj.tupleDeps, tuple, subtuples);
 

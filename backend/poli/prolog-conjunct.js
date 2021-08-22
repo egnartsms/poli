@@ -1,10 +1,13 @@
 common
    filter
+   hasOwnProperty
    mapfilter
    isObjectWithOwnProperty
 prolog-index
    indexBindAttr
+   indexBound
    isIndexCovered
+   copyIndex
 -----
 specInvalidAttrs ::= function ({attrs, rel}) {
    return Object.keys(attrs).filter(a => !rel.attrs.includes(a));
@@ -25,29 +28,28 @@ fromSpec ::= function ({attrs, rel}, lvname) {
       })
    );
 
-   let indices = Array.from(rel.indices, $.copyIndex);
-   for (let attr of Object.keys(firmAttrs)) {
-      for (let index of indices) {
-         $.indexBindAttr(index, attr);
-      }
-   }
-
-   let shrunk = 
-      indices.find(idx => $.isIndexCovered(idx) && idx.isUnique) ? 'scalar' :
-      indices.find(idx => $.isIndexCovered(idx)) ? 'index' :
-      'no';
-
-   indices = indices.filter(idx => !$.isIndexCovered(idx));
+   let indices = Array.from(rel.indices, idx => $.indexBound(idx, firmAttrs));
 
    return {
       rel,
       firmAttrs,
       looseAttrs,
-      indices,
-      shrunk,
+      indices: indices.filter(idx => !$.isIndexCovered(idx)),
+      shrunk: indices.reduce((M, idx) => Math.max(M, $.indexShrunk(idx)), $.Shrunk.no),
       num: -1
    }
 }
+indexShrunk ::= function (index) {
+   return $.isIndexCovered(index) ?
+      (index.isUnique ? $.Shrunk.scalar : $.Shrunk.index) :
+      $.Shrunk.no;
+}
+Shrunk ::= ({
+   no: 0,
+   index: 1,
+   scalar: 2,
+   max: 2,
+})
 lvarsIn ::= function (conj) {
    return Object.values(conj.looseAttrs);
 }
@@ -91,4 +93,49 @@ varUsageSanity ::= function (lvars, attrs, conjs) {
    }
 
    return {unmet, met};
+}
+reduceIndex ::= function (index, conj, boundAttrs) {
+   let reduced = $.copyIndex(index);
+
+   for (let [attr, lvar] of Object.entries(conj.looseAttrs)) {
+      if ($.hasOwnProperty(boundAttrs, lvar)) {
+         $.indexBindAttr(reduced, attr);
+      }
+   }
+
+   return reduced;
+}
+reduceConj ::= function (conj, boundAttrs) {
+   let newFirms = {...conj.firmAttrs};
+   let newLoose = {...conj.looseAttrs};
+
+   for (let [attr, lvar] of Object.entries(conj.looseAttrs)) {
+      if ($.hasOwnProperty(boundAttrs, lvar)) {
+         newFirms[attr] = boundAttrs[lvar];
+         delete newLoose[attr];
+      }
+   }
+
+   let newShrunk = conj.shrunk;
+
+   if (newShrunk < $.Shrunk.max) {
+      for (let index of conj.indices) {
+         let rshrunk = $.indexShrunk($.reduceIndex(index, conj, boundAttrs));
+
+         if (rshrunk > newShrunk) {
+            newShrunk = rshrunk;
+            if (newShrunk === $.Shrunk.max) {
+               break;
+            }
+         }
+      }
+   }
+   
+   return {
+      rel: conj.rel,
+      firmAttrs: newFirms,
+      looseAttrs: newLoose,
+      shrunk: newShrunk,
+      num: conj.num
+   }
 }

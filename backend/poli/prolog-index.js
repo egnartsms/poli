@@ -30,6 +30,13 @@ indexBindAttr ::= function (index, attr) {
       index.splice(i, 1);
    }
 }
+indexBound ::= function (index, boundAttrs) {
+   let reducedIndex = $.copyIndex(index);
+   for (let attr in boundAttrs) {
+      $.indexBindAttr(reducedIndex, attr);
+   }
+   return reducedIndex;
+}
 isIndexCovered ::= function (index) {
    return index.length === 0;
 }

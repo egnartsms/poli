@@ -206,12 +206,7 @@ var poli = (function () {
       window.pl = mprolog.ns;
 
       let mtestprolog = minfos.find(m => m.name === 'test-prolog');
-      for (let [name, val] of Object.entries(mtestprolog.ns)) {
-         if (name.startsWith('test_')) {
-            val();
-            console.log(`${name} passed`);
-         }
-      }
+      mtestprolog.ns['runTests']();
       
       return;
 

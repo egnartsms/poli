@@ -4,6 +4,8 @@ common
    assert
    enumerate
    find
+   filter
+   hasOwnProperty
    map
    mapfilter
    produceArray
@@ -11,10 +13,14 @@ common
    zip
 prolog-conjunct
    lvarsIn
+   Shrunk
+   reduceIndex
+   reduceConj
 prolog-index
    superIndexOfAnother
    copyIndex
    indexBindAttr
+   indexBound
    isIndexCovered
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
@@ -32,7 +38,7 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       yield '\n';
    }
 
-   for (let [num, jpath] of $.enumerate(rel.jpaths)) {
+   for (let [num, jpath] of $.enumerate(rel.configs[0].jpaths)) {
       let dconj = rel.conjs[num];
 
       console.log(Array.from(gen(dconj, jpath)).join(''));
@@ -45,7 +51,7 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
       jpaths[dconj.num] = $.joinPathForDelta(relname, conjs, dconj);
    }
 
-   let appliedFor = $.produceArray(conjs.length, () => []);
+   let reg = $.makeIndexRegistryPerConj(conjs.length);
 
    for (let jpath of jpaths) {
       for (let jplink of jpath) {
@@ -53,29 +59,44 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
             continue;
          }
 
-         let coll = appliedFor[jplink.conj.num];
-         let cindex = $.find(coll, idx => $.arraysEqual(idx, jplink.index));
-
-         if (cindex === undefined) {
-            cindex = $.copyIndex(jplink.index);
-            cindex.forConj = jplink.conj;
-            coll.push(cindex);
-         }
-
-         jplink.index = cindex;
+         let index = $.addToIndexRegistry(reg, jplink.conj.num, jplink.index, () => {
+            return Object.assign($.copyIndex(jplink.index), {forConj: jplink.conj});
+         });
+         jplink.index = index;
       }
    }
 
-   let appliedIndices = [];
+   $.numerateIndexRegistry(reg);
 
-   for (let [conj, coll] of $.zip(conjs, appliedFor)) {
-      for (let idx of coll) {
-         idx.num = appliedIndices.length;
-         appliedIndices.push(idx);
-      }
+   return {
+      jpaths,
+      appliedIndices: reg.flat()
+   };
+}
+makeIndexRegistryPerConj ::= function (numConjs) {
+   // Index registry per conj is: [[idx00, idx01, ...], [idx10, idx11, ...], ...]
+   // (list of indices per respective conjunct)
+   return $.produceArray(numConjs, () => []);
+}
+addToIndexRegistry ::= function (reg, numConj, index, ifmissing) {
+   let existing = $.find(reg[numConj], idx => $.arraysEqual(idx, index));
+
+   if (existing === undefined) {
+      existing = ifmissing();
+      reg[numConj].push(existing);
    }
 
-   return {jpaths, appliedIndices};
+   return existing;
+}
+numerateIndexRegistry ::= function (reg) {
+   let num = 0;
+
+   for (let idxs of reg) {
+      for (let idx of idxs) {
+         idx.num = num;
+         num += 1;
+      }
+   }
 }
 joinPathForDelta ::= function (relname, conjs, dconj) {
    let unjoined = new Set($.mapfilter(conjs, conj => {
@@ -124,9 +145,7 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
       if (Xff === null) {
          // Some conjunct may be already shrunk by some index due to firmAttrs. For these
          // conjuncts, we can join them without any index.
-         Xff = $.find(unjoined, ({conj}) => {
-            return conj.shrunk === 'index' || conj.shrunk === 'scalar';
-         });
+         Xff = $.find(unjoined, ({conj}) => conj.shrunk > $.Shrunk.no);
 
          if (Xff === undefined) {
             throw new Error(
@@ -185,4 +204,49 @@ cjffCheckAttrs ::= function (cjff, index) {
 }
 cjffExtractAttrs ::= function (cjff) {
    return Array.from(cjff.freeLvars, lvar => $.keyForValue(cjff.conj.looseAttrs, lvar));
+}
+narrowConfig ::= function (config, boundAttrs) {
+   let n_conjs = Array.from(config.conjs, conj => $.reduceConj(conj, boundAttrs));
+
+   let n_jpaths = [];
+   let reg = $.makeIndexRegistryPerConj(config.conjs.length);
+
+   for (let jpath of config.jpaths) {
+      let n_jpath = [];
+
+      for (let {index, conj, checkAttrs, extractAttrs} of jpath) {
+         let n_index = $.reduceIndex(index, conj, boundAttrs);
+
+         if ($.isIndexCovered(n_index)) {
+            n_index = null;
+         }
+         else {
+            n_index = $.addToIndexRegistry(reg, conj.num, n_index, () => {
+               n_index.forConj = n_conjs[conj.num];
+               return n_index;
+            });
+         }
+
+         n_jpath.push({
+            conj: conj,
+            index: n_index,
+            checkAttrs: $.narrowAttrList(conj, checkAttrs, boundAttrs),
+            extractAttrs: $.narrowAttrList(conj, extractAttrs, boundAttrs),
+         });
+      }
+
+      n_jpaths.push(n_jpath);
+   }
+
+   $.numerateIndexRegistry(reg);
+
+   return {
+      conjs: n_conjs,
+      attrs: config.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
+      jpaths: n_jpaths,
+      appliedIndices: reg.flat()
+   }
+}
+narrowAttrList ::= function (conj, attrList, boundAttrs) {
+   return attrList.filter(attr => !$.hasOwnProperty(boundAttrs, conj.looseAttrs[attr]));
 }
