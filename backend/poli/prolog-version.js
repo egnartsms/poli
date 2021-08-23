@@ -55,7 +55,7 @@ releaseVersion ::= function (ver) {
    }
 }
 unchainVersions ::= function (ver) {
-   if (ver.next === null || ver.next.next === null) {
+   if (ver.next === null) {
       return;
    }
 
@@ -69,14 +69,12 @@ unchainVersions ::= function (ver) {
       // its 'delta' map if it's bigger than 'ver.delta'.
       $.mergeDelta(next.delta, ver.delta);
       ver.delta = next.delta;
-      next.delta = null;
    }
    else {
       $.mergeDelta(ver.delta, next.delta);
    }
 
-   ver.next = next.next;
-   ver.next.refcount += 1;
+   ver.next = null;
    $.releaseVersion(next);
 }
 mergeDelta ::= function (dstD, srcD) {

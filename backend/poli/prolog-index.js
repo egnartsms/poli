@@ -103,3 +103,19 @@ indexRemove ::= function (index, fact) {
       }
    }
 }
+indexMultiAt ::= function (index, attr2val) {
+   let map = index.value;
+
+   for (let attr of index) {
+      let key = attr2val(attr);
+      
+      map = map.get(key);
+
+      if (map === undefined) {
+         return [];
+      }
+   }
+
+   // At this point map is not already a map
+   return index.isUnique ? [map] : map;
+}

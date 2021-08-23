@@ -104,11 +104,6 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   let newDepVer = $.refCurrentState(proj.rel);  // reference already added for 'newDepVer'
-
-   // if they were the same we would have fallen into the if branch above
-   $.assert(proj.depVer !== newDepVer);
-
    $.unchainVersions(proj.depVer);
 
    let delta = proj.myVer !== null ? proj.myVer.delta : null;
@@ -146,8 +141,9 @@ updateProjection ::= function (proj) {
       }
    }
 
+   let newDepVer = $.refCurrentState(proj.rel);
    $.releaseVersion(proj.depVer);
-   proj.depVer = newDepVer;  // already reffed it
+   proj.depVer = newDepVer;
 
    $.markProjectionValid(proj);
 }

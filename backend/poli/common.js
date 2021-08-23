@@ -373,6 +373,11 @@ produceArray ::= function (N, producer) {
    }
    return array;
 }
+indexRange ::= function* (array) {
+   for (let i = 0; i < array.length; i += 1) {
+      yield i;
+   }
+}
 newObj ::= function (proto, ...props) {
    return Object.assign(Object.create(proto), ...props);
 }

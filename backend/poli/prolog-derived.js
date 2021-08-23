@@ -5,6 +5,7 @@ common
    commonArrayPrefixLength
    find
    isObjectWithOwnProperty
+   indexRange
    hasNoEnumerableProps
    singleQuoteJoinComma
    map
@@ -29,6 +30,7 @@ prolog-index
    isIndexCovered
    indexAdd
    indexRemove
+   indexMultiAt
 prolog-index-instance
    refIndexInstance
    releaseIndexInstance
@@ -140,20 +142,20 @@ derivedRelation ::= function (callback) {
 makeProjection ::= function (rel, boundAttrs) {
    let config = $.configFor(rel, boundAttrs);
 
-   let subprojs = [];
-   let depVers = [];
+   let subProjs = [];
+   let subVers = [];
 
    for (let conj of config.conjs) {
       let proj = $.projectionFor(conj.rel, conj.firmAttrs);
 
       proj.refcount += 1;
-      subprojs.push(proj);
-      depVers.push(null);
+      subProjs.push(proj);
+      subVers.push(null);
    }
 
-   let depIndexInstances = Array.from(
+   let subIndexInstances = Array.from(
       config.appliedIndices,
-      index => $.refIndexInstance(subprojs[index.forConj.num], index)
+      index => $.refIndexInstance(subProjs[index.forConj.num], index)
    );
 
    let proj = {
@@ -162,11 +164,11 @@ makeProjection ::= function (rel, boundAttrs) {
       isValid: false,
       boundAttrs: boundAttrs,
       config: config,
-      subprojs: subprojs,
-      depVers: depVers,
-      depIndexInstances: depIndexInstances,
+      subProjs: subProjs,
+      subVers: subVers,
+      subIndexInstances: subIndexInstances,
       myVer: null,
-      value: null,
+      value: null,  // lean in the beginning
       tupleDeps: new Map,
       indexInstances: [],
       validRevDeps: new Set,
@@ -177,22 +179,22 @@ makeProjection ::= function (rel, boundAttrs) {
    return proj;
 }
 freeProjection ::= function (proj) {
-   for (let idxInst of proj.depIndexInstances) {
+   for (let idxInst of proj.subIndexInstances) {
       $.releaseIndexInstance(idxInst);
    }
 
-   for (let ver of proj.depVers) {
-      $.releaseVersion(ver);
+   for (let subVer of proj.subVers) {
+      $.releaseVersion(subVer);
    }
 
-   for (let subproj of proj.subprojs) {
-      subproj.validRevDeps.delete(proj);
-      $.releaseProjection(subproj);
+   for (let subProj of proj.subProjs) {
+      subProj.validRevDeps.delete(proj);
+      $.releaseProjection(subProj);
    }
 }
 markProjectionValid ::= function (proj) {
-   for (let subproj of proj.subprojs) {
-      subproj.validRevDeps.add(proj);
+   for (let subProj of proj.subProjs) {
+      subProj.validRevDeps.add(proj);
    }
 
    proj.isValid = true;
@@ -223,33 +225,33 @@ rebuildProjection ::= function (proj) {
 
    let {rel} = proj;
    let {conjs: [conj0], jpaths: [jpath0]} = proj.config;
-   let [subproj0] = proj.subprojs;
+   let [subproj0] = proj.subProjs;
 
-   for (let subproj of proj.subprojs) {
-      $.gUpdateProjection(subproj);
+   for (let subProj of proj.subProjs) {
+      $.gUpdateProjection(subProj);
    }
 
-   for (let i = 0; i < proj.depVers.length; i += 1) {
+   for (let i = 0; i < proj.subVers.length; i += 1) {
       // First create a new version, then release a reference to the old version.
-      // This ensures that when there's only 1 version for the 'subprojs[i]', we don't
+      // This ensures that when there's only 1 version for the 'subProjs[i]', we don't
       // re-create the version object.
-      let newVer = $.refCurrentState(proj.subprojs[i]);
-      if (proj.depVers[i] !== null) {
-         $.releaseVersion(proj.depVers[i]);
+      let newVer = $.refCurrentState(proj.subProjs[i]);
+      if (proj.subVers[i] !== null) {
+         $.releaseVersion(proj.subVers[i]);
       }
-      proj.depVers[i] = newVer;
+      proj.subVers[i] = newVer;
    }
 
    let ns = Object.fromEntries(
       $.map($.conjunct.lvarsIn(conj0), lvar => [lvar, undefined])
    );
-   let subtuples = [];
+   let subTuples = [];
 
    function run(k) {
       if (k === jpath0.length) {
          let tuple = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
 
-         $.depTuple(proj.tupleDeps, tuple, subtuples);
+         $.depTuple(proj.tupleDeps, tuple, subTuples);
 
          proj.value.add(tuple);
 
@@ -260,25 +262,12 @@ rebuildProjection ::= function (proj) {
       let source;
 
       if (index === null) {
-         source = proj.subprojs[conj.num].value;
+         source = proj.subProjs[conj.num].value;
       }
       else {
-         let idxInst = proj.depIndexInstances[index.num];
-
-         source = idxInst.value;
-         
-         for (let attr of idxInst) {
-            let lvar = conj.looseAttrs[attr];
-            source = source.get(ns[lvar]);
-
-            if (source === undefined) {
-               return;
-            }
-         }
-
-         if (idxInst.isUnique) {
-            source = [source];
-         }
+         source = $.indexMultiAt(
+            proj.subIndexInstances[index.num], attr => ns[conj.looseAttrs[attr]]
+         );
       }
       
       outer:
@@ -295,9 +284,9 @@ rebuildProjection ::= function (proj) {
             ns[lvar] = tuple[attr];
          }
 
-         subtuples.push(tuple);
+         subTuples.push(tuple);
          run(k + 1);
-         subtuples.pop();
+         subTuples.pop();
       }
    }
 
@@ -308,9 +297,9 @@ rebuildProjection ::= function (proj) {
          ns[lvar] = tuple[attr];
       }
 
-      subtuples.push(tuple);
+      subTuples.push(tuple);
       run(0);
-      subtuples.pop(tuple);
+      subTuples.pop(tuple);
    }
   
    $.markProjectionValid(proj);
@@ -326,47 +315,28 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   for (let subproj of proj.subprojs) {
-      $.gUpdateProjection(subproj);
+   for (let subProj of proj.subProjs) {
+      $.gUpdateProjection(subProj);
    }
 
-   // newDepVers: conj => newDepVer
-   // Invariant: all 'conj' go in increasing number (conj0.num < conj1.num < ...)
-   // ?TODO: restructure to work across an array of deltas (which may be 0-sized) instead
-   // of new versions?
-   let newDepVers = new Map;
-
-   for (let conj of proj.config.conjs) {
-      let depVer = proj.depVers[conj.num];
-      
-      if ($.isVersionUpToDate(depVer)) {
-         continue;
-      }
-
-      let subproj = proj.subprojs[conj.num];
-      let newDepVer = $.refCurrentState(subproj);  // reference already added
-
-      $.assert(depVer !== newDepVer);
-
-      $.unchainVersions(depVer);
-      newDepVers.set(conj, newDepVer);
-   }
-
-   if (newDepVers.size === 0) {
-      $.markProjectionValid(proj);
-      return;
-   }
+   // subDeltas: conj => delta
+   let subDeltas = new Map(
+      $.mapfilter(proj.config.conjs, conj => {
+         let subVer = proj.subVers[conj.num];
+         if (!$.isVersionUpToDate(subVer)) {
+            $.unchainVersions(subVer);
+            return [conj, subVer.delta];
+         }
+      })
+   );
 
    // Remove
    let delta = proj.myVer !== null ? proj.myVer.delta : null;
 
-   for (let conj of newDepVers.keys()) {
-      let subdelta = proj.depVers[conj.num].delta;
-      $.assert(subdelta.size > 0);
-
-      for (let [subtuple, action] of subdelta) {
+   for (let [conj, subDelta] of subDeltas) {
+      for (let [subTuple, action] of subDelta) {
          if (action === 'remove') {
-            let tuples = $.undepSubtuple(proj.tupleDeps, subtuple);
+            let tuples = $.undepSubtuple(proj.tupleDeps, subTuple);
 
             for (let tuple of tuples) {
                proj.value.delete(tuple);
@@ -388,19 +358,19 @@ updateProjection ::= function (proj) {
    }
 
    // Add
-   for (let dconj of newDepVers.keys()) {
+   for (let [dconj, subDelta] of subDeltas) {
       let jpath = proj.config.jpaths[dconj.num];
 
       let ns = Object.fromEntries(
          $.map($.conjunct.lvarsIn(dconj), lvar => [lvar, undefined])
       );
-      let subtuples = [];
+      let subTuples = [];
 
       function run(k) {
          if (k === jpath.length) {
             let tuple = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
 
-            $.depTuple(proj.tupleDeps, tuple, subtuples);
+            $.depTuple(proj.tupleDeps, tuple, subTuples);
 
             proj.value.add(tuple);
 
@@ -419,42 +389,22 @@ updateProjection ::= function (proj) {
          let source;
 
          if (index === null) {
-            source = proj.subprojs[conj.num].value;
+            source = proj.subProjs[conj.num].value;
          }
          else {
-            let idxInst = proj.depIndexInstances[index.num];
-
-            source = idxInst.value;
-            
-            for (let attr of idxInst) {
-               let lvar = conj.looseAttrs[attr];
-               source = source.get(ns[lvar]);
-
-               if (source === undefined) {
-                  return;
-               }
-            }
-
-            if (idxInst.isUnique) {
-               source = [source];
-            }
+            source = $.indexMultiAt(
+               proj.subIndexInstances[index.num], attr => ns[conj.looseAttrs[attr]]
+            );
          }
 
          // noDelta is used to exclude tuples that belong to deltas of already-processed
          // conjuncts (as we process in order, an already processed is the one with lesser
          // number)
-         let noDelta;
-
-         if (conj.num < dconj.num && newDepVers.has(conj)) {
-            noDelta = proj.depVers[conj.num].delta;
-         }
-         else {
-            noDelta = new Map;
-         }
+         let noDelta = conj.num < dconj.num ? subDeltas.get(conj) || null : null;
          
          outer:
          for (let tuple of source) {
-            if (noDelta.has(tuple)) {
+            if (noDelta !== null && noDelta.has(tuple)) {
                continue;
             }
 
@@ -470,37 +420,36 @@ updateProjection ::= function (proj) {
                ns[lvar] = tuple[attr];
             }
 
-            subtuples.push(tuple);
+            subTuples.push(tuple);
             run(k + 1);
-            subtuples.pop();
+            subTuples.pop();
          }
       }
 
-      let subdelta = proj.depVers[dconj.num].delta;
-
-      for (let [subtuple, action] of subdelta) {
+      for (let [subTuple, action] of subDelta) {
          if (action === 'add') {
             for (let [attr, lvar] of Object.entries(dconj.looseAttrs)) {
-               ns[lvar] = subtuple[attr];
+               ns[lvar] = subTuple[attr];
             }
             
-            subtuples.push(subtuple);
+            subTuples.push(subTuple);
             run(0);
-            subtuples.pop();
+            subTuples.pop();
          }
       }
    }
 
-   // Finally release old dependent versions
-   for (let [conj, newDepVer] of newDepVers) {
-      $.releaseVersion(proj.depVers[conj.num]);
-      proj.depVers[conj.num] = newDepVer;
+   // Finally ref new sub versions
+   for (let conj of subDeltas.keys()) {
+      let newVer = $.refCurrentState(proj.subProjs[conj.num]);
+      $.releaseVersion(proj.subVers[conj.num]);
+      proj.subVers[conj.num] = newVer;
    }
 
    $.markProjectionValid(proj);
 }
-undepSubtuple ::= function (deps, subtuple) {
-   let tupleSet = deps.get(subtuple);
+undepSubtuple ::= function (deps, subTuple) {
+   let tupleSet = deps.get(subTuple);
 
    if (tupleSet === undefined) {
       return [];
@@ -529,10 +478,10 @@ undepTuple ::= function (deps, tuple) {
 
    deps.delete(tuple);
 }
-depTuple ::= function (deps, tuple, subtuples) {
-   deps.set(tuple, Array.from(subtuples));
+depTuple ::= function (deps, tuple, subTuples) {
+   deps.set(tuple, Array.from(subTuples));
 
-   for (let subtuple of subtuples) {
-      $.setDefault(deps, subtuple, () => new Set).add(tuple);
+   for (let subTuple of subTuples) {
+      $.setDefault(deps, subTuple, () => new Set).add(tuple);
    }
 }
