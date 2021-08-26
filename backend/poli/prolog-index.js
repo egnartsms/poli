@@ -63,7 +63,7 @@ indexAdd ::= function (index, fact) {
             }
          }
          else {
-            map.set(val, index.isUnique ? fact : [fact]);
+            map.set(val, index.isUnique ? fact : new Set([fact]));
          }
       }
       else {
@@ -79,29 +79,39 @@ indexAdd ::= function (index, fact) {
    }
 }
 indexRemove ::= function (index, fact) {
-   let map = index.value;
-
-   for (let [attr, isFinal] of $.trackingFinal(index)) {
+   (function go(i, map) {
       let val = fact[attr];
 
       if (!map.has(val)) {
          throw new Error(`Index missing fact`);
       }
 
+      let isFinal = i === index.length - 1;
+
       if (isFinal) {
-         map.delete(val);
+         if (index.isUnique) {
+            map.delete(val);
+         }
+         else {
+            let bucket = map.get(val);
+
+            bucket.delete(fact);
+
+            if (bucket.size === 0) {
+               map.delete(val);
+            }
+         }
       }
       else {
-         map = map.get(val);
+         let next = map.get(val);
 
-         if (next === undefined) {
-            next = new Map;
-            map.set(val, next);
+         go(i + 1, next);
+
+         if (next.size === 0) {
+            map.delete(val);
          }
-
-         map = next;
       }
-   }
+   })(0, index.value);
 }
 indexMultiAt ::= function (index, attr2val) {
    let map = index.value;
@@ -116,6 +126,6 @@ indexMultiAt ::= function (index, attr2val) {
       }
    }
 
-   // At this point map is not already a map
+   // At this point map is either a fact or a set of facts
    return index.isUnique ? [map] : map;
 }

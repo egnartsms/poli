@@ -80,6 +80,7 @@ makeProjection ::= function (rel, boundAttrs) {
 }
 freeProjection ::= function (proj) {
    proj.rel.validRevDeps.delete(proj);
+   $.releaseVersion(proj.depVer);
 }
 markProjectionValid ::= function (proj) {
    proj.isValid = true;
