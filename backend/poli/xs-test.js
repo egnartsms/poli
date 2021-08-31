@@ -1,6 +1,5 @@
 common
    arraysEqual
-   assert
    equal
    lessThan
    map
@@ -195,7 +194,7 @@ perfTrie ::= function () {
    }
    console.timeEnd();
 }
-check ::= function (pred, arg1, arg2) {
+checkPred ::= function (pred, arg1, arg2) {
    if (!pred(arg1, arg2)) {
       console.log(`Assertion failure: ${pred.name} on`, arg1, arg2);
       throw new Error();
@@ -213,7 +212,7 @@ testTrie ::= function () {
    $.trie.add(t, ['russia', 'russie']);
    $.trie.add(t, ['italy', 'italie']);
 
-   $.check(
+   $.checkPred(
       $.arraysEqual,
       Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']
@@ -227,9 +226,9 @@ testTrie ::= function () {
    $.trie.removeByKey(t2, 'spain');
    $.trie.removeByKey(t2, 'italy');
 
-   $.check($.arraysEqual, t2.root, []);
+   $.checkPred($.arraysEqual, t2.root, []);
 
-   $.check(
+   $.checkPred(
       $.arraysEqual,
       Array.from($.map($.trie.items(t), ([k, v]) => k)),
       ['england', 'germany', 'italy', 'russia', 'spain']

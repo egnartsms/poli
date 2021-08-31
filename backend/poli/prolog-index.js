@@ -1,4 +1,5 @@
 common
+   assert
    map
    trackingFinal
 -----
@@ -30,9 +31,9 @@ indexBindAttr ::= function (index, attr) {
       index.splice(i, 1);
    }
 }
-indexBound ::= function (index, boundAttrs) {
+reduceIndex ::= function (index, attrs) {
    let reducedIndex = $.copyIndex(index);
-   for (let attr in boundAttrs) {
+   for (let attr of attrs) {
       $.indexBindAttr(reducedIndex, attr);
    }
    return reducedIndex;
@@ -40,85 +41,92 @@ indexBound ::= function (index, boundAttrs) {
 isIndexCovered ::= function (index) {
    return index.length === 0;
 }
-buildIndex ::= function (index, facts) {
-   index.value = new Map;
+rebuildIndex ::= function (inst, recs) {
+   inst.records = new Map;
 
-   for (let fact of facts) {
-      $.indexAdd(index, fact);
+   for (let rec of recs) {
+      $.indexAdd(inst, rec);
    }
 }
-indexAdd ::= function (index, fact) {
-   let map = index.value;
+indexAdd ::= function (inst, rec) {
+   let [recKey, recVal] = inst.owner.isKeyed ? rec : [rec, rec];
+   let map = inst.records;
 
-   for (let [attr, isFinal] of $.trackingFinal(index)) {
-      let val = fact[attr];
+   for (let [attr, isFinal] of $.trackingFinal(inst)) {
+      let key = recVal[attr];
 
       if (isFinal) {
-         if (map.has(val)) {
-            if (index.isUnique) {
+         if (map.has(key)) {
+            if (inst.isUnique) {
                throw new Error(`Unique index violation`);
             }
             else {
-               map.get(val).push(fact);
+               map.get(key).add(recKey);
             }
          }
          else {
-            map.set(val, index.isUnique ? fact : new Set([fact]));
+            map.set(key, inst.isUnique ? recKey : new Set([recKey]));
          }
       }
       else {
-         let next = map.get(val);
+         let next = map.get(key);
 
          if (next === undefined) {
             next = new Map;
-            map.set(val, next);
+            map.set(key, next);
          }
 
          map = next;
       }
    }
 }
-indexRemove ::= function (index, fact) {
-   (function go(i, map) {
-      let val = fact[attr];
+indexRemove ::= function (inst, rec) {
+   let [recKey, recVal] = inst.owner.isKeyed ? rec : [rec, rec];
 
-      if (!map.has(val)) {
+   (function go(i, map) {
+      let key = recVal[inst[i]];
+
+      if (!map.has(key)) {
          throw new Error(`Index missing fact`);
       }
 
-      let isFinal = i === index.length - 1;
+      let isFinal = i === inst.length - 1;
 
       if (isFinal) {
-         if (index.isUnique) {
-            map.delete(val);
+         if (inst.isUnique) {
+            map.delete(key);
          }
          else {
-            let bucket = map.get(val);
+            let bucket = map.get(key);
 
-            bucket.delete(fact);
+            bucket.delete(recKey);
 
             if (bucket.size === 0) {
-               map.delete(val);
+               map.delete(key);
             }
          }
       }
       else {
-         let next = map.get(val);
+         let next = map.get(key);
 
          go(i + 1, next);
 
          if (next.size === 0) {
-            map.delete(val);
+            map.delete(key);
          }
       }
-   })(0, index.value);
+   })(0, inst.records);
 }
-indexMultiAt ::= function (index, attr2val) {
-   let map = index.value;
+indexChange ::= function (inst, recKey, oldValue, newValue) {
+   $.check(inst.owner.isKeyed);
+   
+   $.indexRemove(inst, [recKey, oldValue]);
+   $.indexAdd(inst, [recKey, newValue]);
+}
+indexAt ::= function (inst, keys) {
+   let map = inst.records;
 
-   for (let attr of index) {
-      let key = attr2val(attr);
-      
+   for (let key of keys) {
       map = map.get(key);
 
       if (map === undefined) {
@@ -126,6 +134,6 @@ indexMultiAt ::= function (index, attr2val) {
       }
    }
 
-   // At this point map is either a fact or a set of facts
-   return index.isUnique ? [map] : map;
+   // At this point map is either a record key or a set of record key
+   return inst.isUnique ? [map] : map;
 }

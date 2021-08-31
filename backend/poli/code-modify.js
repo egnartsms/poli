@@ -1,5 +1,5 @@
 common
-   assert
+   check
    concat
    dumpImportSection
    hasOwnProperty

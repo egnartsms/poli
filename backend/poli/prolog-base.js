@@ -1,6 +1,7 @@
 common
+   all
    arraysEqual
-   assert
+   check
    filter
    find
    hasNoEnumerableProps
@@ -9,98 +10,162 @@ common
    map
    selectProps
    trackingFinal
+prolog-shared
+   recKey
+   recVal
+   recAttr
 prolog-version
    refCurrentState
    isVersionUpToDate
-   mergeDelta
-   deltaAdd
+   deltaAppend
+   kDeltaAppend
+   nkDeltaAccum
    unchainVersions
    releaseVersion
 prolog-index
-   indexOn
    copyIndex
-   buildIndex
+   rebuildIndex
    indexAdd
    indexRemove
 prolog-projection
-   isFullProjection
    invalidateProjections
+   makeRecords
 -----
-baseRelation ::= function ({name, attrs, indices, facts}) {
-   $.assert(facts instanceof Set);
-
-   let uniqueIndices = [];
-   let allIndices = [];
-
-   for (let index of indices) {
-      let idx = $.indexOn(index);
-
-      // Build only unique indices. Non-unique indices will only be built by concrete
-      // projections when needed.  Unique indices are also build separately for
-      // projections (except the full one which reuses the relation's unique indices).
-      if (idx.isUnique) {
-         $.buildIndex(idx, facts);
-         idx.refcount = 1;  // the index is always kept alive
-         uniqueIndices.push(idx);
+baseRelation ::= function ({
+   name,
+   attrs,
+   hasNaturalIdentity=false,
+   indices,
+   records=[]
+}) {
+   if (hasNaturalIdentity) {
+      if (attrs === $.recVal) {
+         attrs = [$.recKey, $.recVal];
       }
-
-      allIndices.push(idx);
+      else {
+         $.check(attrs.length > 0, `Expected either 'recVal' or non-empty array of attrs`);
+         $.check(!attrs.includes($.recVal) && !attrs.includes($.recKey),
+            `recVal/recKey must not be included in the attrs array`
+         );
+         attrs.unshift($.recKey);
+      }
+   }
+   else {
+      $.check(Array.isArray(attrs) && attrs.length > 0,
+         `Expected non-empty array as attrs`
+      );
    }
 
-   return {
+   records = $.makeRecords(records, hasNaturalIdentity);
+
+   let indexInstances = [];
+   let availableIndices = [];
+
+   for (let index of indices) {
+      if (index.isUnique) {
+         let idxInst = $.copyIndex(index);
+
+         idxInst.owner = null;  // will set to the relation object below
+         idxInst.refcount = 1;  // always kept alive
+
+         indexInstances.push(idxInst);
+         availableIndices.push(idxInst);
+      }
+      else {
+         availableIndices.push(index);
+      }
+   }
+
+   let rel = {
       isBase: true,
       name: name,
       attrs: attrs,
-      indices: allIndices,
-      uniqueIndices: uniqueIndices,
+      isKeyed: hasNaturalIdentity,
+      indices: availableIndices,
       projmap: new Map,
       myVer: null,
-      facts: facts,
+      records: records,
+      indexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
+   };
+
+   records.owner = rel;
+
+   for (let idxInst of indexInstances) {
+      idxInst.owner = rel;
+      $.rebuildIndex(idxInst, records);
    }
+
+   return rel;
 }
 makeProjection ::= function (rel, boundAttrs) {
-   let proj = {
-      rel: rel,
-      refcount: 0,
-      isValid: true,
-      boundAttrs: boundAttrs,
-      depVer: $.refCurrentState(rel),
-      myVer: null,
-      value: $.hasNoEnumerableProps(boundAttrs) ?
-         rel.facts :
-         new Set($.filter(rel.facts, f => $.factSatisfies(f, boundAttrs))),
-      indexInstances: [],
-      validRevDeps: new Set,
-   };
+   let proj;
+
+   // We want to preserve the same shape for the full projection and partial ones
+   // (for V8 optimizations).
+   if ($.hasNoEnumerableProps(boundAttrs)) {
+      proj = {
+         rel: rel,
+         refcount: 0,
+         isValid: true,
+         isKeyed: rel.isKeyed,
+         boundAttrs: boundAttrs,
+         depVer: null,  // always null
+         myVer: null,  // always null
+         records: rel.records,  // shared
+         indexInstances: rel.indexInstances,  // shared
+         validRevDeps: new Set,
+      };
+   }
+   else {
+      proj = {
+         rel: rel,
+         refcount: 0,
+         isValid: true,
+         isKeyed: rel.isKeyed,
+         boundAttrs: boundAttrs,
+         depVer: $.refCurrentState(rel),
+         myVer: null,
+         records: null,
+         indexInstances: [],
+         validRevDeps: new Set,
+      };
+
+      proj.records = $.makeRecords(
+         $.filter(rel.records, rec => $.recSatisfies(proj, rec)),
+         rel.isKeyed
+      );
+      proj.records.owner = proj;
+   }
 
    $.markProjectionValid(proj);
 
    return proj;
 }
+isFullProjection ::= function (proj) {
+   return proj.depVer === null;
+}
 freeProjection ::= function (proj) {
    proj.rel.validRevDeps.delete(proj);
-   $.releaseVersion(proj.depVer);
+   if (!$.isFullProjection(proj)) {
+      $.releaseVersion(proj.depVer);
+   }
 }
 markProjectionValid ::= function (proj) {
    proj.isValid = true;
    proj.rel.validRevDeps.add(proj);
 }
-factSatisfies ::= function (fact, boundAttrs) {
-   for (let [attr, val] of Object.entries(boundAttrs)) {
-      if (fact[attr] !== val) {
-         return false;
-      }
-   }
-
-   return true;
+recSatisfies ::= function (proj, rec) {
+   return $.all(Reflect.ownKeys(proj.boundAttrs), attr => {
+      return $.recAttr(rec, attr, proj.isKeyed) === proj.boundAttrs[attr];
+   });
 }
 updateProjection ::= function (proj) {
    if (proj.isValid) {
       return;
    }
 
-   if ($.isVersionUpToDate(proj.depVer)) {
+   if ($.isFullProjection(proj) || $.isVersionUpToDate(proj.depVer)) {
       $.markProjectionValid(proj);
       return;
    }
@@ -109,36 +174,36 @@ updateProjection ::= function (proj) {
 
    let delta = proj.myVer !== null ? proj.myVer.delta : null;
 
-   if ($.isFullProjection(proj)) {
-      if (delta !== null) {
-         $.mergeDelta(delta, proj.depVer.delta);
-      }
-   }
-   else {
-      for (let [fact, action] of proj.depVer.delta) {
-         if (action === 'add') {
-            if ($.factSatisfies(fact, proj.boundAttrs)) {
-               proj.value.add(fact);
+   for (let [recKey, action] of proj.depVer.delta) {
+      if (action === 'add') {
+         let rec = proj.rel.records.getEntry(recKey);
 
-               if (delta !== null) {
-                  $.deltaAdd(delta, fact, 'add');
-               }
-            }
-         }
-         else if (proj.value.has(fact)) {
-            proj.value.delete(fact);
-
-            if (delta !== null) {
-               $.deltaAdd(delta, fact, 'remove');
-            }
+         if ($.recSatisfies(proj, rec)) {
+            $.addRec(proj, rec);
          }
       }
-   }
+      else if (action === 'remove') {
+         $.deleteRecByKey(proj, recKey);
+      }
+      else {
+         $.assert(() => action === 'change');
+         $.assert(() => proj.isKeyed);
 
-   // Update index instances for this projection
-   for (let idxInst of proj.indexInstances) {
-      for (let [fact, action] of proj.depVer.delta) {
-         (action === 'add' ? $.indexAdd : $.indexRemove)(idxInst, fact);
+         let isOldOurs = proj.records.has(recKey);
+         let newValue = proj.rel.records.get(recKey);
+         let isNewOurs = $.recSatisfies(proj, [recKey, newValue]);
+
+         if (isOldOurs) {
+            if (isNewOurs) {
+               $.changeRec(proj, recKey, newValue);
+            }
+            else {
+               $.deleteRecByKey(proj, recKey);
+            }
+         }
+         else if (isNewOurs) {
+            $.addRec(proj, [recKey, newValue]);
+         }
       }
    }
 
@@ -148,37 +213,81 @@ updateProjection ::= function (proj) {
 
    $.markProjectionValid(proj);
 }
-addFact ::= function (rel, fact) {
-   if (rel.facts.has(fact)) {
-      throw new Error(`Duplicate fact`);
+addRec ::= function (parent, rec) {
+   parent.records.add(rec);
+
+   if (parent.myVer !== null) {
+      if (parent.isKeyed) {
+         $.kDeltaAppend(parent.myVer.delta, rec[0], 'add');
+      }
+      else {
+         $.nkDeltaAccum(parent.myVer.delta, rec, 'add');
+      }
    }
 
-   rel.facts.add(fact);
-
-   for (let index of rel.uniqueIndices) {
-      $.indexAdd(index, fact);
-   }
-
-   if (rel.myVer !== null) {
-      $.deltaAdd(rel.myVer.delta, fact, 'add');
-      $.invalidate(rel);
+   for (let idxInst of parent.indexInstances) {
+      $.indexAdd(idxInst, rec);
    }
 }
-removeFact ::= function (rel, fact) {
-   let wasRemoved = rel.facts.delete(fact);
+deleteRecByKey ::= function (parent, recKey) {
+   let rec = parent.records.getEntry(recKey);
 
-   if (!wasRemoved) {
-      throw new Error(`Missing fact`);
+   if (rec === undefined) {
+      return false;
    }
 
-   for (let index of rel.uniqueIndices) {
-      $.indexRemove(index, fact);
+   parent.records.delete(recKey);
+
+   if (parent.myVer !== null) {
+      $.deltaAppend(parent.myVer.delta, parent.isKeyed, recKey, 'remove');
    }
 
-   if (rel.myVer !== null) {
-      $.deltaAdd(rel.myVer.delta, fact, 'remove');
-      $.invalidate(rel);
+   for (let idxInst of parent.indexInstances) {
+      $.indexRemove(idxInst, rec);
    }
+
+   return true;
+}
+changeRec ::= function (parent, recKey, newValue) {
+   let oldValue = parent.records.get(recKey);
+
+   parent.records.set(recKey, newValue);
+
+   if (parent.myVer !== null) {
+      $.kDeltaAppend(parent.myVer.delta, recKey, 'change');
+   }
+
+   for (let idxInst of parent.indexInstances) {
+      $.indexChange(idxInst, recKey, oldValue, newValue);
+   }
+}
+addFact ::= function (rel, recKey, recVal=undefined) {
+   $.check(rel.isKeyed === (recVal !== undefined));
+   $.check(!rel.records.has(recKey), `Duplicate record`);
+
+   let rec = rel.isKeyed ? [recKey, recVal] : recKey;
+
+   $.addRec(rel, rec);
+   
+   $.invalidate(rel);
+}
+removeFact ::= function (rel, recKey) {
+   let removed = $.deleteRecByKey(rel, recKey);
+   
+   $.check(removed, `Missing record`);
+   
+   $.invalidate(rel);
+}
+changeFact ::= function (rel, recKey, newValue) {
+   $.check(
+      rel.isKeyed,
+      `Cannot change fact in a relation that does not have natural identity`
+   );
+   $.check(rel.records.has(recKey), `Missing record`);
+
+   $.changeRec(rel, recKey, newValue);
+
+   $.invalidate(rel);
 }
 invalidate ::= function (rel) {
    $.invalidateProjections(...rel.validRevDeps);

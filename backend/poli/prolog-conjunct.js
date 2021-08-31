@@ -3,39 +3,49 @@ common
    hasOwnProperty
    mapfilter
    isObjectWithOwnProperty
+data-structures
+   BidiMap
 prolog-index
    indexBindAttr
-   indexBound
+   reduceIndex
    isIndexCovered
    copyIndex
+prolog-shared
+   recKey
+   recVal
 -----
-specInvalidAttrs ::= function ({attrs, rel}) {
-   return Object.keys(attrs).filter(a => !rel.attrs.includes(a));
-}
 fromSpec ::= function ({attrs, rel}, lvname) {
    function isLvar(obj) {
       return $.isObjectWithOwnProperty(obj, lvname);
    }
 
    let firmAttrs = Object.fromEntries(
-      $.filter(Object.entries(attrs), ([attr, val]) => !isLvar(val))
+      $.mapfilter(Reflect.ownKeys(attrs), a => {
+         let val = attrs[a];
+         if (!isLvar(val)) {
+            return [a, val];
+         }
+      })
    );
-   let looseAttrs = Object.fromEntries(
-      $.mapfilter(Object.entries(attrs), ([attr, lvar]) => {
+   let looseAttrs = new $.BidiMap(
+      $.mapfilter(Reflect.ownKeys(attrs), a => {
+         let lvar = attrs[a];
          if (isLvar(lvar)) {
-            return [attr, lvar[lvname]];
+            return [a, lvar[lvname]];
          }
       })
    );
 
-   let indices = Array.from(rel.indices, idx => $.indexBound(idx, firmAttrs));
+   let indices = Array.from(
+      rel.indices, idx => $.reduceIndex(idx, Object.keys(firmAttrs))
+   );
 
    return {
       rel,
       firmAttrs,
       looseAttrs,
       indices: indices.filter(idx => !$.isIndexCovered(idx)),
-      shrunk: indices.reduce((M, idx) => Math.max(M, $.indexShrunk(idx)), $.Shrunk.no),
+      shrunk: indices.reduce((M, idx) => Math.max(M, $.indexShrunk(idx)), $.Shrunk.min),
       num: -1
    }
 }
@@ -45,13 +55,14 @@ indexShrunk ::= function (index) {
       $.Shrunk.no;
 }
 Shrunk ::= ({
+   min: 0,
    no: 0,
    index: 1,
    scalar: 2,
    max: 2,
 })
 lvarsIn ::= function (conj) {
-   return Object.values(conj.looseAttrs);
+   return Array.from(conj.looseAttrs.values());
 }
 duplicateVarIn ::= function (conj) {
    let lvars = new Set;
@@ -94,25 +105,24 @@ varUsageSanity ::= function (lvars, attrs, conjs) {
 
    return {unmet, met};
 }
-reduceIndex ::= function (index, conj, boundAttrs) {
-   let reduced = $.copyIndex(index);
-
-   for (let [attr, lvar] of Object.entries(conj.looseAttrs)) {
-      if ($.hasOwnProperty(boundAttrs, lvar)) {
-         $.indexBindAttr(reduced, attr);
-      }
-   }
-
-   return reduced;
+reduceConjIndex ::= function (index, conj, boundAttrs) {
+   return $.reduceIndex(
+      index,
+      $.mapfilter(conj.looseAttrs, ([attr, lvar]) => {
+         if ($.hasOwnProperty(boundAttrs, lvar)) {
+            return attr;
+         }
+      })
+   );
 }
 reduceConj ::= function (conj, boundAttrs) {
    let newFirms = {...conj.firmAttrs};
-   let newLoose = {...conj.looseAttrs};
+   let newLoose = new $.BidiMap(conj.looseAttrs);
 
-   for (let [attr, lvar] of Object.entries(conj.looseAttrs)) {
+   for (let [attr, lvar] of conj.looseAttrs) {
       if ($.hasOwnProperty(boundAttrs, lvar)) {
          newFirms[attr] = boundAttrs[lvar];
-         delete newLoose[attr];
+         newLoose.delete(attr);
       }
    }
 
@@ -120,7 +130,7 @@ reduceConj ::= function (conj, boundAttrs) {
 
    if (newShrunk < $.Shrunk.max) {
       for (let index of conj.indices) {
-         let rshrunk = $.indexShrunk($.reduceIndex(index, conj, boundAttrs));
+         let rshrunk = $.indexShrunk($.reduceConjIndex(index, conj, boundAttrs));
 
          if (rshrunk > newShrunk) {
             newShrunk = rshrunk;

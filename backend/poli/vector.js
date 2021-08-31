@@ -1,5 +1,5 @@
 common
-   assert
+   check
    newObj
 -----
 MAX_NODE_LEN ::= 16
@@ -47,7 +47,7 @@ freeze ::= function (root) {
    freeze(root);
 }
 indexToMerge ::= function (parent, i) {
-   $.assert(parent.length >= 2);
+   $.check(parent.length >= 2);
 
    let isLeft = (i > 0 && 
       (i + 1 === parent.length || parent[i + 1].length >= parent[i - 1].length)
@@ -56,14 +56,14 @@ indexToMerge ::= function (parent, i) {
    return isLeft ? i - 1 : i;
 }
 redestributeBetween ::= function (lnode, rnode) {
-   $.assert(lnode.isLeaf === rnode.isLeaf);
+   $.check(lnode.isLeaf === rnode.isLeaf);
 
    let merged = [...lnode, ...rnode];
    $.makeNode(merged, lnode.isLeaf);
    return $.splitNode(merged);
 }
 splitNode ::= function (node) {
-   $.assert(node.isFresh);
+   $.check(node.isFresh);
    
    if (node.length <= $.MAX_NODE_LEN) {
       return [node];

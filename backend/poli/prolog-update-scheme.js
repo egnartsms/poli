@@ -1,7 +1,7 @@
 common
    any
    arraysEqual
-   assert
+   check
    enumerate
    find
    filter
@@ -14,13 +14,12 @@ common
 prolog-conjunct
    lvarsIn
    Shrunk
-   reduceIndex
+   reduceConjIndex
    reduceConj
 prolog-index
    superIndexOfAnother
    copyIndex
    indexBindAttr
-   indexBound
    isIndexCovered
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
@@ -38,8 +37,8 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       yield '\n';
    }
 
-   for (let [num, jpath] of $.enumerate(rel.configs[0].jpaths)) {
-      let dconj = rel.conjs[num];
+   for (let [num, jpath] of $.enumerate(rel.config0.jpaths)) {
+      let dconj = rel.config0.conjs[num];
 
       console.log(Array.from(gen(dconj, jpath)).join(''));
    }
@@ -106,10 +105,8 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
    }));
 
    function bindLvars(lvars) {
-      for (let lvar of lvars) {
-         for (let cjff of unjoined) {
-            $.cjffBindLvar(cjff, lvar);
-         }
+      for (let cjff of unjoined) {
+         $.cjffBindLvars(cjff, lvars);
       }
    }
 
@@ -157,6 +154,8 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
       jpath.push({
          conj: Xff.conj,
          index: Xindex,
+         indexLvars: Xindex === null ? null :
+            Array.from(Xindex, attr => Xff.conj.looseAttrs.get(attr)),
          checkAttrs: $.cjffCheckAttrs(Xff, Xindex),
          extractAttrs: $.cjffExtractAttrs(Xff)
       });
@@ -180,32 +179,37 @@ makeIndexFulfillment ::= function (index) {
    idxff.original = index;
    return idxff;
 }
-cjffBindLvar ::= function (cjff, lvar) {
-   if (!cjff.freeLvars.has(lvar)) {
-      return;
+cjffBindLvars ::= function (cjff, lvars) {
+   let {conj, freeLvars, boundLvars, idxffs} = cjff;
+
+   for (let lvar of lvars) {
+      if (!freeLvars.has(lvar)) {
+         continue;
+      }
+
+      let attr = conj.looseAttrs.getKey(lvar);
+
+      for (let idxff of idxffs) {
+         $.indexBindAttr(idxff, attr);
+      }
+
+      freeLvars.delete(lvar);
+      boundLvars.add(lvar);      
    }
-
-   let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
-
-   for (let idxff of cjff.idxffs) {
-      $.indexBindAttr(idxff, attr);
-   }
-
-   cjff.freeLvars.delete(lvar);
-   cjff.boundLvars.add(lvar);
 }
-cjffCheckAttrs ::= function (cjff, index) {
+cjffCheckAttrs ::= function ({conj, boundLvars}, index) {
    return Array.from(
-      $.mapfilter(cjff.boundLvars, lvar => {
-         let attr = $.keyForValue(cjff.conj.looseAttrs, lvar);
+      $.mapfilter(boundLvars, lvar => {
+         let attr = conj.looseAttrs.getKey(lvar);
+
          if (index === null || !index.includes(attr)) {
-            return attr;
+            return [attr, lvar];
          }
       })
    );
 }
-cjffExtractAttrs ::= function (cjff) {
-   return Array.from(cjff.freeLvars, lvar => $.keyForValue(cjff.conj.looseAttrs, lvar));
+cjffExtractAttrs ::= function ({conj, freeLvars}) {
+   return Array.from(freeLvars, lvar => [conj.looseAttrs.getKey(lvar), lvar]);
 }
 narrowConfig ::= function (config, boundAttrs) {
    let n_conjs = Array.from(config.conjs, conj => $.reduceConj(conj, boundAttrs));
@@ -216,8 +220,8 @@ narrowConfig ::= function (config, boundAttrs) {
    for (let jpath of config.jpaths) {
       let n_jpath = [];
 
-      for (let {index, conj, checkAttrs, extractAttrs} of jpath) {
-         let n_index = $.reduceIndex(index, conj, boundAttrs);
+      for (let {conj, index, checkAttrs, extractAttrs} of jpath) {
+         let n_index = $.reduceConjIndex(index, conj, boundAttrs);
 
          if ($.isIndexCovered(n_index)) {
             n_index = null;
@@ -229,11 +233,15 @@ narrowConfig ::= function (config, boundAttrs) {
             });
          }
 
+         let n_conj = n_conjs[conj.num];
+
          n_jpath.push({
-            conj: n_conjs[conj.num],
+            conj: n_conj,
             index: n_index,
-            checkAttrs: $.narrowAttrList(conj, checkAttrs, boundAttrs),
-            extractAttrs: $.narrowAttrList(conj, extractAttrs, boundAttrs),
+            indexLvars: n_index === null ? null :
+               Array.from(n_index, a => n_conj.looseAttrs.get(a)),
+            checkAttrs: $.narrowAttrList(checkAttrs, boundAttrs),
+            extractAttrs: $.narrowAttrList(extractAttrs, boundAttrs),
          });
       }
 
@@ -245,10 +253,11 @@ narrowConfig ::= function (config, boundAttrs) {
    return {
       conjs: n_conjs,
       attrs: config.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
+      lvars: config.lvars.filter(lvar => !$.hasOwnProperty(boundAttrs, lvar)),
       jpaths: n_jpaths,
       appliedIndices: reg.flat()
    }
 }
-narrowAttrList ::= function (conj, attrList, boundAttrs) {
-   return attrList.filter(attr => !$.hasOwnProperty(boundAttrs, conj.looseAttrs[attr]));
+narrowAttrList ::= function (attrList, boundAttrs) {
+   return attrList.filter(([attr, lvar]) => !$.hasOwnProperty(boundAttrs, lvar));
 }

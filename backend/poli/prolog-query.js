@@ -1,5 +1,5 @@
 common
-   assert
+   check
 prolog-projection
    projectionFor
    releaseProjection
@@ -29,7 +29,7 @@ query ::= function (rel, boundAttrs) {
 
    $.updateProjection(proj);
 
-   return proj.value;
+   return proj.records;
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {

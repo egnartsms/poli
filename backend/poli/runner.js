@@ -1,5 +1,5 @@
 common
-   assert
+   check
    compare
    compareArrays
    concat
@@ -33,7 +33,7 @@ main ::= function (sendMessage) {
 }
 pendingCodeModifications ::= false
 commitPendingCodeModifications ::= function (msg) {
-   $.assert($.pendingCodeModifications);
+   $.check($.pendingCodeModifications);
 
    if (msg['type'] !== 'modify-code-result') {
       throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);

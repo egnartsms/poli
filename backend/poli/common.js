@@ -1,8 +1,13 @@
 trie
    * as: trie
 -----
-assert ::= function (cond) {
+check ::= function (cond, msg=`Check failed`) {
    if (!cond) {
+      throw new Error(typeof msg === 'function' ? msg() : msg);
+   }
+}
+assert ::= function (callback) {
+   if (!callback()) {
       throw new Error(`Assert failed`);
    }
 }
@@ -122,17 +127,17 @@ extendArray ::= function (A, X) {
    }
 }
 yreExec ::= function (re, offset, str) {
-   $.assert(re.sticky);
+   $.check(re.sticky);
    re.lastIndex = offset;
    return re.exec(str);
 }
 yreTest ::= function (re, offset, str) {
-   $.assert(re.sticky);
+   $.check(re.sticky);
    re.lastIndex = offset;
    return re.test(str);
 }
 parameterize ::= function (tobind, callback) {
-   $.assert(tobind.length % 2 === 0);
+   $.check(tobind.length % 2 === 0);
    
    let oldvals = new Array(tobind.length / 2);
    let i = 0, k = 0;
@@ -326,6 +331,15 @@ any ::= function (itbl, pred) {
 
    return false;
 }
+all ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (!pred(x)) {
+         return false;
+      }
+   }
+
+   return true;
+}
 map ::= function* (itbl, fn) {
    for (let x of itbl) {
       yield fn(x);
@@ -393,7 +407,7 @@ hasNoEnumerableProps ::= function (obj) {
       return false;
    }
 
-   return true;
+   return Object.getOwnPropertySymbols(obj).length === 0;
 }
 commonArrayPrefixLength ::= function (A1, A2) {
    let i = 0;

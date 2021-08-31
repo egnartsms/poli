@@ -1,5 +1,5 @@
 common
-   assert
+   check
    yreExec
    yreTest
 -----
@@ -72,7 +72,7 @@ skipSpaces ::= function (stm) {
    return nspaces;
 }
 advanceN ::= function (stm, n) {
-   $.assert(n <= stm.line.length - stm.col);
+   $.check(n <= stm.line.length - stm.col);
    stm.col += n;
 }
 advanceMatch ::= function (stm, match) {

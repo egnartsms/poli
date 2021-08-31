@@ -1,5 +1,5 @@
 common
-   assert
+   check
    extendArray
 xs-tokenizer
    tokenizeEntryDefinition
@@ -62,8 +62,8 @@ isAtEol ::= function (stm) {
 read1FromString ::= function (str) {
    let stm = $.makeStream(str, $.tokenizeFromNewline(str));
 
-   $.assert(stm.next.token === 'indent');
-   $.assert(stm.next.level === 0);
+   $.check(stm.next.token === 'indent');
+   $.check(stm.next.level === 0);
 
    $.move(stm);
    
@@ -94,7 +94,7 @@ readMultilinedEntryDefinition ::= function (stm) {
       throw new $.ReaderError(stm, `Blank line at the entry definition level`);
    }
    
-   $.assert(stm.next.token === 'indent');
+   $.check(stm.next.token === 'indent');
    
    if (stm.next.level !== 1) {
       throw new $.ReaderError(stm, `Invalid indentation level (expected 1)`);
@@ -154,7 +154,7 @@ readMultilined ::= function (stm, mylevel) {
    let isBodyBeginning = true;   // track possibility of double indentation
 
    while (!$.isAtEos(stm)) {
-      $.assert(stm.next.token === 'indent');
+      $.check(stm.next.token === 'indent');
 
       let {level, full} = stm.next;
       let lvlshift = level - mylevel;
@@ -211,7 +211,7 @@ readMultilined ::= function (stm, mylevel) {
          }
       }
       else {
-         $.assert(lvlshift === 1);
+         $.check(lvlshift === 1);
 
          let [subhead, ...subbody] = $.readToEol(stm);
          let sub = {
