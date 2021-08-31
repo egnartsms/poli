@@ -182,7 +182,7 @@ makeProjection ::= function (rel, boundAttrs) {
 
    let subIndexInstances = Array.from(
       config.appliedIndices,
-      index => $.refIndexInstance(subProjs[index.forConj.num], index)
+      index => $.refIndexInstance(subProjs[index.forConjNum], index)
    );
 
    let proj = {
@@ -284,16 +284,16 @@ rebuildProjection ::= function (proj) {
          return;
       }
 
-      let {conj, index, indexLvars, checkAttrs, extractAttrs} = jpath0[k];
-      let subProj = proj.subProjs[conj.num];
+      let {conjNum, indexNum, indexLvars, checkAttrs, extractAttrs} = jpath0[k];
+      let subProj = proj.subProjs[conjNum];
       let records;
 
-      if (index === null) {
+      if (indexNum === null) {
          records = subProj.records;
       }
       else {
          let rkeys = $.indexAt(
-            proj.subIndexInstances[index.num],
+            proj.subIndexInstances[indexNum],
             Array.from(indexLvars, lvar => ns[lvar])
          );
          

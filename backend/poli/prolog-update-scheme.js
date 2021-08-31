@@ -1,5 +1,6 @@
 common
    any
+   assert
    arraysEqual
    check
    enumerate
@@ -44,12 +45,10 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
    }
 }
 computeIncrementalUpdateScheme ::= function (relname, conjs) {
-   let jpaths = $.produceArray(conjs.length, () => []);
-
-   for (let dconj of conjs) {
-      jpaths[dconj.num] = $.joinPathForDelta(relname, conjs, dconj);
-   }
-
+   let jpaths = $.produceArray(
+      conjs.length,
+      i => $.joinPathForDelta(relname, conjs, conjs[i])
+   );
    let reg = $.makeIndexRegistryPerConj(conjs.length);
 
    for (let jpath of jpaths) {
@@ -58,19 +57,17 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
             continue;
          }
 
-         let index = $.addToIndexRegistry(reg, jplink.conj.num, jplink.index, () => {
-            return Object.assign($.copyIndex(jplink.index), {forConj: jplink.conj});
+         jplink.index = $.addToIndexRegistry(reg, jplink.conjNum, jplink.index, () => {
+            return Object.assign($.copyIndex(jplink.index), {forConjNum: jplink.conjNum});
          });
-         jplink.index = index;
       }
    }
 
-   $.numerateIndexRegistry(reg);
+   let appliedIndices = reg.flat();
 
-   return {
-      jpaths,
-      appliedIndices: reg.flat()
-   };
+   $.replaceIndexWithNumInJoinPaths(jpaths, appliedIndices);
+
+   return {jpaths, appliedIndices};
 }
 makeIndexRegistryPerConj ::= function (numConjs) {
    // Index registry per conj is: [[idx00, idx01, ...], [idx10, idx11, ...], ...]
@@ -87,13 +84,18 @@ addToIndexRegistry ::= function (reg, numConj, index, ifmissing) {
 
    return existing;
 }
-numerateIndexRegistry ::= function (reg) {
-   let num = 0;
-
-   for (let idxs of reg) {
-      for (let idx of idxs) {
-         idx.num = num;
-         num += 1;
+replaceIndexWithNumInJoinPaths ::= function (jpaths, appliedIndices) {
+   for (let jpath of jpaths) {
+      for (let jplink of jpath) {
+         if (jplink.index === null) {
+            jplink.indexNum = null;
+         }
+         else {
+            jplink.indexNum = appliedIndices.indexOf(jplink.index);
+            $.assert(() => jplink.indexNum !== -1);
+         }
+         
+         delete jplink.index;
       }
    }
 }
@@ -152,8 +154,8 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
       }
 
       jpath.push({
-         conj: Xff.conj,
-         index: Xindex,
+         conjNum: Xff.conj.num,
+         index: Xindex,  // will be replaced with 'indexNum'
          indexLvars: Xindex === null ? null :
             Array.from(Xindex, attr => Xff.conj.looseAttrs.get(attr)),
          checkAttrs: $.cjffCheckAttrs(Xff, Xindex),
@@ -175,9 +177,7 @@ makeConjunctFulfillment ::= function (conj) {
    }
 }
 makeIndexFulfillment ::= function (index) {
-   let idxff = Array.from(index);
-   idxff.original = index;
-   return idxff;
+   return Object.assign(Array.from(index), {original: index});
 }
 cjffBindLvars ::= function (cjff, lvars) {
    let {conj, freeLvars, boundLvars, idxffs} = cjff;
@@ -213,33 +213,32 @@ cjffExtractAttrs ::= function ({conj, freeLvars}) {
 }
 narrowConfig ::= function (config, boundAttrs) {
    let n_conjs = Array.from(config.conjs, conj => $.reduceConj(conj, boundAttrs));
-
    let n_jpaths = [];
    let reg = $.makeIndexRegistryPerConj(config.conjs.length);
 
    for (let jpath of config.jpaths) {
       let n_jpath = [];
 
-      for (let {conj, index, checkAttrs, extractAttrs} of jpath) {
-         let n_index = $.reduceConjIndex(index, conj, boundAttrs);
+      for (let {conjNum, indexNum, indexLvars, checkAttrs, extractAttrs} of jpath) {
+         let n_index = $.reduceConjIndex(
+            config.appliedIndices[indexNum], config.conjs[conjNum], boundAttrs
+         );
 
          if ($.isIndexCovered(n_index)) {
             n_index = null;
          }
          else {
-            n_index = $.addToIndexRegistry(reg, conj.num, n_index, () => {
-               n_index.forConj = n_conjs[conj.num];
+            n_index = $.addToIndexRegistry(reg, conjNum, n_index, () => {
+               n_index.forConjNum = conjNum;
                return n_index;
             });
          }
 
-         let n_conj = n_conjs[conj.num];
-
          n_jpath.push({
-            conj: n_conj,
-            index: n_index,
+            conjNum,
+            index: n_index,  // will be replaced with 'indexNum'
             indexLvars: n_index === null ? null :
-               Array.from(n_index, a => n_conj.looseAttrs.get(a)),
+               indexLvars.filter(lv => !$.hasOwnProperty(boundAttrs, lv)),
             checkAttrs: $.narrowAttrList(checkAttrs, boundAttrs),
             extractAttrs: $.narrowAttrList(extractAttrs, boundAttrs),
          });
@@ -248,14 +247,16 @@ narrowConfig ::= function (config, boundAttrs) {
       n_jpaths.push(n_jpath);
    }
 
-   $.numerateIndexRegistry(reg);
+   let appliedIndices = reg.flat();
+
+   $.replaceIndexWithNumInJoinPaths(n_jpaths, appliedIndices);
 
    return {
       conjs: n_conjs,
       attrs: config.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
       lvars: config.lvars.filter(lvar => !$.hasOwnProperty(boundAttrs, lvar)),
       jpaths: n_jpaths,
-      appliedIndices: reg.flat()
+      appliedIndices
    }
 }
 narrowAttrList ::= function (attrList, boundAttrs) {
