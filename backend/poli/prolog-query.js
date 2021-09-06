@@ -29,7 +29,7 @@ query ::= function (rel, boundAttrs) {
 
    $.updateProjection(proj);
 
-   return proj.records;
+   return Array.from(proj.records);
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {

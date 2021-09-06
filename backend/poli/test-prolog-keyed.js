@@ -2,6 +2,7 @@ common
    check
    isLike
    find
+   sortedArray
 prolog-query
    query
 prolog-projection
@@ -13,6 +14,7 @@ prolog-base
    baseRelation
    addFact
    removeFact
+   changeFact
 prolog-derived
    derivedRelation
 prolog-index
@@ -21,104 +23,135 @@ prolog-shared
    recKey
    recVal
 -----
-runTests ::= function () {
-   for (let [k, v] of Object.entries($)) {
-      if (k.startsWith('test_')) {
-      // if (['test_base_projection_update'].includes(k)) {
-         let rels = $.recreateRelations();
-         v(rels);
-      }
-   }
-}
-recreateRelations ::= function () {
+setup ::= function () {
    let
-      e_A_joe = {name: 'joe'},
-      e_A_jack = {name: 'jack'},
-      e_B_joe = {name: 'joe'},
-      e_B_kelly = {name: 'kelly'},
-      e_B_stasy = {name: 'stasy'},
-      e_C_jack = {name: 'jack'};
+      // These 'name' property is just for ease of display/debug
+      joe = {dev: 'joe', order: 1},
+      jack = {dev: 'jack', order: 2},
+      jim = {dev: 'jim', order: 3},
+      kelly = {dev: 'kelly', order: 4},
+      stasy = {dev: 'stasy', order: 5},
+      greg = {dev: 'greg', order: 6};
 
-   let entry = $.baseRelation({
-      name: 'entry',
-      attrs: ['module', 'name'],
-      hasNaturalIdentity: true,
+   let
+      company_J = {company: 'J systems'},
+      company_C = {company: 'C systems'},
+      company_P = {company: 'P systems'};
+
+   let dev = $.baseRelation({
+      name: 'dev',
+      hasPrimaryKey: true,
+      attrs: ['company', 'name'],
       indices: [
-         $.indexOn(['module', 'name'], {isUnique: true}),
-         $.indexOn(['module'])
+         $.indexOn(['company'])
       ],
       records: [
-         [e_A_joe, {module: 'A', name: 'joe'}],
-         [e_A_jack, {module: 'A', name: 'jack'}],
-         [e_B_joe, {module: 'B', name: 'joe'}],
-         [e_B_kelly, {module: 'B', name: 'kelly'}],
-         [e_B_stasy, {module: 'B', name: 'stasy'}],
-         [e_C_jack, {module: 'C', name: 'jack'}],
+         [joe, {company: company_J, name: 'joe'}],
+         [jack, {company: company_J, name: 'jack'}],
+         [jim, {company: company_C, name: 'joe'}],
+         [kelly, {company: company_C, name: 'kelly'}],
+         [stasy, {company: company_C, name: 'stasy'}],
+         [greg, {company: company_P, name: 'joe'}],
       ],
    });
 
-   let module = $.baseRelation({
-      name: 'module',
+   let company = $.baseRelation({
+      name: 'company',
+      hasPrimaryKey: true,
       attrs: ['name', 'lang'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
       ],
       records: [
-         {name: 'A', lang: 'js'},
-         {name: 'B', lang: 'rust'},
-         {name: 'C', lang: 'kotlin'}
+         [company_J, {name: 'J systems', lang: 'java'}],
+         [company_C, {lang: 'C systems', lang: 'cpp'}],
+         [company_P, {name: 'P systems', lang: 'php'}]
       ],
    });
 
-   let entry_lang = $.derivedRelation({
-      name: 'entry_lang',
-      attrs: ['entry', 'lang'],
+   let dev_lang = $.derivedRelation({
+      name: 'dev_lang',
+      hasPrimaryKey: true,
+      attrs: $.recVal,
       indices: [],
       body: v => [
          {
-            rel: entry,
-            attrs: {
-               module: v`entry_module`,
-               [v.key]: v`entry`
-            }
+            rel: dev,
+            attrs: {[$.recKey]: v.recKey, company: v`company`}
          },
          {
-            rel: module,
-            attrs: {name: v`entry_module`, lang: v`lang`}
+            rel: company,
+            attrs: {[$.recKey]: v`company`, lang: v.recVal}
          }
       ]
    });
 
    return {
-      entry,
-      module,
-      entry_lang,
-      e_A_joe,
-      e_A_jack,
-      e_B_joe,
-      e_B_kelly,
-      e_B_stasy,
-      e_C_jack,
+      dev, company, dev_lang,
+      company_J, company_C, company_P,
+      joe, jack, jim, kelly, stasy, greg,
    };
 }
-test_rebuild ::= function ({
-   entry_lang,
-   e_A_joe,
-   e_A_jack,
-   e_B_joe,
-   e_B_kelly,
-   e_B_stasy,
-   e_C_jack
+test_query ::= function ({
+   dev_lang,
+   joe, jack, jim, kelly, stasy, greg,
 }) {
    $.check($.isLike(
-      $.query(entry_lang, {}),
+      $.query(dev_lang, {}),
       [
-         {entry: e_A_joe, lang: 'js'},
-         {entry: e_A_jack, lang: 'js'},
-         {entry: e_B_joe, lang: 'rust'},
-         {entry: e_B_kelly, lang: 'rust'},
-         {entry: e_B_stasy, lang: 'rust'},
-         {entry: e_C_jack, lang: 'kotlin'},
+         [joe, 'java'],
+         [jack, 'java'],
+         [jim, 'cpp'],
+         [kelly, 'cpp'],
+         [stasy, 'cpp'],
+         [greg, 'php'],
+      ]
+   ));
+}
+test_update_dev ::= function ({
+   dev, company,
+   dev_lang,
+   joe, jack, jim, kelly, stasy, greg,
+   company_P,
+}) {
+   let proj = $.projectionFor(dev_lang, {});
+
+   $.changeFact(dev, stasy, {company: company_P, name: 'stasy'});
+   $.updateProjection(proj);
+
+   $.check($.isLike(
+      $.sortedArray(proj.records, ([dev]) => dev.order),
+      [
+         [joe, 'java'],
+         [jack, 'java'],
+         [jim, 'cpp'],
+         [kelly, 'cpp'],
+         [stasy, 'php'],
+         [greg, 'php'],
+      ]
+   ));
+}
+test_update_company ::= function ({
+   dev, company,
+   dev_lang,
+   joe, jack, jim, kelly, stasy, greg,
+   company_C, company_P, company_J,
+}) {
+   let proj = $.projectionFor(dev_lang, {});
+
+   $.changeFact(company, company_J, {name: "J systems", lang: 'js'});
+   $.changeFact(company, company_C, {name: "C systems", lang: 'objc'});
+   $.updateProjection(proj);
+
+   $.check($.isLike(
+      $.sortedArray(proj.records, ([dev]) => dev.order),
+      [
+         [joe, 'js'],
+         [jack, 'js'],
+         [jim, 'objc'],
+         [kelly, 'objc'],
+         [stasy, 'objc'],
+         [greg, 'php'],
       ]
    ));
 }

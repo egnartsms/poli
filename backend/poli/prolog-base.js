@@ -1,6 +1,7 @@
 common
    all
    arraysEqual
+   assert
    check
    filter
    find
@@ -14,6 +15,8 @@ prolog-shared
    recKey
    recVal
    recAttr
+   normalizeAttrsForPk
+   recKeyOf
 prolog-version
    refCurrentState
    isVersionUpToDate
@@ -27,38 +30,28 @@ prolog-index
    rebuildIndex
    indexAdd
    indexRemove
+prolog-index-instance
+   indexInstanceStorage
 prolog-projection
    invalidateProjections
    makeRecords
+prolog-shared
+   Keyed
 -----
 baseRelation ::= function ({
    name,
    attrs,
-   hasNaturalIdentity=false,
+   hasPrimaryKey=false,
    indices,
    records=[]
 }) {
-   if (hasNaturalIdentity) {
-      if (attrs === $.recVal) {
-         attrs = [$.recKey, $.recVal];
-      }
-      else {
-         $.check(attrs.length > 0, `Expected either 'recVal' or non-empty array of attrs`);
-         $.check(!attrs.includes($.recVal) && !attrs.includes($.recKey),
-            `recVal/recKey must not be included in the attrs array`
-         );
-         attrs.unshift($.recKey);
-      }
-   }
-   else {
-      $.check(Array.isArray(attrs) && attrs.length > 0,
-         `Expected non-empty array as attrs`
-      );
-   }
+   let keyed;
 
-   records = $.makeRecords(records, hasNaturalIdentity);
+   ({keyed, attrs} = $.normalizeAttrsForPk(attrs, hasPrimaryKey, name));
 
-   let indexInstances = [];
+   records = $.makeRecords(records, hasPrimaryKey);
+
+   let indexInstances = $.indexInstanceStorage();
    let availableIndices = [];
 
    for (let index of indices) {
@@ -80,7 +73,7 @@ baseRelation ::= function ({
       isBase: true,
       name: name,
       attrs: attrs,
-      isKeyed: hasNaturalIdentity,
+      keyed: keyed,
       indices: availableIndices,
       projmap: new Map,
       myVer: null,
@@ -108,7 +101,7 @@ makeProjection ::= function (rel, boundAttrs) {
          rel: rel,
          refcount: 0,
          isValid: true,
-         isKeyed: rel.isKeyed,
+         keyed: rel.keyed,
          boundAttrs: boundAttrs,
          depVer: null,  // always null
          myVer: null,  // always null
@@ -122,18 +115,18 @@ makeProjection ::= function (rel, boundAttrs) {
          rel: rel,
          refcount: 0,
          isValid: true,
-         isKeyed: rel.isKeyed,
+         keyed: rel.keyed,
          boundAttrs: boundAttrs,
          depVer: $.refCurrentState(rel),
          myVer: null,
          records: null,
-         indexInstances: [],
+         indexInstances: $.indexInstanceStorage(),
          validRevDeps: new Set,
       };
 
       proj.records = $.makeRecords(
          $.filter(rel.records, rec => $.recSatisfies(proj, rec)),
-         rel.isKeyed
+         rel.keyed
       );
       proj.records.owner = proj;
    }
@@ -147,6 +140,7 @@ isFullProjection ::= function (proj) {
 }
 freeProjection ::= function (proj) {
    proj.rel.validRevDeps.delete(proj);
+
    if (!$.isFullProjection(proj)) {
       $.releaseVersion(proj.depVer);
    }
@@ -157,7 +151,7 @@ markProjectionValid ::= function (proj) {
 }
 recSatisfies ::= function (proj, rec) {
    return $.all(Reflect.ownKeys(proj.boundAttrs), attr => {
-      return $.recAttr(rec, attr, proj.isKeyed) === proj.boundAttrs[attr];
+      return $.recAttr(rec, attr, proj.keyed) === proj.boundAttrs[attr];
    });
 }
 updateProjection ::= function (proj) {
@@ -172,8 +166,6 @@ updateProjection ::= function (proj) {
 
    $.unchainVersions(proj.depVer);
 
-   let delta = proj.myVer !== null ? proj.myVer.delta : null;
-
    for (let [recKey, action] of proj.depVer.delta) {
       if (action === 'add') {
          let rec = proj.rel.records.getEntry(recKey);
@@ -187,22 +179,18 @@ updateProjection ::= function (proj) {
       }
       else {
          $.assert(() => action === 'change');
-         $.assert(() => proj.isKeyed);
+         $.assert(() => proj.keyed);
 
-         let isOldOurs = proj.records.has(recKey);
          let newValue = proj.rel.records.get(recKey);
-         let isNewOurs = $.recSatisfies(proj, [recKey, newValue]);
+         $.assert(() => newValue !== undefined);
+         let newRec = [recKey, newValue];
 
-         if (isOldOurs) {
-            if (isNewOurs) {
-               $.changeRec(proj, recKey, newValue);
-            }
-            else {
-               $.deleteRecByKey(proj, recKey);
-            }
+         if (proj.records.has(recKey)) {
+            $.deleteRecByKey(proj, recKey);
          }
-         else if (isNewOurs) {
-            $.addRec(proj, [recKey, newValue]);
+
+         if ($.recSatisfies(proj, newRec)) {
+            $.addRec(proj, newRec);
          }
       }
    }
@@ -217,12 +205,7 @@ addRec ::= function (parent, rec) {
    parent.records.add(rec);
 
    if (parent.myVer !== null) {
-      if (parent.isKeyed) {
-         $.kDeltaAppend(parent.myVer.delta, rec[0], 'add');
-      }
-      else {
-         $.nkDeltaAccum(parent.myVer.delta, rec, 'add');
-      }
+      $.deltaAppend(parent.myVer.delta, parent.keyed, $.recKeyOf(parent, rec), 'add');
    }
 
    for (let idxInst of parent.indexInstances) {
@@ -239,7 +222,7 @@ deleteRecByKey ::= function (parent, recKey) {
    parent.records.delete(recKey);
 
    if (parent.myVer !== null) {
-      $.deltaAppend(parent.myVer.delta, parent.isKeyed, recKey, 'remove');
+      $.deltaAppend(parent.myVer.delta, parent.keyed, recKey, 'remove');
    }
 
    for (let idxInst of parent.indexInstances) {
@@ -248,24 +231,11 @@ deleteRecByKey ::= function (parent, recKey) {
 
    return true;
 }
-changeRec ::= function (parent, recKey, newValue) {
-   let oldValue = parent.records.get(recKey);
-
-   parent.records.set(recKey, newValue);
-
-   if (parent.myVer !== null) {
-      $.kDeltaAppend(parent.myVer.delta, recKey, 'change');
-   }
-
-   for (let idxInst of parent.indexInstances) {
-      $.indexChange(idxInst, recKey, oldValue, newValue);
-   }
-}
 addFact ::= function (rel, recKey, recVal=undefined) {
-   $.check(rel.isKeyed === (recVal !== undefined));
+   $.check(Boolean(rel.keyed) === (recVal !== undefined));
    $.check(!rel.records.has(recKey), `Duplicate record`);
 
-   let rec = rel.isKeyed ? [recKey, recVal] : recKey;
+   let rec = rel.keyed ? [recKey, recVal] : recKey;
 
    $.addRec(rel, rec);
    
@@ -280,12 +250,15 @@ removeFact ::= function (rel, recKey) {
 }
 changeFact ::= function (rel, recKey, newValue) {
    $.check(
-      rel.isKeyed,
-      `Cannot change fact in a relation that does not have natural identity`
+      rel.keyed,
+      `Cannot change fact in a relation that does not have primary key`
    );
-   $.check(rel.records.has(recKey), `Missing record`);
+   
+   let removed = $.deleteRecByKey(rel, recKey);
 
-   $.changeRec(rel, recKey, newValue);
+   $.check(removed, `Missing record`);
+
+   $.addRec(rel, [recKey, newValue]);
 
    $.invalidate(rel);
 }

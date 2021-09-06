@@ -2,6 +2,7 @@ common
    check
    isLike
    find
+   sortedArray
 prolog-query
    query
 prolog-projection
@@ -18,16 +19,7 @@ prolog-derived
 prolog-index
    indexOn
 -----
-runTests ::= function () {
-   for (let [k, v] of Object.entries($)) {
-      if (k.startsWith('test_')) {
-      // if (['test_base_projection_update'].includes(k)) {
-         let rels = $.recreateRelations();
-         v(rels);
-      }
-   }
-}
-recreateRelations ::= function () {
+setup ::= function () {
    let continent = $.baseRelation({
       name: 'continent',
       attrs: ['name'],
@@ -140,33 +132,33 @@ recreateRelations ::= function () {
 }
 test_base_projection_update ::= function ({country}) {
    $.check($.isLike(
-      $.query(country, {continent: 'Europe'}),
+      $.sortedArray($.query(country, {continent: 'Europe'}), x => x.name),
       [
+         {name: 'France'},
          {name: 'Poland'},
          {name: 'Ruthenia'},
-         {name: 'France'}
       ]
    ))
 
    let t_italy = {name: 'Italy', continent: 'Europe'}
    $.addFact(country, t_italy);
    $.check($.isLike(
-      $.query(country, {continent: 'Europe'}),
+      $.sortedArray($.query(country, {continent: 'Europe'}), x => x.name),
       [
+         {name: 'France'},
+         {name: 'Italy'},
          {name: 'Poland'},
          {name: 'Ruthenia'},
-         {name: 'France'},
-         {name: 'Italy'}
       ]
    ));
 
    $.removeFact(country, t_italy);
    $.check($.isLike(
-      $.query(country, {continent: 'Europe'}),
+      $.sortedArray($.query(country, {continent: 'Europe'}), x => x.name),
       [
+         {name: 'France'},
          {name: 'Poland'},
          {name: 'Ruthenia'},
-         {name: 'France'},
       ]
    ));
 
@@ -174,20 +166,20 @@ test_base_projection_update ::= function ({country}) {
    $.removeFact(country, t_poland);
    $.addFact(country, t_poland);
    $.check($.isLike(
-      $.query(country, {continent: 'Europe'}),
+      $.sortedArray($.query(country, {continent: 'Europe'}), x => x.name),
       [
+         {name: 'France'},
          {name: 'Poland'},
          {name: 'Ruthenia'},
-         {name: 'France'},
       ]
    ));
 
    $.removeFact(country, t_poland);
    $.check($.isLike(
-      $.query(country, {continent: 'Europe'}),
+      $.sortedArray($.query(country, {continent: 'Europe'}), x => x.name),
       [
-         {name: 'Ruthenia'},
          {name: 'France'},
+         {name: 'Ruthenia'},
       ]
    ));
 }
@@ -236,23 +228,21 @@ test_derived_partial_projection ::= function ({continent_city}) {
    ));
 }
 test_derived_full_projection_updates ::= function ({continent_city, continent, city}) {
-   return;
    let proj = $.projectionFor(continent_city, {});
 
-   $.check(proj.value.size === 21);
+   $.check(proj.records.size === 21);
 
    let f_europe = $.find(continent.records, rec => rec.name === 'Europe');
    $.removeFact(continent, f_europe);
    $.updateProjection(proj);
-   $.check(proj.value.size === 12);
+   $.check(proj.records.size === 12);
    
    $.addFact(city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
    $.addFact(continent, f_europe);
    $.updateProjection(proj);
-   $.check(proj.value.size === 22);
+   $.check(proj.records.size === 22);
 }
 test_derived_partial_projection_updates ::= function ({continent_city, city, country}) {
-   return;
    let proj = $.projectionFor(continent_city, {continent: 'America'});
    proj.refcount += 1;
 
@@ -261,7 +251,7 @@ test_derived_partial_projection_updates ::= function ({continent_city, city, cou
    $.updateProjection(proj);
    
    $.check($.isLike(
-      proj.value,
+      proj.records,
       [
          {city: 'Toronto'},
          {city: 'Montreal'},
@@ -275,7 +265,7 @@ test_derived_partial_projection_updates ::= function ({continent_city, city, cou
    $.updateProjection(proj);
 
    $.check($.isLike(
-      proj.value,
+      proj.records,
       [
          {city: 'New York'}
       ]
@@ -284,30 +274,28 @@ test_derived_partial_projection_updates ::= function ({continent_city, city, cou
    $.releaseProjection(proj);
 }
 test_derived_scalar_updates ::= function ({continent_city, city}) {
-   return;
    let proj = $.projectionFor(continent_city, {continent: 'America', city: 'Toronto'});
    proj.refcount += 1;
 
-   $.check(proj.value.size === 1);
+   $.check(proj.records.size === 1);
 
    let f_toronto = $.find(city.records, rec => rec.name === 'Toronto');
    $.removeFact(city, f_toronto);
    $.updateProjection(proj);
 
-   $.check(proj.value.size === 0);
+   $.check(proj.records.size === 0);
 
    $.addFact(city, f_toronto);
    $.updateProjection(proj);
 
-   $.check(proj.value.size === 1);
+   $.check(proj.records.size === 1);
 }
 test_derived_of_derived_updates ::= function ({continent_pop, city}) {
-   return;
    let proj = $.projectionFor(continent_pop, {continent: 'America'});
    proj.refcount += 1;
 
    $.check($.isLike(
-      proj.value,
+      proj.records,
       [
          {pop: 6.417},
          {pop: 4.247},
@@ -320,7 +308,7 @@ test_derived_of_derived_updates ::= function ({continent_pop, city}) {
    $.updateProjection(proj);
 
    $.check($.isLike(
-      proj.value,
+      proj.records,
       [
          {pop: 6.417},
          {pop: 4.247},
@@ -333,7 +321,7 @@ test_derived_of_derived_updates ::= function ({continent_pop, city}) {
    $.updateProjection(proj);
 
    $.check($.isLike(
-      proj.value,
+      proj.records,
       [
          {pop: 6.417},
          {pop: 4.247},

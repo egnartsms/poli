@@ -164,6 +164,17 @@ parameterize ::= function (tobind, callback) {
       }
    }
 }
+sortedArray ::= function (itbl, keyfn) {
+   let array = Array.from(itbl);
+
+   array.sort((a, b) => {
+      let ka = keyfn(a), kb = keyfn(b);
+
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+   });
+
+   return array;
+}
 setDefault ::= function (map, key, producer) {
    if (map.has(key)) {
       return map.get(key);
@@ -330,6 +341,15 @@ any ::= function (itbl, pred) {
    }
 
    return false;
+}
+notAny ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (pred(x)) {
+         return false;
+      }
+   }
+
+   return true;
 }
 all ::= function (itbl, pred) {
    for (let x of itbl) {

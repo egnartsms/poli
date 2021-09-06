@@ -12,6 +12,9 @@ common
    produceArray
    keyForValue
    zip
+prolog-shared
+   plainAttrs
+   recKey
 prolog-conjunct
    lvarsIn
    Shrunk
@@ -22,6 +25,7 @@ prolog-index
    copyIndex
    indexBindAttr
    isIndexCovered
+   indexOn
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
    function* gen(dconj, jpath) {
@@ -53,7 +57,7 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
 
    for (let jpath of jpaths) {
       for (let jplink of jpath) {
-         if (jplink.index === null) {
+         if (jplink.type !== $.JoinLinkType.indexed) {
             continue;
          }
 
@@ -65,40 +69,15 @@ computeIncrementalUpdateScheme ::= function (relname, conjs) {
 
    let appliedIndices = reg.flat();
 
-   $.replaceIndexWithNumInJoinPaths(jpaths, appliedIndices);
+   jpaths = $.joinPathsWithIndexNums(jpaths, appliedIndices);
 
    return {jpaths, appliedIndices};
 }
-makeIndexRegistryPerConj ::= function (numConjs) {
-   // Index registry per conj is: [[idx00, idx01, ...], [idx10, idx11, ...], ...]
-   // (list of indices per respective conjunct)
-   return $.produceArray(numConjs, () => []);
-}
-addToIndexRegistry ::= function (reg, numConj, index, ifmissing) {
-   let existing = $.find(reg[numConj], idx => $.arraysEqual(idx, index));
-
-   if (existing === undefined) {
-      existing = ifmissing();
-      reg[numConj].push(existing);
-   }
-
-   return existing;
-}
-replaceIndexWithNumInJoinPaths ::= function (jpaths, appliedIndices) {
-   for (let jpath of jpaths) {
-      for (let jplink of jpath) {
-         if (jplink.index === null) {
-            jplink.indexNum = null;
-         }
-         else {
-            jplink.indexNum = appliedIndices.indexOf(jplink.index);
-            $.assert(() => jplink.indexNum !== -1);
-         }
-         
-         delete jplink.index;
-      }
-   }
-}
+JoinLinkType ::= ({
+   all: 'all',
+   indexed: 'indexed',
+   pk: 'pk'
+})
 joinPathForDelta ::= function (relname, conjs, dconj) {
    let unjoined = new Set($.mapfilter(conjs, conj => {
       if (conj !== dconj) {
@@ -153,27 +132,56 @@ joinPathForDelta ::= function (relname, conjs, dconj) {
          }
       }
 
-      jpath.push({
-         conjNum: Xff.conj.num,
-         index: Xindex,  // will be replaced with 'indexNum'
-         indexLvars: Xindex === null ? null :
-            Array.from(Xindex, attr => Xff.conj.looseAttrs.get(attr)),
-         checkAttrs: $.cjffCheckAttrs(Xff, Xindex),
-         extractAttrs: $.cjffExtractAttrs(Xff)
-      });
-
+      jpath.push($.makeJplink(Xff, Xindex));
       unjoined.delete(Xff);
       bindLvars(Xff.freeLvars);
    }
 
    return jpath;
 }
+makeJplink ::= function (cjff, index) {
+   if (index === null) {
+      return {
+         type: $.JoinLinkType.all,
+         conjNum: cjff.conj.num,
+         checkAttrs: $.cjffCheckAttrs(cjff, null),
+         extractAttrs: $.cjffExtractAttrs(cjff),
+      }
+   }
+   else if ($.arraysEqual(index, [$.recKey])) {
+      return {
+         type: $.JoinLinkType.pk,
+         conjNum: cjff.conj.num,
+         pkLvar: cjff.conj.looseAttrs.get($.recKey),
+         checkAttrs: $.cjffCheckAttrs(cjff, index),
+         extractAttrs: $.cjffExtractAttrs(cjff)
+      }
+   }
+   else {
+      return {
+         type: $.JoinLinkType.indexed,
+         conjNum: cjff.conj.num,
+         index: index,  // will be replaced with 'indexNum' later
+         indexLvars: Array.from(index, attr => cjff.conj.looseAttrs.get(attr)),
+         checkAttrs: $.cjffCheckAttrs(cjff, index),
+         extractAttrs: $.cjffExtractAttrs(cjff)
+      }
+   }
+}
 makeConjunctFulfillment ::= function (conj) {
+   let idxffs = Array.from(conj.indices, $.makeIndexFulfillment);
+
+   if (conj.rel.keyed !== false) {
+      // This is implied/artificial unique index
+      let pk = $.indexOn([$.recKey], {isUnique: true});
+      idxffs.unshift($.makeIndexFulfillment(pk));
+   }
+
    return {
       conj: conj,
       freeLvars: new Set($.lvarsIn(conj)),
       boundLvars: new Set,
-      idxffs: Array.from(conj.indices, $.makeIndexFulfillment)
+      idxffs: idxffs
    }
 }
 makeIndexFulfillment ::= function (index) {
@@ -197,7 +205,7 @@ cjffBindLvars ::= function (cjff, lvars) {
       boundLvars.add(lvar);      
    }
 }
-cjffCheckAttrs ::= function ({conj, boundLvars}, index) {
+cjffCheckAttrs ::= function ({conj, boundLvars}, index=null) {
    return Array.from(
       $.mapfilter(boundLvars, lvar => {
          let attr = conj.looseAttrs.getKey(lvar);
@@ -211,52 +219,125 @@ cjffCheckAttrs ::= function ({conj, boundLvars}, index) {
 cjffExtractAttrs ::= function ({conj, freeLvars}) {
    return Array.from(freeLvars, lvar => [conj.looseAttrs.getKey(lvar), lvar]);
 }
-narrowConfig ::= function (config, boundAttrs) {
-   let n_conjs = Array.from(config.conjs, conj => $.reduceConj(conj, boundAttrs));
-   let n_jpaths = [];
-   let reg = $.makeIndexRegistryPerConj(config.conjs.length);
+makeIndexRegistryPerConj ::= function (numConjs) {
+   // Index registry per conj is: [[idx00, idx01, ...], [idx10, idx11, ...], ...]
+   // (list of indices per respective conjunct)
+   return $.produceArray(numConjs, () => []);
+}
+addToIndexRegistry ::= function (reg, numConj, index, ifmissing) {
+   let existing = $.find(reg[numConj], idx => $.arraysEqual(idx, index));
 
-   for (let jpath of config.jpaths) {
-      let n_jpath = [];
+   if (existing === undefined) {
+      existing = ifmissing();
+      reg[numConj].push(existing);
+   }
 
-      for (let {conjNum, indexNum, indexLvars, checkAttrs, extractAttrs} of jpath) {
-         let n_index = $.reduceConjIndex(
-            config.appliedIndices[indexNum], config.conjs[conjNum], boundAttrs
-         );
-
-         if ($.isIndexCovered(n_index)) {
-            n_index = null;
-         }
-         else {
-            n_index = $.addToIndexRegistry(reg, conjNum, n_index, () => {
-               n_index.forConjNum = conjNum;
-               return n_index;
-            });
-         }
-
-         n_jpath.push({
-            conjNum,
-            index: n_index,  // will be replaced with 'indexNum'
-            indexLvars: n_index === null ? null :
-               indexLvars.filter(lv => !$.hasOwnProperty(boundAttrs, lv)),
-            checkAttrs: $.narrowAttrList(checkAttrs, boundAttrs),
-            extractAttrs: $.narrowAttrList(extractAttrs, boundAttrs),
-         });
+   return existing;
+}
+joinPathsWithIndexNums ::= function (jpaths, appliedIndices) {
+   return jpaths.map(jpath => jpath.map(jplink => {
+      if (jplink.type !== $.JoinLinkType.indexed) {
+         return jplink;
       }
 
-      n_jpaths.push(n_jpath);
-   }
+      let {index, ...newLink} = jplink;
+      let indexNum = appliedIndices.indexOf(index);
+
+      $.assert(() => indexNum !== -1);
+
+      newLink.indexNum = indexNum;
+      return newLink;
+   }));
+}
+narrowConfig ::= function (config0, boundAttrs) {
+   let n_conjs = Array.from(config0.conjs, conj => $.reduceConj(conj, boundAttrs));
+   let reg = $.makeIndexRegistryPerConj(config0.conjs.length);
+   let n_jpaths = config0.jpaths.map(jpath => jpath.map(
+      jplink => $.narrowJplink(jplink, config0, boundAttrs, reg)
+   ));
 
    let appliedIndices = reg.flat();
 
-   $.replaceIndexWithNumInJoinPaths(n_jpaths, appliedIndices);
+   n_jpaths = $.joinPathsWithIndexNums(n_jpaths, appliedIndices);
 
-   return {
+   let n_config = {
       conjs: n_conjs,
-      attrs: config.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
-      lvars: config.lvars.filter(lvar => !$.hasOwnProperty(boundAttrs, lvar)),
+      attrs: config0.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
+      plainAttrs: null,
+      lvars: config0.lvars.filter(lvar => !$.hasOwnProperty(boundAttrs, lvar)),
       jpaths: n_jpaths,
-      appliedIndices
+      appliedIndices,
+   };
+
+   n_config.plainAttrs = $.plainAttrs(n_config.attrs);
+
+   return n_config;
+}
+narrowJplink ::= function (jplink, config0, boundAttrs, indexRegistry) {
+   let {type, conjNum, checkAttrs, extractAttrs} = jplink;
+
+   let n_checkAttrs = $.narrowAttrList(checkAttrs, boundAttrs);
+   let n_extractAttrs = $.narrowAttrList(extractAttrs, boundAttrs);
+
+   if (type === $.JoinLinkType.all) {
+      return {
+         type,
+         conjNum,
+         checkAttrs: n_checkAttrs,
+         extractAttrs: n_extractAttrs,
+      }
+   }
+   else if (type === $.JoinLinkType.pk) {
+      let {pkLvar} = jplink;
+
+      if ($.hasOwnProperty(boundAttrs, pkLvar)) {
+         return {
+            type: $.JoinLinkType.all,
+            conjNum,
+            checkAttrs: n_checkAttrs,
+            extractAttrs: n_extractAttrs,
+         }
+      }
+      else {
+         return {
+            type: $.JoinLinkType.pk,
+            conjNum,
+            pkLvar,
+            checkAttrs: n_checkAttrs,
+            extractAttrs: n_extractAttrs
+         }
+      }
+   }
+   else {
+      $.assert(() => type === $.JoinLinkType.indexed);
+
+      let {indexNum} = jplink;
+      let conj = config0.conjs[conjNum];
+      let n_index = $.reduceConjIndex(conj, config0.appliedIndices[indexNum], boundAttrs);
+
+      if ($.isIndexCovered(n_index)) {
+         return {
+            type: $.JoinLinkType.all,
+            conjNum,
+            checkAttrs: n_checkAttrs,
+            extractAttrs: n_extractAttrs,
+         }
+      }
+      else {
+         n_index = $.addToIndexRegistry(indexRegistry, conjNum, n_index, () => {
+            n_index.forConjNum = conjNum;
+            return n_index;
+         });
+
+         return {
+            type: $.JoinLinkType.indexed,
+            conjNum,
+            index: n_index,  // will be replaced with 'indexNum'
+            indexLvars: Array.from(n_index, attr => conj.looseAttrs.get(attr)),
+            checkAttrs: n_checkAttrs,
+            extractAttrs: n_extractAttrs,
+         }
+      }
    }
 }
 narrowAttrList ::= function (attrList, boundAttrs) {

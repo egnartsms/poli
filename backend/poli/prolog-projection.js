@@ -1,4 +1,5 @@
 common
+   assert
    check
    hasOwnProperty
    trackingFinal
@@ -9,9 +10,14 @@ prolog-base
    * as: base
 prolog-derived
    * as: derived
+prolog-shared
+   recVal
 -----
 isFullBaseProjection ::= function (proj) {
    return proj.rel.isBase && $.base.isFullProjection(proj);
+}
+isKeyedProjectionUnwrapped ::= function (proj) {
+   return (proj.rel.isBase ? proj.attrs : proj.config.attrs)[1] === $.recVal;
 }
 makeProjection ::= function (rel, boundAttrs) {
    return (rel.isBase ? $.base.makeProjection : $.derived.makeProjection)(rel, boundAttrs);
@@ -46,9 +52,9 @@ releaseProjection ::= function (proj) {
    if (proj.refcount === 0) {
       // By the time a projection's refcount drops to 0, nobody must be using it
       // (otherwise the refcount would not have dropped to 0).
-      $.check(proj.myVer === null);
+      $.assert(() => proj.myVer === null);
       // Index instances should've been released before the projection itself
-      $.check(proj.indexInstances.length === 0);
+      $.assert(() => proj.indexInstances.totalRefs === 0);
 
       let rel = proj.rel;
 
@@ -94,6 +100,6 @@ invalidateProjections ::= function (...rootProjs) {
 updateProjection ::= function (proj) {
    (proj.rel.isBase ? $.base.updateProjection : $.derived.updateProjection)(proj);
 }
-makeRecords ::= function (iterable, isKeyed) {
-   return new (isKeyed ? $.AugmentedMap : $.AugmentedSet)(iterable);
+makeRecords ::= function (iterable, keyed) {
+   return new (keyed ? $.AugmentedMap : $.AugmentedSet)(iterable);
 }

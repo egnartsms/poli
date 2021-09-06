@@ -105,7 +105,7 @@ varUsageSanity ::= function (lvars, attrs, conjs) {
 
    return {unmet, met};
 }
-reduceConjIndex ::= function (index, conj, boundAttrs) {
+reduceConjIndex ::= function (conj, index, boundAttrs) {
    return $.reduceIndex(
       index,
       $.mapfilter(conj.looseAttrs, ([attr, lvar]) => {
@@ -129,15 +129,20 @@ reduceConj ::= function (conj, boundAttrs) {
    let newShrunk = conj.shrunk;
 
    if (newShrunk < $.Shrunk.max) {
-      for (let index of conj.indices) {
-         let rshrunk = $.indexShrunk($.reduceConjIndex(index, conj, boundAttrs));
+      if (conj.rel.keyed !== false && $.hasOwnProperty(boundAttrs, $.recKey)) {
+         newShrunk = $.Shrunk.scalar;
+      }
+      else {
+         for (let index of conj.indices) {
+            let rshrunk = $.indexShrunk($.reduceConjIndex(conj, index, boundAttrs));
 
-         if (rshrunk > newShrunk) {
-            newShrunk = rshrunk;
-            if (newShrunk === $.Shrunk.max) {
-               break;
+            if (rshrunk > newShrunk) {
+               newShrunk = rshrunk;
+               if (newShrunk === $.Shrunk.max) {
+                  break;
+               }
             }
-         }
+         }   
       }
    }
    
@@ -145,6 +150,7 @@ reduceConj ::= function (conj, boundAttrs) {
       rel: conj.rel,
       firmAttrs: newFirms,
       looseAttrs: newLoose,
+      // for reduced conjuncts we don't keep 'indices' -- no need to
       shrunk: newShrunk,
       num: conj.num
    }

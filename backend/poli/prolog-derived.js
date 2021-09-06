@@ -1,5 +1,6 @@
 common
    arraysEqual
+   assert
    check
    hasOwnProperty
    commonArrayPrefixLength
@@ -16,6 +17,11 @@ prolog-shared
    recAttr
    recKey
    recVal
+   plainAttrs
+   normalizeAttrsForPk
+   recByKey
+   recKeyOf
+   Keyed
 prolog-projection
    projectionFor
    releaseProjection
@@ -28,6 +34,7 @@ prolog-version
    releaseVersion
    isVersionUpToDate
    unchainVersions
+   deltaAppend
 prolog-index
    copyIndex
    isIndexCovered
@@ -37,23 +44,26 @@ prolog-index
 prolog-index-instance
    refIndexInstance
    releaseIndexInstance
+   indexInstanceStorage
 prolog-update-scheme
    computeIncrementalUpdateScheme
    narrowConfig
+   JoinLinkType
 -----
 MAX_REL_ATTRS ::= 30
 derivedRelation ::= function ({
    name: relname,
-   hasNaturalIdentity=false,
-   attrs=[],
+   hasPrimaryKey=false,
+   attrs,
    indices=[],
    body: bodyCallback
 }) {
+   let keyed;
+
+   ({keyed, attrs} = $.normalizeAttrsForPk(attrs, hasPrimaryKey, relname));
+
    $.check(attrs.length <= $.MAX_REL_ATTRS,
       () => `Relation '${relname}': too many attributes`
-   );
-   $.check(attrs.length > 0 || hasNaturalIdentity,
-      `Attrs can only be omitted for relations with natural identity`
    );
 
    let lvname = Symbol('lvar');
@@ -69,20 +79,30 @@ derivedRelation ::= function ({
       return vpool.get(name);    
    }
 
-   let body = bodyCallback(
-      Object.assign(function (strings) {
-         if (strings.length !== 1) {
-            throw new Error(`Logical variable names don't support inline expressions`);
+   function vTagged(strings) {
+      if (strings.length !== 1) {
+         throw new Error(`Logical variable names don't support inline expressions`);
+      }
+
+      let [name] = strings;
+
+      return getvar(name);
+   }
+
+   Object.defineProperties(vTagged, {
+      recKey: {
+         get() {
+            return getvar($.recKey)
          }
+      },
+      recVal: {
+         get() {
+            return getvar($.recVal)
+         }
+      }
+   });
 
-         let [name] = strings;
-
-         return getvar(name);
-      }, {
-         key: $.recKey,
-         val: $.recVal
-      })
-   );
+   let body = bodyCallback(vTagged);
    
    // Ensure the implicit lvars that correspond to the attrs are in the pool. If they are
    // not by now, this is an error that will be detected later.
@@ -98,7 +118,7 @@ derivedRelation ::= function ({
          `${$.singleQuoteJoinComma(missingAttrs)}`
       );
 
-      if (rel.isKeyed) {
+      if (rel.keyed) {
          if ($.hasOwnProperty(cjAttrs, $.recVal)) {
             $.check($.hasNoEnumerableProps(cjAttrs), () =>
                `Relation '${relname}': both 'v.val' and ordinary attribute(s) were ` +
@@ -110,7 +130,7 @@ derivedRelation ::= function ({
          $.check(
             !$.hasOwnProperty(cjAttrs, $.recKey) && !$.hasOwnProperty(cjAttrs, $.recVal),
             () => `Relation '${relname}': v.key or v.val used in conjunct ` +
-            `'${rel.name}' which does not have natural identity`
+            `'${rel.name}' which does not have primary key`
          );
       }
    }
@@ -148,16 +168,17 @@ derivedRelation ::= function ({
    
    let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relname, conjs);
    let config0 = {
-      conjs: conjs,
-      attrs: attrs,
-      lvars: lvars,
-      jpaths: jpaths,
-      appliedIndices: appliedIndices,
+      conjs,
+      attrs,
+      plainAttrs: $.plainAttrs(attrs),
+      lvars,
+      jpaths,
+      appliedIndices
    };
 
    return {
       isBase: false,
-      isKeyed: hasNaturalIdentity,
+      keyed: hasPrimaryKey,
       name: relname,
       attrs: attrs,
       indices: indices,
@@ -189,7 +210,7 @@ makeProjection ::= function (rel, boundAttrs) {
       rel: rel,
       refcount: 0,
       isValid: false,
-      isKeyed: rel.isKeyed,
+      keyed: rel.keyed,
       boundAttrs: boundAttrs,
       config: config,
       subProjs: subProjs,
@@ -197,8 +218,11 @@ makeProjection ::= function (rel, boundAttrs) {
       subIndexInstances: subIndexInstances,
       myVer: null,
       records: null,  // lean in the beginning
+      // forward: rkey -> [subkey, subkey, ...]
       recDeps: new Map,
-      indexInstances: [],
+      // backward: subkey -> Set{rkey, rkey, ...}
+      subrecDeps: new Map,
+      indexInstances: $.indexInstanceStorage(),
       validRevDeps: new Set,
    };
 
@@ -231,7 +255,7 @@ configFor ::= function (rel, boundAttrs) {
    let cfgkey = $.boundAttrs2ConfigKey(rel.attrs, boundAttrs);
 
    if (!$.hasOwnProperty(rel.configs, cfgkey)) {
-      rel.configs[cfgkey] = $.narrowConfig(rel.configs[0], boundAttrs);
+      rel.configs[cfgkey] = $.narrowConfig(rel.config0, boundAttrs);
    }
    
    return rel.configs[cfgkey];
@@ -249,7 +273,6 @@ boundAttrs2ConfigKey ::= function (attrs, boundAttrs) {
 }
 rebuildProjection ::= function (proj) {
    $.check(proj.myVer === null, `Cannot rebuild projection which is referred to`);
-   $.check(!proj.isKeyed, `Not impl`);
 
    let {rel} = proj;
    let {conjs: [conj0], jpaths: [jpath0]} = proj.config;
@@ -271,67 +294,64 @@ rebuildProjection ::= function (proj) {
    }
 
    let ns = Object.fromEntries($.map(proj.config.lvars, lvar => [lvar, undefined]));
+   
+   // In case if proj is keyed, we need 'recKey' and probably 'recVal' anyways, even
+   // if any of them is bound. That's different form plain attributes that can safely
+   // be omitted from the record object if bound.
+   if (proj.keyed !== false) {
+      if ($.hasOwnProperty(proj.boundAttrs, $.recKey)) {
+         ns[$.recKey] = proj.boundAttrs[$.recKey];
+      }
+      
+      if (proj.keyed === $.Keyed.direct && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
+         ns[$.recVal] = proj.boundAttrs[$.recVal];
+      }
+   }
+
    let subKeys = [];
 
    function run(k) {
       if (k === jpath0.length) {
-         let rec = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
+         let [recKey, rec] = $.makeRecordFor(proj, ns);
 
-         // TODO: for now 'rec' is always the key (because 'proj' is non-keyed)
-         $.recDep(proj.recDeps, rec, subKeys);
+         $.recDep(proj, recKey, subKeys);
          proj.records.add(rec);
 
          return;
       }
 
-      let {conjNum, indexNum, indexLvars, checkAttrs, extractAttrs} = jpath0[k];
+      let jplink = jpath0[k];
+      let {conjNum, checkAttrs, extractAttrs} = jplink;
       let subProj = proj.subProjs[conjNum];
-      let records;
-
-      if (indexNum === null) {
-         records = subProj.records;
-      }
-      else {
-         let rkeys = $.indexAt(
-            proj.subIndexInstances[indexNum],
-            Array.from(indexLvars, lvar => ns[lvar])
-         );
-         
-         if (subProj.isKeyed) {
-            records = $.map(rkeys, rkey => subProj.records.getEntry(rkey));
-         }
-         else {
-            records = rkeys;
-         }
-      }
-      
+      let records = $.joinRecords(proj, jplink, ns);
+     
       outer:
-      for (let rec of records) {
+      for (let sub of records) {
          for (let [attr, lvar] of checkAttrs) {
-            if ($.recAttr(rec, attr, subProj.isKeyed) !== ns[lvar]) {
+            if ($.recAttr(sub, attr, subProj.keyed) !== ns[lvar]) {
                continue outer;
             }
          }
 
          for (let [attr, lvar] of extractAttrs) {
-            ns[lvar] = $.recAttr(rec, attr, subProj.isKeyed);
+            ns[lvar] = $.recAttr(sub, attr, subProj.keyed);
          }
 
-         subKeys.push(subProj.isKeyed ? rec[0] : rec);
+         subKeys.push($.recKeyOf(subProj, sub));
          run(k + 1);
          subKeys.pop();
       }
    }
 
-   proj.records = $.makeRecords([], proj.isKeyed);
+   proj.records = $.makeRecords([], proj.keyed);
    proj.records.owner = proj;
 
    for (let rec of subproj0.records) {
       for (let [attr, lvar] of conj0.looseAttrs) {
-         ns[lvar] = $.recAttr(rec, attr, subproj0.isKeyed);
+         ns[lvar] = $.recAttr(rec, attr, subproj0.keyed);
       }
 
-      subKeys.push(subproj0.isKeyed ? rec[0] : rec);
+      subKeys.push(subproj0.keyed ? rec[0] : rec);
       run(0);
       subKeys.pop();
    }
@@ -353,38 +373,37 @@ updateProjection ::= function (proj) {
       $.gUpdateProjection(subProj);
    }
 
-   // subDeltas: conj => delta
-   let subDeltas = new Map(
-      $.mapfilter(proj.config.conjs, conj => {
-         let subVer = proj.subVers[conj.num];
-         if (!$.isVersionUpToDate(subVer)) {
-            $.unchainVersions(subVer);
-            return [conj, subVer.delta];
-         }
-      })
-   );
+   // subDeltas: conjNum => delta
+   let subDeltas = new Map;
+
+   for (let i = 0; i < proj.config.conjs.length; i += 1) {
+      let subVer = proj.subVers[i];
+
+      if (!$.isVersionUpToDate(subVer)) {
+         $.unchainVersions(subVer);
+         subDeltas.set(i, subVer.delta);
+      }
+   }
 
    // Remove
    let delta = proj.myVer !== null ? proj.myVer.delta : null;
 
-   for (let [conj, subDelta] of subDeltas) {
-      for (let [subRec, action] of subDelta) {
-         if (action === 'remove') {
-            let tuples = $.undepSubtuple(proj.tupleDeps, subRec);
+   for (let [, subDelta] of subDeltas) {
+      for (let [subKey, action] of subDelta) {
+         if (action === 'remove' || action === 'change') {
+            let rkeys = $.subrecUndep(proj, subKey);
 
-            for (let tuple of tuples) {
-               proj.value.delete(tuple);
-            }
+            for (let rkey of rkeys) {
+               let rec = $.recByKey(proj, rkey);
 
-            if (delta !== null) {
-               for (let tuple of tuples) {
-                  $.deltaAdd(delta, tuple, 'remove');
+               proj.records.delete(rkey);
+
+               if (delta !== null) {
+                  $.deltaAppend(delta, proj.keyed, rkey, 'remove');
                }
-            }
 
-            for (let idxInst of proj.indexInstances) {
-               for (let tuple of tuples) {
-                  $.indexRemove(idxInst, tuple);
+               for (let idxInst of proj.indexInstances) {
+                  $.indexRemove(idxInst, rec);
                }
             }
          }
@@ -392,130 +411,192 @@ updateProjection ::= function (proj) {
    }
 
    // Add
-   for (let [dconj, subDelta] of subDeltas) {
-      let jpath = proj.config.jpaths[dconj.num];
+   let ns = Object.fromEntries($.map(proj.config.lvars, lvar => [lvar, undefined]));
 
-      let ns = Object.fromEntries(
-         $.map($.conjunct.lvarsIn(dconj), lvar => [lvar, undefined])
-      );
-      let subTuples = [];
+   // In case if proj is keyed, we need 'recKey' and probably 'recVal' anyways, even
+   // if any of them is bound. That's different from plain attributes that can safely
+   // be omitted from the record object if bound.
+   if (proj.keyed !== false) {
+      if ($.hasOwnProperty(proj.boundAttrs, $.recKey)) {
+         ns[$.recKey] = proj.boundAttrs[$.recKey];
+      }
+      
+      if (proj.keyed === $.Keyed.direct && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
+         ns[$.recVal] = proj.boundAttrs[$.recVal];
+      }
+   }
+
+   for (let [dconjNum, subDelta] of subDeltas) {
+      let dconj = proj.config.conjs[dconjNum];
+      let jpath = proj.config.jpaths[dconjNum];
+      let dsubProj = proj.subProjs[dconjNum];
+
+      let subKeys = [];
 
       function run(k) {
          if (k === jpath.length) {
-            let tuple = Object.fromEntries($.map(proj.config.attrs, a => [a, ns[a]]));
+            let [recKey, rec] = $.makeRecordFor(proj, ns);
 
-            $.depTuple(proj.tupleDeps, tuple, subTuples);
+            proj.records.add(rec);
 
-            proj.value.add(tuple);
+            $.recDep(proj, recKey, subKeys);
 
             if (delta !== null) {
-               $.deltaAdd(delta, tuple, 'add');
+               $.deltaAppend(delta, proj.keyed, recKey, 'add');
             }
 
             for (let idxInst of proj.indexInstances) {
-               $.indexAdd(idxInst, tuple);
+               $.indexAdd(idxInst, rec);
             }
 
             return;
          }
 
-         let {conj, index, checkAttrs, extractAttrs} = jpath[k];
-         let source;
-
-         if (index === null) {
-            source = proj.subProjs[conj.num].value;
-         }
-         else {
-            source = $.indexMultiAt(
-               proj.subIndexInstances[index.num], attr => ns[conj.looseAttrs[attr]]
-            );
-         }
-
-         // noDelta is used to exclude tuples that belong to deltas of already-processed
+         let jplink = jpath[k];
+         let {conjNum, checkAttrs, extractAttrs} = jplink;
+         let subProj = proj.subProjs[conjNum];
+         let records = $.joinRecords(proj, jplink, ns);
+         
+         // noDelta is used to exclude records that belong to deltas of already-processed
          // conjuncts (as we process in order, an already processed is the one with lesser
          // number)
-         let noDelta = conj.num < dconj.num ? subDeltas.get(conj) || null : null;
+         let noDelta = conjNum < dconjNum ? subDeltas.get(conjNum) || null : null;
          
          outer:
-         for (let tuple of source) {
-            if (noDelta !== null && noDelta.has(tuple)) {
+         for (let sub of records) {
+            let subKey = $.recKeyOf(subProj, sub);
+
+            if (noDelta !== null && noDelta.has(subKey)) {
                continue;
             }
 
-            for (let attr of checkAttrs) {
-               let lvar = conj.looseAttrs[attr];
-               if (tuple[attr] !== ns[lvar]) {
+            for (let [attr, lvar] of checkAttrs) {
+               if ($.recAttr(sub, attr, subProj.keyed) !== ns[lvar]) {
                   continue outer;
                }
             }
 
-            for (let attr of extractAttrs) {
-               let lvar = conj.looseAttrs[attr];
-               ns[lvar] = tuple[attr];
+            for (let [attr, lvar] of extractAttrs) {
+               ns[lvar] = $.recAttr(sub, attr, subProj.keyed);
             }
 
-            subTuples.push(tuple);
+            subKeys.push(subKey);
             run(k + 1);
-            subTuples.pop();
+            subKeys.pop();
          }
       }
 
-      for (let [subTuple, action] of subDelta) {
-         if (action === 'add') {
-            for (let [attr, lvar] of Object.entries(dconj.looseAttrs)) {
-               ns[lvar] = subTuple[attr];
+      for (let [subKey, action] of subDelta) {
+         if (action === 'add' || action === 'change') {
+            let sub = $.recByKey(dsubProj, subKey);
+
+            for (let [attr, lvar] of dconj.looseAttrs) {
+               ns[lvar] = $.recAttr(sub, attr, dsubProj.keyed);
             }
             
-            subTuples.push(subTuple);
+            subKeys.push(subKey);
             run(0);
-            subTuples.pop();
+            subKeys.pop();
          }
       }
    }
 
    // Finally ref new sub versions
-   for (let conj of subDeltas.keys()) {
-      let newVer = $.refCurrentState(proj.subProjs[conj.num]);
-      $.releaseVersion(proj.subVers[conj.num]);
-      proj.subVers[conj.num] = newVer;
+   for (let conjNum of subDeltas.keys()) {
+      let newVer = $.refCurrentState(proj.subProjs[conjNum]);
+      $.releaseVersion(proj.subVers[conjNum]);
+      proj.subVers[conjNum] = newVer;
    }
 
    $.markProjectionValid(proj);
 }
-recDep ::= function (deps, rec, subs) {
-   subs = Array.from(subs);
-   deps.set(rec, subs);
+joinRecords ::= function (proj, jplink, ns) {
+   let {type, conjNum} = jplink;
+   let subProj = proj.subProjs[conjNum];
 
-   for (let sub of subs) {
-      $.setDefault(deps, sub, () => new Set).add(rec);
+   if (type === $.JoinLinkType.all) {
+      return subProj.records;
+   }
+
+   if (type === $.JoinLinkType.pk) {
+      $.assert(() => subProj.keyed !== false);
+
+      let {pkLvar} = jplink;
+      return [subProj.records.getEntry(ns[pkLvar])];
+   }
+   
+   $.assert(() => type === $.JoinLinkType.indexed);
+
+   let {indexNum, indexLvars} = jplink;
+
+   let rkeys = $.indexAt(
+      proj.subIndexInstances[indexNum], Array.from(indexLvars, lvar => ns[lvar])
+   );
+   
+   if (subProj.keyed !== false) {
+      return $.map(rkeys, rkey => subProj.records.getEntry(rkey));
+   }
+   else {
+      return rkeys;
    }
 }
-subRecUndep ::= function (deps, sub) {
-   // We need to make a copy because this set is going to be modified inside the loop
-   let recs = Array.from(deps.get(sub) || []);
+makeRecordFor ::= function (proj, ns) {
+   let recKey, rec;
 
-   if (recs.length === 0) {
+   if (proj.keyed !== false) {
+      recKey = ns[$.recKey];
+
+      if (proj.keyed === $.Keyed.wrapped) {
+         rec = [
+            recKey,
+            Object.fromEntries($.map(proj.config.plainAttrs, a => [a, ns[a]]))
+         ];
+      }
+      else {
+         rec = [recKey, ns[$.recVal]];
+      }
+   }
+   else {
+      rec = Object.fromEntries($.map(proj.config.plainAttrs, a => [a, ns[a]]));
+      recKey = rec;
+   }
+
+   return [recKey, rec];
+}
+recDep ::= function (proj, rkey, subs) {
+   subs = Array.from(subs);
+   proj.recDeps.set(rkey, subs);
+
+   for (let sub of subs) {
+      $.setDefault(proj.subrecDeps, sub, () => new Set).add(rkey);
+   }
+}
+subrecUndep ::= function (proj, sub) {
+   // We need to make a copy because this set is going to be modified inside the loop
+   let rkeys = Array.from(proj.subrecDeps.get(sub) || []);
+
+   if (rkeys.length === 0) {
       return [];
    }
 
-   for (let rec of recs) {
-      $.recUndep(deps, rec);
+   for (let rkey of rkeys) {
+      $.recUndep(proj, rkey);
    }
 
-   return recs;
+   return rkeys;
 }
-recUndep ::= function (deps, rec) {
-   let subs = deps.get(rec);
+recUndep ::= function (proj, rkey) {
+   let subs = proj.recDeps.get(rkey);
 
    for (let sub of subs) {
-      let tset = deps.get(sub);
+      let keySet = proj.subrecDeps.get(sub);
 
-      tset.delete(rec);
+      keySet.delete(rkey);
 
-      if (tset.size === 0) {
-         deps.delete(sub);
+      if (keySet.size === 0) {
+         proj.subrecDeps.delete(sub);
       }
    }
 
-   deps.delete(rec);
+   proj.recDeps.delete(rkey);
 }

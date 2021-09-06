@@ -68,25 +68,25 @@ unchainVersions ::= function (ver) {
       // The 'next' version is only referenced by 'ver' which means that after
       // this reduction operation it will be thrown away, which means we can reuse
       // its 'delta' map if it's bigger than 'ver.delta'.
-      $.mergeIntoNext(ver.delta, next.delta, ver.owner.isKeyed);
+      $.mergeIntoNext(ver.delta, next.delta, ver.owner.keyed);
       ver.delta = next.delta;
    }
    else {
-      $.mergeIntoPrev(ver.delta, next.delta, ver.owner.isKeyed);
+      $.mergeIntoPrev(ver.delta, next.delta, ver.owner.keyed);
    }
 
    ver.next = null;
    $.releaseVersion(next);
 }
-mergeIntoPrev ::= function (prev, next, isKeyed) {
-   let fn = isKeyed ? $.kDeltaAppend : $.nkDeltaAccum;
+mergeIntoPrev ::= function (prev, next, keyed) {
+   let fn = keyed ? $.kDeltaAppend : $.nkDeltaAccum;
 
    for (let [recKey, action] of next) {
       fn(prev, recKey, action);
    }
 }
-mergeIntoNext ::= function (prev, next, isKeyed) {
-   let fn = isKeyed ? $.kDeltaPrepend : $.nkDeltaAccum;
+mergeIntoNext ::= function (prev, next, keyed) {
+   let fn = keyed ? $.kDeltaPrepend : $.nkDeltaAccum;
 
    for (let [recKey, action] of prev) {
       fn(next, recKey, action);
@@ -113,8 +113,8 @@ kDeltaAppend ::= function (delta, recKey, action) {
 kDeltaPrepend ::= function (delta, recKey, action) {
    $.doAction(delta, recKey, $.composedAction(action, delta.get(recKey)));
 }
-deltaAppend ::= function (delta, isKeyed, recKey, action) {
-   (isKeyed ? $.kDeltaAppend : $.nkDeltaAccum)(delta, recKey, action);
+deltaAppend ::= function (delta, keyed, recKey, action) {
+   (keyed !== false ? $.kDeltaAppend : $.nkDeltaAccum)(delta, recKey, action);
 }
 composedAction ::= function (oldAction, newAction) {
    let composedAction =

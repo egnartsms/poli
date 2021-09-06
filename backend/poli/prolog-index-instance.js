@@ -9,6 +9,7 @@ refIndexInstance ::= function (proj, soughtIndex) {
    for (let index of proj.indexInstances) {
       if ($.arraysEqual(index, soughtIndex)) {
          index.refcount += 1;
+         proj.indexInstances.totalRefs += 1;
          return index;
       }
    }
@@ -19,6 +20,7 @@ refIndexInstance ::= function (proj, soughtIndex) {
    idxInst.owner = proj;
 
    proj.indexInstances.push(idxInst);
+   proj.indexInstances.totalRefs += 1;
 
    // For lean projections, we cannot build index right away. Will do that when the
    // projection fills up.
@@ -29,13 +31,27 @@ refIndexInstance ::= function (proj, soughtIndex) {
    return idxInst;
 }
 releaseIndexInstance ::= function (idxInst) {
+   let instances = idxInst.owner.indexInstances;
+
    $.assert(() => idxInst.refcount > 0);
+   $.assert(() => instances.totalRefs > 0);
 
    idxInst.refcount -= 1;
+   instances.totalRefs -= 1;
 
    if (idxInst.refcount === 0) {
-      let i = idxInst.owner.indexInstances.indexOf(idxInst);
+      let i = instances.indexOf(idxInst);
       $.assert(() => i !== -1);
-      idxInst.owner.indexInstances.splice(i, 1);
+      instances.splice(i, 1);
    }
+}
+indexInstanceStorage ::= function () {
+   let array = [];
+
+   // Total reference count for all indices in the array. That doesn't include relation
+   // references for unique indices that are maintained on relation level.
+   // This number is used for sanity checks.
+   array.totalRefs = 0;
+
+   return array;
 }
