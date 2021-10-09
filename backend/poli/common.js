@@ -40,6 +40,12 @@ patchNullableObj ::= function (obj1, obj2) {
    
    return {...obj1, ...obj2};
 }
+arrayify ::= function (X) {
+   return X instanceof Array ? X : Array.from(X);
+}
+settify ::= function (X) {
+   return X instanceof Set ? X : new Set(X);
+}
 compare ::= function (x1, x2) {
    return x1 < x2 ? -1 : x1 > x2 ? 1 : 0;
 }
@@ -109,10 +115,6 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
-isSeqNonEmpty ::= function (seq) {
-   let {done} = seq[Symbol.iterator]().next();
-   return !done;
-}
 extendArray ::= function (A, X) {
    let i = A.length;
    let j = 0;
@@ -125,6 +127,85 @@ extendArray ::= function (A, X) {
       i += 1;
       j += 1;
    }
+}
+isSubset ::= function (X, Y) {
+   Y = $.settify(Y);
+
+   for (let x of X) {
+      if (!Y.has(x)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+setInter ::= function (X, Y) {
+   X = $.settify(X);
+
+   let res = new Set();
+
+   for (let y of Y) {
+      if (X.has(y)) {
+         res.add(y);
+      }
+   }
+
+   return res;
+}
+setDiff ::= function (X, Y) {
+   let R = new Set(X);
+
+   for (let y of Y) {
+      R.delete(y);
+   }
+
+   return R;
+}
+setsIntersect ::= function (s1, s2) {
+   if (s1.size > s2.size) {
+      [s1, s2] = [s2, s1];
+   }
+
+   for (let x of s1) {
+      if (s2.has(x)) {
+         return true;
+      }
+   }
+
+   return false;
+}
+setDeleteAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.delete(x);
+   }
+}
+setWeedOut ::= function (set, pred) {
+   let weed = new Set;
+
+   for (let x of set) {
+      if (!pred(x)) {
+         set.delete(x);
+         weed.add(x);
+      }
+   }
+
+   return weed;
+}
+arrayChain ::= function arrayChain(array, startFrom=0) {
+   if (startFrom >= array.length) {
+      return null;
+   }
+   else {
+      return {
+         item: array[startFrom],
+         next() {
+            return arrayChain(array, startFrom + 1);
+         }
+      }
+   }
+}
+isChainEmpty ::= function (chain) {
+   return chain === null;
 }
 yreExec ::= function (re, offset, str) {
    $.check(re.sticky);
@@ -194,6 +275,17 @@ objLessThan ::= function (objA, objB) {
 equal ::= function equal(a, b) {
    return a === b;
 }
+firstDuplicate ::= function (itbl) {
+   let set = new Set;
+
+   for (let x of itbl) {
+      if (set.has(x)) {
+         return x;
+      }
+
+      set.add(x);
+   }
+}
 itorFinal ::= function (itor) {
    let finalItem = undefined;
 
@@ -249,6 +341,68 @@ arraysEqual ::= function (A, B, itemsEqual=$.equal) {
       }
    }
    return true;
+}
+setsEqual ::= function (A, B) {
+   if (A.size !== B.size) {
+      return false;
+   }
+
+   for (let a of A) {
+      if (!B.has(a)) {
+         return false;
+      }
+   }
+
+   for (let b of B) {
+      if (!A.has(b)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+iteratorFrom ::= function* (Xs) {
+   let I = Xs[Symbol.iterator]();
+
+   if (typeof I.return === 'function') {
+      try {
+         yield I;
+      }
+      finally {
+         I.return();
+      }
+   }
+   else {
+      yield I;
+   }
+}
+allEqual ::= function (Xs, pred) {
+   for (let I of $.iteratorFrom(Xs)) {
+      let prev, done;
+
+      ({done, value: prev} = I.next());
+      
+      if (done) {
+         return true;
+      }
+
+      for (;;) {
+         let item;
+         ({done, value: item} = I.next());
+
+         if (done) {
+            break;
+         }
+
+         if (!pred(prev, item)) {
+            return false;
+         }
+
+         prev = item;
+      }
+
+      return true;      
+   }
 }
 isLike ::= function isLike(A, B) {
    if (A === B) {
@@ -319,18 +473,19 @@ enumerate ::= function* (itbl) {
    }
 }
 zip ::= function* (itbl1, itbl2) {
-   let it1 = itbl1[Symbol.iterator]();
-   let it2 = itbl2[Symbol.iterator]();
+   for (let it1 of $.iteratorFrom(itbl1)) {
+      for (let it2 of $.iteratorFrom(itbl2)) {
+         for (;;) {
+            let {done: done1, value: v1} = it1.next();
+            let {done: done2, value: v2} = it2.next();
 
-   for (;;) {
-      let {done: done1, value: v1} = it1.next();
-      let {done: done2, value: v2} = it2.next();
+            if (done1 || done2) {
+               break;
+            }
 
-      if (done1 || done2) {
-         break;
+            yield [v1, v2];
+         }
       }
-
-      yield [v1, v2];
    }
 }
 any ::= function (itbl, pred) {
@@ -342,8 +497,8 @@ any ::= function (itbl, pred) {
 
    return false;
 }
-notAny ::= function (itbl, pred) {
-   for (let x of itbl) {
+notAny ::= function (X, pred) {
+   for (let x of X) {
       if (pred(x)) {
          return false;
       }
@@ -380,35 +535,55 @@ mapfilter ::= function* (itbl, fn) {
       }
    }
 }
-concat ::= function* (...itbls) {
-   for (let itbl of itbls) {
-      yield* itbl;
+concat ::= function* (Xs) {
+   for (let X of Xs) {
+      yield* X;
    }
 }
-trackingFinal ::= function* (itbl) {
-   let itor = itbl[Symbol.iterator]();
-   let {value, done} = itor.next();
+reduce ::= function (xs, rfn) {
+   let accum = undefined;
 
-   while (!done) {
-      let nextValue;
-
-      ({value: nextValue, done} = itor.next());
-      
-      yield [value, done];
-      value = nextValue;     
+   for (let x of xs) {
+      if (accum === undefined) {
+         accum = x;
+      }
+      else {
+         accum = rfn(accum, x);
+      }
    }
 
-   return value;
+   return accum;
+}
+trackingFinal ::= function* (itbl) {
+   for (let itor of $.iteratorFrom(itbl)) {
+      let {value, done} = itor.next();
+
+      while (!done) {
+         let nextValue;
+
+         ({value: nextValue, done} = itor.next());
+         
+         yield [value, done];
+         value = nextValue;     
+      }
+
+      return value;
+   }
 }
 produceArray ::= function (N, producer) {
    let array = new Array(N);
+
    for (let i = 0; i < N; i += 1) {
       array[i] = producer(i);
    }
+
    return array;
 }
 indexRange ::= function* (array) {
-   for (let i = 0; i < array.length; i += 1) {
+   yield* $.range(array.length);
+}
+range ::= function* (to) {
+   for (let i = 0; i < to; i += 1) {
       yield i;
    }
 }
@@ -429,6 +604,11 @@ hasNoEnumerableProps ::= function (obj) {
 
    return Object.getOwnPropertySymbols(obj).length === 0;
 }
+ownEntries ::= function* (obj) {
+   for (let key of Reflect.ownKeys(obj)) {
+      yield [key, obj[key]];
+   }
+}
 commonArrayPrefixLength ::= function (A1, A2) {
    let i = 0;
    while (i < A1.length && i < A2.length && A1[i] === A2[i]) {
@@ -439,4 +619,97 @@ commonArrayPrefixLength ::= function (A1, A2) {
 }
 singleQuoteJoinComma ::= function (strs) {
    return Array.from(strs, s => `'${s}'`).join(', ');
+}
+multimap ::= function () {
+   return new Map;
+}
+mmapAdd ::= function (mmap, key, val) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      bag = new Set();
+      mmap.set(key, bag);
+   }
+
+   bag.add(val);
+}
+mmapDelete ::= function (mmap, key, val) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      return false;
+   }
+
+   let didDelete = bag.delete(val);
+
+   if (bag.size === 0) {
+      mmap.delete(key);
+   }
+
+   return didDelete;
+}
+mmapAddAll ::= function (mmap, key, vals) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      bag = new Set(vals);
+      mmap.set(key, bag);
+   }
+   else {
+      for (let val of vals) {
+         bag.add(val);
+      }
+   }
+}
+mmapDeleteAll ::= function (mmap, key) {
+   return mmap.delete(key);
+}
+one2many ::= function (syn_one, syn_many) {
+   let o2m = {
+      one: $.multimap(),
+      many: new Map
+   };
+
+   if (syn_one !== undefined) {
+      $.assert(() => syn_one !== 'one' && syn_one !== 'many');
+      o2m[syn_one] = o2m.one;
+   }
+   if (syn_many !== undefined) {
+      $.assert(() => syn_many !== 'one' && syn_many !== 'many');
+      o2m[syn_many] = o2m.many;
+   }
+
+   return o2m;
+}
+o2mAdd ::= function (o2m, x1, xM) {
+   if (o2m.many.has(xM)) {
+      throw new Error(`One-to-many violation`);
+   }
+
+   $.mmapAdd(o2m.one, x1, xM);
+   o2m.many.set(xM, x1);
+}
+m2mCompanion ::= Symbol.for('poli.m2m.companion')
+many2many ::= function () {
+   let l2r = $.multimap();
+   let r2l = $.multimap();
+
+   l2r[$.m2mCompanion] = r2l;
+   r2l[$.m2mCompanion] = l2r;
+
+   return [l2r, r2l];
+}
+m2mHas ::= function (mm, a, b) {
+   return mm.has(a) && mm.get(a).has(b);
+}
+m2mAdd ::= function (mm, a, b) {
+   $.mmapAdd(mm, a, b);
+   $.mmapAdd(mm[$.m2mCompanion], b, a);
+}
+m2mAddAll ::= function (mm, a, bs) {
+   $.mmapAddAll(mm, a, bs);
+
+   for (let b of bs) {
+      $.mmapAdd(mm[$.m2mCompanion], b, a);
+   }
 }

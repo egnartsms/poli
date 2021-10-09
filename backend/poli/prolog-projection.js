@@ -10,7 +10,7 @@ prolog-base
    * as: base
 prolog-derived
    * as: derived
-prolog-shared
+prolog-rec-key
    recVal
 -----
 isFullBaseProjection ::= function (proj) {
@@ -101,5 +101,5 @@ updateProjection ::= function (proj) {
    (proj.rel.isBase ? $.base.updateProjection : $.derived.updateProjection)(proj);
 }
 makeRecords ::= function (iterable, keyed) {
-   return new (keyed ? $.AugmentedMap : $.AugmentedSet)(iterable);
+   return new (keyed !== false ? $.AugmentedMap : $.AugmentedSet)(iterable);
 }

@@ -11,7 +11,7 @@ common
    map
    selectProps
    trackingFinal
-prolog-shared
+prolog-rec-key
    recKey
    recVal
    recAttr
@@ -35,21 +35,20 @@ prolog-index-instance
 prolog-projection
    invalidateProjections
    makeRecords
-prolog-shared
+prolog-rec-key
    Keyed
+prolog-goal
+   relGoal
 -----
 baseRelation ::= function ({
    name,
    attrs,
-   hasPrimaryKey=false,
    indices,
    records=[]
 }) {
-   let keyed;
+   let {keyed} = $.normalizeAttrsForPk(attrs);
 
-   ({keyed, attrs} = $.normalizeAttrsForPk(attrs, hasPrimaryKey, name));
-
-   records = $.makeRecords(records, hasPrimaryKey);
+   records = $.makeRecords(records, keyed);
 
    let indexInstances = $.indexInstanceStorage();
    let availableIndices = [];
@@ -80,6 +79,10 @@ baseRelation ::= function ({
       records: records,
       indexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
+
+      at: function (attrs) {
+         return $.relGoal(this, attrs);
+      }
    };
 
    records.owner = rel;

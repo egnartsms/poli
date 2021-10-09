@@ -29,37 +29,36 @@ Keyed ::= ({
    wrapped: 'wrapped',
    direct: 'direct'
 })
-normalizeAttrsForPk ::= function (attrs, hasPrimaryKey, relname) {
-   let keyed;
+normalizeAttrsForPk ::= function (attrs) {
+   let keyed, plainAttrs;
 
-   if (hasPrimaryKey) {
-      if (attrs === $.recVal) {
-         attrs = [$.recKey, $.recVal];
+   $.check(attrs.length > 0);
+
+   if (attrs[0] === $.recKey) {
+      $.check(attrs.length >= 2);
+
+      if (attrs.length === 2 && attrs[1] === $.recVal) {
          keyed = $.Keyed.direct;
+         plainAttrs = null;
       }
       else {
-         $.check(attrs.length > 0, () =>
-            `Relation '${relname}': empty array of attributes makes no sense`);
-         $.check(!attrs.includes($.recVal) && !attrs.includes($.recKey), () =>
-            `Relation '${relname}': recVal/recKey must not be included in the attrs array`
-         );
+         $.check(!attrs.includes($.recVal, 1), `recVal attribute misused`);
 
-         attrs.unshift($.recKey);
          keyed = $.Keyed.wrapped;
+         plainAttrs = attrs.slice(1);
       }
    }
    else {
-      $.check(Array.isArray(attrs) && attrs.length > 0, () =>
-         `Relation '${relname}': expected non-empty array as attrs`
-      );
-      $.check(!attrs.includes($.recVal) && !attrs.includes($.recKey), () =>
-         `Relation '${relname}': recVal/recKey must not be included in the attrs array`
+      $.check(
+         !attrs.includes($.recKey) && !attrs.includes($.recVal),
+         `recKey/recVal attribute misused`
       );
 
       keyed = false;
+      plainAttrs = attrs;
    }
 
-   return {attrs, keyed};
+   return {keyed, plainAttrs};
 }
 recByKey ::= function (parent, recKey) {
    return parent.keyed === false ? recKey : parent.records.getEntry(recKey);

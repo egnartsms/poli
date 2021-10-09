@@ -8,7 +8,7 @@ prolog-base
    removeFact
 prolog-derived
    derivedRelation
-prolog-update-scheme
+prolog-join-plan
    visualizeIncrementalUpdateScheme
 prolog-index
    indexOn

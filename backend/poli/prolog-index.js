@@ -25,21 +25,23 @@ copyIndex ::= function (index) {
    copy.isUnique = index.isUnique;
    return copy;
 }
-indexBindAttr ::= function (index, attr) {
-   let i = index.indexOf(attr);
-   if (i !== -1) {
-      index.splice(i, 1);
-   }
-}
 reduceIndex ::= function (index, attrs) {
-   let reducedIndex = $.copyIndex(index);
+   let reduced = $.copyIndex(index);
+
    for (let attr of attrs) {
-      $.indexBindAttr(reducedIndex, attr);
+      let i = reduced.indexOf(attr);
+      if (i !== -1) {
+         reduced.splice(i, 1);
+      }
    }
-   return reducedIndex;
+
+   return reduced;
 }
 isIndexCovered ::= function (index) {
    return index.length === 0;
+}
+wouldIndexBeCoveredBy ::= function (index, attrs) {
+   return $.isIndexCovered($.reduceIndex(index, attrs));
 }
 rebuildIndex ::= function (inst, recs) {
    inst.records = new Map;

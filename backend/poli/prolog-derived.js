@@ -13,7 +13,7 @@ common
    mapfilter
    filter
    setDefault
-prolog-shared
+prolog-rec-key
    recAttr
    recKey
    recVal
@@ -27,8 +27,8 @@ prolog-projection
    releaseProjection
    updateProjection as: gUpdateProjection
    makeRecords
-prolog-conjunct
-   * as: conjunct
+prolog-goal
+   * as: goal
 prolog-version
    refCurrentState
    releaseVersion
@@ -45,34 +45,28 @@ prolog-index-instance
    refIndexInstance
    releaseIndexInstance
    indexInstanceStorage
-prolog-update-scheme
-   computeIncrementalUpdateScheme
+prolog-join-plan
+   computeIncrementalUpdatePlan
    narrowConfig
-   JoinLinkType
+   JoinType
 -----
 MAX_REL_ATTRS ::= 30
 derivedRelation ::= function ({
    name: relname,
-   hasPrimaryKey=false,
    attrs,
    indices=[],
    body: bodyCallback
 }) {
-   let keyed;
+   let {keyed, plainAttrs} = $.normalizeAttrsForPk(attrs);
 
-   ({keyed, attrs} = $.normalizeAttrsForPk(attrs, hasPrimaryKey, relname));
+   $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
-   $.check(attrs.length <= $.MAX_REL_ATTRS,
-      () => `Relation '${relname}': too many attributes`
-   );
-
-   let lvname = Symbol('lvar');
    let vpool = new Map;
 
    function getvar(name) {
       if (!vpool.has(name)) {
          vpool.set(name, {
-            [lvname]: name,
+            [$.goal.lvarSym]: name,
          });
       }
 
@@ -102,89 +96,45 @@ derivedRelation ::= function ({
       }
    });
 
-   let body = bodyCallback(vTagged);
-   
-   // Ensure the implicit lvars that correspond to the attrs are in the pool. If they are
-   // not by now, this is an error that will be detected later.
-   for (let attr of attrs) {
-      getvar(attr);
-   }
+   let rootGoal = bodyCallback(vTagged);
 
-   for (let {rel, attrs: cjAttrs} of body) {
-      let missingAttrs = Object.keys(cjAttrs).filter(a => !rel.attrs.includes(a));
-
-      $.check(missingAttrs.length === 0, () =>
-         `Relation '${relname}': missing attrs in conjunct '${rel.name}': ` +
-         `${$.singleQuoteJoinComma(missingAttrs)}`
-      );
-
-      if (rel.keyed) {
-         if ($.hasOwnProperty(cjAttrs, $.recVal)) {
-            $.check($.hasNoEnumerableProps(cjAttrs), () =>
-               `Relation '${relname}': both 'v.val' and ordinary attribute(s) were ` +
-               `used in the conjunct '${rel.name}'`
-            )
-         }
-      }
-      else {
-         $.check(
-            !$.hasOwnProperty(cjAttrs, $.recKey) && !$.hasOwnProperty(cjAttrs, $.recVal),
-            () => `Relation '${relname}': v.key or v.val used in conjunct ` +
-            `'${rel.name}' which does not have primary key`
-         );
-      }
-   }
-
-   let conjs = Array.from(body, spec => $.conjunct.fromSpec(spec, lvname));
-
-   // Give all the conjuncts numbers from 0 to N-1
-   for (let i = 0; i < conjs.length; i += 1) {
-      conjs[i].num = i;
-   }
-
-   for (let conj of conjs) {
-      let dupVar = $.conjunct.duplicateVarIn(conj);
-
-      $.check(dupVar === null, () =>
-         `Relation '${relname}': duplicate var '${dupVar}' in conjunct ` +
-         `'${conj.rel.name}'`
-      );
-   }
-
-   let lvars = Array.from(vpool.keys());
-
-   {
-      let {met, unmet} = $.conjunct.varUsageSanity(lvars, attrs, conjs);
-
-      $.check(unmet.size === 0, () =>
-         `Relation '${relname}': lvars not used anywhere: ${$.singleQuoteJoinComma(unmet)}`
-      );
-
-      $.check(met.size === 0, () =>
-         `Relation '${relname}': lvars mentioned once but otherwise not used: ` +
-         `${$.singleQuoteJoinComma(met)}`
-      );
+   if (rootGoal instanceof Array) {
+      rootGoal = $.goal.and(...rootGoal);
    }
    
-   let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relname, conjs);
-   let config0 = {
-      conjs,
-      attrs,
-      plainAttrs: $.plainAttrs(attrs),
-      lvars,
-      jpaths,
-      appliedIndices
-   };
+   let lvars = $.goal.checkVarUsage(rootGoal, attrs);
+   let relGoals = Array.from($.goal.walkRelGoals(rootGoal));
+
+   for (let i = 0; i < relGoals.length; i += 1) {
+      relGoals[i].num = i;
+   }
+
+   let {indexRegistry, joinTrees} = $.computeIncrementalUpdatePlan(rootGoal, relGoals);
+   console.log(indexRegistry);
+   console.log(joinTrees);
+   // let {jpaths, appliedIndices} = $.computeIncrementalUpdateScheme(relname, conjs);
+   // let config0 = {
+   //    conjs,
+   //    attrs,
+   //    plainAttrs,
+   //    lvars,
+   //    jpaths,
+   //    appliedIndices
+   // };
 
    return {
       isBase: false,
-      keyed: hasPrimaryKey,
+      keyed: keyed,
       name: relname,
       attrs: attrs,
       indices: indices,
-      config0: config0,
-      configs: {0: config0},
+      // config0: config0,
+      // configs: {0: config0},
       projmap: new Map,
+
+      at: function (attrs) {
+         return $.goal.relGoal(this, attrs);
+      }
    };
 }
 makeProjection ::= function (rel, boundAttrs) {

@@ -19,7 +19,7 @@ prolog-derived
    derivedRelation
 prolog-index
    indexOn
-prolog-shared
+prolog-rec-key
    recKey
    recVal
 -----
