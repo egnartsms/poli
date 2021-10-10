@@ -114,7 +114,7 @@ relGoal ::= function (rel, attrs) {
          }
       })
    );
-   let looseAttrs = new $.BidiMap(
+   let looseAttrs = new Map(
       $.mapfilter($.ownEntries(attrs), ([a, lvar]) => {
          if ($.isLvar(lvar)) {
             return [a, lvar[$.lvarSym]];
@@ -219,11 +219,9 @@ walkRelGoals ::= function* walk(goal) {
 numberRelGoals ::= function (rootGoal) {
    let num = 0;
 
-   for (let goal of $.walkGoalTree(rootGoal)) {
-      if (goal.type === $.GoalType.rel) {
-         goal.num = num;
-         num += 1;
-      }
+   for (let goal of $.walkRelGoals(rootGoal)) {
+      goal.num = num;
+      num += 1;
    }
 }
 Shrunk ::= ({

@@ -3,6 +3,38 @@ common
 -----
 recKey ::= Symbol.for('poli.recKey')
 recVal ::= Symbol.for('poli.recVal')
+makeRecAttrAccessor ::= function (keyed) {
+   if (keyed === false) {
+      return Reflect.get;
+   }
+   else if (keyed === $.Keyed.wrapped) {
+      return function ([key, val], attr) {
+         return attr === $.recKey ? key : val[attr];
+      }
+   }
+   else if (keyed === $.Keyed.direct) {
+      return function ([key, val], attr) {
+         if (attr === $.recKey) {
+            return key;
+         }
+         else if (attr === $.recVal) {
+            return val;
+         }
+         else {
+            throw new Error(
+               `Access of attribute other than recKey or recVal on a Direct keyed ` +
+               `relation`
+            );
+         }
+      }
+   }
+   else {
+      throw new Error;
+   }
+}
+makeRecKeyAccessor ::= function (keyed) {
+   return keyed === false ? (rec => rec) : (([key, val]) => key);
+}
 recAttr ::= function (rec, attr, keyed) {
    return keyed !== false ?
          attr === $.recKey ? rec[0] :

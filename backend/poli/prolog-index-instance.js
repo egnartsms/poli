@@ -6,10 +6,10 @@ prolog-index
    rebuildIndex
 -----
 refIndexInstance ::= function (proj, soughtIndex) {
-   for (let index of proj.indexInstances) {
+   for (let index of proj.myIndexInstances) {
       if ($.arraysEqual(index, soughtIndex)) {
          index.refcount += 1;
-         proj.indexInstances.totalRefs += 1;
+         proj.myIndexInstances.totalRefs += 1;
          return index;
       }
    }
@@ -19,10 +19,10 @@ refIndexInstance ::= function (proj, soughtIndex) {
    idxInst.refcount = 1;
    idxInst.owner = proj;
 
-   proj.indexInstances.push(idxInst);
-   proj.indexInstances.totalRefs += 1;
+   proj.myIndexInstances.push(idxInst);
+   proj.myIndexInstances.totalRefs += 1;
 
-   // For lean projections, we cannot build index right away. Will do that when the
+   // For unfilled projections, we cannot build index right away. Will do that when the
    // projection fills up.
    if (proj.records !== null) {
       $.rebuildIndex(idxInst, proj.records);
@@ -31,7 +31,7 @@ refIndexInstance ::= function (proj, soughtIndex) {
    return idxInst;
 }
 releaseIndexInstance ::= function (idxInst) {
-   let instances = idxInst.owner.indexInstances;
+   let instances = idxInst.owner.myIndexInstances;
 
    $.assert(() => idxInst.refcount > 0);
    $.assert(() => instances.totalRefs > 0);

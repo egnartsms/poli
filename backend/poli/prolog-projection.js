@@ -54,7 +54,7 @@ releaseProjection ::= function (proj) {
       // (otherwise the refcount would not have dropped to 0).
       $.assert(() => proj.myVer === null);
       // Index instances should've been released before the projection itself
-      $.assert(() => proj.indexInstances.totalRefs === 0);
+      $.assert(() => proj.myIndexInstances.totalRefs === 0);
 
       let rel = proj.rel;
 
@@ -100,6 +100,8 @@ invalidateProjections ::= function (...rootProjs) {
 updateProjection ::= function (proj) {
    (proj.rel.isBase ? $.base.updateProjection : $.derived.updateProjection)(proj);
 }
-makeRecords ::= function (iterable, keyed) {
-   return new (keyed !== false ? $.AugmentedMap : $.AugmentedSet)(iterable);
+makeRecords ::= function (owner, iterable) {
+   let records = new (owner.keyed !== false ? $.AugmentedMap : $.AugmentedSet)(iterable);
+   records.owner = owner;
+   return records;
 }

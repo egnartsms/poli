@@ -4,8 +4,11 @@ prolog-base
    baseRelation
 prolog-derived
    derivedRelation
+   rebuildProjection
 prolog-index
    indexOn
+prolog-projection
+   projectionFor
 -----
 setup ::= function () {
    let country = $.baseRelation({
@@ -68,7 +71,10 @@ setup ::= function () {
          )
       ]
    });
-}
-test_basic ::= function () {
 
+   return {pop}
+}
+test_basic ::= function ({pop}) {
+   let proj = $.projectionFor(pop, {});
+   console.log(proj);
 }

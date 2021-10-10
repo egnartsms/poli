@@ -376,6 +376,30 @@ iteratorFrom ::= function* (Xs) {
       yield I;
    }
 }
+finishIterator ::= function (iter) {
+   if (typeof iter.return === 'function') {
+      iter.return();
+   }
+}
+withIterators ::= function* (iterables, generator) {
+   let iterators = [];
+
+   try {
+      for (let iterable of iterables) {
+         iterators.push(iterable[Symbol.iterator]());
+      }
+
+      return yield* generator(...iterators);
+   }
+   finally {
+      iterators.reverse();
+      for (let itor of iterators) {
+         if (typeof itor.return === 'function') {
+            itor.return();
+         }
+      }
+   }
+}
 allEqual ::= function (Xs, pred) {
    for (let I of $.iteratorFrom(Xs)) {
       let prev, done;
@@ -472,21 +496,19 @@ enumerate ::= function* (itbl) {
       i += 1;
    }
 }
-zip ::= function* (itbl1, itbl2) {
-   for (let it1 of $.iteratorFrom(itbl1)) {
-      for (let it2 of $.iteratorFrom(itbl2)) {
-         for (;;) {
-            let {done: done1, value: v1} = it1.next();
-            let {done: done2, value: v2} = it2.next();
+zip ::= function (xs, ys) {
+   return $.withIterators([xs, ys], function* (xi, yi) {
+      for (;;) {
+         let {done: done_x, value: x} = xi.next();
+         let {done: done_y, value: y} = yi.next();
 
-            if (done1 || done2) {
-               break;
-            }
-
-            yield [v1, v2];
+         if (done_x || done_y) {
+            break;
          }
+
+         yield [x, y];
       }
-   }
+   });
 }
 any ::= function (itbl, pred) {
    for (let x of itbl) {
@@ -554,20 +576,19 @@ reduce ::= function (xs, rfn) {
 
    return accum;
 }
-trackingFinal ::= function* (itbl) {
-   for (let itor of $.iteratorFrom(itbl)) {
-      let {value, done} = itor.next();
+omitted ::= new Object
+trackingFinal ::= function* (xs) {
+   let prev = $.omitted;
 
-      while (!done) {
-         let nextValue;
-
-         ({value: nextValue, done} = itor.next());
-         
-         yield [value, done];
-         value = nextValue;     
+   for (let x of xs) {
+      if (prev !== $.omitted) {
+         yield [prev, false];
       }
+      prev = x;
+   }
 
-      return value;
+   if (prev !== $.omitted) {
+      yield [prev, true];
    }
 }
 produceArray ::= function (N, producer) {

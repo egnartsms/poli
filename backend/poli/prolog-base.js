@@ -37,6 +37,8 @@ prolog-projection
    makeRecords
 prolog-rec-key
    Keyed
+   makeRecAttrAccessor
+   makeRecKeyAccessor
 prolog-goal
    relGoal
 -----
@@ -47,8 +49,6 @@ baseRelation ::= function ({
    records=[]
 }) {
    let {keyed} = $.normalizeAttrsForPk(attrs);
-
-   records = $.makeRecords(records, keyed);
 
    let indexInstances = $.indexInstanceStorage();
    let availableIndices = [];
@@ -76,8 +76,8 @@ baseRelation ::= function ({
       indices: availableIndices,
       projmap: new Map,
       myVer: null,
-      records: records,
-      indexInstances: indexInstances,  // shared with the full projection
+      records: null,  // intialized below
+      myIndexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
 
       at: function (attrs) {
@@ -85,7 +85,7 @@ baseRelation ::= function ({
       }
    };
 
-   records.owner = rel;
+   rel.records = $.makeRecords(rel, records);
 
    for (let idxInst of indexInstances) {
       idxInst.owner = rel;
@@ -109,7 +109,7 @@ makeProjection ::= function (rel, boundAttrs) {
          depVer: null,  // always null
          myVer: null,  // always null
          records: rel.records,  // shared
-         indexInstances: rel.indexInstances,  // shared
+         myIndexInstances: rel.myIndexInstances,  // shared
          validRevDeps: new Set,
       };
    }
@@ -122,17 +122,21 @@ makeProjection ::= function (rel, boundAttrs) {
          boundAttrs: boundAttrs,
          depVer: $.refCurrentState(rel),
          myVer: null,
-         records: null,
-         indexInstances: $.indexInstanceStorage(),
+         records: null,  // initialized below
+         myIndexInstances: $.indexInstanceStorage(),
          validRevDeps: new Set,
       };
 
       proj.records = $.makeRecords(
+         proj,
          $.filter(rel.records, rec => $.recSatisfies(proj, rec)),
-         rel.keyed
       );
-      proj.records.owner = proj;
    }
+
+   Object.assign(proj, {
+      recAttr: $.makeRecAttrAccessor(proj.keyed),
+      recKey: $.makeRecKeyAccessor(proj.keyed),
+   })
 
    $.markProjectionValid(proj);
 
@@ -211,7 +215,7 @@ addRec ::= function (parent, rec) {
       $.deltaAppend(parent.myVer.delta, parent.keyed, $.recKeyOf(parent, rec), 'add');
    }
 
-   for (let idxInst of parent.indexInstances) {
+   for (let idxInst of parent.myIndexInstances) {
       $.indexAdd(idxInst, rec);
    }
 }
@@ -228,7 +232,7 @@ deleteRecByKey ::= function (parent, recKey) {
       $.deltaAppend(parent.myVer.delta, parent.keyed, recKey, 'remove');
    }
 
-   for (let idxInst of parent.indexInstances) {
+   for (let idxInst of parent.myIndexInstances) {
       $.indexRemove(idxInst, rec);
    }
 

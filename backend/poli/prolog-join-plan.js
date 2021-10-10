@@ -37,6 +37,7 @@ prolog-goal
    reduceConjIndex
    reduceConj
    indexShrunk
+   walkRelGoals
 prolog-index
    superIndexOfAnother
    copyIndex
@@ -64,25 +65,28 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       console.log(Array.from(gen(dconj, jpath)).join(''));
    }
 }
-computeIncrementalUpdatePlan ::= function (rootGoal, relGoals) {
+computeIncrementalUpdatePlan ::= function (rootGoal) {
    let {goalPaths, pathGoals, numPaths} = $.computePaths(rootGoal);
    let {lvar2ff, ffs0} = $.computeFulfillments(rootGoal);
    let indexRegistry = $.makeIndexRegistry();
 
-   let joinTrees = $.produceArray(
-      relGoals.length, i => $.computeJoinTreeFrom(relGoals[i], {
-         indexRegistry,
-         pathGoals,
-         goalPaths,
-         numPaths,
-         lvar2ff,
-         ffs0
-      })
-   );
-
    return {
-      joinTrees,
-      indexRegistry
+      plan: Array.from($.walkRelGoals(rootGoal), relGoal => ({
+         // [[attr, lvar]] to start from
+         startAttrs: Array.from(relGoal.looseAttrs),
+         joinTree: $.computeJoinTreeFrom(relGoal, {
+            indexRegistry,
+            pathGoals,
+            goalPaths,
+            numPaths,
+            lvar2ff,
+            ffs0
+         }),
+         getFirmAttrs () {
+            return relGoal.firmAttrs
+         }
+      })),
+      appliedIndices: indexRegistry
    }
 }
 JoinType ::= ({
@@ -256,17 +260,6 @@ computeJoinTreeFrom ::= function (Dgoal, {
          return $.isSubset(paths, goalPaths.get(goal));
       }
 
-      function contractToPaths(newPaths) {
-         paths = newPaths;
-         goals = lyingOnPaths(goals, paths);
-         fulfillments = new Set($.filter(fulfillments, ff => goals.has(ff.goal)));
-      }
-
-      // First thing is to filter goals, paths, fulfillments based on goal0. We want only
-      // those paths that go through goal0. This has another important side effect:
-      // we copy 'goals' and 'fulfillments' which we'll be modifying in this func call.
-      contractToPaths($.setInter(paths, goalPaths.get(goal0)));
-
       joinGoal(goal0);
 
       let jnodeHead = null, jnodeTail = null;
@@ -313,12 +306,17 @@ computeJoinTreeFrom ::= function (Dgoal, {
       while (true) {
          let jgoal = branchFF.goal;
 
-         let node0 = makeJoinNode(branchFF);
+         let branchPaths = $.setInter(paths, goalPaths.get(jgoal));
+         let [branchGoals, branchFulfillments] = lyingOnPaths(
+            branchPaths, goals, fulfillments
+         );
 
-         node0.next = buildTree(paths, goals, fulfillments, jgoal);
+         let node0 = makeJoinNode(branchFF);
+         node0.next = buildTree(branchPaths, branchGoals, branchFulfillments, jgoal);
          eitherNode.branches.push(node0);
 
-         contractToPaths($.setDiff(paths, goalPaths.get(jgoal)));
+         paths = $.setDiff(paths, goalPaths.get(jgoal));
+         [goals, fulfillments] = lyingOnPaths(paths, goals, fulfillments);
 
          if (goals.size === 0) {
             break;
@@ -354,8 +352,13 @@ computeJoinTreeFrom ::= function (Dgoal, {
       };
    }
 
-   function lyingOnPaths(goals, paths) {
-      return $.setInter(goals, $.concat($.map(paths, path => pathGoals.get(path))));
+   function lyingOnPaths(paths1, goals, fulfillments) {
+      let goals1 = $.setInter(
+         goals, $.concat($.map(paths1, path => pathGoals.get(path)))
+      );
+      let fulfillments1 = new Set($.filter(fulfillments, ff => goals.has(ff.goal)))
+
+      return [goals1, fulfillments1];
    }
 
    function unbind1() {
@@ -378,7 +381,7 @@ computeJoinTreeFrom ::= function (Dgoal, {
       if (type === $.JoinType.all) {
          return {
             type: $.JoinType.all,
-            goal: goal,
+            projNum: goal.num,
             checkAttrs: collectCheckAttrs(goal),
             extractAttrs: collectExtractAttrs(goal),
             next: null
@@ -387,18 +390,18 @@ computeJoinTreeFrom ::= function (Dgoal, {
       else if (type === $.JoinType.index) {
          return {
             type: $.JoinType.index,
-            goal: goal,
+            projNum: goal.num,
             index: $.registerIndex(indexRegistry, goal, ff.index),
             indexLvars: Array.from(ff.index, attr => goal.looseAttrs.get(attr)),
             checkAttrs: collectCheckAttrs(goal, ff.index),
             extractAttrs: collectExtractAttrs(goal),
-            next: null,
+            next: null
          }
       }
       else if (type === $.JoinType.pk) {
          return {
             type: $.JoinType.pk,
-            goal: goal,
+            projNum: goal.num,
             pklvar: goal.looseAttrs.get($.recKey),
             checkAttrs: collectCheckAttrs(goal, [$.recKey]),
             extractAttrs: collectExtractAttrs(goal),
@@ -426,26 +429,23 @@ computeJoinTreeFrom ::= function (Dgoal, {
       }));
    }
 
-   return buildTree(
-      new Set(pathGoals.keys()),
-      new Set(goalPaths.keys()),
-      new Set(ffs0),
-      Dgoal
-   );
+   let paths0 = new Set(goalPaths.get(Dgoal));
+   let [goals0, fulfillments0] = lyingOnPaths(paths0, goalPaths.keys(), ffs0);
+   return buildTree(paths0, goals0, fulfillments0, Dgoal);
 }
 makeIndexRegistry ::= function () {
    return [];
 }
 registerIndex ::= function (registry, goal, index) {
-   let n = registry.findIndex(({goal: xgoal, index: xindex}) => {
-      return xgoal === goal && $.arraysEqual(xindex, index);
+   let n = registry.findIndex(({projNum, index: xindex}) => {
+      return projNum === goal.num && $.arraysEqual(xindex, index);
    });
 
    if (n !== -1) {
       return n;
    }
 
-   registry.push({goal, index});
+   registry.push({projNum: goal.num, index});
    return registry.length - 1;
 }
 narrowConfig ::= function (config0, boundAttrs) {
