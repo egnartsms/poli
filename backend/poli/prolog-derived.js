@@ -53,6 +53,7 @@ prolog-index-instance
    indexInstanceStorage
 prolog-join-plan
    computeIncrementalUpdatePlan
+   makeSubBoundAttrsProducer
    narrowConfig
    JoinType
 -----
@@ -69,7 +70,7 @@ derivedRelation ::= function ({
 
    function getvar(name) {
       return {
-         [$.goal.lvarSym]: name,
+         [$.goal.lvarSym]: name
       }
    }
 
@@ -122,6 +123,7 @@ derivedRelation ::= function ({
       attrs: attrs,
       indices: indices,
       subRels: Array.from($.goal.walkRelGoals(rootGoal), goal => goal.rel),
+      subBoundAttrsProducer: $.makeSubBoundAttrsProducer(rootGoal, attrs),
       config0: config0,
       configs: {0: config0},
       projmap: new Map,
@@ -132,16 +134,16 @@ derivedRelation ::= function ({
    };
 }
 makeProjection ::= function (rel, boundAttrs) {
-   $.assert(() => Reflect.ownKeys(boundAttrs).length === 0);
+   // $.assert(() => Reflect.ownKeys(boundAttrs).length === 0);
 
-   // let config = $.configFor(rel, boundAttrs);
-   let config = rel.config0;
+   let config = $.configFor(rel, boundAttrs);
 
    let subProjs = [];
    let subVers = [];
 
-   for (let [subRel, {getFirmAttrs}] of $.zip(rel.subRels, config.plan)) {
-      let proj = $.projectionFor(subRel, getFirmAttrs());
+   for (let [subRel, subBoundAttrs] of
+         $.zip(rel.subRels, rel.subBoundAttrsProducer(boundAttrs))) {
+      let proj = $.projectionFor(subRel, subBoundAttrs);
 
       proj.refcount += 1;
       subProjs.push(proj);
@@ -202,17 +204,15 @@ markProjectionValid ::= function (proj) {
    proj.isValid = true;
 }
 configFor ::= function (rel, boundAttrs) {
-   throw new Error;
    let cfgkey = $.boundAttrs2ConfigKey(rel.attrs, boundAttrs);
 
    if (!$.hasOwnProperty(rel.configs, cfgkey)) {
-      rel.configs[cfgkey] = $.narrowConfig(rel.config0, boundAttrs);
+      rel.configs[cfgkey] = $.narrowConfig(rel.config0, Reflect.ownKeys(boundAttrs));
    }
    
    return rel.configs[cfgkey];
 }
 boundAttrs2ConfigKey ::= function (attrs, boundAttrs) {
-   throw new Error;
    let cfgkey = 0;
 
    for (let i = 0; i < attrs.length; i += 1) {
@@ -481,10 +481,10 @@ joinRecords ::= function (proj, jnode, ns) {
    }
 
    if (type === $.JoinType.index) {
-      let {index, indexLvars} = jnode;
+      let {indexNum, indexLvars} = jnode;
 
       let rkeys = $.indexAt(
-         proj.subIndexInstances[index], Array.from(indexLvars, lvar => ns[lvar])
+         proj.subIndexInstances[indexNum], Array.from(indexLvars, lvar => ns[lvar])
       );
       
       if (subProj.keyed !== false) {

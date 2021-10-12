@@ -9,12 +9,12 @@ common
    hasOwnProperty
    concat
    map
+   ownEntries
    selectProps
    trackingFinal
 prolog-rec-key
    recKey
    recVal
-   recAttr
    normalizeAttrsForPk
    recKeyOf
 prolog-version
@@ -111,6 +111,9 @@ makeProjection ::= function (rel, boundAttrs) {
          records: rel.records,  // shared
          myIndexInstances: rel.myIndexInstances,  // shared
          validRevDeps: new Set,
+
+         recAttr: $.makeRecAttrAccessor(rel.keyed),
+         recKey: $.makeRecKeyAccessor(rel.keyed),
       };
    }
    else {
@@ -125,6 +128,9 @@ makeProjection ::= function (rel, boundAttrs) {
          records: null,  // initialized below
          myIndexInstances: $.indexInstanceStorage(),
          validRevDeps: new Set,
+
+         recAttr: $.makeRecAttrAccessor(rel.keyed),
+         recKey: $.makeRecKeyAccessor(rel.keyed),
       };
 
       proj.records = $.makeRecords(
@@ -132,11 +138,6 @@ makeProjection ::= function (rel, boundAttrs) {
          $.filter(rel.records, rec => $.recSatisfies(proj, rec)),
       );
    }
-
-   Object.assign(proj, {
-      recAttr: $.makeRecAttrAccessor(proj.keyed),
-      recKey: $.makeRecKeyAccessor(proj.keyed),
-   })
 
    $.markProjectionValid(proj);
 
@@ -157,8 +158,8 @@ markProjectionValid ::= function (proj) {
    proj.rel.validRevDeps.add(proj);
 }
 recSatisfies ::= function (proj, rec) {
-   return $.all(Reflect.ownKeys(proj.boundAttrs), attr => {
-      return $.recAttr(rec, attr, proj.keyed) === proj.boundAttrs[attr];
+   return $.all($.ownEntries(proj.boundAttrs), ([attr, val]) => {
+      return proj.recAttr(rec, attr) === val;
    });
 }
 updateProjection ::= function (proj) {

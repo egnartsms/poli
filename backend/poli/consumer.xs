@@ -10,6 +10,12 @@ edit-entry ::=
 
       = (@ module.delta name) new-val
 
+      let
+         :
+            : x 20
+            : y (+ x 30)
+         * x y
+
       if
             and
                !== imports ximports

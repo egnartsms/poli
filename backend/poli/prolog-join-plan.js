@@ -13,6 +13,7 @@ common
    hasOwnProperty
    map
    mapfilter
+   ownEntries
    produceArray
    keyForValue
    zip
@@ -66,27 +67,55 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
    }
 }
 computeIncrementalUpdatePlan ::= function (rootGoal) {
-   let {goalPaths, pathGoals, numPaths} = $.computePaths(rootGoal);
+   let {goalPaths, pathGoals} = $.computePaths(rootGoal);
    let {lvar2ff, ffs0} = $.computeFulfillments(rootGoal);
    let indexRegistry = $.makeIndexRegistry();
 
    return {
-      plan: Array.from($.walkRelGoals(rootGoal), relGoal => ({
+      plan: Array.from($.walkRelGoals(rootGoal), goal => ({
          // [[attr, lvar]] to start from
-         startAttrs: Array.from(relGoal.looseAttrs),
-         joinTree: $.computeJoinTreeFrom(relGoal, {
+         startAttrs: Array.from(goal.looseAttrs),
+         joinTree: $.computeJoinTreeFrom(goal, {
             indexRegistry,
             pathGoals,
             goalPaths,
-            numPaths,
             lvar2ff,
             ffs0
-         }),
-         getFirmAttrs () {
-            return relGoal.firmAttrs
-         }
+         })
       })),
       appliedIndices: indexRegistry
+   }
+}
+makeSubBoundAttrsProducer ::= function (rootGoal, attrs) {
+   let firms = Array.from($.walkRelGoals(rootGoal), relGoal => relGoal.firmAttrs);
+   let routes = new Map($.map(attrs, attr => [attr, []]));
+
+   for (let [attr, route] of routes) {
+      for (let {looseAttrs, num} of $.walkRelGoals(rootGoal)) {
+         for (let [subAttr, lvar] of looseAttrs) {
+            if (lvar === attr) {
+               route.push([num, subAttr]);
+               break;  // attr can be found at most once in a given goal
+            }
+         }
+      }
+   }
+
+   return function (boundAttrs) {
+      let subBounds = Array.from(firms, firm => Object.assign({}, firm));
+
+      for (let attr of Reflect.ownKeys(boundAttrs)) {
+         let route = routes.get(attr);
+         if (route === undefined) {
+            continue;
+         }
+
+         for (let [num, subAttr] of route) {
+            subBounds[num][subAttr] = boundAttrs[attr];
+         }
+      }
+
+      return subBounds;
    }
 }
 JoinType ::= ({
@@ -191,7 +220,7 @@ computeFulfillments ::= function (rootGoal) {
    return {lvar2ff, ffs0};
 }
 computeJoinTreeFrom ::= function (Dgoal, {
-      indexRegistry, pathGoals, goalPaths, numPaths, lvar2ff, ffs0
+      indexRegistry, pathGoals, goalPaths, lvar2ff, ffs0
 }) {
    let boundLvars = new Set;
    let bindStack = [];
@@ -391,7 +420,7 @@ computeJoinTreeFrom ::= function (Dgoal, {
          return {
             type: $.JoinType.index,
             projNum: goal.num,
-            index: $.registerIndex(indexRegistry, goal, ff.index),
+            indexNum: $.registerGoalIndex(indexRegistry, goal, ff.index),
             indexLvars: Array.from(ff.index, attr => goal.looseAttrs.get(attr)),
             checkAttrs: collectCheckAttrs(goal, ff.index),
             extractAttrs: collectExtractAttrs(goal),
@@ -436,109 +465,127 @@ computeJoinTreeFrom ::= function (Dgoal, {
 makeIndexRegistry ::= function () {
    return [];
 }
-registerIndex ::= function (registry, goal, index) {
-   let n = registry.findIndex(({projNum, index: xindex}) => {
-      return projNum === goal.num && $.arraysEqual(xindex, index);
+registerGoalIndex ::= function (registry, goal, index) {
+   return $.registerProjNumIndex(registry, goal.num, index);
+}
+registerProjNumIndex ::= function (registry, projNum, index) {
+   let n = registry.findIndex(({projNum: xProjNum, index: xIndex}) => {
+      return xProjNum === projNum && $.arraysEqual(xIndex, index);
    });
 
    if (n !== -1) {
       return n;
    }
 
-   registry.push({projNum: goal.num, index});
+   registry.push({projNum, index});
    return registry.length - 1;
 }
-narrowConfig ::= function (config0, boundAttrs) {
-   let n_conjs = Array.from(config0.conjs, conj => $.reduceConj(conj, boundAttrs));
-   let reg = $.makeIndexRegistryPerConj(config0.conjs.length);
-   let n_jpaths = config0.jpaths.map(jpath => jpath.map(
-      jplink => $.narrowJplink(jplink, config0, boundAttrs, reg)
-   ));
+narrowConfig ::= function (config0, bindList) {
+   let {plan, appliedIndices} = $.narrowJoinPlan(
+      config0.plan, config0.appliedIndices, bindList
+   );
 
-   let appliedIndices = reg.flat();
-
-   n_jpaths = $.joinPathsWithIndexNums(n_jpaths, appliedIndices);
-
-   let n_config = {
-      conjs: n_conjs,
-      attrs: config0.attrs.filter(a => !$.hasOwnProperty(boundAttrs, a)),
-      plainAttrs: null,
-      lvars: config0.lvars.filter(lvar => !$.hasOwnProperty(boundAttrs, lvar)),
-      jpaths: n_jpaths,
-      appliedIndices,
-   };
-
-   n_config.plainAttrs = $.plainAttrs(n_config.attrs);
-
-   return n_config;
-}
-narrowJplink ::= function (jplink, config0, boundAttrs, indexRegistry) {
-   let {type, conjNum, checkAttrs, extractAttrs} = jplink;
-
-   let n_checkAttrs = $.narrowAttrList(checkAttrs, boundAttrs);
-   let n_extractAttrs = $.narrowAttrList(extractAttrs, boundAttrs);
-
-   if (type === $.JoinLinkType.all) {
-      return {
-         type,
-         conjNum,
-         checkAttrs: n_checkAttrs,
-         extractAttrs: n_extractAttrs,
-      }
-   }
-   else if (type === $.JoinLinkType.pk) {
-      let {pkLvar} = jplink;
-
-      if ($.hasOwnProperty(boundAttrs, pkLvar)) {
-         return {
-            type: $.JoinLinkType.all,
-            conjNum,
-            checkAttrs: n_checkAttrs,
-            extractAttrs: n_extractAttrs,
-         }
-      }
-      else {
-         return {
-            type: $.JoinLinkType.pk,
-            conjNum,
-            pkLvar,
-            checkAttrs: n_checkAttrs,
-            extractAttrs: n_extractAttrs
-         }
-      }
-   }
-   else {
-      $.assert(() => type === $.JoinLinkType.indexed);
-
-      let {indexNum} = jplink;
-      let conj = config0.conjs[conjNum];
-      let n_index = $.reduceConjIndex(conj, config0.appliedIndices[indexNum], boundAttrs);
-
-      if ($.isIndexCovered(n_index)) {
-         return {
-            type: $.JoinLinkType.all,
-            conjNum,
-            checkAttrs: n_checkAttrs,
-            extractAttrs: n_extractAttrs,
-         }
-      }
-      else {
-         n_index = $.addToIndexRegistry(indexRegistry, conjNum, n_index, () => {
-            n_index.forConjNum = conjNum;
-            return n_index;
-         });
-
-         return {
-            type: $.JoinLinkType.indexed,
-            conjNum,
-            index: n_index,  // will be replaced with 'indexNum'
-            indexLvars: Array.from(n_index, attr => conj.looseAttrs.get(attr)),
-            checkAttrs: n_checkAttrs,
-            extractAttrs: n_extractAttrs,
-         }
-      }
+   return {
+      attrs: config0.attrs.filter(a => !bindList.includes(a)),
+      plainAttrs: config0.plainAttrs === null ? null :
+         config0.plainAttrs.filter(a => !bindList.includes(a)),
+      lvars: config0.lvars.filter(lvar => !bindList.includes(lvar)),
+      appliedIndices: appliedIndices,
+      plan: plan
    }
 }
-narrowAttrList ::= function (attrList, boundAttrs) {
-   return attrList.filter(([attr, lvar]) => !$.hasOwnProperty(boundAttrs, lvar));
+narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
+   let indexRegistry = $.makeIndexRegistry();
+
+   function narrow(jnode) {
+      if (jnode === null) {
+         return null;
+      }
+
+      if (jnode.type === $.JoinType.all) {
+         return {
+            type: $.JoinType.all,
+            projNum: jnode.projNum,
+            checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
+            extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+            next: narrow(jnode.next)
+         }
+      }
+      
+      if (jnode.type === $.JoinType.index) {
+         let {indexLvars, indexNum} = jnode;
+         let narrowedIndex = $.copyIndex(appliedIndices[indexNum].index);
+
+         for (let i = indexLvars.length - 1; i >= 0; i -= 1) {
+            if (bindList.includes(indexLvars[i])) {
+               narrowedIndex.splice(i, 1);
+            }
+         }
+
+         if ($.isIndexCovered(narrowedIndex)) {
+            return {
+               type: $.JoinType.all,
+               projNum: jnode.projNum,
+               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
+               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               next: narrow(jnode.next)
+            }
+         }
+         else {
+            return {
+               type: $.JoinType.index,
+               projNum: jnode.projNum,
+               indexNum: $.registerProjNumIndex(
+                  indexRegistry, jnode.projNum, narrowedIndex
+               ),
+               indexLvars: jnode.indexLvars.filter(lvar => !bindList.includes(lvar)),
+               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
+               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               next: narrow(jnode.next)
+            }
+         }
+      }
+      
+      if (jnode.type === $.JoinType.pk) {
+         if (bindList.includes(jnode.pklvar)) {
+            return {
+               type: $.JoinType.all,
+               projNum: jnode.projNum,
+               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
+               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               next: narrow(jnode.next)
+            }
+         }
+         else {
+            return {
+               type: $.JoinType.pk,
+               projNum: jnode.projNum,
+               pklvar: jnode.pklvar,
+               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
+               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               next: narrow(jnode.next)
+            }
+         }
+      }
+
+      if (jnode.type === $.JoinType.either) {
+         return {
+            type: $.JoinType.either,
+            branches: Array.from(jnode.branches, narrow)
+         }
+      }
+
+      throw new Error;
+   }
+
+   return {
+      plan: Array.from(plan, ({startAttrs, joinTree}) => ({
+         startAttrs: startAttrs.filter(([attr, lvar]) => !bindList.includes(lvar)),
+         joinTree: narrow(joinTree)
+      })),
+      appliedIndices: indexRegistry
+   }
+}
+narrowAttrList ::= function (attrList, bindList) {
+   return attrList.filter(([attr, lvar]) => !bindList.includes(lvar));
 }

@@ -537,8 +537,8 @@ all ::= function (itbl, pred) {
 
    return true;
 }
-map ::= function* (itbl, fn) {
-   for (let x of itbl) {
+map ::= function* (xs, fn) {
+   for (let x of xs) {
       yield fn(x);
    }
 }
