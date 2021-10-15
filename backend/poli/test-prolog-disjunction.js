@@ -76,5 +76,5 @@ setup ::= function () {
 }
 test_basic ::= function ({pop}) {
    let proj = $.projectionFor(pop, {country: 'usa'});
-   console.log(proj.records);
+   // console.log(proj.records);
 }

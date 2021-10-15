@@ -35,6 +35,18 @@ makeRecAttrAccessor ::= function (keyed) {
 makeRecKeyAccessor ::= function (keyed) {
    return keyed === false ? (rec => rec) : (([key, val]) => key);
 }
+makeRecAtKeyAccessor ::= function (keyed) {
+   return keyed === false ? (rec => rec) : function (recKey) {
+      return this.records.getEntry(recKey);
+   }
+}
+makeAccessors ::= function (keyed) {
+   return {
+      recAttr: $.makeRecAttrAccessor(keyed),
+      recKey: $.makeRecKeyAccessor(keyed),
+      recAtKey: $.makeRecAtKeyAccessor(keyed),
+   }
+}
 recAttr ::= function (rec, attr, keyed) {
    return keyed !== false ?
          attr === $.recKey ? rec[0] :

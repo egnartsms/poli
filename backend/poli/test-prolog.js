@@ -6,8 +6,8 @@ test-prolog-disjunction
    * as: disjunction
 -----
 runTests ::= function () {
-   // $.runTestsIn($.nonkeyed);
-   // $.runTestsIn($.keyed);
+   $.runTestsIn($.nonkeyed);
+   $.runTestsIn($.keyed);
    $.runTestsIn($.disjunction);
 }
 runTestsIn ::= function (ns) {

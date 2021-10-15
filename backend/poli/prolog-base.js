@@ -17,12 +17,13 @@ prolog-rec-key
    recVal
    normalizeAttrsForPk
    recKeyOf
+   Keyed
+   makeAccessors
 prolog-version
    refCurrentState
    isVersionUpToDate
-   deltaAppend
-   kDeltaAppend
-   nkDeltaAccum
+   verAdd1
+   verRemove1
    unchainVersions
    releaseVersion
 prolog-index
@@ -35,10 +36,6 @@ prolog-index-instance
 prolog-projection
    invalidateProjections
    makeRecords
-prolog-rec-key
-   Keyed
-   makeRecAttrAccessor
-   makeRecKeyAccessor
 prolog-goal
    relGoal
 -----
@@ -82,7 +79,7 @@ baseRelation ::= function ({
 
       at: function (attrs) {
          return $.relGoal(this, attrs);
-      }
+      },
    };
 
    rel.records = $.makeRecords(rel, records);
@@ -112,8 +109,7 @@ makeProjection ::= function (rel, boundAttrs) {
          myIndexInstances: rel.myIndexInstances,  // shared
          validRevDeps: new Set,
 
-         recAttr: $.makeRecAttrAccessor(rel.keyed),
-         recKey: $.makeRecKeyAccessor(rel.keyed),
+         ...$.makeAccessors(rel.keyed)
       };
    }
    else {
@@ -129,8 +125,7 @@ makeProjection ::= function (rel, boundAttrs) {
          myIndexInstances: $.indexInstanceStorage(),
          validRevDeps: new Set,
 
-         recAttr: $.makeRecAttrAccessor(rel.keyed),
-         recKey: $.makeRecKeyAccessor(rel.keyed),
+         ...$.makeAccessors(rel.keyed)
       };
 
       proj.records = $.makeRecords(
@@ -174,32 +169,15 @@ updateProjection ::= function (proj) {
 
    $.unchainVersions(proj.depVer);
 
-   for (let [recKey, action] of proj.depVer.delta) {
-      if (action === 'add') {
-         let rec = proj.rel.records.getEntry(recKey);
+   for (let rkey of proj.depVer.removed) {
+      $.deleteRecByKey(proj, rkey);
+   }
+   
+   for (let rkey of proj.depVer.added) {
+      let rec = proj.rel.records.getEntry(rkey);
 
-         if ($.recSatisfies(proj, rec)) {
-            $.addRec(proj, rec);
-         }
-      }
-      else if (action === 'remove') {
-         $.deleteRecByKey(proj, recKey);
-      }
-      else {
-         $.assert(() => action === 'change');
-         $.assert(() => proj.keyed);
-
-         let newValue = proj.rel.records.get(recKey);
-         $.assert(() => newValue !== undefined);
-         let newRec = [recKey, newValue];
-
-         if (proj.records.has(recKey)) {
-            $.deleteRecByKey(proj, recKey);
-         }
-
-         if ($.recSatisfies(proj, newRec)) {
-            $.addRec(proj, newRec);
-         }
+      if ($.recSatisfies(proj, rec)) {
+         $.addRec(proj, rec);
       }
    }
 
@@ -213,7 +191,7 @@ addRec ::= function (parent, rec) {
    parent.records.add(rec);
 
    if (parent.myVer !== null) {
-      $.deltaAppend(parent.myVer.delta, parent.keyed, $.recKeyOf(parent, rec), 'add');
+      $.verAdd1(parent.myVer, parent.keyed === false ? rec : rec[0]);
    }
 
    for (let idxInst of parent.myIndexInstances) {
@@ -230,7 +208,7 @@ deleteRecByKey ::= function (parent, recKey) {
    parent.records.delete(recKey);
 
    if (parent.myVer !== null) {
-      $.deltaAppend(parent.myVer.delta, parent.keyed, recKey, 'remove');
+      $.verRemove1(parent.myVer, recKey);
    }
 
    for (let idxInst of parent.myIndexInstances) {

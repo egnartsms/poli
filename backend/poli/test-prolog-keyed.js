@@ -40,8 +40,7 @@ setup ::= function () {
 
    let dev = $.baseRelation({
       name: 'dev',
-      hasPrimaryKey: true,
-      attrs: ['company', 'name'],
+      attrs: [$.recKey, 'company', 'name'],
       indices: [
          $.indexOn(['company'])
       ],
@@ -57,32 +56,24 @@ setup ::= function () {
 
    let company = $.baseRelation({
       name: 'company',
-      hasPrimaryKey: true,
-      attrs: ['name', 'lang'],
+      attrs: [$.recKey, 'name', 'lang'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
       ],
       records: [
          [company_J, {name: 'J systems', lang: 'java'}],
-         [company_C, {lang: 'C systems', lang: 'cpp'}],
+         [company_C, {name: 'C systems', lang: 'cpp'}],
          [company_P, {name: 'P systems', lang: 'php'}]
       ],
    });
 
    let dev_lang = $.derivedRelation({
       name: 'dev_lang',
-      hasPrimaryKey: true,
-      attrs: $.recVal,
+      attrs: [$.recKey, $.recVal],
       indices: [],
       body: v => [
-         {
-            rel: dev,
-            attrs: {[$.recKey]: v.recKey, company: v`company`}
-         },
-         {
-            rel: company,
-            attrs: {[$.recKey]: v`company`, lang: v.recVal}
-         }
+         dev.at({[$.recKey]: v.recKey, company: v`company`}),
+         company.at({[$.recKey]: v`company`, lang: v.recVal}),
       ]
    });
 

@@ -174,9 +174,27 @@ setsIntersect ::= function (s1, s2) {
 
    return false;
 }
+setsDeleteIntersection ::= function (s1, s2) {
+   let [gs, ls] = $.greaterLesserSet(s1, s2);
+
+   for (let x of ls) {
+      if (gs.has(x)) {
+         gs.delete(x);
+         ls.delete(x);
+      }
+   }
+}
+greaterLesserSet ::= function (s1, s2) {
+   return s1.size > s2.size ? [s1, s2] : [s2, s1];
+}
 setDeleteAll ::= function (set, xs) {
    for (let x of xs) {
       set.delete(x);
+   }
+}
+setAddAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.add(x);
    }
 }
 setWeedOut ::= function (set, pred) {
@@ -361,72 +379,33 @@ setsEqual ::= function (A, B) {
 
    return true;
 }
-iteratorFrom ::= function* (Xs) {
-   let I = Xs[Symbol.iterator]();
+allEqual ::= function (xs, pred) {
+   let xi = xs[Symbol.iterator]();
 
-   if (typeof I.return === 'function') {
-      try {
-         yield I;
-      }
-      finally {
-         I.return();
-      }
-   }
-   else {
-      yield I;
-   }
-}
-finishIterator ::= function (iter) {
-   if (typeof iter.return === 'function') {
-      iter.return();
-   }
-}
-withIterators ::= function* (iterables, generator) {
-   let iterators = [];
+   let prev, done;
 
-   try {
-      for (let iterable of iterables) {
-         iterators.push(iterable[Symbol.iterator]());
-      }
-
-      return yield* generator(...iterators);
+   ({done, value: prev} = xi.next());
+   
+   if (done) {
+      return true;
    }
-   finally {
-      iterators.reverse();
-      for (let itor of iterators) {
-         if (typeof itor.return === 'function') {
-            itor.return();
-         }
-      }
-   }
-}
-allEqual ::= function (Xs, pred) {
-   for (let I of $.iteratorFrom(Xs)) {
-      let prev, done;
 
-      ({done, value: prev} = I.next());
-      
+   for (;;) {
+      let item;
+      ({done, value: item} = xi.next());
+
       if (done) {
-         return true;
+         break;
       }
 
-      for (;;) {
-         let item;
-         ({done, value: item} = I.next());
-
-         if (done) {
-            break;
-         }
-
-         if (!pred(prev, item)) {
-            return false;
-         }
-
-         prev = item;
+      if (!pred(prev, item)) {
+         return false;
       }
 
-      return true;      
+      prev = item;
    }
+
+   return true;      
 }
 isLike ::= function isLike(A, B) {
    if (A === B) {
@@ -488,27 +467,28 @@ isLike ::= function isLike(A, B) {
 
    return false;
 }
-enumerate ::= function* (itbl) {
+enumerate ::= function* (xs) {
    let i = 0;
 
-   for (let x of itbl) {
+   for (let x of xs) {
       yield [i, x];
       i += 1;
    }
 }
-zip ::= function (xs, ys) {
-   return $.withIterators([xs, ys], function* (xi, yi) {
-      for (;;) {
-         let {done: done_x, value: x} = xi.next();
-         let {done: done_y, value: y} = yi.next();
+zip ::= function* (xs, ys) {
+   let xi = xs[Symbol.iterator]();
+   let yi = ys[Symbol.iterator]();
 
-         if (done_x || done_y) {
-            break;
-         }
+   for (;;) {
+      let {done: done_x, value: x} = xi.next();
+      let {done: done_y, value: y} = yi.next();
 
-         yield [x, y];
+      if (done_x || done_y) {
+         break;
       }
-   });
+
+      yield [x, y];
+   }
 }
 any ::= function (itbl, pred) {
    for (let x of itbl) {

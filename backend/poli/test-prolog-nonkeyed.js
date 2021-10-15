@@ -98,18 +98,9 @@ setup ::= function () {
          $.indexOn(['city'], {isUnique: true})
       ],
       body: v => [
-         {
-            rel: continent,
-            attrs: {name: v`continent`}
-         },
-         {
-            rel: country,
-            attrs: {continent: v`continent`, name: v`country`}
-         },
-         {
-            rel: city,
-            attrs: {country: v`country`, name: v`city`}
-         }
+         continent.at({name: v`continent`}),
+         country.at({continent: v`continent`, name: v`country`}),
+         city.at({country: v`country`, name: v`city`}),
       ]
    });
 
@@ -117,14 +108,8 @@ setup ::= function () {
       name: 'continent_pop',
       attrs: ['continent', 'pop'],
       body: v => [
-         {
-            rel: continent_city,
-            attrs: {continent: v`continent`, city: v`city`}
-         },
-         {
-            rel: city,
-            attrs: {name: v`city`, population: v`pop`}
-         }
+         continent_city.at({continent: v`continent`, city: v`city`}),
+         city.at({name: v`city`, population: v`pop`}),
       ]
    });
 

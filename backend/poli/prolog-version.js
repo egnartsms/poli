@@ -1,6 +1,8 @@
 common
    assert
    check
+   setsDeleteIntersection
+   greaterLesserSet
 -----
 refCurrentState ::= function (parent) {
    // 'parent' is a base relation or projection (of either base or derived relation)
@@ -27,11 +29,12 @@ makeVersionOf ::= function (owner) {
       num: 1,
       next: null,
       refcount: 0,
-      delta: new Map
-   }
+      added: new Set,
+      removed: new Set,
+   };
 }
 isVersionUpToDate ::= function (ver) {
-   return ver.delta.size === 0;
+   return ver.added.size === 0 && ver.removed.size === 0;
 }
 linkVersions ::= function (ver0, ver1) {
    ver1.num = ver0.num + 1;
@@ -60,36 +63,79 @@ unchainVersions ::= function (ver) {
       return;
    }
 
+   $.unchainVersions(ver.next);
+
    let next = ver.next;
+   let isNextMutable = next.refcount === 1;
+   let isKeyed = ver.owner.keyed !== false;
 
-   $.unchainVersions(next);
+   if (isNextMutable) {
+      $.setsDeleteIntersection(ver.added, next.removed);
+      if (!isKeyed) {
+         $.setsDeleteIntersection(ver.removed, next.added);
+      }
 
-   if (next.refcount === 1 && ver.delta.size < next.delta.size) {
-      // The 'next' version is only referenced by 'ver' which means that after
-      // this reduction operation it will be thrown away, which means we can reuse
-      // its 'delta' map if it's bigger than 'ver.delta'.
-      $.mergeIntoNext(ver.delta, next.delta, ver.owner.keyed);
-      ver.delta = next.delta;
+      let [ga, la] = $.greaterLesserSet(ver.added, next.added);
+      let [gr, lr] = $.greaterLesserSet(ver.removed, next.removed);
+
+      $.setAddAll(ga, la);
+      $.setAddAll(gr, lr);
+
+      ver.added = ga;
+      ver.removed = gr;
+
+      next.added = null;
+      next.removed = null;
    }
    else {
-      $.mergeIntoPrev(ver.delta, next.delta, ver.owner.keyed);
+      if (isKeyed) {
+         for (let rec of next.added) {
+            ver.added.add(rec);
+         }
+      }
+      else {
+         for (let rec of next.added) {
+            if (ver.removed.has(rec)) {
+               ver.removed.delete(rec);
+            }
+            else {
+               ver.added.add(rec);
+            }
+         }
+      }
+
+      for (let rec of next.removed) {
+         if (ver.added.has(rec)) {
+            ver.added.delete(rec);
+         }
+         else {
+            ver.removed.add(rec);
+         }
+      }
    }
 
    ver.next = null;
    $.releaseVersion(next);
 }
-mergeIntoPrev ::= function (prev, next, keyed) {
-   let fn = keyed ? $.kDeltaAppend : $.nkDeltaAccum;
-
-   for (let [recKey, action] of next) {
-      fn(prev, recKey, action);
+verRemove1 ::= function (ver, rkey) {
+   if (ver.added.has(rkey)) {
+      ver.added.delete(rkey);
+   }
+   else {
+      ver.removed.add(rkey);
    }
 }
-mergeIntoNext ::= function (prev, next, keyed) {
-   let fn = keyed ? $.kDeltaPrepend : $.nkDeltaAccum;
-
-   for (let [recKey, action] of prev) {
-      fn(next, recKey, action);
+verAdd1 ::= function (ver, rkey) {
+   if (ver.owner.keyed !== false) {
+      ver.added.add(rkey);
+   }
+   else {
+      if (ver.removed.has(rkey)) {
+         ver.removed.delete(rkey);
+      }
+      else {
+         ver.added.add(rkey);
+      }
    }
 }
 nkDeltaAccum ::= function (delta, rec, action) {
