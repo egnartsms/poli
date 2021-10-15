@@ -1,5 +1,5 @@
 common
-   assert
+   check
    newObj
    lessThan
    map
@@ -87,7 +87,7 @@ nodeKeyPlace ::= function (node, key, opts) {
    }
 }
 indexToMerge ::= function (parent, i) {
-   $.assert(parent.length >= 2);
+   $.check(parent.length >= 2);
 
    let isLeft = (i > 0 && 
       (i + 1 === parent.length || parent[i + 1].length >= parent[i - 1].length)
@@ -108,8 +108,8 @@ totalSize ::= function (nodes) {
    return nodes.reduce((sum, nd) => sum + nd.size, 0);
 }
 splitNode ::= function (node, keyof) {
-   $.assert(node.length > $.MAX_NODE_LEN);
-   $.assert(node.length <= 2 * $.MAX_NODE_LEN);  // no need to handle this
+   $.check(node.length > $.MAX_NODE_LEN);
+   $.check(node.length <= 2 * $.MAX_NODE_LEN);  // no need to handle this
 
    let lnode = node.slice(0, node.length >> 1);
    let rnode = node.slice(node.length >> 1);
@@ -129,7 +129,7 @@ splitNode ::= function (node, keyof) {
    return [lnode, rnode];
 }
 redestributeBetween ::= function (lnode, rnode, keyof) {
-   $.assert(lnode.isLeaf === rnode.isLeaf);
+   $.check(lnode.isLeaf === rnode.isLeaf);
 
    let merged = [...lnode, ...rnode];
 

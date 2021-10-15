@@ -1,6 +1,6 @@
 common
-   assert
-   iconcat
+   check
+   concat
    dumpImportSection
    hasOwnProperty
    findIndex

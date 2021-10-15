@@ -1,8 +1,8 @@
 common
-   assert
+   check
    compare
    compareArrays
-   iconcat
+   concat
    dumpImportSection
    hasOwnProperty
    indexOf
@@ -33,7 +33,7 @@ main ::= function (sendMessage) {
 }
 pendingCodeModifications ::= false
 commitPendingCodeModifications ::= function (msg) {
-   $.assert($.pendingCodeModifications);
+   $.check($.pendingCodeModifications);
 
    if (msg['type'] !== 'modify-code-result') {
       throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
@@ -448,7 +448,7 @@ referringsTo ::= function (mid, entryName) {
    let emap = $.rel.groupAt($.G.imports.from, mid, entryName);
    let smap = $.rel.groupAt($.G.imports.from, mid, '');
    
-   let recpids = new Set($.concat($.trie.keys(emap), $.trie.keys(smap)));
+   let recpids = new Set($.concat([$.trie.keys(emap), $.trie.keys(smap)]));
    
    return Array.from(recpids, recpid => ({
       eimp: $.trie.tryAt(emap, recpid),

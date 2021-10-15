@@ -1,5 +1,5 @@
 common
-   assert
+   check
    hasOwnProperty
    parameterize
 -----
@@ -350,7 +350,7 @@ expandDottedId ::= function (id) {
    }
    
    let parts = id.split(/\./);
-   $.assert(parts.length >= 2);
+   $.check(parts.length >= 2);
    
    return {
       head: {id: '.'},

@@ -1,7 +1,7 @@
 common
    objId
    equal
-   iconcat
+   concat
    lessThan
    objLessThan
 trie
@@ -126,7 +126,7 @@ delta ::= ({
       added: new Set,
       removed: new Set,
       get affected() {
-         return $.iconcat(this.added, this.removed);
+         return $.concat(this.added, this.removed);
       }
    },
    'entry-ref-entry': {

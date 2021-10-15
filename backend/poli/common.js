@@ -1,8 +1,13 @@
 trie
    * as: trie
 -----
-assert ::= function (cond) {
+check ::= function (cond, msg=`Check failed`) {
    if (!cond) {
+      throw new Error(typeof msg === 'function' ? msg() : msg);
+   }
+}
+assert ::= function (callback) {
+   if (!callback()) {
       throw new Error(`Assert failed`);
    }
 }
@@ -19,6 +24,9 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
+isObjectWithOwnProperty ::= function (obj, prop) {
+   return obj != null && $.hasOwnProperty(obj, prop);
+}
 selectProps ::= function (obj, props) {
    return Object.fromEntries(props.map(p => [p, obj[p]]));
 }
@@ -31,6 +39,12 @@ patchNullableObj ::= function (obj1, obj2) {
    }
    
    return {...obj1, ...obj2};
+}
+arrayify ::= function (X) {
+   return X instanceof Array ? X : Array.from(X);
+}
+settify ::= function (X) {
+   return X instanceof Set ? X : new Set(X);
 }
 compare ::= function (x1, x2) {
    return x1 < x2 ? -1 : x1 > x2 ? 1 : 0;
@@ -101,10 +115,6 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
-isSeqNonEmpty ::= function (seq) {
-   let {done} = seq[Symbol.iterator]().next();
-   return !done;
-}
 extendArray ::= function (A, X) {
    let i = A.length;
    let j = 0;
@@ -118,18 +128,115 @@ extendArray ::= function (A, X) {
       j += 1;
    }
 }
+isSubset ::= function (X, Y) {
+   Y = $.settify(Y);
+
+   for (let x of X) {
+      if (!Y.has(x)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+setInter ::= function (X, Y) {
+   X = $.settify(X);
+
+   let res = new Set();
+
+   for (let y of Y) {
+      if (X.has(y)) {
+         res.add(y);
+      }
+   }
+
+   return res;
+}
+setDiff ::= function (X, Y) {
+   let R = new Set(X);
+
+   for (let y of Y) {
+      R.delete(y);
+   }
+
+   return R;
+}
+setsIntersect ::= function (s1, s2) {
+   if (s1.size > s2.size) {
+      [s1, s2] = [s2, s1];
+   }
+
+   for (let x of s1) {
+      if (s2.has(x)) {
+         return true;
+      }
+   }
+
+   return false;
+}
+setsDeleteIntersection ::= function (s1, s2) {
+   let [gs, ls] = $.greaterLesserSet(s1, s2);
+
+   for (let x of ls) {
+      if (gs.has(x)) {
+         gs.delete(x);
+         ls.delete(x);
+      }
+   }
+}
+greaterLesserSet ::= function (s1, s2) {
+   return s1.size > s2.size ? [s1, s2] : [s2, s1];
+}
+setDeleteAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.delete(x);
+   }
+}
+setAddAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.add(x);
+   }
+}
+setWeedOut ::= function (set, pred) {
+   let weed = new Set;
+
+   for (let x of set) {
+      if (!pred(x)) {
+         set.delete(x);
+         weed.add(x);
+      }
+   }
+
+   return weed;
+}
+arrayChain ::= function arrayChain(array, startFrom=0) {
+   if (startFrom >= array.length) {
+      return null;
+   }
+   else {
+      return {
+         item: array[startFrom],
+         next() {
+            return arrayChain(array, startFrom + 1);
+         }
+      }
+   }
+}
+isChainEmpty ::= function (chain) {
+   return chain === null;
+}
 yreExec ::= function (re, offset, str) {
-   $.assert(re.sticky);
+   $.check(re.sticky);
    re.lastIndex = offset;
    return re.exec(str);
 }
 yreTest ::= function (re, offset, str) {
-   $.assert(re.sticky);
+   $.check(re.sticky);
    re.lastIndex = offset;
    return re.test(str);
 }
 parameterize ::= function (tobind, callback) {
-   $.assert(tobind.length % 2 === 0);
+   $.check(tobind.length % 2 === 0);
    
    let oldvals = new Array(tobind.length / 2);
    let i = 0, k = 0;
@@ -156,6 +263,27 @@ parameterize ::= function (tobind, callback) {
       }
    }
 }
+sortedArray ::= function (itbl, keyfn) {
+   let array = Array.from(itbl);
+
+   array.sort((a, b) => {
+      let ka = keyfn(a), kb = keyfn(b);
+
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+   });
+
+   return array;
+}
+setDefault ::= function (map, key, producer) {
+   if (map.has(key)) {
+      return map.get(key);
+   }
+   else {
+      let val = producer();
+      map.set(key, val);
+      return val;
+   }
+}
 lessThan ::= function (a, b) {
    return a < b;
 }
@@ -164,6 +292,17 @@ objLessThan ::= function (objA, objB) {
 }
 equal ::= function equal(a, b) {
    return a === b;
+}
+firstDuplicate ::= function (itbl) {
+   let set = new Set;
+
+   for (let x of itbl) {
+      if (set.has(x)) {
+         return x;
+      }
+
+      set.add(x);
+   }
 }
 itorFinal ::= function (itor) {
    let finalItem = undefined;
@@ -175,6 +314,10 @@ itorFinal ::= function (itor) {
    return finalItem;
 }
 find ::= function (itbl, pred) {
+   if (Array.isArray(itbl)) {
+      return itbl.find(pred);
+   }
+   
    for (let x of itbl) {
       if (pred(x)) {
          return x;
@@ -205,17 +348,64 @@ indexOf ::= function (itbl, item) {
 
    return -1;
 }
-arraysEqual ::= function arraysEqual (A, B) {
+arraysEqual ::= function (A, B, itemsEqual=$.equal) {
    if (A.length !== B.length) {
       return false;
    }
 
    for (let i = 0; i < A.length; i += 1) {
-      if (A[i] !== B[i]) {
+      if (!itemsEqual(A[i], B[i])) {
          return false;
       }
    }
    return true;
+}
+setsEqual ::= function (A, B) {
+   if (A.size !== B.size) {
+      return false;
+   }
+
+   for (let a of A) {
+      if (!B.has(a)) {
+         return false;
+      }
+   }
+
+   for (let b of B) {
+      if (!A.has(b)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+allEqual ::= function (xs, pred) {
+   let xi = xs[Symbol.iterator]();
+
+   let prev, done;
+
+   ({done, value: prev} = xi.next());
+   
+   if (done) {
+      return true;
+   }
+
+   for (;;) {
+      let item;
+      ({done, value: item} = xi.next());
+
+      if (done) {
+         break;
+      }
+
+      if (!pred(prev, item)) {
+         return false;
+      }
+
+      prev = item;
+   }
+
+   return true;      
 }
 isLike ::= function isLike(A, B) {
    if (A === B) {
@@ -277,45 +467,250 @@ isLike ::= function isLike(A, B) {
 
    return false;
 }
-map ::= function* (itbl, fn) {
+enumerate ::= function* (xs) {
+   let i = 0;
+
+   for (let x of xs) {
+      yield [i, x];
+      i += 1;
+   }
+}
+zip ::= function* (xs, ys) {
+   let xi = xs[Symbol.iterator]();
+   let yi = ys[Symbol.iterator]();
+
+   for (;;) {
+      let {done: done_x, value: x} = xi.next();
+      let {done: done_y, value: y} = yi.next();
+
+      if (done_x || done_y) {
+         break;
+      }
+
+      yield [x, y];
+   }
+}
+any ::= function (itbl, pred) {
    for (let x of itbl) {
+      if (pred(x)) {
+         return true;
+      }
+   }
+
+   return false;
+}
+notAny ::= function (X, pred) {
+   for (let x of X) {
+      if (pred(x)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+all ::= function (itbl, pred) {
+   for (let x of itbl) {
+      if (!pred(x)) {
+         return false;
+      }
+   }
+
+   return true;
+}
+map ::= function* (xs, fn) {
+   for (let x of xs) {
       yield fn(x);
    }
 }
-iconcat ::= function* (...itbls) {
-   for (let itbl of itbls) {
-      yield* itbl;
-   }
-}
-ifilter ::= function* (itbl, filter) {
+filter ::= function* (itbl, filter) {
    for (let x of itbl) {
       if (filter(x)) {
          yield x;
       }
    }
 }
-trackingFinal ::= function* (itbl) {
-   let itor = itbl[Symbol.iterator]();
-   let {value, done} = itor.next();
+mapfilter ::= function* (itbl, fn) {
+   for (let x of itbl) {
+      let y = fn(x);
+      if (y !== undefined) {
+         yield y;
+      }
+   }
+}
+concat ::= function* (Xs) {
+   for (let X of Xs) {
+      yield* X;
+   }
+}
+reduce ::= function (xs, rfn) {
+   let accum = undefined;
 
-   while (!done) {
-      let nextValue;
-
-      ({value: nextValue, done} = itor.next());
-      
-      yield [value, done];
-      value = nextValue;     
+   for (let x of xs) {
+      if (accum === undefined) {
+         accum = x;
+      }
+      else {
+         accum = rfn(accum, x);
+      }
    }
 
-   return value;
+   return accum;
+}
+omitted ::= new Object
+trackingFinal ::= function* (xs) {
+   let prev = $.omitted;
+
+   for (let x of xs) {
+      if (prev !== $.omitted) {
+         yield [prev, false];
+      }
+      prev = x;
+   }
+
+   if (prev !== $.omitted) {
+      yield [prev, true];
+   }
+}
+produceArray ::= function (N, producer) {
+   let array = new Array(N);
+
+   for (let i = 0; i < N; i += 1) {
+      array[i] = producer(i);
+   }
+
+   return array;
+}
+indexRange ::= function* (array) {
+   yield* $.range(array.length);
+}
+range ::= function* (to) {
+   for (let i = 0; i < to; i += 1) {
+      yield i;
+   }
 }
 newObj ::= function (proto, ...props) {
    return Object.assign(Object.create(proto), ...props);
+}
+keyForValue ::= function (obj, val) {
+   for (let [k, v] of Object.entries(obj)) {
+      if (v === val) {
+         return k;
+      }
+   }
 }
 hasNoEnumerableProps ::= function (obj) {
    for (let prop in obj) {
       return false;
    }
 
-   return true;
+   return Object.getOwnPropertySymbols(obj).length === 0;
+}
+ownEntries ::= function* (obj) {
+   for (let key of Reflect.ownKeys(obj)) {
+      yield [key, obj[key]];
+   }
+}
+commonArrayPrefixLength ::= function (A1, A2) {
+   let i = 0;
+   while (i < A1.length && i < A2.length && A1[i] === A2[i]) {
+      i += 1;
+   }
+
+   return i;
+}
+singleQuoteJoinComma ::= function (strs) {
+   return Array.from(strs, s => `'${s}'`).join(', ');
+}
+multimap ::= function () {
+   return new Map;
+}
+mmapAdd ::= function (mmap, key, val) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      bag = new Set();
+      mmap.set(key, bag);
+   }
+
+   bag.add(val);
+}
+mmapDelete ::= function (mmap, key, val) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      return false;
+   }
+
+   let didDelete = bag.delete(val);
+
+   if (bag.size === 0) {
+      mmap.delete(key);
+   }
+
+   return didDelete;
+}
+mmapAddAll ::= function (mmap, key, vals) {
+   let bag = mmap.get(key);
+
+   if (bag === undefined) {
+      bag = new Set(vals);
+      mmap.set(key, bag);
+   }
+   else {
+      for (let val of vals) {
+         bag.add(val);
+      }
+   }
+}
+mmapDeleteAll ::= function (mmap, key) {
+   return mmap.delete(key);
+}
+one2many ::= function (syn_one, syn_many) {
+   let o2m = {
+      one: $.multimap(),
+      many: new Map
+   };
+
+   if (syn_one !== undefined) {
+      $.assert(() => syn_one !== 'one' && syn_one !== 'many');
+      o2m[syn_one] = o2m.one;
+   }
+   if (syn_many !== undefined) {
+      $.assert(() => syn_many !== 'one' && syn_many !== 'many');
+      o2m[syn_many] = o2m.many;
+   }
+
+   return o2m;
+}
+o2mAdd ::= function (o2m, x1, xM) {
+   if (o2m.many.has(xM)) {
+      throw new Error(`One-to-many violation`);
+   }
+
+   $.mmapAdd(o2m.one, x1, xM);
+   o2m.many.set(xM, x1);
+}
+m2mCompanion ::= Symbol.for('poli.m2m.companion')
+many2many ::= function () {
+   let l2r = $.multimap();
+   let r2l = $.multimap();
+
+   l2r[$.m2mCompanion] = r2l;
+   r2l[$.m2mCompanion] = l2r;
+
+   return [l2r, r2l];
+}
+m2mHas ::= function (mm, a, b) {
+   return mm.has(a) && mm.get(a).has(b);
+}
+m2mAdd ::= function (mm, a, b) {
+   $.mmapAdd(mm, a, b);
+   $.mmapAdd(mm[$.m2mCompanion], b, a);
+}
+m2mAddAll ::= function (mm, a, bs) {
+   $.mmapAddAll(mm, a, bs);
+
+   for (let b of bs) {
+      $.mmapAdd(mm[$.m2mCompanion], b, a);
+   }
 }
