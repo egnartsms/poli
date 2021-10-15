@@ -35,8 +35,6 @@ dedb-goal
    GoalType
    Shrunk
    goalLvars
-   reduceConjIndex
-   reduceConj
    indexShrunk
    walkRelGoals
 dedb-index
