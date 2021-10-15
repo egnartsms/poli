@@ -38,6 +38,8 @@ dedb-projection
    makeRecords
 dedb-goal
    relGoal
+dedb-relation
+   RelationType
 -----
 baseRelation ::= function ({
    name,
@@ -66,7 +68,7 @@ baseRelation ::= function ({
    }
 
    let rel = {
-      isBase: true,
+      type: $.RelationType.base,
       name: name,
       attrs: attrs,
       keyed: keyed,

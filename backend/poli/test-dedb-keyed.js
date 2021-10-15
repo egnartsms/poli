@@ -8,7 +8,6 @@ dedb-query
 dedb-projection
    projectionFor
    releaseProjection
-   isFullBaseProjection
    updateProjection
 dedb-base
    baseRelation

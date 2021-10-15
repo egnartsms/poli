@@ -58,6 +58,8 @@ dedb-join-plan
    makeSubBoundAttrsProducer
    narrowConfig
    JoinType
+dedb-relation
+   RelationType
 -----
 MAX_REL_ATTRS ::= 30
 derivedRelation ::= function ({
@@ -119,7 +121,7 @@ derivedRelation ::= function ({
    };
 
    return {
-      isBase: false,
+      type: $.RelationType.derived,
       keyed: keyed,
       name: relname,
       attrs: attrs,
