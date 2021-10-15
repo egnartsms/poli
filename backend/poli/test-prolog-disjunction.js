@@ -1,3 +1,6 @@
+common
+   check
+   isLike
 prolog-goal
    or
 prolog-base
@@ -62,12 +65,8 @@ setup ::= function () {
             population: v`population`
          }),
          $.or(
-            good_countries.at({
-               country: v`country`
-            }),
-            important_countries.at({
-               country: v`country`
-            })
+            good_countries.at({country: v`country`}),
+            important_countries.at({country: v`country`})
          )
       ]
    });
@@ -75,6 +74,19 @@ setup ::= function () {
    return {pop}
 }
 test_basic ::= function ({pop}) {
-   let proj = $.projectionFor(pop, {country: 'usa'});
-   // console.log(proj.records);
+   let Fproj = $.projectionFor(pop, {});
+
+   $.check($.isLike(Fproj.records, [
+      {country: 'canada', population: 35},
+      {country: 'france', population: 67},
+      {country: 'england', population: 56},
+      {country: 'usa', population: 300},
+      {country: 'china', population: 1398}
+   ]));
+
+   let Pproj = $.projectionFor(pop, {country: 'canada'});
+
+   $.check($.isLike(Pproj.records, [
+      {population: 35},
+   ]));
 }
