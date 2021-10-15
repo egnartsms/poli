@@ -3,20 +3,20 @@ common
    isLike
    find
    sortedArray
-prolog-query
+dedb-query
    query
-prolog-projection
+dedb-projection
    projectionFor
    releaseProjection
    isFullBaseProjection
    updateProjection
-prolog-base
+dedb-base
    baseRelation
    addFact
    removeFact
-prolog-derived
+dedb-derived
    derivedRelation
-prolog-index
+dedb-index
    indexOn
 -----
 setup ::= function () {

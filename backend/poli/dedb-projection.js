@@ -6,11 +6,11 @@ common
 data-structures
    AugmentedMap
    AugmentedSet
-prolog-base
+dedb-base
    * as: base
-prolog-derived
+dedb-derived
    * as: derived
-prolog-rec-key
+dedb-rec-key
    recVal
 -----
 isFullBaseProjection ::= function (proj) {

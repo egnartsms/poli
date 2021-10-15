@@ -28,10 +28,10 @@ common
    setsIntersect
    setInter
    setDiff
-prolog-rec-key
+dedb-rec-key
    plainAttrs
    recKey
-prolog-goal
+dedb-goal
    GoalType
    Shrunk
    goalLvars
@@ -39,7 +39,7 @@ prolog-goal
    reduceConj
    indexShrunk
    walkRelGoals
-prolog-index
+dedb-index
    superIndexOfAnother
    copyIndex
    isIndexCovered

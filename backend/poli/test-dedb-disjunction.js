@@ -1,16 +1,16 @@
 common
    check
    isLike
-prolog-goal
+dedb-goal
    or
-prolog-base
+dedb-base
    baseRelation
-prolog-derived
+dedb-derived
    derivedRelation
    rebuildProjection
-prolog-index
+dedb-index
    indexOn
-prolog-projection
+dedb-projection
    projectionFor
 -----
 setup ::= function () {

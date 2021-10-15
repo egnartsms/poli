@@ -12,7 +12,7 @@ function run(rawModules) {
    mprolog.ns['initialize']();
    window.pl = mprolog.ns;
 
-   let mtestprolog = minfos.find(m => m.name === 'test-prolog');
+   let mtestprolog = minfos.find(m => m.name === 'test-dedb');
    mtestprolog.ns['runTests']();
    
    return;

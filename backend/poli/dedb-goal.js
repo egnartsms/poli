@@ -14,12 +14,12 @@ common
    singleQuoteJoinComma
 data-structures
    BidiMap
-prolog-index
+dedb-index
    reduceIndex
    isIndexCovered
    copyIndex
    wouldIndexBeCoveredBy
-prolog-rec-key
+dedb-rec-key
    recKey
    recVal
 set-operation

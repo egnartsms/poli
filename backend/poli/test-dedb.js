@@ -1,8 +1,8 @@
-test-prolog-keyed
+test-dedb-keyed
    * as: keyed
-test-prolog-nonkeyed
+test-dedb-nonkeyed
    * as: nonkeyed
-test-prolog-disjunction
+test-dedb-disjunction
    * as: disjunction
 -----
 runTests ::= function () {

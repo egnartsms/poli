@@ -19,7 +19,7 @@ common
    multimap
    mmapAdd
    mmapDelete
-prolog-rec-key
+dedb-rec-key
    recAttr
    recKey
    recVal
@@ -29,31 +29,31 @@ prolog-rec-key
    recKeyOf
    Keyed
    makeAccessors
-prolog-projection
+dedb-projection
    projectionFor
    releaseProjection
    updateProjection as: gUpdateProjection
    makeRecords
-prolog-goal
+dedb-goal
    * as: goal
-prolog-version
+dedb-version
    refCurrentState
    releaseVersion
    isVersionUpToDate
    unchainVersions
    verAdd1
    verRemove1
-prolog-index
+dedb-index
    copyIndex
    isIndexCovered
    indexAdd
    indexRemove
    indexAt
-prolog-index-instance
+dedb-index-instance
    refIndexInstance
    releaseIndexInstance
    indexInstanceStorage
-prolog-join-plan
+dedb-join-plan
    computeIncrementalUpdatePlan
    makeSubBoundAttrsProducer
    narrowConfig

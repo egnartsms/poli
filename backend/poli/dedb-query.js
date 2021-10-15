@@ -1,9 +1,9 @@
 common
    check
-prolog-projection
+dedb-projection
    projectionFor
    releaseProjection
-prolog-base
+dedb-base
    updateProjection
 -----
 time ::= 0

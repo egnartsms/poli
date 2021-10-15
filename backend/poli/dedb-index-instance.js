@@ -1,7 +1,7 @@
 common
    arraysEqual
    assert
-prolog-index
+dedb-index
    copyIndex
    rebuildIndex
 -----
