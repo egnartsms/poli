@@ -4,11 +4,14 @@ test-dedb-nonkeyed
    * as: nonkeyed
 test-dedb-disjunction
    * as: disjunction
+test-dedb-functional
+   * as: functional
 -----
 runTests ::= function () {
    $.runTestsIn($.nonkeyed);
    $.runTestsIn($.keyed);
    $.runTestsIn($.disjunction);
+   $.runTestsIn($.functional);
 }
 runTestsIn ::= function (ns) {
    let setup = ns['setup'];

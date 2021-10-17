@@ -5,12 +5,14 @@ common
    sortedArray
 dedb-query
    query
+dedb-relation
+   RelationType
 dedb-projection
    projectionFor
    releaseProjection
-   isFullBaseProjection
    updateProjection
 dedb-base
+   isFullProjection
    baseRelation
    addFact
    removeFact
@@ -185,7 +187,11 @@ test_base_proj_no_free_vars ::= function ({country}) {
    ));
 }
 test_base_unfiltered_projection ::= function ({country, continent}) {
-   $.check($.isFullBaseProjection($.projectionFor(continent, {})));
+   let proj;
+
+   proj = $.projectionFor(continent, {});
+
+   $.check(proj.rel.type === $.RelationType.base && $.isFullProjection(proj));
 
    $.check($.isLike(
       $.query(continent, {}),
@@ -195,8 +201,6 @@ test_base_unfiltered_projection ::= function ({country, continent}) {
          {name: 'America'}
       ]
    ));
-
-   let proj;
 
    proj = $.projectionFor(country, {});
    $.updateProjection(proj);

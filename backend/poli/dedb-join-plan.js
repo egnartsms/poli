@@ -37,6 +37,7 @@ dedb-goal
    goalLvars
    indexShrunk
    walkRelGoals
+   instantiationShrunk
 dedb-index
    superIndexOfAnother
    copyIndex
@@ -44,6 +45,7 @@ dedb-index
    indexOn
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
+   throw new Error;
    function* gen(dconj, jpath) {
       yield `D(${dconj.rel.name})`;
       for (let link of jpath) {
@@ -120,14 +122,15 @@ JoinType ::= ({
    either: 'either',
    all: 'all',
    index: 'index',
-   pk: 'pk'
+   pk: 'pk',
+   func: 'func',
 })
 computePaths ::= function (rootGoal) {
    let [goalPaths, pathGoals] = $.many2many();
    let goals = [];
 
    function walk(goal, K) {
-      if (goal.type === $.GoalType.rel) {
+      if (goal.type === $.GoalType.rel || goal.type === $.GoalType.func) {
          goals.push(goal);
          K();
          goals.pop(goal);
@@ -169,7 +172,8 @@ computePaths ::= function (rootGoal) {
 }
 computeFulfillments ::= function (rootGoal) {
    let lvar2ff = $.multimap();
-   let ffs0 = new Set;  // for those goals where .shrunk > Shrunk.min
+   // for those goals which are already shrunk (> Shrunk.min) due to firmAttrs
+   let ffs0 = new Set;
 
    (function walk(goal) {
       if (goal.type === $.GoalType.rel) {
@@ -178,7 +182,7 @@ computeFulfillments ::= function (rootGoal) {
                joinType: $.JoinType.all,
                count: 0,
                shrunk: goal.shrunk,
-               goal: goal
+               goal
             });
          }
 
@@ -187,8 +191,8 @@ computeFulfillments ::= function (rootGoal) {
                joinType: $.JoinType.index,
                count: index.length,
                shrunk: $.indexShrunk(index),
-               goal: goal,
-               index: index,
+               goal,
+               index,
             };
 
             for (let attr of index) {
@@ -202,11 +206,62 @@ computeFulfillments ::= function (rootGoal) {
             $.mmapAdd(lvar2ff, pklvar, {
                joinType: $.JoinType.pk,
                count: 1,
-               shrunk: $.Shrunk.scalar,
-               goal: goal,
-               pklvar: pklvar,
+               shrunk: $.Shrunk.one,
+               goal,
+               pklvar,
             })
          }
+      }
+      else if (goal.type === $.GoalType.func) {
+         let {rel} = goal;
+         let plusMinus = new Array(rel.attrs.length);
+         let lvars = new Set;
+
+         (function rec(i) {
+            if (i === rel.attrs.length) {
+               let icode = plusMinus.join('');
+
+               if ($.hasOwnProperty(rel.instantiations, icode)) {
+                  let {shrunk} = rel.instantiations[icode];
+                  let ff = {
+                     joinType: $.JoinType.func,
+                     count: lvars.size,
+                     shrunk,
+                     goal,
+                     icode,
+                  };
+
+                  if (lvars.size === 0) {
+                     ffs0.add(ff);
+                  }
+                  else {
+                     for (let lvar of lvars) {
+                        $.mmapAdd(lvar2ff, lvar, ff);
+                     }
+                  }
+               }
+
+               return;
+            }
+
+            let attr = rel.attrs[i];
+
+            if ($.hasOwnProperty(goal.firmAttrs, attr)) {
+               plusMinus[i] = '+';
+               rec(i + 1);
+            }
+            else {
+               let lvar = goal.looseAttrs.get(attr);
+
+               plusMinus[i] = '-';
+               rec(i + 1);
+
+               plusMinus[i] = '+';
+               lvars.add(lvar);
+               rec(i + 1);
+               lvars.delete(lvar);
+            }
+         })(0);
       }
       else {
          for (let subgoal of goal.subgoals) {
@@ -271,7 +326,18 @@ computeJoinTreeFrom ::= function (Dgoal, {
             else if (ff1.shrunk < ff2.shrunk) {
                return ff2;
             }
-            else if (isGoalFull(ff1.goal)) {
+            else if (
+                  ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
+                  ff1.goal === ff2.goal) {
+               if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
+                  return ff1;
+               }
+               else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
+                  return ff2;
+               }
+            }
+            
+            if (isGoalFull(ff1.goal)) {
                return ff1;
             }
             else if (isGoalFull(ff2.goal)) {
@@ -429,10 +495,50 @@ computeJoinTreeFrom ::= function (Dgoal, {
          return {
             type: $.JoinType.pk,
             projNum: goal.num,
-            pklvar: goal.looseAttrs.get($.recKey),
+            pklvar: ff.pklvar,
             checkAttrs: collectCheckAttrs(goal, [$.recKey]),
             extractAttrs: collectExtractAttrs(goal),
             next: null
+         }
+      }
+      else if (type === $.JoinType.func) {
+         let {rel} = goal;
+
+         for (let [attr, char] of $.zip(rel.attrs, ff.icode)) {
+            if (char === '-' && goal.looseAttrs.has(attr)) {
+               let lvar = goal.looseAttrs.get(attr);
+               $.check(!boundLvars.has(lvar), () =>
+                  `Functional relation '${rel.name}': instantiation '${ff.icode}' ` +
+                  `was found as the best match but the attribute '${attr}' is bound`
+               );
+            }
+         }
+
+         let args = Array.from($.zip(rel.attrs, ff.icode), ([attr, char]) => {
+            if (char === '-' || goal.looseAttrs.has(attr)) {
+               return {
+                  lvar: goal.looseAttrs.get(attr),
+                  isBound: char === '+'
+               }
+            }
+            else {
+               let firmValue = goal.firmAttrs[attr];
+
+               return {
+                  getValue(boundAttrs) {
+                     return firmValue
+                  }
+               }
+            }
+         });
+
+         return {
+            type: $.JoinType.func,
+            args,
+            icode: ff.icode,
+            run: rel.instantiations[ff.icode].run,
+            rel,
+            next: null,
          }
       }
       else {
@@ -459,6 +565,11 @@ computeJoinTreeFrom ::= function (Dgoal, {
    let paths0 = new Set(goalPaths.get(Dgoal));
    let [goals0, fulfillments0] = lyingOnPaths(paths0, goalPaths.keys(), ffs0);
    return buildTree(paths0, goals0, fulfillments0, Dgoal);
+}
+isInstantiationCodeMoreSpecialized ::= function (icodeS, icodeG) {
+   $.assert(() => icodeS.length === icodeG.length);
+
+   return $.all($.zip(icodeS, icodeG), ([s, g]) => s === '+' || g === '-');
 }
 makeIndexRegistry ::= function () {
    return [];
@@ -566,6 +677,60 @@ narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
          }
       }
 
+      if (jnode.type === $.JoinType.func) {
+         let {args} = jnode;
+         let n_args = [], idxAdditionallyBound = [];
+
+         for (let [i, arg] of $.enumerate(args)) {
+            if ($.hasOwnProperty(arg, 'getValue')) {
+               n_args.push(arg);
+               continue;
+            }
+
+            let {lvar, isBound} = arg;
+
+            if (!bindList.includes(lvar)) {
+               n_args.push(arg);
+               continue;
+            }
+
+            n_args.push({
+               getValue(boundAttrs) {
+                  return boundAttrs[lvar];
+               }
+            });
+
+            if (!isBound) {
+               idxAdditionallyBound.push(i);
+            }
+         }
+
+         let n_icode = jnode.icode;
+
+         if (idxAdditionallyBound.length > 0) {
+            let arr = Array.from(jnode.icode);
+            for (let idx of idxAdditionallyBound) {
+               arr[idx] = '+';
+            }
+
+            n_icode = arr.join('');
+
+            $.check($.hasOwnProperty(jnode.rel.instantiations, n_icode), () =>
+               `Narrowing impossible: instantiation '${n_icode}' in '${jnode.rel.name}'` +
+               ` is unavailable`
+            );
+         }
+
+         return {
+            type: $.JoinType.func,
+            args: n_args,
+            icode: n_icode,
+            run: jnode.rel.instantiations[n_icode].run,
+            rel: jnode.rel,
+            next: narrow(jnode.next)
+         }
+      }
+
       if (jnode.type === $.JoinType.either) {
          return {
             type: $.JoinType.either,
@@ -578,7 +743,7 @@ narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
 
    return {
       plan: Array.from(plan, ({startAttrs, joinTree}) => ({
-         startAttrs: startAttrs.filter(([attr, lvar]) => !bindList.includes(lvar)),
+         startAttrs: $.narrowAttrList(startAttrs, bindList),
          joinTree: narrow(joinTree)
       })),
       appliedIndices: indexRegistry

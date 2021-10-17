@@ -3,7 +3,6 @@ common
 dedb-projection
    projectionFor
    releaseProjection
-dedb-base
    updateProjection
 -----
 time ::= 0
@@ -29,7 +28,7 @@ query ::= function (rel, boundAttrs) {
 
    $.updateProjection(proj);
 
-   return Array.from(proj.records);
+   return proj.records;
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {

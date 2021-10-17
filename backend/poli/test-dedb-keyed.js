@@ -8,7 +8,6 @@ dedb-query
 dedb-projection
    projectionFor
    releaseProjection
-   isFullBaseProjection
    updateProjection
 dedb-base
    baseRelation
@@ -88,7 +87,8 @@ test_query ::= function ({
    joe, jack, jim, kelly, stasy, greg,
 }) {
    $.check($.isLike(
-      $.query(dev_lang, {}),
+      // TODO: implement map comparison with isLike
+      new Set($.query(dev_lang, {})),
       [
          [joe, 'java'],
          [jack, 'java'],

@@ -38,11 +38,13 @@ dedb-projection
    makeRecords
 dedb-goal
    relGoal
+dedb-relation
+   RelationType
 -----
 baseRelation ::= function ({
    name,
    attrs,
-   indices,
+   indices=[],
    records=[]
 }) {
    let {keyed} = $.normalizeAttrsForPk(attrs);
@@ -66,7 +68,7 @@ baseRelation ::= function ({
    }
 
    let rel = {
-      isBase: true,
+      type: $.RelationType.base,
       name: name,
       attrs: attrs,
       keyed: keyed,
@@ -77,7 +79,7 @@ baseRelation ::= function ({
       myIndexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
 
-      at: function (attrs) {
+      at(attrs) {
          return $.relGoal(this, attrs);
       },
    };
@@ -221,7 +223,7 @@ addFact ::= function (rel, recKey, recVal=undefined) {
    $.check(Boolean(rel.keyed) === (recVal !== undefined));
    $.check(!rel.records.has(recKey), `Duplicate record`);
 
-   let rec = rel.keyed ? [recKey, recVal] : recKey;
+   let rec = rel.keyed !== false ? [recKey, recVal] : recKey;
 
    $.addRec(rel, rec);
    

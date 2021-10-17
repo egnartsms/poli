@@ -6,6 +6,8 @@ common
 data-structures
    AugmentedMap
    AugmentedSet
+dedb-relation
+   RelationType
 dedb-base
    * as: base
 dedb-derived
@@ -13,14 +15,16 @@ dedb-derived
 dedb-rec-key
    recVal
 -----
-isFullBaseProjection ::= function (proj) {
-   return proj.rel.isBase && $.base.isFullProjection(proj);
-}
-isKeyedProjectionUnwrapped ::= function (proj) {
-   return (proj.rel.isBase ? proj.attrs : proj.config.attrs)[1] === $.recVal;
-}
 makeProjection ::= function (rel, boundAttrs) {
-   return (rel.isBase ? $.base.makeProjection : $.derived.makeProjection)(rel, boundAttrs);
+   if (rel.type === $.RelationType.base) {
+      return $.base.makeProjection(rel, boundAttrs);
+   }
+   else if (rel.type === $.RelationType.derived) {
+      return $.derived.makeProjection(rel, boundAttrs);
+   }
+   else {
+      throw new Error(`Cannot make projection of a relation of type '${rel.type}'`);
+   }
 }
 projectionFor ::= function (rel, boundAttrs) {
    let map = rel.projmap;
@@ -81,7 +85,17 @@ releaseProjection ::= function (proj) {
    }
 }
 freeProjection ::= function (proj) {
-   (proj.rel.isBase ? $.base.freeProjection : $.derived.freeProjection)(proj);
+   let {rel} = proj;
+
+   if (rel.type === $.RelationType.base) {
+      $.base.freeProjection(proj);
+   }
+   else if (rel.type === $.RelationType.derived) {
+      $.derived.freeProjection(proj);
+   }
+   else {
+      throw new Error;
+   }
 }
 invalidateProjections ::= function (...rootProjs) {
    let stack = rootProjs;
@@ -98,7 +112,17 @@ invalidateProjections ::= function (...rootProjs) {
    }
 }
 updateProjection ::= function (proj) {
-   (proj.rel.isBase ? $.base.updateProjection : $.derived.updateProjection)(proj);
+   let {rel} = proj;
+
+   if (rel.type === $.RelationType.base) {
+      $.base.updateProjection(proj);
+   }
+   else if (rel.type === $.RelationType.derived) {
+      $.derived.updateProjection(proj);
+   }
+   else {
+      throw new Error;
+   }
 }
 makeRecords ::= function (owner, iterable) {
    let records = new (owner.keyed !== false ? $.AugmentedMap : $.AugmentedSet)(iterable);
