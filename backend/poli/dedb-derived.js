@@ -132,7 +132,7 @@ derivedRelation ::= function ({
       configs: {0: config0},
       projmap: new Map,
 
-      at: function (attrs) {
+      at(attrs) {
          return $.goal.relGoal(this, attrs);
       }
    };
@@ -283,6 +283,14 @@ rebuildProjection ::= function (proj) {
          return;
       }
 
+      if (jnode.type === $.JoinType.func) {
+         for (let _ of $.joinFuncRel(proj, jnode, ns)) {
+            run(jnode.next);
+         }
+
+         return;
+      }
+
       let subProj = proj.subProjs[jnode.projNum];
 
       outer:
@@ -423,9 +431,17 @@ updateProjection ::= function (proj) {
             return;
          }
 
+         if (jnode.type === $.JoinType.func) {
+            for (let _ of $.joinFuncRel(proj, jnode, ns)) {
+               run(jnode.next);
+            }
+
+            return;
+         }
+
          let subProj = proj.subProjs[jnode.projNum];
          let keysToExclude = (
-            (jnode.projNum < dsubNum ? subNum2Added.get(jnode.projNum) : null) || new Set
+            jnode.projNum < dsubNum ? subNum2Added.get(jnode.projNum) ?? new Set : new Set
          );
 
          outer:
@@ -475,6 +491,23 @@ updateProjection ::= function (proj) {
    }
 
    $.markProjectionValid(proj);
+}
+joinFuncRel ::= function (proj, jnode, ns) {
+   let {run, args} = jnode;
+   let array = [ns];
+
+   for (let arg of args) {
+      if ($.hasOwnProperty(arg, 'getValue')) {
+         array.push(arg.getValue(proj.boundAttrs));
+      }
+      else {
+         let {isBound, lvar} = arg;
+
+         array.push(isBound ? ns[lvar] : lvar);
+      }
+   }
+   
+   return run.apply(null, array);
 }
 joinRecords ::= function (proj, jnode, ns) {
    let {type, projNum} = jnode;

@@ -1,4 +1,5 @@
 common
+   all
    arrayify
    arrayChain
    assert
@@ -12,6 +13,8 @@ common
    isObjectWithOwnProperty
    setsEqual
    singleQuoteJoinComma
+dedb-relation
+   RelationType
 data-structures
    BidiMap
 dedb-index
@@ -28,7 +31,8 @@ set-operation
 GoalType ::= ({
    and: 'and',
    or: 'or',
-   rel: 'rel'
+   rel: 'rel',
+   func: 'func'
 })
 and ::= function (...subgoals) {
    let conjuncts = [];
@@ -48,22 +52,10 @@ and ::= function (...subgoals) {
       return conjuncts[0];
    }
 
-   let leaves = conjuncts.filter(g => g.type === $.GoalType.rel);
-   let disjunctions = conjuncts.filter(g => g.type === $.GoalType.or);
-
-   let goal = {
+   return {
       type: $.GoalType.and,
-      parent: null,
       subgoals: conjuncts,
-      leaves,
-      disjunctions,
    };
-
-   for (let subgoal of conjuncts) {
-      subgoal.parent = goal;
-   }
-
-   return goal;
 }
 or ::= function (...subgoals) {
    let disjuncts = [];
@@ -83,30 +75,86 @@ or ::= function (...subgoals) {
       return disjuncts[0];
    }
    
-   let goal = {
+   return {
       type: $.GoalType.or,
-      parent: null,
       subgoals: disjuncts,
    };
-
-   for (let subgoal of disjuncts) {
-      subgoal.parent = goal;
-   }
-
-   return goal;
 }
 lvarSym ::= Symbol('lvar')
 isLvar ::= function (obj) {
    return $.isObjectWithOwnProperty(obj, $.lvarSym);
 }
 relGoal ::= function (rel, attrs) {
-   let missingAttrs = Reflect.ownKeys(attrs).filter(a => !rel.attrs.includes(a));
+   $.check(rel.type === $.RelationType.base || rel.type === $.RelationType.derived);
 
-   $.check(missingAttrs.length === 0, () =>
-      `Missing attrs in the goal for '${rel.name}': ` +
-         `${$.singleQuoteJoinComma(missingAttrs)}`
+   $.check($.all(Reflect.ownKeys(attrs), a => rel.attrs.includes(a)),
+      () => `Invalid attr(s) in the goal for '${rel.name}'`
    );
 
+   let [firmAttrs, looseAttrs] = $.computeFirmAndLooseAttrs(attrs);
+
+   {
+      let dupVar = $.firstDuplicate(looseAttrs.values());
+
+      $.check(dupVar === undefined, () =>
+         `Duplicate lvar '${dupVar}' in the goal for '${rel.name}'`
+      );
+   }
+
+   let indices = Array.from(
+      rel.indices,
+      idx => $.reduceIndex(idx, Reflect.ownKeys(firmAttrs))
+   );
+   let shrunk = indices.reduce((M, idx) => Math.max(M, $.indexShrunk(idx)), $.Shrunk.min);
+   let eligibleIndices;
+
+   // There is no point in indexing a scalar projection. In other cases, we still need
+   // to consider all eligible indices.
+   if (shrunk === $.Shrunk.one) {
+      eligibleIndices = [];
+   }
+   else {
+      eligibleIndices = indices
+         .filter(idx => !$.isIndexCovered(idx))
+         .filter(idx => $.wouldIndexBeCoveredBy(idx, looseAttrs.keys()));
+   }
+
+   return {
+      type: $.GoalType.rel,
+      rel,
+      firmAttrs,
+      looseAttrs,
+      indices: eligibleIndices,
+      shrunk: shrunk,
+      num: -1
+   }
+}
+goalLvars ::= function (goal) {
+   return goal.looseAttrs.values();
+}
+funcGoal ::= function (rel, attrs) {
+   $.check(rel.type === $.RelationType.functional);
+
+   $.check($.all(Reflect.ownKeys(attrs), a => rel.attrs.includes(a)), () =>
+      `Invalid attr(s) in the goal for '${rel.name}'`
+   );
+
+   $.check($.all(rel.attrs, a => $.hasOwnProperty(attrs, a)), () =>
+      `Not all attrs were supplied in the goal for '${rel.name}'`
+   );
+
+   let [firmAttrs, looseAttrs] = $.computeFirmAndLooseAttrs(attrs);
+
+   $.check(looseAttrs.size > 0, () => `No lvars used in the goal for '${rel.name}'`);
+
+   return {
+      type: $.GoalType.func,
+      rel: rel,
+      firmAttrs,
+      looseAttrs
+   }
+}
+computeFirmAndLooseAttrs ::= function (attrs) {
    let firmAttrs = Object.fromEntries(
       $.mapfilter($.ownEntries(attrs), ([a, val]) => {
          if (!$.isLvar(val)) {
@@ -122,46 +170,13 @@ relGoal ::= function (rel, attrs) {
       })
    );
 
-   let dupVar = $.firstDuplicate(looseAttrs.values());
-
-   $.check(dupVar === undefined, () =>
-      `Duplicate lvar '${dupVar}' in the goal for '${rel.name}'`
-   );
-
-   let indices = Array.from(
-      rel.indices,
-      idx => $.reduceIndex(idx, Reflect.ownKeys(firmAttrs))
-   );
-   let shrunk = indices.reduce((M, idx) => Math.max(M, $.indexShrunk(idx)), $.Shrunk.min);
-   let eligibleIndices;
-
-   // There is no point in indexing a scalar projection. In other cases, we still need
-   // to consider all eligible indices.
-   if (shrunk === $.Shrunk.scalar) {
-      eligibleIndices = [];
-   }
-   else {
-      eligibleIndices = indices
-         .filter(idx => !$.isIndexCovered(idx))
-         .filter(idx => $.wouldIndexBeCoveredBy(idx, looseAttrs.keys()));
-   }
-
-   return {
-      type: $.GoalType.rel,
-      parent: null,
-      rel,
-      firmAttrs,
-      looseAttrs,
-      indices: eligibleIndices,
-      shrunk: shrunk,
-      num: -1
-   }
+   return [firmAttrs, looseAttrs];
 }
 checkVarUsage ::= function (rootGoal, attrs) {
    let usageCount = new Map;
 
    function walk(goal, K) {
-      if (goal.type === $.GoalType.rel) {
+      if (goal.type === $.GoalType.rel || goal.type === $.GoalType.func) {
          for (let lvar of $.goalLvars(goal)) {
             usageCount.set(lvar, (usageCount.get(lvar) ?? 0) + 1);
          }
@@ -210,7 +225,7 @@ walkRelGoals ::= function* walk(goal) {
    if (goal.type === $.GoalType.rel) {
       yield goal;
    }
-   else {
+   else if (goal.type === $.GoalType.and || goal.type === $.GoalType.or) {
       for (let subgoal of goal.subgoals) {
          yield* walk(subgoal);
       }
@@ -226,16 +241,63 @@ numberRelGoals ::= function (rootGoal) {
 }
 Shrunk ::= ({
    min: 0,
-   no: 0,
-   index: 1,
-   scalar: 2,
+   all: 0,
+   part: 1,
+   one: 2,
    max: 2,
 })
 indexShrunk ::= function (index) {
    return $.isIndexCovered(index) ?
-      (index.isUnique ? $.Shrunk.scalar : $.Shrunk.index) :
-      $.Shrunk.no;
+      (index.isUnique ? $.Shrunk.one : $.Shrunk.part) :
+      $.Shrunk.all;
 }
-goalLvars ::= function (goal) {
-   return goal.looseAttrs.values();
+funcRelShrunk ::= function (rel, firmAttrs) {
+   throw new Error;
+
+   let icode = $.instantiationCode(rel, firmAttrs);
+
+   if (!$.hasOwnProperty(rel.instantiations, icode)) {
+      return $.Shrunk.all;
+   }
+
+   let instantiation = rel.instantiations[icode];
+
+   if ($.hasOwnProperty(instantiation, 'det')) {
+      return $.Shrunk.one;
+   }
+   else if ($.hasOwnProperty(instantiation, 'nondet')) {
+      return $.Shrunk.part;
+   }
+   else {
+      throw new Error;
+   }
+}
+instantiationShrunk ::= function (ins) {
+   throw new Error;
+
+   if ($.hasOwnProperty(ins, 'det')) {
+      return $.Shrunk.one;
+   }
+   else if ($.hasOwnProperty(ins, 'nondet')) {
+      return $.Shrunk.part;
+   }
+   else {
+      throw new Error;
+   }
+}
+instantiationCode ::= function (rel, firmAttrs) {
+   throw new Error;
+
+   let codes = new Array(rel.attrs.length);
+
+   for (let attr of rel.attrs) {
+      if ($.hasOwnProperty(firmAttrs, attr)) {
+         codes.push('+');
+      }
+      else {
+         codes.push('-');
+      }
+   }
+
+   return codes.join('');
 }

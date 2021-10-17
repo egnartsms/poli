@@ -422,6 +422,7 @@ isLike ::= function isLike(A, B) {
       }
       return true;
    }
+
    if (A instanceof Set) {
       if (!(B instanceof Array)) {
          return false;
@@ -444,9 +445,45 @@ isLike ::= function isLike(A, B) {
          return false;
       }
 
+      if (B.size > 0) {
+         return false;
+      }
+
       return true;
    }
 
+   if (A instanceof Map) {
+      if (!(B instanceof Array)) {
+         return false;
+      }
+
+      B = new Map(B);
+
+      if (A.size !== B.size) {
+         return false;
+      }
+
+      loop:
+      for (let [ak, av] of A) {
+         if (!B.has(ak)) {
+            return false;
+         }
+
+         let bv = B.get(ak);
+         B.delete(ak);
+
+         if (!isLike(av, bv)) {
+            return false;
+         }
+      }
+
+      if (B.size > 0) {
+         return false;
+      }
+
+      return true;
+   }
+   
    if (typeof A === 'object') {
       if (typeof B !== 'object') {
          return false;
