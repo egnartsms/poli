@@ -5,7 +5,7 @@ common
    sortedArray
 dedb-query
    query
-dedb-relation
+dedb-common
    RelationType
 dedb-projection
    projectionFor

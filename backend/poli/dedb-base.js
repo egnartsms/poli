@@ -10,21 +10,19 @@ common
    concat
    map
    ownEntries
+   newObj
    selectProps
    trackingFinal
 dedb-rec-key
    recKey
    recVal
    normalizeAttrsForPk
-   recKeyOf
-   Keyed
-   makeAccessors
 dedb-version
    refCurrentState
    isVersionUpToDate
    verAdd1
    verRemove1
-   unchainVersions
+   unchainVersion
    releaseVersion
 dedb-index
    copyIndex
@@ -35,11 +33,13 @@ dedb-index-instance
    indexInstanceStorage
 dedb-projection
    invalidateProjections
-   makeRecords
 dedb-goal
    relGoal
-dedb-relation
+dedb-common
    RelationType
+   RecordType
+   recTypeProto
+   makeRecords
 -----
 baseRelation ::= function ({
    name,
@@ -47,7 +47,7 @@ baseRelation ::= function ({
    indices=[],
    records=[]
 }) {
-   let {keyed} = $.normalizeAttrsForPk(attrs);
+   let {recType} = $.normalizeAttrsForPk(attrs);
 
    let indexInstances = $.indexInstanceStorage();
    let availableIndices = [];
@@ -67,14 +67,14 @@ baseRelation ::= function ({
       }
    }
 
-   let rel = {
+   let rel = $.newObj($.recTypeProto(recType), {
       type: $.RelationType.base,
       name: name,
       attrs: attrs,
-      keyed: keyed,
       indices: availableIndices,
       projmap: new Map,
       myVer: null,
+      myExtVer: null,
       records: null,  // intialized below
       myIndexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
@@ -82,7 +82,7 @@ baseRelation ::= function ({
       at(attrs) {
          return $.relGoal(this, attrs);
       },
-   };
+   });
 
    rel.records = $.makeRecords(rel, records);
 
@@ -99,36 +99,32 @@ makeProjection ::= function (rel, boundAttrs) {
    // We want to preserve the same shape for the full projection and partial ones
    // (for V8 optimizations).
    if ($.hasNoEnumerableProps(boundAttrs)) {
-      proj = {
+      proj = $.newObj($.recTypeProto(rel.recType), {
          rel: rel,
          refcount: 0,
          isValid: true,
-         keyed: rel.keyed,
          boundAttrs: boundAttrs,
          depVer: null,  // always null
          myVer: null,  // always null
+         myExtVer: null,  // always null
          records: rel.records,  // shared
          myIndexInstances: rel.myIndexInstances,  // shared
-         validRevDeps: new Set,
-
-         ...$.makeAccessors(rel.keyed)
-      };
+         validRevDeps: new Set
+      });
    }
    else {
-      proj = {
+      proj = $.newObj($.recTypeProto(rel.recType), {
          rel: rel,
          refcount: 0,
          isValid: true,
-         keyed: rel.keyed,
          boundAttrs: boundAttrs,
          depVer: $.refCurrentState(rel),
          myVer: null,
+         myExtVer: null,
          records: null,  // initialized below
          myIndexInstances: $.indexInstanceStorage(),
-         validRevDeps: new Set,
-
-         ...$.makeAccessors(rel.keyed)
-      };
+         validRevDeps: new Set
+      });
 
       proj.records = $.makeRecords(
          proj,
@@ -169,14 +165,14 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   $.unchainVersions(proj.depVer);
+   $.unchainVersion(proj.depVer);
 
    for (let rkey of proj.depVer.removed) {
       $.deleteRecByKey(proj, rkey);
    }
    
    for (let rkey of proj.depVer.added) {
-      let rec = proj.rel.records.getEntry(rkey);
+      let rec = proj.rel.recAt(rkey);
 
       if ($.recSatisfies(proj, rec)) {
          $.addRec(proj, rec);
@@ -190,27 +186,27 @@ updateProjection ::= function (proj) {
    $.markProjectionValid(proj);
 }
 addRec ::= function (parent, rec) {
-   parent.records.add(rec);
+   parent.addRecord(rec);
 
    if (parent.myVer !== null) {
-      $.verAdd1(parent.myVer, parent.keyed === false ? rec : rec[0]);
+      $.verAdd1(parent.myVer, parent.recKey(rec));
    }
 
    for (let idxInst of parent.myIndexInstances) {
       $.indexAdd(idxInst, rec);
    }
 }
-deleteRecByKey ::= function (parent, recKey) {
-   let rec = parent.records.getEntry(recKey);
+deleteRecByKey ::= function (parent, rkey) {
+   let rec = parent.recAt(rkey);
 
    if (rec === undefined) {
       return false;
    }
 
-   parent.records.delete(recKey);
+   parent.records.delete(rkey);
 
    if (parent.myVer !== null) {
-      $.verRemove1(parent.myVer, recKey);
+      $.verRemove1(parent.myVer, rkey);
    }
 
    for (let idxInst of parent.myIndexInstances) {
@@ -219,34 +215,34 @@ deleteRecByKey ::= function (parent, recKey) {
 
    return true;
 }
-addFact ::= function (rel, recKey, recVal=undefined) {
-   $.check(Boolean(rel.keyed) === (recVal !== undefined));
-   $.check(!rel.records.has(recKey), `Duplicate record`);
+addFact ::= function (rel, rkey, rval) {
+   $.check(rel.isKeyed === (rval !== undefined));
+   $.check(!rel.records.has(rkey), `Duplicate record`);
 
-   let rec = rel.keyed !== false ? [recKey, recVal] : recKey;
+   let rec = rel.recType === $.RecordType.tuple ? rkey : [rkey, rval];
 
    $.addRec(rel, rec);
    
    $.invalidate(rel);
 }
-removeFact ::= function (rel, recKey) {
-   let removed = $.deleteRecByKey(rel, recKey);
+removeFact ::= function (rel, rkey) {
+   let removed = $.deleteRecByKey(rel, rkey);
    
    $.check(removed, `Missing record`);
    
    $.invalidate(rel);
 }
-changeFact ::= function (rel, recKey, newValue) {
+changeFact ::= function (rel, rkey, newValue) {
    $.check(
-      rel.keyed,
+      rel.isKeyed,
       `Cannot change fact in a relation that does not have primary key`
    );
    
-   let removed = $.deleteRecByKey(rel, recKey);
+   let removed = $.deleteRecByKey(rel, rkey);
 
    $.check(removed, `Missing record`);
 
-   $.addRec(rel, [recKey, newValue]);
+   $.addRec(rel, [rkey, newValue]);
 
    $.invalidate(rel);
 }

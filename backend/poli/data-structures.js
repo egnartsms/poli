@@ -4,18 +4,18 @@ AugmentedMap ::= class AugmentedMap extends Map {
       return this.set(key, val);
    }
 
-   getEntry(key) {
-      return this.has(key) ? [key, this.get(key)] : undefined;
-   }
+   // getEntry(key) {
+   //    return this.has(key) ? [key, this.get(key)] : undefined;
+   // }
 }
 AugmentedSet ::= class AugmentedSet extends Set {
-   get(rec) {
-      return this.has(rec) ? rec : undefined;
+   get(key) {
+      return this.has(key) ? key : undefined;
    }
 
-   getEntry(rec) {
-      return this.has(rec) ? rec : undefined;
-   }
+   // getEntry(key) {
+   //    return this.has(key) ? key : undefined;
+   // }
 }
 BidiMap ::= class BidiMap extends Map {
    constructor(entries) {

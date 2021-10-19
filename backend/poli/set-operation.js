@@ -59,3 +59,26 @@ hasAny ::= function (set, X) {
 
    return false;
 }
+setsDeleteIntersection ::= function (s1, s2) {
+   let [gs, ls] = $.greaterLesserSet(s1, s2);
+
+   for (let x of ls) {
+      if (gs.has(x)) {
+         gs.delete(x);
+         ls.delete(x);
+      }
+   }
+}
+greaterLesserSet ::= function (s1, s2) {
+   return s1.size > s2.size ? [s1, s2] : [s2, s1];
+}
+setDeleteAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.delete(x);
+   }
+}
+setAddAll ::= function (set, xs) {
+   for (let x of xs) {
+      set.add(x);
+   }
+}

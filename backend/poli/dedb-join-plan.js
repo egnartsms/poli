@@ -29,7 +29,6 @@ common
    setInter
    setDiff
 dedb-rec-key
-   plainAttrs
    recKey
 dedb-goal
    GoalType

@@ -12,6 +12,7 @@ common
    singleQuoteJoinComma
    map
    mapfilter
+   newObj
    filter
    setDefault
    zip
@@ -20,27 +21,20 @@ common
    mmapAdd
    mmapDelete
 dedb-rec-key
-   recAttr
    recKey
    recVal
-   plainAttrs
    normalizeAttrsForPk
-   recByKey
-   recKeyOf
-   Keyed
-   makeAccessors
 dedb-projection
    projectionFor
    releaseProjection
    updateProjection as: gUpdateProjection
-   makeRecords
 dedb-goal
    * as: goal
 dedb-version
    refCurrentState
    releaseVersion
    isVersionUpToDate
-   unchainVersions
+   unchainVersion
    verAdd1
    verRemove1
 dedb-index
@@ -58,8 +52,11 @@ dedb-join-plan
    makeSubBoundAttrsProducer
    narrowConfig
    JoinType
-dedb-relation
+dedb-common
    RelationType
+   RecordType
+   recTypeProto
+   makeRecords
 -----
 MAX_REL_ATTRS ::= 30
 derivedRelation ::= function ({
@@ -68,7 +65,7 @@ derivedRelation ::= function ({
    indices=[],
    body: bodyCallback
 }) {
-   let {keyed, plainAttrs} = $.normalizeAttrsForPk(attrs);
+   let {recType, plainAttrs} = $.normalizeAttrsForPk(attrs);
 
    $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
@@ -122,7 +119,7 @@ derivedRelation ::= function ({
 
    return {
       type: $.RelationType.derived,
-      keyed: keyed,
+      recType,
       name: relname,
       attrs: attrs,
       indices: indices,
@@ -157,17 +154,17 @@ makeProjection ::= function (rel, boundAttrs) {
       ({projNum, index}) => $.refIndexInstance(subProjs[projNum], index)
    );
 
-   let proj = {
+   let proj = $.newObj($.recTypeProto(rel.recType), {
       rel: rel,
       refcount: 0,
       isValid: false,
-      keyed: rel.keyed,
       boundAttrs: boundAttrs,
       config: config,
       subProjs: subProjs,
       subVers: subVers,
       subIndexInstances: subIndexInstances,
       myVer: null,
+      myExtVer: null,
       records: null,  // dry in the beginning
       // forward: rkey -> [subkey, subkey, ...]
       recDeps: new Map,
@@ -175,9 +172,7 @@ makeProjection ::= function (rel, boundAttrs) {
       subrecDeps: $.produceArray(subProjs.length, () => $.multimap()),
       myIndexInstances: $.indexInstanceStorage(),
       validRevDeps: new Set,
-
-      ...$.makeAccessors(rel.keyed),
-   };
+   });
 
    $.rebuildProjection(proj);
 
@@ -225,7 +220,10 @@ boundAttrs2ConfigKey ::= function (attrs, boundAttrs) {
    return cfgkey;
 }
 rebuildProjection ::= function (proj) {
-   $.check(proj.myVer === null, `Cannot rebuild projection which is referred to`);
+   $.check(
+      proj.myVer === null && proj.myExtVer === null,
+      `Cannot rebuild projection which is being referred to`
+   );
 
    let {rel, config} = proj;
 
@@ -249,12 +247,12 @@ rebuildProjection ::= function (proj) {
    // In case if proj is keyed, we need 'recKey' and probably 'recVal' in 'ns' anyways,
    // even if any of them is bound. That's different form plain attributes which can
    // be omitted if bound.
-   if (proj.keyed !== false) {
+   if (proj.isKeyed) {
       if ($.hasOwnProperty(proj.boundAttrs, $.recKey)) {
          ns[$.recKey] = proj.boundAttrs[$.recKey];
       }
       
-      if (proj.keyed === $.Keyed.direct && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
+      if (proj.recType === $.RecordType.keyVal && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
          ns[$.recVal] = proj.boundAttrs[$.recVal];
       }
    }
@@ -265,7 +263,7 @@ rebuildProjection ::= function (proj) {
       if (jnode === null) {
          let rec = $.makeRecordFor(proj, ns);
 
-         proj.records.add(rec);
+         proj.addRecord(rec);
          $.recDep(proj, proj.recKey(rec), subKeys);
 
          for (let idxInst of proj.myIndexInstances) {
@@ -348,7 +346,7 @@ updateProjection ::= function (proj) {
          let rkeys = $.subrecUndep(proj, subNum, subKey);
 
          for (let rkey of rkeys) {
-            let rec = proj.recAtKey(rkey);
+            let rec = proj.recAt(rkey);
 
             proj.records.delete(rkey);
 
@@ -366,18 +364,18 @@ updateProjection ::= function (proj) {
    // projNum => ver.added
    let subNum2Added = new Map;
 
-   for (let [subNum, subVer] of $.enumerate(proj.subVers)) {
+   for (let [i, subVer] of $.enumerate(proj.subVers)) {
       if ($.isVersionUpToDate(subVer)) {
          continue;
       }
 
-      $.unchainVersions(subVer);
+      $.unchainVersion(subVer);
 
       if (subVer.removed.size > 0) {
-         removeForSubkeyRemoval(subNum, subVer.removed);
+         removeForSubkeyRemoval(i, subVer.removed);
       }
       if (subVer.added.size > 0) {
-         subNum2Added.set(subNum, subVer.added);
+         subNum2Added.set(i, subVer.added);
       }
    }
 
@@ -388,12 +386,12 @@ updateProjection ::= function (proj) {
    // In case if proj is keyed, we need 'recKey' and probably 'recVal' anyways, even
    // if any of them is bound. That's different from plain attributes that can safely
    // be omitted from the record object if bound.
-   if (proj.keyed !== false) {
+   if (proj.isKeyed) {
       if ($.hasOwnProperty(proj.boundAttrs, $.recKey)) {
          ns[$.recKey] = proj.boundAttrs[$.recKey];
       }
       
-      if (proj.keyed === $.Keyed.direct && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
+      if (proj.recType === $.RecordType.keyVal && $.hasOwnProperty(proj.boundAttrs, $.recVal)) {
          ns[$.recVal] = proj.boundAttrs[$.recVal];
       }
    }
@@ -409,7 +407,7 @@ updateProjection ::= function (proj) {
             let rec = $.makeRecordFor(proj, ns);
             let rkey = proj.recKey(rec);
 
-            proj.records.add(rec);
+            proj.addRecord(rec);
             $.recDep(proj, rkey, subKeys);
 
             for (let idxInst of proj.myIndexInstances) {
@@ -441,14 +439,14 @@ updateProjection ::= function (proj) {
 
          let subProj = proj.subProjs[jnode.projNum];
          let keysToExclude = (
-            jnode.projNum < dsubNum ? subNum2Added.get(jnode.projNum) ?? new Set : new Set
+            jnode.projNum < dsubNum && subNum2Added.get(jnode.projNum) || null
          );
 
          outer:
          for (let subRec of $.joinRecords(proj, jnode, ns)) {
             let subKey = subProj.recKey(subRec);
 
-            if (keysToExclude.has(subKey)) {
+            if (keysToExclude !== null && keysToExclude.has(subKey)) {
                continue;
             }
 
@@ -469,7 +467,7 @@ updateProjection ::= function (proj) {
       }
 
       for (let subKey of subAdded) {
-         let subRec = dsubProj.recAtKey(subKey);
+         let subRec = dsubProj.recAt(subKey);
 
          for (let [attr, lvar] of plan.startAttrs) {
             ns[lvar] = dsubProj.recAttr(subRec, attr);
@@ -483,10 +481,11 @@ updateProjection ::= function (proj) {
 
    // Finally ref new subversions
    for (let i = 0; i < proj.subVers.length; i += 1) {
-      if (!$.isVersionUpToDate(proj.subVers[i])) {
-         let newVer = $.refCurrentState(proj.subProjs[i]);
-         $.releaseVersion(proj.subVers[i]);
-         proj.subVers[i] = newVer;
+      let subVer = proj.subVers[i];
+
+      if (!$.isVersionUpToDate(subVer)) {
+         proj.subVers[i] = $.refCurrentState(proj.subProjs[i]);
+         $.releaseVersion(subVer);
       }
    }
 
@@ -518,7 +517,7 @@ joinRecords ::= function (proj, jnode, ns) {
    }
 
    if (type === $.JoinType.pk) {
-      return [subProj.records.getEntry(ns[jnode.pklvar])];
+      return [subProj.recAt(ns[jnode.pklvar])];
    }
 
    if (type === $.JoinType.index) {
@@ -528,24 +527,19 @@ joinRecords ::= function (proj, jnode, ns) {
          proj.subIndexInstances[indexNum], Array.from(indexLvars, lvar => ns[lvar])
       );
       
-      if (subProj.keyed !== false) {
-         return $.map(rkeys, rkey => subProj.records.getEntry(rkey));
-      }
-      else {
-         return rkeys;
-      }
+      return $.map(rkeys, rkey => subProj.recAt(rkey));
    }
 
    throw new Error(`Cannot handle this join type here: ${type}`);
 }
 makeRecordFor ::= function (proj, ns) {
-   if (proj.keyed === false) {
+   if (proj.recType === $.RecordType.tuple) {
       return Object.fromEntries($.map(proj.config.plainAttrs, a => [a, ns[a]]));
    }
-   else if (proj.keyed === $.Keyed.direct) {
+   else if (proj.recType === $.RecordType.keyVal) {
       return [ns[$.recKey], ns[$.recVal]];
    }
-   else if (proj.keyed === $.Keyed.wrapped) {
+   else if (proj.recType === $.RecordType.keyTuple) {
       return [
          ns[$.recKey],
          Object.fromEntries($.map(proj.config.plainAttrs, a => [a, ns[a]]))
@@ -565,7 +559,7 @@ recDep ::= function (proj, rkey, subKeys) {
 }
 subrecUndep ::= function (proj, nsub, subKey) {
    // We need to make a copy because this set is going to be modified inside the loop
-   let rkeys = Array.from(proj.subrecDeps[nsub].get(subKey) || []);
+   let rkeys = Array.from(proj.subrecDeps[nsub].get(subKey) ?? []);
 
    for (let rkey of rkeys) {
       $.recUndep(proj, rkey);

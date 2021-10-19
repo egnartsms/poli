@@ -13,7 +13,7 @@ common
    isObjectWithOwnProperty
    setsEqual
    singleQuoteJoinComma
-dedb-relation
+dedb-common
    RelationType
 data-structures
    BidiMap

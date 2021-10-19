@@ -51,7 +51,7 @@ rebuildIndex ::= function (inst, recs) {
    }
 }
 indexAdd ::= function (inst, rec) {
-   let [recKey, recVal] = inst.owner.keyed !== false ? rec : [rec, rec];
+   let [recKey, recVal] = inst.owner.isKeyed ? rec : [rec, rec];
    let map = inst.records;
 
    for (let [attr, isFinal] of $.trackingFinal(inst)) {
@@ -83,7 +83,7 @@ indexAdd ::= function (inst, rec) {
    }
 }
 indexRemove ::= function (inst, rec) {
-   let [recKey, recVal] = inst.owner.keyed !== false ? rec : [rec, rec];
+   let [recKey, recVal] = inst.owner.isKeyed ? rec : [rec, rec];
 
    (function go(i, map) {
       let key = recVal[inst[i]];

@@ -6,7 +6,7 @@ common
 data-structures
    AugmentedMap
    AugmentedSet
-dedb-relation
+dedb-common
    RelationType
 dedb-base
    * as: base
@@ -125,7 +125,7 @@ updateProjection ::= function (proj) {
    }
 }
 makeRecords ::= function (owner, iterable) {
-   let records = new (owner.keyed !== false ? $.AugmentedMap : $.AugmentedSet)(iterable);
+   let records = new (owner.isKeyed ? Map : Set)(iterable);
    records.owner = owner;
    return records;
 }
