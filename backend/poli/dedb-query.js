@@ -13,7 +13,7 @@ query ::= function (rel, boundAttrs) {
    let rec = $.projectionCache.get(proj);
 
    if (rec === undefined) {
-      proj.refcount += 1;
+      proj.refCount += 1;
       rec = {
          prev: null,
          next: null,

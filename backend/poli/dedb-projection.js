@@ -49,13 +49,13 @@ projmapKey ::= function (boundAttrs, attr) {
    return $.hasOwnProperty(boundAttrs, attr) ? boundAttrs[attr] : $.attrFree;
 }
 releaseProjection ::= function (proj) {
-   $.check(proj.refcount > 0);
+   $.check(proj.refCount > 0);
 
-   proj.refcount -= 1;
+   proj.refCount -= 1;
 
-   if (proj.refcount === 0) {
-      // By the time a projection's refcount drops to 0, nobody must be using it
-      // (otherwise the refcount would not have dropped to 0).
+   if (proj.refCount === 0) {
+      // By the time a projection's refCount drops to 0, nobody must be using it
+      // (otherwise the refCount would not have dropped to 0).
       $.assert(() => proj.myVer === null);
       // Index instances should've been released before the projection itself
       $.assert(() => proj.myIndexInstances.totalRefs === 0);

@@ -6,12 +6,15 @@ test-dedb-disjunction
    * as: disjunction
 test-dedb-functional
    * as: functional
+test-dedb-extver
+   * as: extver
 -----
 runTests ::= function () {
    $.runTestsIn($.nonkeyed);
    $.runTestsIn($.keyed);
    $.runTestsIn($.disjunction);
    $.runTestsIn($.functional);
+   $.runTestsIn($.extver);
 }
 runTestsIn ::= function (ns) {
    let setup = ns['setup'];

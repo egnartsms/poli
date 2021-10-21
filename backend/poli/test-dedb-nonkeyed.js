@@ -233,7 +233,7 @@ test_derived_full_projection_updates ::= function ({continent_city, continent, c
 }
 test_derived_partial_projection_updates ::= function ({continent_city, city, country}) {
    let proj = $.projectionFor(continent_city, {continent: 'America'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    let f_newyork = {country: 'USA', name: 'New York', population: 20}
    $.addFact(city, f_newyork);
@@ -264,7 +264,7 @@ test_derived_partial_projection_updates ::= function ({continent_city, city, cou
 }
 test_derived_scalar_updates ::= function ({continent_city, city}) {
    let proj = $.projectionFor(continent_city, {continent: 'America', city: 'Toronto'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    $.check(proj.records.size === 1);
 
@@ -281,7 +281,7 @@ test_derived_scalar_updates ::= function ({continent_city, city}) {
 }
 test_derived_of_derived_updates ::= function ({continent_pop, city}) {
    let proj = $.projectionFor(continent_pop, {continent: 'America'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    $.check($.isLike(
       proj.records,

@@ -33,10 +33,10 @@ dedb-goal
 dedb-version
    refCurrentState
    releaseVersion
-   isVersionUpToDate
+   isVersionFresh
    unchainVersion
-   verAdd1
-   verRemove1
+   versionAdd
+   versionRemove
 dedb-index
    copyIndex
    isIndexCovered
@@ -144,7 +144,7 @@ makeProjection ::= function (rel, boundAttrs) {
          $.zip(rel.subRels, rel.subBoundAttrsProducer(boundAttrs))) {
       let proj = $.projectionFor(subRel, subBoundAttrs);
 
-      proj.refcount += 1;
+      proj.refCount += 1;
       subProjs.push(proj);
       subVers.push(null);
    }
@@ -156,7 +156,7 @@ makeProjection ::= function (rel, boundAttrs) {
 
    let proj = $.newObj($.recTypeProto(rel.recType), {
       rel: rel,
-      refcount: 0,
+      refCount: 0,
       isValid: false,
       boundAttrs: boundAttrs,
       config: config,
@@ -351,7 +351,7 @@ updateProjection ::= function (proj) {
             proj.records.delete(rkey);
 
             if (proj.myVer !== null) {
-               $.verRemove1(proj.myVer, rkey);
+               $.versionRemove(proj.myVer, rec);
             }
 
             for (let idxInst of proj.myIndexInstances) {
@@ -365,7 +365,7 @@ updateProjection ::= function (proj) {
    let subNum2Added = new Map;
 
    for (let [i, subVer] of $.enumerate(proj.subVers)) {
-      if ($.isVersionUpToDate(subVer)) {
+      if ($.isVersionFresh(subVer)) {
          continue;
       }
 
@@ -405,17 +405,16 @@ updateProjection ::= function (proj) {
       function run(jnode) {
          if (jnode === null) {
             let rec = $.makeRecordFor(proj, ns);
-            let rkey = proj.recKey(rec);
 
             proj.addRecord(rec);
-            $.recDep(proj, rkey, subKeys);
+            $.recDep(proj, proj.recKey(rec), subKeys);
 
             for (let idxInst of proj.myIndexInstances) {
                $.indexAdd(idxInst, rec);
             }
 
             if (proj.myVer !== null) {
-               $.verAdd1(proj.myVer, rkey);
+               $.versionAdd(proj.myVer, rec);
             }
 
             return;
@@ -483,7 +482,7 @@ updateProjection ::= function (proj) {
    for (let i = 0; i < proj.subVers.length; i += 1) {
       let subVer = proj.subVers[i];
 
-      if (!$.isVersionUpToDate(subVer)) {
+      if (!$.isVersionFresh(subVer)) {
          proj.subVers[i] = $.refCurrentState(proj.subProjs[i]);
          $.releaseVersion(subVer);
       }

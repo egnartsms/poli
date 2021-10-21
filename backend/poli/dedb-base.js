@@ -19,9 +19,9 @@ dedb-rec-key
    normalizeAttrsForPk
 dedb-version
    refCurrentState
-   isVersionUpToDate
-   verAdd1
-   verRemove1
+   isVersionFresh
+   versionAdd
+   versionRemove
    unchainVersion
    releaseVersion
 dedb-index
@@ -57,7 +57,7 @@ baseRelation ::= function ({
          let idxInst = $.copyIndex(index);
 
          idxInst.owner = null;  // will set to the relation object below
-         idxInst.refcount = 1;  // always kept alive
+         idxInst.refCount = 1;  // always kept alive
 
          indexInstances.push(idxInst);
          availableIndices.push(idxInst);
@@ -101,7 +101,7 @@ makeProjection ::= function (rel, boundAttrs) {
    if ($.hasNoEnumerableProps(boundAttrs)) {
       proj = $.newObj($.recTypeProto(rel.recType), {
          rel: rel,
-         refcount: 0,
+         refCount: 0,
          isValid: true,
          boundAttrs: boundAttrs,
          depVer: null,  // always null
@@ -115,7 +115,7 @@ makeProjection ::= function (rel, boundAttrs) {
    else {
       proj = $.newObj($.recTypeProto(rel.recType), {
          rel: rel,
-         refcount: 0,
+         refCount: 0,
          isValid: true,
          boundAttrs: boundAttrs,
          depVer: $.refCurrentState(rel),
@@ -160,7 +160,7 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if ($.isFullProjection(proj) || $.isVersionUpToDate(proj.depVer)) {
+   if ($.isFullProjection(proj) || $.isVersionFresh(proj.depVer)) {
       $.markProjectionValid(proj);
       return;
    }
@@ -168,7 +168,7 @@ updateProjection ::= function (proj) {
    $.unchainVersion(proj.depVer);
 
    for (let rkey of proj.depVer.removed) {
-      $.deleteRecByKey(proj, rkey);
+      $.removeRecByKey(proj, rkey);
    }
    
    for (let rkey of proj.depVer.added) {
@@ -189,14 +189,14 @@ addRec ::= function (parent, rec) {
    parent.addRecord(rec);
 
    if (parent.myVer !== null) {
-      $.verAdd1(parent.myVer, parent.recKey(rec));
+      $.versionAdd(parent.myVer, rec);
    }
 
    for (let idxInst of parent.myIndexInstances) {
       $.indexAdd(idxInst, rec);
    }
 }
-deleteRecByKey ::= function (parent, rkey) {
+removeRecByKey ::= function (parent, rkey) {
    let rec = parent.recAt(rkey);
 
    if (rec === undefined) {
@@ -206,7 +206,7 @@ deleteRecByKey ::= function (parent, rkey) {
    parent.records.delete(rkey);
 
    if (parent.myVer !== null) {
-      $.verRemove1(parent.myVer, rkey);
+      $.versionRemove(parent.myVer, rec);
    }
 
    for (let idxInst of parent.myIndexInstances) {
@@ -226,19 +226,16 @@ addFact ::= function (rel, rkey, rval) {
    $.invalidate(rel);
 }
 removeFact ::= function (rel, rkey) {
-   let removed = $.deleteRecByKey(rel, rkey);
+   let removed = $.removeRecByKey(rel, rkey);
    
    $.check(removed, `Missing record`);
    
    $.invalidate(rel);
 }
 changeFact ::= function (rel, rkey, newValue) {
-   $.check(
-      rel.isKeyed,
-      `Cannot change fact in a relation that does not have primary key`
-   );
+   $.check(rel.isKeyed, `Cannot change fact in a non-keyed relation`);
    
-   let removed = $.deleteRecByKey(rel, rkey);
+   let removed = $.removeRecByKey(rel, rkey);
 
    $.check(removed, `Missing record`);
 
@@ -249,4 +246,26 @@ changeFact ::= function (rel, rkey, newValue) {
 invalidate ::= function (rel) {
    $.invalidateProjections(...rel.validRevDeps);
    rel.validRevDeps.clear();
+}
+revertTo ::= function (extVer) {
+   let baserel = extVer.owner;
+
+   if (baserel.isKeyed) {
+      for (let rkey of extVer.added.keys()) {
+         $.removeRecByKey(baserel, rkey);
+      }
+
+      for (let rec of extVer.removed) {
+         $.addRec(baserel, rec);
+      }
+   }
+   else {
+      for (let rec of extVer.added) {
+         $.removeRecByKey(baserel, rec);
+      }
+
+      for (let rec of extVer.removed) {
+         $.addRec(baserel, rec);
+      }
+   }
 }

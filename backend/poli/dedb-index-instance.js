@@ -8,7 +8,7 @@ dedb-index
 refIndexInstance ::= function (proj, soughtIndex) {
    for (let index of proj.myIndexInstances) {
       if ($.arraysEqual(index, soughtIndex)) {
-         index.refcount += 1;
+         index.refCount += 1;
          proj.myIndexInstances.totalRefs += 1;
          return index;
       }
@@ -16,7 +16,7 @@ refIndexInstance ::= function (proj, soughtIndex) {
 
    let idxInst = $.copyIndex(soughtIndex);
 
-   idxInst.refcount = 1;
+   idxInst.refCount = 1;
    idxInst.owner = proj;
 
    proj.myIndexInstances.push(idxInst);
@@ -33,13 +33,13 @@ refIndexInstance ::= function (proj, soughtIndex) {
 releaseIndexInstance ::= function (idxInst) {
    let instances = idxInst.owner.myIndexInstances;
 
-   $.assert(() => idxInst.refcount > 0);
+   $.assert(() => idxInst.refCount > 0);
    $.assert(() => instances.totalRefs > 0);
 
-   idxInst.refcount -= 1;
+   idxInst.refCount -= 1;
    instances.totalRefs -= 1;
 
-   if (idxInst.refcount === 0) {
+   if (idxInst.refCount === 0) {
       let i = instances.indexOf(idxInst);
       $.assert(() => i !== -1);
       instances.splice(i, 1);
