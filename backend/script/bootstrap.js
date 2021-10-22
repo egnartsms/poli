@@ -207,12 +207,16 @@ var poli = (function () {
    function run(rawModules) {
       let minfos = loadModules_1(rawModules);
       
-      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-      Mworld.ns['load'](minfos);
+      {
+         let mTest = minfos.find(m => m.name === 'test-dedb');
+         mTest.ns['runTests']();
+      }
       
-      // let mtestprolog = minfos.find(m => m.name === 'test-dedb');
-      // mtestprolog.ns['runTests']();
-      
+      {
+         let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+         Mworld.ns['load'](minfos);
+      }
+
       return;
 
       // window.exp = minfos.find(m => m.name === 'exp').ns;

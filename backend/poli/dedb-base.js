@@ -116,11 +116,11 @@ filterRelationRecords ::= function (rel, boundAttrs) {
    }
 
    // no suitable index found => revert to full scan
-   return $.filter(rel.records, rec => $.recSatisfies(boundAttrs, rec));
+   return $.filter(rel.records, rec => $.recSatisfies(rel, rec, boundAttrs));
 }
-recSatisfies ::= function (boundAttrs, rec) {
+recSatisfies ::= function (parent, rec, boundAttrs=parent.boundAttrs) {
    return $.all($.ownEntries(boundAttrs), ([attr, val]) => {
-      return proj.recAttr(rec, attr) === val;
+      return parent.recAttr(rec, attr) === val;
    });
 }
 makeProjection ::= function (rel, boundAttrs) {
@@ -197,7 +197,7 @@ updateProjection ::= function (proj) {
    for (let rkey of proj.depVer.added) {
       let rec = proj.rel.recAt(rkey);
 
-      if ($.recSatisfies(proj.boundAttrs, rec)) {
+      if ($.recSatisfies(proj, rec)) {
          $.addRec(proj, rec);
       }
    }
