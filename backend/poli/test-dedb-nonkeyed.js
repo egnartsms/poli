@@ -5,8 +5,9 @@ common
    sortedArray
 dedb-query
    query
-dedb-relation
+dedb-common
    RelationType
+   RecordType
 dedb-projection
    projectionFor
    releaseProjection
@@ -24,6 +25,7 @@ dedb-index
 setup ::= function () {
    let continent = $.baseRelation({
       name: 'continent',
+      recType: $.RecordType.tuple,
       attrs: ['name'],
       indices: [
          $.indexOn(['name'], {isUnique: true})
@@ -37,6 +39,7 @@ setup ::= function () {
 
    let country = $.baseRelation({
       name: 'country',
+      recType: $.RecordType.tuple,
       attrs: ['name', 'continent'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
@@ -57,6 +60,7 @@ setup ::= function () {
 
    let city = $.baseRelation({
       name: 'city',
+      recType: $.RecordType.tuple,
       attrs: ['name', 'country', 'population'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
@@ -95,6 +99,7 @@ setup ::= function () {
 
    let continent_city = $.derivedRelation({
       name: 'continent_city',
+      recType: $.RecordType.tuple,
       attrs: ['continent', 'city'],
       indices: [
          $.indexOn(['city'], {isUnique: true})
@@ -108,6 +113,7 @@ setup ::= function () {
 
    let continent_pop = $.derivedRelation({
       name: 'continent_pop',
+      recType: $.RecordType.tuple,
       attrs: ['continent', 'pop'],
       body: v => [
          continent_city.at({continent: v`continent`, city: v`city`}),
@@ -233,7 +239,7 @@ test_derived_full_projection_updates ::= function ({continent_city, continent, c
 }
 test_derived_partial_projection_updates ::= function ({continent_city, city, country}) {
    let proj = $.projectionFor(continent_city, {continent: 'America'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    let f_newyork = {country: 'USA', name: 'New York', population: 20}
    $.addFact(city, f_newyork);
@@ -264,7 +270,7 @@ test_derived_partial_projection_updates ::= function ({continent_city, city, cou
 }
 test_derived_scalar_updates ::= function ({continent_city, city}) {
    let proj = $.projectionFor(continent_city, {continent: 'America', city: 'Toronto'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    $.check(proj.records.size === 1);
 
@@ -281,7 +287,7 @@ test_derived_scalar_updates ::= function ({continent_city, city}) {
 }
 test_derived_of_derived_updates ::= function ({continent_pop, city}) {
    let proj = $.projectionFor(continent_pop, {continent: 'America'});
-   proj.refcount += 1;
+   proj.refCount += 1;
 
    $.check($.isLike(
       proj.records,

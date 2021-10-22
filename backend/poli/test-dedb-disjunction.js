@@ -12,10 +12,13 @@ dedb-index
    indexOn
 dedb-projection
    projectionFor
+dedb-common
+   RecordType
 -----
 setup ::= function () {
    let country = $.baseRelation({
       name: 'country',
+      recType: $.RecordType.tuple,
       attrs: ['name', 'population'],
       indices: [
          $.indexOn(['name'], {isUnique: true})
@@ -33,6 +36,7 @@ setup ::= function () {
 
    let good_countries = $.baseRelation({
       name: 'good_countries',
+      recType: $.RecordType.tuple,
       attrs: ['country'],
       indices: [
          $.indexOn(['country'], {isUnique: true})
@@ -46,6 +50,7 @@ setup ::= function () {
 
    let important_countries = $.baseRelation({
       name: 'important_countries',
+      recType: $.RecordType.tuple,
       attrs: ['country'],
       indices: [
          $.indexOn(['country'], {isUnique: true})
@@ -58,6 +63,7 @@ setup ::= function () {
 
    let pop = $.derivedRelation({
       name: 'pop',
+      recType: $.RecordType.tuple,
       attrs: ['country', 'population'],
       body: v => [
          country.at({

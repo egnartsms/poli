@@ -13,7 +13,7 @@ common
    isObjectWithOwnProperty
    setsEqual
    singleQuoteJoinComma
-dedb-relation
+dedb-common
    RelationType
 data-structures
    BidiMap
@@ -25,7 +25,7 @@ dedb-index
 dedb-rec-key
    recKey
    recVal
-set-operation
+set-map
    * as: set
 -----
 GoalType ::= ({

@@ -20,12 +20,6 @@ trie
 vector
    * as: vec
 world
-   delta
-   groups
-   commit
-   rollback
-   patchBox
-   setBox
 -----
 delmark ::= Object.create(null)
 main ::= function (sendMessage) {

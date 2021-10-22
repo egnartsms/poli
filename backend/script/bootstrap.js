@@ -1,6 +1,12 @@
 var poli = (function () {
    'use strict';
 
+   var _const = {
+      SRC_FOLDER: 'poli',
+      WORLD_MODULE: 'world',
+      RUN_MODULE: 'runner'
+   };
+
    function loadModules(rawModules) {
       function moduleEval(ns, entry, code) {
          code = code.replace(/^ function \(/, () => ` function ${entry} (`);
@@ -195,19 +201,22 @@ var poli = (function () {
 
    var loadModules_1 = loadModules;
 
+   const {WORLD_MODULE, RUN_MODULE} = _const;
+
+
    function run(rawModules) {
       let minfos = loadModules_1(rawModules);
       
-      // let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-      // Mworld.ns['load'](minfos);
+      {
+         let mTest = minfos.find(m => m.name === 'test-dedb');
+         mTest.ns['runTests']();
+      }
       
-      let mprolog = minfos.find(m => m.name === 'prolog');
-      mprolog.ns['initialize']();
-      window.pl = mprolog.ns;
+      {
+         let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+         Mworld.ns['load'](minfos);
+      }
 
-      let mtestprolog = minfos.find(m => m.name === 'test-dedb');
-      mtestprolog.ns['runTests']();
-      
       return;
 
       // window.exp = minfos.find(m => m.name === 'exp').ns;

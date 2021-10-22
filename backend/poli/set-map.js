@@ -59,3 +59,32 @@ hasAny ::= function (set, X) {
 
    return false;
 }
+deleteIntersection ::= function (sm1, sm2) {
+   // any of the 4 combinations of set and map are possible
+   let [G, L] = $.greaterLesser(sm1, sm2);
+
+   for (let x of L.keys()) {
+      if (G.has(x)) {
+         G.delete(x);
+         L.delete(x);
+      }
+   }
+}
+greaterLesser ::= function (s1, s2) {
+   return s1.size > s2.size ? [s1, s2] : [s2, s1];
+}
+deleteAll ::= function (sm, xs) {
+   for (let x of xs) {
+      sm.delete(x);
+   }
+}
+addAllToMap ::= function (map, xs) {
+   for (let [key, val] of xs) {
+      map.set(key, val);
+   }
+}
+addAllToSet ::= function (set, xs) {
+   for (let x of xs) {
+      set.add(x);
+   }
+}

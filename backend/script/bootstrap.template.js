@@ -5,16 +5,16 @@ const {WORLD_MODULE, RUN_MODULE} = require('./const');
 function run(rawModules) {
    let minfos = loadModules(rawModules);
    
-   // let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-   // Mworld.ns['load'](minfos);
+   {
+      let mTest = minfos.find(m => m.name === 'test-dedb');
+      mTest.ns['runTests']();
+   }
    
-   let mprolog = minfos.find(m => m.name === 'prolog');
-   mprolog.ns['initialize']();
-   window.pl = mprolog.ns;
+   {
+      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+      Mworld.ns['load'](minfos);
+   }
 
-   let mtestprolog = minfos.find(m => m.name === 'test-dedb');
-   mtestprolog.ns['runTests']();
-   
    return;
 
    // window.exp = minfos.find(m => m.name === 'exp').ns;

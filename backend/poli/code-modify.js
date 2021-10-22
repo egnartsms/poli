@@ -9,8 +9,6 @@ vector
 trie
    * as: trie
 world
-   groups
-   delta
 -----
 contentModifyActions ::= function (module) {
    let actions = [];

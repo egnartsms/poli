@@ -21,6 +21,8 @@ dedb-index
 dedb-rec-key
    recKey
    recVal
+dedb-common
+   RecordType
 -----
 setup ::= function () {
    let
@@ -39,7 +41,8 @@ setup ::= function () {
 
    let dev = $.baseRelation({
       name: 'dev',
-      attrs: [$.recKey, 'company', 'name'],
+      recType: $.RecordType.keyTuple,
+      attrs: ['company', 'name'],
       indices: [
          $.indexOn(['company'])
       ],
@@ -55,7 +58,8 @@ setup ::= function () {
 
    let company = $.baseRelation({
       name: 'company',
-      attrs: [$.recKey, 'name', 'lang'],
+      recType: $.RecordType.keyTuple,
+      attrs: ['name', 'lang'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
       ],
@@ -68,7 +72,7 @@ setup ::= function () {
 
    let dev_lang = $.derivedRelation({
       name: 'dev_lang',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       indices: [],
       body: v => [
          dev.at({[$.recKey]: v.recKey, company: v`company`}),
