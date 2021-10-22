@@ -18,11 +18,13 @@ dedb-goal
 dedb-rec-key
    recKey
    recVal
+dedb-common
+   RecordType
 -----
 setup ::= function () {
    let country_cities = $.baseRelation({
       name: 'country_cities',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       records: [
          ['ukraine', new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])],
          ['poland', new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])]
@@ -55,6 +57,7 @@ setup ::= function () {
 
    let country_city = $.derivedRelation({
       name: 'country_city',
+      recType: $.RecordType.tuple,
       attrs: ['country', 'city'],
       body: v => [
          country_cities.at({[$.recKey]: v`country`, [$.recVal]: v`cities`}),
@@ -108,7 +111,7 @@ test_add ::= function ({country_cities, country_city}) {
 test_arithmetics ::= function () {
    let born = $.baseRelation({
       name: 'born',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       records: [
          ['ukraine', 120],
          ['poland', 150],
@@ -118,7 +121,7 @@ test_arithmetics ::= function () {
 
    let died = $.baseRelation({
       name: 'died',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       records: [
          ['ukraine', 135],
          ['poland', 155],
@@ -142,7 +145,7 @@ test_arithmetics ::= function () {
 
    let growth = $.derivedRelation({
       name: 'growth',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       body: v => [
          born.at({[$.recKey]: v.recKey, [$.recVal]: v`born`}),
          died.at({[$.recKey]: v.recKey, [$.recVal]: v`died`}),

@@ -5,34 +5,24 @@ dedb-common
 -----
 recKey ::= Symbol.for('poli.recKey')
 recVal ::= Symbol.for('poli.recVal')
-normalizeAttrsForPk ::= function (attrs) {
-   let recType, plainAttrs;
+normalizeAttrs ::= function (recType, plainAttrs) {
+   let attrs;
 
-   $.check(attrs.length > 0);
+   $.check(!plainAttrs.includes($.recKey) && !plainAttrs.includes($.recVal));
 
-   if (attrs[0] === $.recKey) {
-      $.check(attrs.length >= 2);
+   if (recType === $.RecordType.tuple) {
+      $.check(plainAttrs.length > 0);
 
-      if (attrs.length === 2 && attrs[1] === $.recVal) {
-         recType = $.RecordType.keyVal;
-         plainAttrs = null;
-      }
-      else {
-         $.check(!attrs.includes($.recVal, 1), `recVal attribute misused`);
-
-         recType = $.RecordType.keyTuple;
-         plainAttrs = attrs.slice(1);
-      }
+      return Array.from(plainAttrs);
    }
-   else {
-      $.check(
-         !attrs.includes($.recKey) && !attrs.includes($.recVal),
-         `recKey/recVal attribute misused`
-      );
-
-      recType = $.RecordType.tuple;
-      plainAttrs = attrs;
+   else if (recType === $.RecordType.keyTuple) {
+      $.check(plainAttrs.length > 0);
+      
+      return [$.recKey, ...plainAttrs];
    }
+   else if (recType === $.RecordType.keyVal) {
+      $.check(plainAttrs.length === 0);
 
-   return {recType, plainAttrs};
+      return [$.recKey, $.recVal];
+   }
 }

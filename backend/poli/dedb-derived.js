@@ -23,7 +23,7 @@ common
 dedb-rec-key
    recKey
    recVal
-   normalizeAttrsForPk
+   normalizeAttrs
 dedb-projection
    projectionFor
    releaseProjection
@@ -61,11 +61,12 @@ dedb-common
 MAX_REL_ATTRS ::= 30
 derivedRelation ::= function ({
    name: relname,
-   attrs,
+   recType,
+   attrs: plainAttrs=[],
    indices=[],
    body: bodyCallback
 }) {
-   let {recType, plainAttrs} = $.normalizeAttrsForPk(attrs);
+   let attrs = $.normalizeAttrs(recType, plainAttrs);
 
    $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
@@ -164,7 +165,6 @@ makeProjection ::= function (rel, boundAttrs) {
       subVers: subVers,
       subIndexInstances: subIndexInstances,
       myVer: null,
-      myExtVer: null,
       records: null,  // dry in the beginning
       // forward: rkey -> [subkey, subkey, ...]
       recDeps: new Map,
@@ -220,10 +220,7 @@ boundAttrs2ConfigKey ::= function (attrs, boundAttrs) {
    return cfgkey;
 }
 rebuildProjection ::= function (proj) {
-   $.check(
-      proj.myVer === null && proj.myExtVer === null,
-      `Cannot rebuild projection which is being referred to`
-   );
+   $.check(proj.myVer === null, `Cannot rebuild projection which is being referred to`);
 
    let {rel, config} = proj;
 

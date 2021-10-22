@@ -8,6 +8,26 @@ dedb-projection
 time ::= 0
 projectionCache ::= new Map
 recencyList ::= null
+dumpRecencyList ::= function () {
+   console.log('Q time:', $.time);
+   console.log('Q rec list:', $.recencyList);
+   console.log('Q proj cache:', $.projectionCache);
+}
+queryScalarKey ::= function (rel, boundAttrs) {
+   let records = $.query(rel, boundAttrs);
+
+   if (records.size === 1) {
+      let [[rkey, rval]] = records;
+
+      return rkey;
+   }
+   else if (records.size === 0) {
+      return undefined;
+   }
+   else {
+      throw new Error(`Not a scalar`);
+   }
+}
 query ::= function (rel, boundAttrs) {
    let proj = $.projectionFor(rel, boundAttrs);
    let rec = $.projectionCache.get(proj);
@@ -23,8 +43,8 @@ query ::= function (rel, boundAttrs) {
       $.projectionCache.set(proj, rec);
    }
 
-   $.setAsNewHead(rec);
    $.time += 1;
+   $.setAsNewHead(rec);
 
    $.updateProjection(proj);
 

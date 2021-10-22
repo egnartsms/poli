@@ -16,7 +16,7 @@ common
 dedb-rec-key
    recKey
    recVal
-   normalizeAttrsForPk
+   normalizeAttrs
 dedb-version
    refCurrentState
    isVersionFresh
@@ -29,6 +29,7 @@ dedb-index
    rebuildIndex
    indexAdd
    indexRemove
+   indexAt
 dedb-index-instance
    indexInstanceStorage
 dedb-projection
@@ -43,11 +44,13 @@ dedb-common
 -----
 baseRelation ::= function ({
    name,
-   attrs,
+   recType,
+   isEntity=false,
+   attrs: plainAttrs=[],
    indices=[],
    records=[]
 }) {
-   let {recType} = $.normalizeAttrsForPk(attrs);
+   let attrs = $.normalizeAttrs(recType, plainAttrs);
 
    let indexInstances = $.indexInstanceStorage();
    let availableIndices = [];
@@ -70,14 +73,14 @@ baseRelation ::= function ({
    let rel = $.newObj($.recTypeProto(recType), {
       type: $.RelationType.base,
       name: name,
-      attrs: attrs,
+      attrs,
       indices: availableIndices,
       projmap: new Map,
       myVer: null,
-      myExtVer: null,
       records: null,  // intialized below
       myIndexInstances: indexInstances,  // shared with the full projection
       validRevDeps: new Set,  // 'revdeps' here means projections
+      entityProto: false,  // initialize below if necessary
 
       at(attrs) {
          return $.relGoal(this, attrs);
@@ -91,7 +94,34 @@ baseRelation ::= function ({
       $.rebuildIndex(idxInst, records);
    }
 
+   if (isEntity) {
+      rel.entityProto = $.makeEntityPrototype(rel);
+   }
+
    return rel;
+}
+filterRelationRecords ::= function (rel, boundAttrs) {
+   if (rel.isKeyed && $.hasOwnProperty(boundAttrs, $.recKey)) {
+      let rec = rel.recAt(boundAttrs[$.recKey]);
+      return (rec === undefined) ? [] : [rec];
+   }
+
+   for (let idxInst of rel.myIndexInstances) {
+      if ($.all(idxInst, attr => $.hasOwnProperty(boundAttrs, attr))) {
+         return $.map(
+            $.indexAt(idxInst, Array.from(idxInst, a => boundAttrs[a])),
+            rkey => rel.recAt(rkey)
+         );
+      }
+   }
+
+   // no suitable index found => revert to full scan
+   return $.filter(rel.records, rec => $.recSatisfies(boundAttrs, rec));
+}
+recSatisfies ::= function (boundAttrs, rec) {
+   return $.all($.ownEntries(boundAttrs), ([attr, val]) => {
+      return proj.recAttr(rec, attr) === val;
+   });
 }
 makeProjection ::= function (rel, boundAttrs) {
    let proj;
@@ -106,7 +136,6 @@ makeProjection ::= function (rel, boundAttrs) {
          boundAttrs: boundAttrs,
          depVer: null,  // always null
          myVer: null,  // always null
-         myExtVer: null,  // always null
          records: rel.records,  // shared
          myIndexInstances: rel.myIndexInstances,  // shared
          validRevDeps: new Set
@@ -120,7 +149,6 @@ makeProjection ::= function (rel, boundAttrs) {
          boundAttrs: boundAttrs,
          depVer: $.refCurrentState(rel),
          myVer: null,
-         myExtVer: null,
          records: null,  // initialized below
          myIndexInstances: $.indexInstanceStorage(),
          validRevDeps: new Set
@@ -128,7 +156,7 @@ makeProjection ::= function (rel, boundAttrs) {
 
       proj.records = $.makeRecords(
          proj,
-         $.filter(rel.records, rec => $.recSatisfies(proj, rec)),
+         $.filterRelationRecords(rel, boundAttrs)
       );
    }
 
@@ -150,11 +178,6 @@ markProjectionValid ::= function (proj) {
    proj.isValid = true;
    proj.rel.validRevDeps.add(proj);
 }
-recSatisfies ::= function (proj, rec) {
-   return $.all($.ownEntries(proj.boundAttrs), ([attr, val]) => {
-      return proj.recAttr(rec, attr) === val;
-   });
-}
 updateProjection ::= function (proj) {
    if (proj.isValid) {
       return;
@@ -174,7 +197,7 @@ updateProjection ::= function (proj) {
    for (let rkey of proj.depVer.added) {
       let rec = proj.rel.recAt(rkey);
 
-      if ($.recSatisfies(proj, rec)) {
+      if ($.recSatisfies(proj.boundAttrs, rec)) {
          $.addRec(proj, rec);
       }
    }
@@ -186,6 +209,7 @@ updateProjection ::= function (proj) {
    $.markProjectionValid(proj);
 }
 addRec ::= function (parent, rec) {
+   // 'parent' is either a base relation or a non-full projection thereof
    parent.addRecord(rec);
 
    if (parent.myVer !== null) {
@@ -194,6 +218,15 @@ addRec ::= function (parent, rec) {
 
    for (let idxInst of parent.myIndexInstances) {
       $.indexAdd(idxInst, rec);
+   }
+}
+addRecToRel ::= function (rel, rec) {
+   $.addRec(rel, rec);
+
+   if (rel.entityProto !== false) {
+      let [entity, tuple] = rec;
+
+      entity[$.symEntityTuple] = tuple;
    }
 }
 removeRecByKey ::= function (parent, rkey) {
@@ -215,18 +248,29 @@ removeRecByKey ::= function (parent, rkey) {
 
    return true;
 }
+removeRecByKeyFromRel ::= function (rel, rkey) {
+   let removed = $.removeRecByKey(rel, rkey);
+
+   if (removed && rel.entityProto !== false) {
+      let entity = rkey;
+
+      entity[$.symEntityTuple] = null;
+   }
+
+   return removed;
+}
 addFact ::= function (rel, rkey, rval) {
    $.check(rel.isKeyed === (rval !== undefined));
    $.check(!rel.records.has(rkey), `Duplicate record`);
 
-   let rec = rel.recType === $.RecordType.tuple ? rkey : [rkey, rval];
+   let rec = rel.isKeyed ? [rkey, rval] : rkey;
 
-   $.addRec(rel, rec);
+   $.addRecToRel(rel, rec);
    
    $.invalidate(rel);
 }
 removeFact ::= function (rel, rkey) {
-   let removed = $.removeRecByKey(rel, rkey);
+   let removed = $.removeRecByKeyFromRel(rel, rkey);
    
    $.check(removed, `Missing record`);
    
@@ -241,31 +285,78 @@ changeFact ::= function (rel, rkey, newValue) {
 
    $.addRec(rel, [rkey, newValue]);
 
+   if (rel.entityProto !== false) {
+      let entity = rkey;
+
+      entity[$.symEntityTuple] = newValue;
+   }
+
    $.invalidate(rel);
 }
 invalidate ::= function (rel) {
    $.invalidateProjections(...rel.validRevDeps);
    rel.validRevDeps.clear();
 }
+makeEntityPrototype ::= function (rel) {
+   $.assert(() => rel.recType === $.RecordType.keyTuple);
+
+   let proto = {
+      [$.symEntityRelation]: rel
+   };
+
+   for (let attr of rel.attrs.slice(1)) {
+      Object.defineProperty(proto, attr, {
+         configurable: true,
+         enumerable: true,
+         get() {
+            return this[$.symEntityTuple][attr];
+         }
+      });
+   }
+
+   return proto;
+}
+symEntityTuple ::= Symbol.for('poli.entityTuple')
+symEntityRelation ::= Symbol.for('poli.entityRelation')
+makeEntity ::= function (rel, tuple) {
+   let entity = Object.create(rel.entityProto);
+
+   entity[$.symEntityTuple] = tuple;
+   $.addFact(rel, entity, tuple);
+
+   return entity;
+}
+removeEntity ::= function (entity) {
+   $.removeFact(entity[$.symEntityRelation], entity);
+   entity[$.symEntityTuple] = null;
+}
+setEntity ::= function (entity, newTuple) {
+   $.changeFact(entity[$.symEntityRelation], entity, newTuple);
+   entity[$.symEntityTuple] = newTuple;
+}
+patchEntity ::= function (entity, fn, ...args) {
+   let newTuple = fn(entity[$.symEntityTuple], ...args);
+   $.setEntity(entity, newTuple);
+}
 revertTo ::= function (extVer) {
    let baserel = extVer.owner;
 
    if (baserel.isKeyed) {
       for (let rkey of extVer.added.keys()) {
-         $.removeRecByKey(baserel, rkey);
+         $.removeRecByKeyFromRel(baserel, rkey);
       }
 
       for (let rec of extVer.removed) {
-         $.addRec(baserel, rec);
+         $.addRecToRel(baserel, rec);
       }
    }
    else {
       for (let rec of extVer.added) {
-         $.removeRecByKey(baserel, rec);
+         $.removeRecByKeyFromRel(baserel, rec);
       }
 
       for (let rec of extVer.removed) {
-         $.addRec(baserel, rec);
+         $.addRecToRel(baserel, rec);
       }
    }
 }

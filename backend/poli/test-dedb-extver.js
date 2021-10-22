@@ -13,11 +13,13 @@ dedb-rec-key
    recVal
 dedb-version
    refCurrentStateExt
+dedb-common
+   RecordType
 -----
 setup ::= function () {
    let country = $.baseRelation({
       name: 'country',
-      attrs: [$.recKey, $.recVal],
+      recType: $.RecordType.keyVal,
       records: [
          ['ukraine', 'europe'],
          ['poland', 'europe'],
@@ -28,6 +30,7 @@ setup ::= function () {
 
    let travel = $.baseRelation({
       name: 'travel',
+      recType: $.RecordType.tuple,
       attrs: ['from', 'to'],
       records: [
          {from: 'ukraine', to: 'poland'},

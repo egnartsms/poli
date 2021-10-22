@@ -7,6 +7,7 @@ dedb-query
    query
 dedb-common
    RelationType
+   RecordType
 dedb-projection
    projectionFor
    releaseProjection
@@ -24,6 +25,7 @@ dedb-index
 setup ::= function () {
    let continent = $.baseRelation({
       name: 'continent',
+      recType: $.RecordType.tuple,
       attrs: ['name'],
       indices: [
          $.indexOn(['name'], {isUnique: true})
@@ -37,6 +39,7 @@ setup ::= function () {
 
    let country = $.baseRelation({
       name: 'country',
+      recType: $.RecordType.tuple,
       attrs: ['name', 'continent'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
@@ -57,6 +60,7 @@ setup ::= function () {
 
    let city = $.baseRelation({
       name: 'city',
+      recType: $.RecordType.tuple,
       attrs: ['name', 'country', 'population'],
       indices: [
          $.indexOn(['name'], {isUnique: true}),
@@ -95,6 +99,7 @@ setup ::= function () {
 
    let continent_city = $.derivedRelation({
       name: 'continent_city',
+      recType: $.RecordType.tuple,
       attrs: ['continent', 'city'],
       indices: [
          $.indexOn(['city'], {isUnique: true})
@@ -108,6 +113,7 @@ setup ::= function () {
 
    let continent_pop = $.derivedRelation({
       name: 'continent_pop',
+      recType: $.RecordType.tuple,
       attrs: ['continent', 'pop'],
       body: v => [
          continent_city.at({continent: v`continent`, city: v`city`}),
