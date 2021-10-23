@@ -28,48 +28,52 @@ dedb-query
    queryScalarKey
    dumpRecencyList
 -----
-module ::= null
-entry ::= null
-import ::= null
-star_import ::= null
+rel ::= ({
+   module: null,
+   entry: null,
+   import: null,
+   star_import: null
+})
 createRelations ::= function () {
-   $.module = $.baseRelation({
-      name: 'module',
-      recType: $.RecordType.keyTuple,
-      isEntity: true,
-      attrs: ['name', 'lang', 'members'],
-      indices: [
-         $.indexOn(['name'], {isUnique: true})
-      ]
-   });
+   Object.assign($.rel, {
+      module: $.baseRelation({
+         name: 'module',
+         recType: $.RecordType.keyTuple,
+         isEntity: true,
+         attrs: ['name', 'lang', 'members'],
+         indices: [
+            $.indexOn(['name'], {isUnique: true})
+         ]
+      }),
 
-   $.entry = $.baseRelation({
-      name: 'entry',
-      recType: $.RecordType.keyTuple,
-      isEntity: true,
-      attrs: ['name', 'strDef', 'def', 'module'],
-      indices: [
-         $.indexOn(['module']),
-         $.indexOn(['module', 'name'], {isUnique: true})
-      ]
-   });
+      entry: $.baseRelation({
+         name: 'entry',
+         recType: $.RecordType.keyTuple,
+         isEntity: true,
+         attrs: ['name', 'strDef', 'def', 'module'],
+         indices: [
+            $.indexOn(['module']),
+            $.indexOn(['module', 'name'], {isUnique: true})
+         ]
+      }),
 
-   $.import = $.baseRelation({
-      name: 'import',
-      recType: $.RecordType.tuple,
-      attrs: ['entry', 'recp', 'alias'],
-      indices: [
-         // $.indexOn([''])
-      ]
-   });
+      import: $.baseRelation({
+         name: 'import',
+         recType: $.RecordType.tuple,
+         attrs: ['entry', 'recp', 'alias'],
+         indices: [
+            // $.indexOn([''])
+         ]
+      }),
 
-   $.star_import = $.baseRelation({
-      name: 'star_import',
-      recType: $.RecordType.tuple,
-      attrs: ['donor', 'recp', 'alias'],
-      indices: [
-      ]
-   })
+      star_import: $.baseRelation({
+         name: 'star_import',
+         recType: $.RecordType.tuple,
+         attrs: ['donor', 'recp', 'alias'],
+         indices: [
+         ]
+      })
+   });
 }
 load ::= function (minfos) {
    console.time('load world');
@@ -79,7 +83,7 @@ load ::= function (minfos) {
    // Modules and entries
    for (let minfo of minfos) {
       // minfo :: [{name, lang, imports, body, ns}]
-      let module = $.makeEntity($.module, {
+      let module = $.makeEntity($.rel.module, {
          name: minfo.name,
          lang: minfo.lang,
          members: null,
@@ -90,7 +94,7 @@ load ::= function (minfos) {
 
       let entries = Array.from(minfo.body, ([name, code]) => {
          code = code.trim();
-         return $.makeEntity($.entry, {
+         return $.makeEntity($.rel.entry, {
             name: name,
             strDef: code,
             def: code,
@@ -106,19 +110,19 @@ load ::= function (minfos) {
 
    // Imports
    for (let {name: recpName, imports} of minfos) {
-      let recp = $.queryScalarKey($.module, {name: recpName});
+      let recp = $.queryScalarKey($.rel.module, {name: recpName});
       
       for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
-         let donor = $.queryScalarKey($.module, {name: donorName});
+         let donor = $.queryScalarKey($.rel.module, {name: donorName});
 
          if (asterisk !== null) {
-            $.addFact($.star_import, {donor, recp, alias: asterisk});
+            $.addFact($.rel.star_import, {donor, recp, alias: asterisk});
          }
 
          for (let {entry: entryName, alias} of entryImports) {
-            let entry = $.queryScalarKey($.entry, {module: donor, name: entryName});
+            let entry = $.queryScalarKey($.rel.entry, {module: donor, name: entryName});
 
-            $.addFact($.import, {entry, recp, alias});
+            $.addFact($.rel.import, {entry, recp, alias});
          }
       }
    }

@@ -513,7 +513,8 @@ joinRecords ::= function (proj, jnode, ns) {
    }
 
    if (type === $.JoinType.pk) {
-      return [subProj.recAt(ns[jnode.pklvar])];
+      let rec = subProj.recAt(ns[jnode.pklvar]);
+      return rec !== undefined ? [rec] : [];
    }
 
    if (type === $.JoinType.index) {
