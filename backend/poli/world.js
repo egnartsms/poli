@@ -75,6 +75,35 @@ createRelations ::= function () {
       })
    });
 }
+tryOut ::= function () {
+   let entry_potential_references = $.derivedRelation({
+      name: 'entry_potential_references',
+      recType: $.RecordType.keyVal,
+      body: v => [
+         $.select($.rel.entry, {
+            [$.recKey]: v.recKey,
+            def: v`def`
+         }),
+         $.func1to1($.extractRefs, [v`def`, v.recVal])
+      ]
+   })
+   let import_usage = $.derivedRelation({
+      name: 'import_usage',
+      recType: $.RecordType.tuple,
+      attrs: ['module_name', 'import', 'referrer_entry'],
+      body: v => [
+         $.select($.rel.module, {
+            name: v`'module_name`,
+            [$.recKey]: v`module`
+         }),
+         $.select($.rel.import, {
+            recp: v`module`,
+
+         })
+      ]
+   });
+
+}
 load ::= function (minfos) {
    console.time('load world');
 

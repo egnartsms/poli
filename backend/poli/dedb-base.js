@@ -17,6 +17,7 @@ dedb-rec-key
    recKey
    recVal
    normalizeAttrs
+   unique
 dedb-version
    refCurrentState
    isVersionFresh
@@ -50,24 +51,28 @@ baseRelation ::= function ({
    indices=[],
    records=[]
 }) {
+   $.check(!isEntity || recType === $.RecordType.keyTuple);
+
    let attrs = $.normalizeAttrs(recType, plainAttrs);
 
    let indexInstances = $.indexInstanceStorage();
-   let availableIndices = [];
 
    for (let index of indices) {
-      if (index.isUnique) {
-         let idxInst = $.copyIndex(index);
+      let idxInst;
 
-         idxInst.owner = null;  // will set to the relation object below
-         idxInst.refCount = 1;  // always kept alive
-
-         indexInstances.push(idxInst);
-         availableIndices.push(idxInst);
+      if (index[index.length - 1] === $.unique) {
+         idxInst = index.slice(0, -1);
+         idxInst.isUnique = true;
       }
       else {
-         availableIndices.push(index);
+         idxInst = index.slice();
+         idxInst.isUnique = false;
       }
+
+      idxInst.owner = null;  // will set to the relation object below
+      idxInst.refCount = 1;  // only to have common interface with derived projections
+
+      indexInstances.push(idxInst);
    }
 
    let rel = $.newObj($.recTypeProto(recType), {
@@ -99,6 +104,9 @@ baseRelation ::= function ({
    }
 
    return rel;
+}
+boundAttrsApply ::= function (rel, boundAttrs) {
+
 }
 filterRelationRecords ::= function (rel, boundAttrs) {
    if (rel.isKeyed && $.hasOwnProperty(boundAttrs, $.recKey)) {
