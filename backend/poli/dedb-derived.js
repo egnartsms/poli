@@ -133,6 +133,7 @@ derivedRelation ::= function ({
       at(attrs) {
          return $.goal.relGoal(this, attrs);
       }
+      
    };
 }
 makeProjection ::= function (rel, boundAttrs) {
