@@ -7,6 +7,16 @@ check ::= function (cond, msg=`Check failed`) {
       throw new Error(typeof msg === 'function' ? msg() : msg);
    }
 }
+checkThrows ::= function (callback) {
+   try {
+      callback();
+   }
+   catch (e) {
+      return;
+   }
+
+   throw new Error(`Expected to have thrown but didn't`);
+}
 assert ::= function (callback) {
    if (!callback()) {
       throw new Error(`Assert failed`);
@@ -106,8 +116,8 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
-maximumBy ::= function (items, keyOf) {
-   let maxKey = -Infinity, maxItem;
+maximumBy ::= function (items, minKey, keyOf) {
+   let maxKey = minKey, maxItem;
 
    for (let item of items) {
       let key = keyOf(item);

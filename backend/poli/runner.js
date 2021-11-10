@@ -25,7 +25,6 @@ dedb-rec-key
    recKey
    recVal
 dedb-query
-   query
 -----
 delmark ::= Object.create(null)
 RentryFromModuleNamed ::= null

@@ -28,3 +28,24 @@ getRelation ::= function (relInfo) {
 clearRelationCache ::= function () {
 	$.info2rel = new WeakMap();
 }
+keyedProto ::= ({
+	isKeyed: true,
+	rec2key([recKey, recVal]) {
+		return recKey;
+	},
+	rec2val([recKey, recVal]) {
+		return recVal;
+	}
+})
+nonkeyedProto ::= ({
+	isKeyed: false,
+	rec2key(rec) {
+		return rec;
+	},
+	rec2val(rec) {
+		return rec;
+	}
+})
+getRelevantProto ::= function (isKeyed) {
+	return isKeyed ? $.keyedProto : $.nonkeyedProto;
+}

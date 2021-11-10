@@ -9,6 +9,7 @@ dedb-relation
    RelationType
 dedb-base
    getUniqueRecord
+   getRecords
 -----
 time ::= 0
 projectionCache ::= new Map
@@ -34,38 +35,35 @@ queryUniqueRecord ::= function (relInfo, bindings) {
 
    return $.getUniqueRecord(rel, bindings);
 }
-query ::= function (relInfo, boundAttrs) {
+queryRecords ::= function (relInfo, bindings) {
    let rel = $.getRelation(relInfo);
    
-   if (rel.type === $.RelationType.base) {
-      return $.queryBaseRelation(rel, boundAttrs);
+   if (rel.type !== $.RelationType.base) {
+      throw new Error;
    }
-
-   throw new Error;
    
-   let proj = $.projectionFor(rel, boundAttrs);
-   let rec = $.projectionCache.get(proj);
+   return $.getRecords(rel, bindings);
 
-   if (rec === undefined) {
-      proj.refCount += 1;
-      rec = {
-         prev: null,
-         next: null,
-         proj: proj,
-         lastUsed: 0
-      };
-      $.projectionCache.set(proj, rec);
-   }
+   // let proj = $.projectionFor(rel, boundAttrs);
+   // let rec = $.projectionCache.get(proj);
 
-   $.time += 1;
-   $.setAsNewHead(rec);
+   // if (rec === undefined) {
+   //    proj.refCount += 1;
+   //    rec = {
+   //       prev: null,
+   //       next: null,
+   //       proj: proj,
+   //       lastUsed: 0
+   //    };
+   //    $.projectionCache.set(proj, rec);
+   // }
 
-   $.updateProjection(proj);
+   // $.time += 1;
+   // $.setAsNewHead(rec);
+
+   // $.updateProjection(proj);
 
    return proj.getRecords();
-}
-queryBaseRelation ::= function (rel, boundAttrs) {
-
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {

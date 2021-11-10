@@ -9,6 +9,7 @@ common
    hasOwnProperty
    concat
    map
+   maximumBy
    ownEntries
    newObj
    selectProps
@@ -34,12 +35,16 @@ dedb-index-instance
    indexRemove
    makeIndexInstance
    indexRefUnique
+   indexRef
+   indexRefWithBindings
+   indexHitScore
 dedb-projection
    invalidateProjections
 dedb-goal
    relGoal
 dedb-relation
    RelationType
+   getRelevantProto
 dedb-common
    RecordType
    recTypeProto
@@ -98,7 +103,7 @@ getUniqueRecord ::= function (rel, bindings) {
    let boundAttrs = Object.keys(bindings);
    let index = $.findUniqueIndex(rel, boundAttrs);
 
-   $.check(index !== undefined, `Could not find a single unique index`);
+   $.check(index !== undefined, `Could not find suitable unique index`);
 
    let rec = $.indexRefUnique(index, $.map(index.attrs, a => bindings[a]));
 
@@ -115,26 +120,45 @@ getUniqueRecord ::= function (rel, bindings) {
 
    return rec;
 }
-getAll ::= function (rel, bindings) {
+getRecords ::= function (rel, bindings) {
+   let boundAttrs = Object.keys(bindings);
+   let index = $.findSuitableIndex(rel, boundAttrs);
 
+   $.check(index !== undefined, `Could not find suitable index`);
+
+   let recs = $.indexRefWithBindings(index, bindings);
+
+   if (index.attrs.length < boundAttrs.length) {
+      let filterBy = [];
+
+      for (let attr of boundAttrs) {
+         if (!index.attrs.includes(attr)) {
+            filterBy.push([attr, bindings[attr]]);
+         }
+      }
+
+      return $.filter(recs, rec => {
+         let recVal = rel.isKeyed ? rec[1] : rec;
+
+         for (let [attr, val] of filterBy) {
+            if (recVal[attr] !== bindings[attr]) {
+               return false;
+            }
+         }
+
+         return true;
+      });
+   }
+
+   return recs;
 }
 findUniqueIndex ::= function (rel, boundAttrs) {
    return rel.indices.find(index => {
       return index.isUnique && $.isIndexFullHit(index.attrs, boundAttrs);
    });
 }
-resolveRelationFiltering ::= function (rel, bindings) {
-   let boundAttrs = Object.keys(bindings);
-   let index = $.maximumBy(rel.indices, index => $.indexHitScore(index, boundAttrs));
-   let filterBindings = [];
-
-   for (let attr of boundAttrs) {
-      if (!index.attrs.includes(attr)) {
-         filterBindings.push([attr, bindings[attr]]);
-      }
-   }
-
-   return [index, filterBindings];
+findSuitableIndex ::= function (rel, boundAttrs) {
+   return $.maximumBy(rel.indices, 0, index => $.indexHitScore(index, boundAttrs));
 }
 recValSatisfies ::= function (recVal, filterBindings) {
    for (let [attr, val] of filterBindings) {

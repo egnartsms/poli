@@ -81,7 +81,7 @@ indexRefUnique ::= function (inst, keys) {
 
    return result;
 }
-indexRef ::= function* (index, keys) {
+indexRef ::= function* (inst, keys) {
    let [map, unspecified] = $.indexAt(inst, keys);
 
    if (map === undefined) {
@@ -90,7 +90,7 @@ indexRef ::= function* (index, keys) {
 
    yield* (function* rec(map, unspecified) {
       if (unspecified === 0) {
-         if (index.isUnique) {
+         if (inst.isUnique) {
             yield map;
          }
          else {
@@ -103,6 +103,20 @@ indexRef ::= function* (index, keys) {
          }
       }
    })(map, unspecified);
+}
+indexRefWithBindings ::= function (inst, bindings) {
+   return $.indexRef(inst, $.bindings2keys(inst.attrs, bindings));
+}
+bindings2keys ::= function* (attrs, bindings) {
+   for (let attr of attrs) {
+      let val = bindings[attr];
+
+      if (val === undefined) {
+         break;
+      }
+
+      yield val;
+   }
 }
 rebuildIndex ::= function (inst, recKeyVals) {
    inst.records.clear();

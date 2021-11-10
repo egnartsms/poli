@@ -23,7 +23,6 @@ dedb-rec-key
 dedb-index
    indexOn
 dedb-query
-   query
    dumpRecencyList
 -----
 rel ::= ({
