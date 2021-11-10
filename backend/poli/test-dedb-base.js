@@ -114,7 +114,8 @@ test_value_at_key ::= function () {
    $.checkLike($.valueAtKey($.countryCode, 'Ruthenia'), 'ru');
    $.checkLike($.valueAtKey($.countryCode, 'Poland'), 'pl');
 }
-test_query_unique_record_in_nonkeyed_relation ::= function () {
+test_query_unique_record ::= function () {
+   // non-keyed
    $.checkLike(
       $.queryUniqueRecord($.city, {country: 'France', city: 'Lyon'}),
       {country: 'France', city: 'Lyon', population: 2.323}
@@ -124,8 +125,8 @@ test_query_unique_record_in_nonkeyed_relation ::= function () {
       $.queryUniqueRecord($.city, {country: 'Turkey', city: 'Ankara'}),
       {country: 'Turkey', city: 'Ankara', population: 4.587}
    );
-}
-test_query_unique_record_in_keyed_relation ::= function () {
+
+   // keyed
    $.checkLike(
       $.queryUniqueRecord($.cityInfo, {country: 'France', big: 2}),
       ['Lyon', {country: 'France', big: 2}]
@@ -136,7 +137,7 @@ test_query_unique_record_in_keyed_relation ::= function () {
       ['Ankara', {country: 'Turkey', big: 2}]
    );
 }
-test_query_records_in_nonkeyed_relation ::= function () {
+test_query_records ::= function () {
    $.checkLike(
       Array.from($.queryRecords($.city, {country: 'Ruthenia', city: 'Kyiv'})),
       [{country: 'Ruthenia', city: 'Kyiv', population: 3.375}]
@@ -150,8 +151,7 @@ test_query_records_in_nonkeyed_relation ::= function () {
          {country: 'Ruthenia', city: 'Dnipro', population: 0.993}
       ]
    );
-}
-test_query_records_in_keyed_relation ::= function () {
+
    $.checkLike(
       Array.from($.queryRecords($.cityInfo, {country: 'Ruthenia', big: 3})),
       [['Lviv', {country: 'Ruthenia', big: 3}]]
@@ -165,6 +165,33 @@ test_query_records_in_keyed_relation ::= function () {
          ['Dnipro', {country: 'Ruthenia', big: 2}],
          ['Lviv', {country: 'Ruthenia', big: 3}],
       ]
+   );
+}
+test_query_records_extra_bound ::= function () {
+   $.checkLike(
+      Array.from($.queryRecords($.city, {
+         country: 'Ruthenia',
+         city: 'Kyiv',
+         population: 3.375
+      })),
+      [{country: 'Ruthenia', city: 'Kyiv', population: 3.375}]
+   );
+
+   $.checkLike(
+      Array.from($.queryRecords($.city, {
+         country: 'Ruthenia',
+         city: 'Kyiv',
+         population: 3.376
+      })),
+      []
+   );
+
+   $.checkLike(
+      Array.from($.queryRecords($.city, {
+         country: 'Ruthenia',
+         population: 0.993
+      })),
+      [{country: 'Ruthenia', city: 'Dnipro', population: 0.993}]
    );
 }
 test_query_no_index_hit_results_in_exc ::= function () {

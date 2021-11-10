@@ -128,29 +128,25 @@ getRecords ::= function (rel, bindings) {
 
    let recs = $.indexRefWithBindings(index, bindings);
 
-   if (index.attrs.length < boundAttrs.length) {
-      let filterBy = [];
+   let filterBy = [];
 
-      for (let attr of boundAttrs) {
-         if (!index.attrs.includes(attr)) {
-            filterBy.push([attr, bindings[attr]]);
+   for (let attr of boundAttrs) {
+      if (!index.attrs.includes(attr)) {
+         filterBy.push([attr, bindings[attr]]);
+      }
+   }
+
+   return filterBy.length === 0 ? recs : $.filter(recs, rec => {
+      let recVal = rel.isKeyed ? rec[1] : rec;
+
+      for (let [attr, val] of filterBy) {
+         if (recVal[attr] !== val) {
+            return false;
          }
       }
 
-      return $.filter(recs, rec => {
-         let recVal = rel.isKeyed ? rec[1] : rec;
-
-         for (let [attr, val] of filterBy) {
-            if (recVal[attr] !== bindings[attr]) {
-               return false;
-            }
-         }
-
-         return true;
-      });
-   }
-
-   return recs;
+      return true;
+   });
 }
 findUniqueIndex ::= function (rel, boundAttrs) {
    return rel.indices.find(index => {
