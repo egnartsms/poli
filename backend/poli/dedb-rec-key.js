@@ -5,7 +5,6 @@ dedb-common
 -----
 recKey ::= Symbol.for('poli.recKey')
 recVal ::= Symbol.for('poli.recVal')
-unique ::= Symbol.for('poli.index.unique')
 normalizeAttrs ::= function (recType, plainAttrs) {
    let attrs;
 

@@ -13,7 +13,7 @@ common
    isObjectWithOwnProperty
    setsEqual
    singleQuoteJoinComma
-dedb-common
+dedb-relation
    RelationType
 data-structures
    BidiMap
@@ -21,7 +21,6 @@ dedb-index
    reduceIndex
    isIndexCovered
    copyIndex
-   wouldIndexBeCoveredBy
 dedb-rec-key
    recKey
    recVal
@@ -116,7 +115,7 @@ relGoal ::= function (rel, attrs) {
    else {
       eligibleIndices = indices
          .filter(idx => !$.isIndexCovered(idx))
-         .filter(idx => $.wouldIndexBeCoveredBy(idx, looseAttrs.keys()));
+         .filter(idx => $.isIndexCoveredBy(idx, looseAttrs.keys()));
    }
 
    return {

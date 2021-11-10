@@ -1,6 +1,7 @@
 trie
    * as: trie
 -----
+dispatchId ::= Symbol.for('poli.dispatchId')
 check ::= function (cond, msg=`Check failed`) {
    if (!cond) {
       throw new Error(typeof msg === 'function' ? msg() : msg);
@@ -29,16 +30,6 @@ isObjectWithOwnProperty ::= function (obj, prop) {
 }
 selectProps ::= function (obj, props) {
    return Object.fromEntries(props.map(p => [p, obj[p]]));
-}
-patchObj ::= function (obj, patch) {
-   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj, patch);
-}
-patchNullableObj ::= function (obj1, obj2) {
-   if (obj2 == null) {
-      return obj1;
-   }
-   
-   return {...obj1, ...obj2};
 }
 arrayify ::= function (X) {
    return X instanceof Array ? X : Array.from(X);
@@ -114,6 +105,20 @@ propagateValueToRecipients ::= function (module, name) {
 }
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
+}
+maximumBy ::= function (items, keyOf) {
+   let maxKey = -Infinity, maxItem;
+
+   for (let item of items) {
+      let key = keyOf(item);
+
+      if (key > maxKey) {
+         maxKey = key;
+         maxItem = item;
+      }
+   }
+
+   return maxItem;
 }
 extendArray ::= function (A, X) {
    let i = A.length;
@@ -480,6 +485,9 @@ isLike ::= function isLike(A, B) {
    }
 
    return false;
+}
+checkLike ::= function (A, B) {
+   $.check($.isLike(A, B));
 }
 enumerate ::= function* (xs) {
    let i = 0;

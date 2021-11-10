@@ -1,8 +1,6 @@
 common
    assert
    check
-data-structures
-   AugmentedMap
 set-map
    deleteIntersection
    greaterLesser

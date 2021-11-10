@@ -1,19 +1,6 @@
 common
    check
    isLike
-dedb-goal
-   or
-dedb-base
-   baseRelation
-dedb-derived
-   derivedRelation
-   rebuildProjection
-dedb-index
-   indexOn
-dedb-projection
-   projectionFor
-dedb-common
-   RecordType
 -----
 setup ::= function () {
    let country = $.baseRelation({

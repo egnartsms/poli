@@ -1,5 +1,13 @@
 -----
-AugmentedMap ::= class AugmentedMap extends Map {
+RecordMap ::= class RecordMap {
+   constructor() {
+      this.map = new Map;
+   }
+
+   valueAt(key) {
+      return this.map.get(key);
+   }
+
    add([key, val]) {
       return this.set(key, val);
    }
@@ -8,7 +16,15 @@ AugmentedMap ::= class AugmentedMap extends Map {
    //    return this.has(key) ? [key, this.get(key)] : undefined;
    // }
 }
-AugmentedSet ::= class AugmentedSet extends Set {
+RecordSet ::= class RecordSet {
+   constructor() {
+      this.set = new Set;
+   }
+
+   valueAt(key) {
+      return this.set.has(key) ? key : undefined;
+   }
+   
    get(key) {
       return this.has(key) ? key : undefined;
    }
@@ -18,6 +34,7 @@ AugmentedSet ::= class AugmentedSet extends Set {
    // }
 }
 BidiMap ::= class BidiMap extends Map {
+   // Not currently used anywhere
    constructor(entries) {
       super();
 

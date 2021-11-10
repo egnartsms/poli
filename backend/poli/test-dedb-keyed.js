@@ -3,26 +3,6 @@ common
    isLike
    find
    sortedArray
-dedb-query
-   query
-dedb-projection
-   projectionFor
-   releaseProjection
-   updateProjection
-dedb-base
-   baseRelation
-   addFact
-   removeFact
-   changeFact
-dedb-derived
-   derivedRelation
-dedb-index
-   indexOn
-dedb-rec-key
-   recKey
-   recVal
-dedb-common
-   RecordType
 -----
 setup ::= function () {
    let

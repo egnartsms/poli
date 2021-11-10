@@ -3,10 +3,7 @@ common
    check
    hasOwnProperty
    trackingFinal
-data-structures
-   AugmentedMap
-   AugmentedSet
-dedb-common
+dedb-relation
    RelationType
 dedb-base
    * as: base
@@ -44,7 +41,7 @@ projectionFor ::= function (rel, boundAttrs) {
 
    return map;
 }
-attrFree ::= new Object
+attrFree ::= Symbol('poli.free-attr')
 projmapKey ::= function (boundAttrs, attr) {
    return $.hasOwnProperty(boundAttrs, attr) ? boundAttrs[attr] : $.attrFree;
 }
@@ -112,6 +109,10 @@ invalidateProjections ::= function (...rootProjs) {
    }
 }
 updateProjection ::= function (proj) {
+   if (proj.isValid) {
+      return;
+   }
+
    let {rel} = proj;
 
    if (rel.type === $.RelationType.base) {

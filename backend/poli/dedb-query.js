@@ -4,6 +4,11 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection
+dedb-relation
+   getRelation
+   RelationType
+dedb-base
+   getUniqueRecord
 -----
 time ::= 0
 projectionCache ::= new Map
@@ -13,22 +18,31 @@ dumpRecencyList ::= function () {
    console.log('Q rec list:', $.recencyList);
    console.log('Q proj cache:', $.projectionCache);
 }
-queryScalarKey ::= function (rel, boundAttrs) {
-   let records = $.query(rel, boundAttrs);
+valueAtKey ::= function (relInfo, recKey) {
+   let rel = $.getRelation(relInfo);
 
-   if (records.size === 1) {
-      let [[rkey, rval]] = records;
+   $.check(rel.isKeyed);
 
-      return rkey;
-   }
-   else if (records.size === 0) {
-      return undefined;
-   }
-   else {
-      throw new Error(`Not a scalar`);
-   }
+   return rel.records.get(recKey);
 }
-query ::= function (rel, boundAttrs) {
+queryUniqueRecord ::= function (relInfo, bindings) {
+   let rel = $.getRelation(relInfo);
+      
+   if (rel.type !== $.RelationType.base) {
+      throw new Error;
+   }
+
+   return $.getUniqueRecord(rel, bindings);
+}
+query ::= function (relInfo, boundAttrs) {
+   let rel = $.getRelation(relInfo);
+   
+   if (rel.type === $.RelationType.base) {
+      return $.queryBaseRelation(rel, boundAttrs);
+   }
+
+   throw new Error;
+   
    let proj = $.projectionFor(rel, boundAttrs);
    let rec = $.projectionCache.get(proj);
 
@@ -48,7 +62,10 @@ query ::= function (rel, boundAttrs) {
 
    $.updateProjection(proj);
 
-   return proj.records;
+   return proj.getRecords();
+}
+queryBaseRelation ::= function (rel, boundAttrs) {
+
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {

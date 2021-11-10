@@ -1,4 +1,4 @@
-dedb-common
+dedb-relation
     RelationType
 dedb-goal
    funcGoal

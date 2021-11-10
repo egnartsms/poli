@@ -2,11 +2,6 @@ dedb-rec-key
    recKey
    recVal
 -----
-RelationType ::= ({
-   base: 'base',
-   derived: 'derived',
-   functional: 'functional'
-})
 RecordType ::= ({
    tuple: 'tuple',
    keyVal: 'keyVal',

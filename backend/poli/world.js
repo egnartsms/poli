@@ -14,7 +14,6 @@ vector
 dedb-common
    RecordType
 dedb-base
-   baseRelation
    addFact
    makeEntity
    patchEntity
@@ -25,7 +24,6 @@ dedb-index
    indexOn
 dedb-query
    query
-   queryScalarKey
    dumpRecencyList
 -----
 rel ::= ({

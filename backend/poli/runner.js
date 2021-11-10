@@ -8,8 +8,6 @@ common
    indexOf
    joindot
    map
-   patchNullableObj
-   patchObj
 code-modify
    globalCodeModifications
 exc
@@ -21,8 +19,6 @@ vector
    * as: vec
 world
    rel
-dedb-derived
-   derivedRelation
 dedb-common
    RecordType
 dedb-rec-key

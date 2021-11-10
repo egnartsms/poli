@@ -1,7 +1,11 @@
+dedb-relation
+   clearRelationCache
+test-dedb-base
+   * as: base
+test-dedb-derived
+   * as: derived
 test-dedb-keyed
    * as: keyed
-test-dedb-nonkeyed
-   * as: nonkeyed
 test-dedb-disjunction
    * as: disjunction
 test-dedb-functional
@@ -11,23 +15,23 @@ test-dedb-extver
 -----
 runTests ::= function () {
    console.time('test-dedb');
-   $.runTestsIn($.nonkeyed);
-   $.runTestsIn($.keyed);
-   $.runTestsIn($.disjunction);
-   $.runTestsIn($.functional);
-   $.runTestsIn($.extver);
+   $.runTestsIn($.base);
+   // $.runTestsIn($.nonkeyed);
+   // $.runTestsIn($.keyed);
+   // $.runTestsIn($.disjunction);
+   // $.runTestsIn($.functional);
+   // $.runTestsIn($.extver);
    console.timeEnd('test-dedb')
 }
 runTestsIn ::= function (ns) {
-   let setup = ns['setup'];
+   $.clearRelationCache();
 
    for (let [k, v] of Object.entries(ns)) {
       if (k.startsWith('test_')) {
          let t0 = performance.now();
          
          try {
-            let rels = setup ? setup() : undefined;
-            v(rels);
+            v();
          }
          catch (e) {
             let t1 = performance.now();

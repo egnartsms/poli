@@ -28,6 +28,8 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection as: gUpdateProjection
+dedb-relation
+   RelationType
 dedb-goal
    * as: goal
 dedb-version
@@ -40,26 +42,23 @@ dedb-version
 dedb-index
    copyIndex
    isIndexCovered
-   indexAdd
-   indexRemove
-   indexAt
 dedb-index-instance
    refIndexInstance
    releaseIndexInstance
-   indexInstanceStorage
+   indexAdd
+   indexRemove
 dedb-join-plan
    computeIncrementalUpdatePlan
    makeSubBoundAttrsProducer
    narrowConfig
    JoinType
 dedb-common
-   RelationType
    RecordType
    recTypeProto
    makeRecords
 -----
 MAX_REL_ATTRS ::= 30
-derivedRelation ::= function ({
+makeRelation ::= function ({
    name: relname,
    recType,
    attrs: plainAttrs=[],
@@ -324,10 +323,6 @@ rebuildProjection ::= function (proj) {
    $.markProjectionValid(proj);
 }
 updateProjection ::= function (proj) {
-   if (proj.isValid) {
-      return;
-   }
-
    if (proj.records === null) {
       // This is a 'dry' projection
       $.rebuildProjection(proj);
