@@ -1,12 +1,16 @@
+common
+	isA
 dedb-base
-	makeRelation as: makeBaseRelation
+	* as: base
+	clsBaseRelation
 dedb-derived
-	makeRelation as: makeDerivedRelation
+	* as: derived
+	clsDerivedRelation
+	clsDerivedProjection
 -----
-RelationType ::= ({
-   base: 'base',
-   derived: 'derived',
-   functional: 'functional'
+clsRelation ::= ({
+   name: 'relation',
+   'relation': true
 })
 info2rel ::= new WeakMap
 getRelation ::= function (relInfo) {
@@ -14,10 +18,10 @@ getRelation ::= function (relInfo) {
 
 	if (relation === undefined) {
 		if (relInfo.body !== undefined) {
-			relation = $.makeDerivedRelation(relInfo);
+			relation = $.derived.makeRelation(relInfo);
 		}
 		else {
-			relation = $.makeBaseRelation(relInfo);
+			relation = $.base.makeRelation(relInfo);
 		}
 
 		$.info2rel.set(relInfo, relation);
@@ -28,24 +32,9 @@ getRelation ::= function (relInfo) {
 clearRelationCache ::= function () {
 	$.info2rel = new WeakMap();
 }
-keyedProto ::= ({
-	isKeyed: true,
-	rec2key([recKey, recVal]) {
-		return recKey;
-	},
-	rec2val([recKey, recVal]) {
-		return recVal;
-	}
-})
-nonkeyedProto ::= ({
-	isKeyed: false,
-	rec2key(rec) {
-		return rec;
-	},
-	rec2val(rec) {
-		return rec;
-	}
-})
-getRelevantProto ::= function (isKeyed) {
-	return isKeyed ? $.keyedProto : $.nonkeyedProto;
+recKeyBindingMakesSenseFor ::= function (rel) {
+	return (
+		$.isA(rel, $.clsBaseRelation) ||
+		$.isA(rel, $.clsDerivedRelation) && rel.isKeyed
+	);
 }

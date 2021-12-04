@@ -1,15 +1,16 @@
 common
    check
+   isA
 dedb-projection
    projectionFor
    releaseProjection
    updateProjection
 dedb-relation
    getRelation
-   RelationType
 dedb-base
    getUniqueRecord
    getRecords
+   clsBaseRelation
 -----
 time ::= 0
 projectionCache ::= new Map
@@ -24,23 +25,19 @@ valueAtKey ::= function (relInfo, recKey) {
 
    $.check(rel.isKeyed);
 
-   return rel.records.get(recKey);
+   return rel.records.valueAt(recKey);
 }
 queryUniqueRecord ::= function (relInfo, bindings) {
    let rel = $.getRelation(relInfo);
       
-   if (rel.type !== $.RelationType.base) {
-      throw new Error;
-   }
+   $.check($.isA(rel, $.clsBaseRelation));
 
    return $.getUniqueRecord(rel, bindings);
 }
 queryRecords ::= function (relInfo, bindings) {
    let rel = $.getRelation(relInfo);
    
-   if (rel.type !== $.RelationType.base) {
-      throw new Error;
-   }
+   $.check($.isA(rel, $.clsBaseRelation));
    
    return $.getRecords(rel, bindings);
 

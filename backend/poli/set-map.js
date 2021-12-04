@@ -78,13 +78,13 @@ deleteAll ::= function (sm, xs) {
       sm.delete(x);
    }
 }
-addAllToMap ::= function (map, xs) {
-   for (let [key, val] of xs) {
-      map.set(key, val);
-   }
-}
-addAllToSet ::= function (set, xs) {
+addAll ::= function (set, xs) {
    for (let x of xs) {
       set.add(x);
+   }
+}
+setAll ::= function (map, entries) {
+   for (let [k, v] of entries) {
+      map.set(k, v);
    }
 }

@@ -4,7 +4,7 @@ common
    check
 dedb-index
    copyIndex
-   indexHitCount
+   indexKeys
 -----
 refIndexInstance ::= function (proj, soughtIndex) {
    for (let index of proj.myIndexInstances) {
@@ -46,46 +46,24 @@ releaseIndexInstance ::= function (idxInst) {
       instances.splice(i, 1);
    }
 }
-protoIndex ::= ({
-   recordsAt: 0
+clsIndexInstance ::= ({
+   name: 'indexInstance',
+   'indexInstance': true
 })
 makeIndexInstance ::= function (attrs, {isUnique, isKeyed}) {
    return {
-      dispatch: 'index-instance',
-      attrs: Array.from(attrs),
+      class: $.clsIndexInstance,
+      index: Object.assign(Array.from(attrs), {isUnique}),
       isUnique: isUnique,
       isKeyed: isKeyed,
       records: new Map,
    }
 }
-indexHitScore ::= function (index, boundAttrs) {
-   let hits = $.indexHitCount(index.attrs, boundAttrs);
-
-   if (index.isUnique && hits === index.attrs.length) {
-      return 1000 + hits;
-   }
-   else {
-      return hits;
-   }
-}
-indexRefUnique ::= function (inst, keys) {
-   $.assert(() => inst.isUnique);
-
-   let [result, unspecified] = $.indexAt(inst, keys);
-
-   if (result === undefined) {
-      return undefined;
-   }
-
-   $.check(unspecified === 0);
-
-   return result;
-}
 indexRef ::= function* (inst, keys) {
    let [map, unspecified] = $.indexAt(inst, keys);
 
    if (map === undefined) {
-      return undefined;
+      return;
    }
 
    yield* (function* rec(map, unspecified) {
@@ -104,83 +82,80 @@ indexRef ::= function* (inst, keys) {
       }
    })(map, unspecified);
 }
+indexRefOne ::= function (inst, keys) {
+   let [rec] = $.indexRef(inst, keys);
+   return rec;
+}
 indexRefWithBindings ::= function (inst, bindings) {
-   return $.indexRef(inst, $.bindings2keys(inst.attrs, bindings));
+   return $.indexRef(inst, $.indexKeys(inst.index, bindings));
 }
-bindings2keys ::= function* (attrs, bindings) {
-   for (let attr of attrs) {
-      let val = bindings[attr];
-
-      if (val === undefined) {
-         break;
-      }
-
-      yield val;
-   }
+indexRefOneWithBindings ::= function (inst, bindings) {
+   return $.indexRefOne(inst, $.indexKeys(inst.index, bindings));
 }
-rebuildIndex ::= function (inst, recKeyVals) {
+rebuildIndex ::= function (inst, records) {
    inst.records.clear();
 
-   for (let [recKey, recVal] of recKeyVals) {
-      $.indexAdd(inst, recKey, recVal);
+   for (let rec of records) {
+      $.indexAdd(inst, rec);
    }
 }
-indexAdd ::= function (inst, recKey, recVal=recKey) {
-   $.assert(() => inst.isKeyed || recKey === recVal);
+indexAdd ::= function (inst, rec) {
+   let [rkey, rval] = inst.isKeyed ? rec : [rec, rec];
+   let {index, records: map} = inst;
+   
+   for (let i = 0; ; i += 1) {
+      let key = rval[index[i]];
 
-   let {attrs, records: map} = inst;
-
-   for (let i = 0; i < attrs.length; i += 1) {
-      let key = recVal[attrs[i]];
-
-      if (i + 1 === attrs.length) {
+      if (i + 1 === index.length) {
          if (map.has(key)) {
             if (inst.isUnique) {
                throw new Error(`Unique index violation`);
             }
             else if (inst.isKeyed) {
-               map.get(key).set(recKey, recVal);
+               map.get(key).set(rkey, rval);
             }
             else {
-               map.get(key).add(recVal);
+               map.get(key).add(rval);
             }
          }
          else {
-            let rec = inst.isKeyed ? [recKey, recVal] : recVal;
+            let rec = inst.isKeyed ? [rkey, rval] : rval;
 
             map.set(key, inst.isUnique ? rec : new (inst.isKeyed ? Map : Set)([rec]));
          }
-      }
-      else {
-         let next = map.get(key);
 
-         if (next === undefined) {
-            next = new Map;
-            map.set(key, next);
-         }
-
-         map = next;
+         break;
       }
+
+      let next = map.get(key);
+
+      if (next === undefined) {
+         next = new Map;
+         map.set(key, next);
+      }
+
+      map = next;
    }
 }
-indexRemove ::= function (inst, recKey, recVal=recKey) {
-   $.assert(() => inst.isKeyed || recKey === recVal);
+indexRemove ::= function (inst, rec) {
+   let [rkey, rval] = inst.isKeyed ? rec : [rec, rec];
+   let {index} = inst;
 
    (function go(i, map) {
-      let key = recVal[inst.attrs[i]];
+      let key = rval[index[i]];
 
       if (!map.has(key)) {
          throw new Error(`Index missing fact`);
-      }
+      }  
 
-      if (i + 1 === inst.attrs.length) {
+      if (i + 1 === index.length) {
          if (inst.isUnique) {
             map.delete(key);
          }
          else {
             let bucket = map.get(key);
 
-            bucket.delete(recKey);
+            bucket.delete(rkey);
 
             if (bucket.size === 0) {
                map.delete(key);
@@ -208,60 +183,60 @@ indexReduce ::= function (inst, bindings) {
    }
 
    return {
-      dispatch: 'index-instance.reduced',
+      what: 'reduced-index-instance',
       original: inst,
       numBounds,
       template: Array.from(inst.attrs, attr => bindings[attr])
    }
 }
-indexAt ::= Object.assign(function indexAt(inst, keys) {
-   return indexAt.methods[inst.dispatch](inst, keys[Symbol.iterator]());
-}, {
-   methods: {
-      'index-instance': function (inst, ikeys) {
-         let {attrs, records: map} = inst;
-         let unspecified = attrs.length;
+indexAt ::= function (inst, keys) {
+   keys = keys[Symbol.iterator]();
 
-         while (unspecified > 0) {
-            let {done, value: key} = ikeys.next();
+   if (inst.class === $.clsIndexInstance) {
+      let {index, records: map} = inst;
+      let lvl = index.length;
 
-            if (done) {
-               break;
-            }
+      while (lvl > 0) {
+         let {done, value: key} = keys.next();
 
-            map = map.get(key);
-
-            if (map === undefined) {
-               break;
-            }
-
-            unspecified -= 1;
+         if (done) {
+            break;
          }
 
-         return [map, unspecified];
-      },
+         map = map.get(key);
 
-      'index-instance.reduced': function (inst, ikeys) {
-         let {numBounds, original, template} = inst;
+         if (map === undefined) {
+            break;
+         }
 
-         return $.indexAt(original, (function* () {
-            for (let thing of template) {
-               if (thing !== undefined) {
-                  numBounds -= 1;
-                  yield thing;
-               }
-               else {
-                  let {value, done} = ikeys.next();
-
-                  if (done) {
-                     $.check(numBounds === 0, `Too few components in a reduced index`);
-                     return;
-                  }
-
-                  yield value;
-               }
-            }
-         })())
+         lvl -= 1;
       }
-   }   
-})
+
+      return [map, lvl];
+   }
+
+   // if (inst.what === 'reduced-index-instance') {
+   //    let {numBounds, original, template} = inst;
+
+   //    return $.indexAt(original, (function* () {
+   //       for (let thing of template) {
+   //          if (thing !== undefined) {
+   //             numBounds -= 1;
+   //             yield thing;
+   //          }
+   //          else {
+   //             let {value, done} = keys.next();
+
+   //             if (done) {
+   //                $.check(numBounds === 0, `Too few components in a reduced index`);
+   //                return;
+   //             }
+
+   //             yield value;
+   //          }
+   //       }
+   //    })())
+   // }
+
+   throw new Error;
+}

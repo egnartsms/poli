@@ -35,7 +35,7 @@ dedb-goal
    Shrunk
    goalLvars
    indexShrunk
-   walkRelGoals
+   walkPaths
    instantiationShrunk
 dedb-index
    superIndexOfAnother
@@ -127,38 +127,18 @@ JoinType ::= ({
 computePaths ::= function (rootGoal) {
    let [goalPaths, pathGoals] = $.many2many();
    let goals = [];
-
-   function walk(goal, K) {
-      if (goal.type === $.GoalType.rel || goal.type === $.GoalType.func) {
-         goals.push(goal);
-         K();
-         goals.pop(goal);
-      }
-      else if (goal.type === $.GoalType.and) {
-         (function rec(chain) {
-            if (chain === null) {
-               K();
-            }
-            else {
-               walk(chain.item, () => rec(chain.next()))
-            }
-         })($.arrayChain(goal.subgoals));
-      }
-      else if (goal.type === $.GoalType.or) {
-         for (let disjunct of goal.subgoals) {
-            walk(disjunct, K);
-         }
-      }
-      else {
-         throw new Error;
-      }
-   }
-
    let pathNum = 0;
 
-   walk(rootGoal, () => {
-      $.m2mAddAll(pathGoals, pathNum, goals);
-      pathNum += 1;
+   $.walkPaths(rootGoal, {
+      onLeaf: (goal, K) => {
+         goals.push(goal);
+         K();
+         goals.pop();
+      },
+      onPath: () => {
+         $.m2mAddAll(pathGoals, pathNum, goals);
+         pathNum += 1;
+      }
    });
 
    $.assert(() => goals.length === 0);

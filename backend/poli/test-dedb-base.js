@@ -10,7 +10,7 @@ dedb-query
    queryUniqueRecord
    valueAtKey
 dedb-relation
-   RelationType
+   getRelation
 dedb-common
    RecordType
 dedb-projection
@@ -18,7 +18,6 @@ dedb-projection
    releaseProjection
    updateProjection
 dedb-base
-   isFullProjection
    addFact
    removeFact
 dedb-index
@@ -144,7 +143,7 @@ test_query_records ::= function () {
    );
 
    $.checkLike(
-      Array.from($.queryRecords($.city, {country: 'Ruthenia'})),
+      new Set($.queryRecords($.city, {country: 'Ruthenia'})),
       [
          {country: 'Ruthenia', city: 'Kyiv', population: 3.375},
          {country: 'Ruthenia', city: 'Lviv', population: 0.720},

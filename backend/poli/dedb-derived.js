@@ -28,8 +28,6 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection as: gUpdateProjection
-dedb-relation
-   RelationType
 dedb-goal
    * as: goal
 dedb-version
@@ -37,7 +35,7 @@ dedb-version
    releaseVersion
    isVersionFresh
    unchainVersion
-   versionAdd
+   versionAddKey
    versionRemove
 dedb-index
    copyIndex
@@ -57,23 +55,21 @@ dedb-common
    recTypeProto
    makeRecords
 -----
+clsDerivedRelation ::= ({
+   name: 'relation.derived',
+   relation: true,
+   'relation.derived': true
+})
 MAX_REL_ATTRS ::= 30
 makeRelation ::= function ({
    name: relname,
-   recType,
-   attrs: plainAttrs=[],
-   indices=[],
+   isKeyed = false,
+   attrs = [],
+   potentialIndices = [],
    body: bodyCallback
 }) {
-   let attrs = $.normalizeAttrs(recType, plainAttrs);
-
    $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
-
-   function getvar(name) {
-      return {
-         [$.goal.lvarSym]: name
-      }
-   }
+   $.check(isKeyed || attrs.length > 0);
 
    function vTagged(strings) {
       if (strings.length !== 1) {
@@ -82,21 +78,23 @@ makeRelation ::= function ({
 
       let [name] = strings;
 
-      return getvar(name);
+      return $.goal.makeLvar(name);
    }
 
-   Object.defineProperties(vTagged, {
-      recKey: {
-         get() {
-            return getvar($.recKey)
+   if (isKeyed) {
+      Object.defineProperties(vTagged, {
+         recKey: {
+            get() {
+               return $.goal.makeLvar($.recKey)
+            }
+         },
+         recVal: {
+            get() {
+               return $.goal.makeLvar($.recVal)
+            }
          }
-      },
-      recVal: {
-         get() {
-            return getvar($.recVal)
-         }
-      }
-   });
+      });
+   }
 
    let rootGoal = bodyCallback(vTagged);
 
@@ -104,7 +102,7 @@ makeRelation ::= function ({
       rootGoal = $.goal.and(...rootGoal);
    }
    
-   let lvars = $.goal.checkVarUsage(rootGoal, attrs);
+   let lvars = $.goal.checkVarUsageAndReturnVars(rootGoal, attrs);
 
    $.goal.numberRelGoals(rootGoal);
 
@@ -119,7 +117,6 @@ makeRelation ::= function ({
 
    return {
       type: $.RelationType.derived,
-      recType,
       name: relname,
       attrs: attrs,
       indices: indices,
@@ -128,13 +125,13 @@ makeRelation ::= function ({
       config0: config0,
       configs: {0: config0},
       projmap: new Map,
-
-      at(attrs) {
-         return $.goal.relGoal(this, attrs);
-      }
-      
    };
 }
+clsDerivedProjection ::= ({
+   name: 'projection.derived',
+   projection: true,
+   'projection.derived': true
+})
 makeProjection ::= function (rel, boundAttrs) {
    let config = $.configFor(rel, boundAttrs);
 

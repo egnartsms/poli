@@ -4,7 +4,7 @@ common
    hasOwnProperty
    trackingFinal
 dedb-relation
-   RelationType
+   recKeyBindingMakesSenseFor
 dedb-base
    * as: base
 dedb-derived
@@ -12,38 +12,63 @@ dedb-derived
 dedb-rec-key
    recVal
 -----
-makeProjection ::= function (rel, boundAttrs) {
+clsProjection ::= ({
+   name: 'projection',
+   'projection': true
+})
+makeProjectionRegistry ::= function () {
+   return Object.assign(new Map, {
+      parent: null
+   });
+}
+makeProjection ::= function (rel, recKey, bindings) {
    if (rel.type === $.RelationType.base) {
-      return $.base.makeProjection(rel, boundAttrs);
+      return $.base.makeProjection(rel, recKey, bindings);
    }
    else if (rel.type === $.RelationType.derived) {
-      return $.derived.makeProjection(rel, boundAttrs);
+      return $.derived.makeProjection(rel, recKey, bindings);
    }
    else {
       throw new Error(`Cannot make projection of a relation of type '${rel.type}'`);
    }
 }
-projectionFor ::= function (rel, boundAttrs) {
-   let map = rel.projmap;
+projectionFor ::= function (rel, recKey, bindings) {
+   $.check(recKey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
+      `Binding rec key does not make sense for the relation '${rel.name}'`
+   );
 
-   for (let [attr, isFinal] of $.trackingFinal(rel.attrs)) {
-      let key = $.projmapKey(boundAttrs, attr);
+   let map = rel.projections;
 
+   for (let [key, isFinal] of
+         $.trackingFinal($.genProjectionKey(rel, recKey, bindings))) {
       if (map.has(key)) {
          map = map.get(key);
       }
       else {
-         let next = isFinal ? $.makeProjection(rel, boundAttrs) : new Map;
+         let next;
+
+         if (isFinal) {
+            next = {
+               parent: map,
+               key: key,
+               proj: $.makeProjection(rel, recKey, bindings)
+            };
+
+            next.proj.regPoint = next;
+         }
+         else {
+            next = Object.assign(new Map, {
+               parent: map,
+               key: key
+            });
+         }
+         
          map.set(key, next);
          map = next;
       }
    }
 
-   return map;
-}
-attrFree ::= Symbol('poli.free-attr')
-projmapKey ::= function (boundAttrs, attr) {
-   return $.hasOwnProperty(boundAttrs, attr) ? boundAttrs[attr] : $.attrFree;
+   return map.proj;
 }
 releaseProjection ::= function (proj) {
    $.check(proj.refCount > 0);
@@ -51,34 +76,25 @@ releaseProjection ::= function (proj) {
    proj.refCount -= 1;
 
    if (proj.refCount === 0) {
-      // By the time a projection's refCount drops to 0, nobody must be using it
-      // (otherwise the refCount would not have dropped to 0).
-      $.assert(() => proj.myVer === null);
-      // Index instances should've been released before the projection itself
-      $.assert(() => proj.myIndexInstances.totalRefs === 0);
+      let {parent: map, key} = proj.regPoint;
 
-      let rel = proj.rel;
+      map.delete(key);
 
-      (function go(i, map) {
-         if (i === rel.attrs.length) {
-            return;
-         }
-
-         let key = $.projmapKey(proj.boundAttrs, rel.attrs[i]);
-
-         if (i === rel.attrs.length - 1) {
-            map.delete(key);
-         }
-         else {
-            let next = map.get(key);
-            go(i + 1, next);
-            if (next.size === 0) {
-               map.delete(key);
-            }
-         }
-      })(0, rel.projmap);
+      while (map.size === 0 && map.parent !== null) {
+         map.parent.delete(map.key);
+         map = map.parent;
+      }
 
       $.freeProjection(proj);      
+   }
+}
+genProjectionKey ::= function* (rel, recKey, bindings) {
+   if ($.recKeyBindingMakesSenseFor(rel)) {
+      yield recKey;
+   }
+
+   for (let attr of rel.attrs) {
+      yield bindings[attr];
    }
 }
 freeProjection ::= function (proj) {
@@ -94,8 +110,8 @@ freeProjection ::= function (proj) {
       throw new Error;
    }
 }
-invalidateProjections ::= function (...rootProjs) {
-   let stack = rootProjs;
+invalidateProjections ::= function (rootProjs) {
+   let stack = Array.from(rootProjs);
 
    while (stack.length > 0) {
       let proj = stack.pop();

@@ -16,7 +16,7 @@ test-dedb-extver
 runTests ::= function () {
    console.time('test-dedb');
    $.runTestsIn($.base);
-   // $.runTestsIn($.nonkeyed);
+   // $.runTestsIn($.derived);
    // $.runTestsIn($.keyed);
    // $.runTestsIn($.disjunction);
    // $.runTestsIn($.functional);

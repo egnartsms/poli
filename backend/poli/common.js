@@ -1,7 +1,15 @@
 trie
    * as: trie
 -----
-dispatchId ::= Symbol.for('poli.dispatchId')
+isA ::= function (obj, ...classes) {
+   for (let cls of classes) {
+      if (obj.class[cls.name] === true) {
+         return true;
+      }
+   }
+   
+   return false;
+}
 check ::= function (cond, msg=`Check failed`) {
    if (!cond) {
       throw new Error(typeof msg === 'function' ? msg() : msg);
@@ -116,8 +124,9 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
-maximumBy ::= function (items, minKey, keyOf) {
-   let maxKey = minKey, maxItem;
+maximumBy ::= function (items, keyOf) {
+   let maxKey = -Infinity;
+   let maxItem = undefined;
 
    for (let item of items) {
       let key = keyOf(item);

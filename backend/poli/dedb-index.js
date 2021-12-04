@@ -22,11 +22,9 @@ superIndexOfAnother ::= function (index1, index2) {
    }
 }
 copyIndex ::= function (index) {
-   let copy = Array.from(index);
-   copy.isUnique = index.isUnique;
-   return copy;
+   return Object.assign(Array.from(index), {isUnique: index.isUnique});
 }
-reduceIndex ::= function (index, attrs) {
+reduceIndex ::= function (index, boundAttrs) {
    let reduced = $.copyIndex(index);
 
    for (let attr of attrs) {
@@ -41,15 +39,34 @@ reduceIndex ::= function (index, attrs) {
 isIndexCovered ::= function (index) {
    return index.length === 0;
 }
-indexHitCount ::= function (index, boundAttrs) {
+indexFitness ::= function (index, boundAttrs) {
    let i = 0;
 
    while (i < index.length && boundAttrs.includes(index[i])) {
       i += 1;
    }
 
-   return i;
+   if (i === 0) {
+      return -Infinity;
+   }
+
+   let fitness = i - index.length;
+
+   return (fitness === 0 && index.isUnique) ? 1 : fitness;
 }
-isIndexFullHit ::= function (index, boundAttrs) {
-   return $.indexHitCount(index, boundAttrs) === index.length;
+uniqueIndexFullHit ::= function (index, boundAttrs) {
+   return $.indexFitness(index, boundAttrs) === 1;
+}
+indexKeys ::= function (index, bindings) {
+   let keys = [];
+
+   for (let attr of index) {
+      if (bindings[attr] === undefined) {
+         break;
+      }
+
+      keys.push(bindings[attr]);
+   }
+
+   return keys;
 }

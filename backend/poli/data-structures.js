@@ -1,37 +1,131 @@
 -----
 RecordMap ::= class RecordMap {
-   constructor() {
-      this.map = new Map;
+   constructor(entries) {
+      this.map = new Map(entries);
+   }
+
+   get size() {
+      return this.map.size;
+   }
+
+   [Symbol.iterator]() {
+      return this.map.entries();
+   }
+
+   keys() {
+      return this.map.keys();
+   }
+
+   keyVals() {
+      return this.map.entries();
+   }
+
+   hasKey(key) {
+      return this.map.has(key);
+   }
+
+   hasRecord([key, val]) {
+      return this.map.has(key);
    }
 
    valueAt(key) {
       return this.map.get(key);
    }
 
-   add([key, val]) {
-      return this.set(key, val);
+   recordAt(key) {
+      return this.map.has(key) ? [key, this.map.get(key)] : undefined;
    }
 
-   // getEntry(key) {
-   //    return this.has(key) ? [key, this.get(key)] : undefined;
-   // }
+   valueAtExisting(key) {
+      return this.valueAt(key);
+   }
+
+   addRecord([key, val]) {
+      this.map.set(key, val);
+   }
+
+   addRecords(recs) {
+      for (let rec of recs) {
+         this.addRecord(rec);
+      }
+   }
+
+   removeAt(key) {
+      return this.map.delete(key);
+   }
+
+   removeRecord([key, val]) {
+      return this.map.delete(key);
+   }
 }
 RecordSet ::= class RecordSet {
-   constructor() {
-      this.set = new Set;
+   constructor(entries) {
+      this.set = new Set(entries);
+   }
+
+   get size() {
+      return this.set.size;
+   }
+
+   [Symbol.iterator]() {
+      return this.set[Symbol.iterator]();
+   }
+
+   keys() {
+      return this.set.keys();
+   }
+
+   keyVals() {
+      return this.set.entries();
+   }
+
+   hasKey(key) {
+      return this.set.has(key);
+   }
+
+   hasRecord(rec) {
+      return this.set.has(rec);
    }
 
    valueAt(key) {
       return this.set.has(key) ? key : undefined;
    }
-   
-   get(key) {
-      return this.has(key) ? key : undefined;
+
+   recordAt(key) {
+      return this.valueAt(key);
    }
 
-   // getEntry(key) {
-   //    return this.has(key) ? key : undefined;
-   // }
+   valueAtExisting(key) {
+      return key;
+   }
+
+   addRecord(rec) {
+      this.set.add(rec);
+   }
+
+   addRecords(recs) {
+      for (let rec of recs) {
+         this.addRecord(rec);
+      }
+   }
+
+   removeAt(key) {
+      return this.set.delete(key);
+   }
+
+   removeRecord(rec) {
+      return this.set.delete(rec);
+   }
+}
+deleteIntersection ::= function (recsA, recsB) {
+   let [G, L] = $.greaterLesser(recsA, recsB);
+
+   for (let rkey of L.keys()) {
+      if (G.hasKey(rkey)) {
+         G.removeAt(rkey);
+         L.removeAt(rkey);
+      }
+   }
 }
 BidiMap ::= class BidiMap extends Map {
    // Not currently used anywhere
