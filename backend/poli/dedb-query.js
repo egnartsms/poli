@@ -1,4 +1,5 @@
 common
+   assert
    check
    isA
 dedb-projection
@@ -11,14 +12,17 @@ dedb-base
    getUniqueRecord
    getRecords
    clsBaseRelation
+dedb-derived
+   makeProjection as: makeDerivedProjection
+   clsDerivedRelation
 -----
 time ::= 0
-projectionCache ::= new Map
+derivedProjectionCache ::= new Map
 recencyList ::= null
 dumpRecencyList ::= function () {
    console.log('Q time:', $.time);
    console.log('Q rec list:', $.recencyList);
-   console.log('Q proj cache:', $.projectionCache);
+   console.log('Q proj cache:', $.derivedProjectionCache);
 }
 valueAtKey ::= function (relInfo, recKey) {
    let rel = $.getRelation(relInfo);
@@ -30,37 +34,61 @@ valueAtKey ::= function (relInfo, recKey) {
 queryUniqueRecord ::= function (relInfo, bindings) {
    let rel = $.getRelation(relInfo);
       
-   $.check($.isA(rel, $.clsBaseRelation));
+   if (rel.class === $.clsBaseRelation) {
+      return $.getUniqueRecord(rel, bindings);
+   }
 
-   return $.getUniqueRecord(rel, bindings);
+   if (rel.class === $.clsDerivedRelation) {
+      $.check(Object.keys(bindings).length === 0);
+
+      let proj = $.lookupDerivedProjection(rel, undefined, bindings);
+      let [rec] = proj.records;
+
+      return rec;
+   }
+   
+   throw new Error;
 }
 queryRecords ::= function (relInfo, bindings) {
    let rel = $.getRelation(relInfo);
    
-   $.check($.isA(rel, $.clsBaseRelation));
+   if (rel.class === $.clsBaseRelation) {
+      return $.getRecords(rel, bindings);
+   }
    
-   return $.getRecords(rel, bindings);
+   if (rel.class === $.clsDerivedRelation) {
+      $.check(Object.keys(bindings).length === 0);
 
-   // let proj = $.projectionFor(rel, boundAttrs);
-   // let rec = $.projectionCache.get(proj);
+      let proj = $.lookupDerivedProjection(rel, undefined, bindings);
 
-   // if (rec === undefined) {
-   //    proj.refCount += 1;
-   //    rec = {
-   //       prev: null,
-   //       next: null,
-   //       proj: proj,
-   //       lastUsed: 0
-   //    };
-   //    $.projectionCache.set(proj, rec);
-   // }
+      return proj.records;
+   }
 
-   // $.time += 1;
-   // $.setAsNewHead(rec);
+   throw new Error;
+}
+lookupDerivedProjection ::= function (rel, rkey, bindings) {
+   $.assert(() => rel.class === $.clsDerivedRelation);
 
-   // $.updateProjection(proj);
+   let proj = $.projectionFor(rel, rkey, bindings);
+   let rec = $.derivedProjectionCache.get(proj);
 
-   return proj.getRecords();
+   if (rec === undefined) {
+      proj.refCount += 1;
+      rec = {
+         prev: null,
+         next: null,
+         proj: proj,
+         lastUsed: 0
+      };
+      $.derivedProjectionCache.set(proj, rec);
+   }
+
+   $.time += 1;
+   $.setAsNewHead(rec);
+
+   $.updateProjection(proj);
+
+   return proj;
 }
 setAsNewHead ::= function (rec) {
    if ($.recencyList !== null && $.recencyList !== rec) {
@@ -79,10 +107,10 @@ setAsNewHead ::= function (rec) {
    $.recencyList.lastUsed = $.time;
 }
 clearProjectionCache ::= function () {
-   for (let proj of $.projectionCache.keys()) {
+   for (let proj of $.derivedProjectionCache.keys()) {
       $.releaseProjection(proj);
    }
    
-   $.projectionCache.clear();
+   $.derivedProjectionCache.clear();
    $.recencyList = null;
 }

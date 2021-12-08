@@ -2,6 +2,8 @@ common
 	checkLike
 dedb-query
 	queryRecords
+dedb-goal
+	join
 -----
 continent ::= ({
 	name: 'continent',
@@ -86,19 +88,6 @@ continentCity ::= ({
 	   $.join($.city, {country: v`country`, name: v`city`}),
 	]
 })
-setup ::= function () {
-	throw new Error;
-
-	let continent_pop = $.derivedRelation({
-	   name: 'continent_pop',
-	   recType: $.RecordType.tuple,
-	   attrs: ['continent', 'pop'],
-	   body: v => [
-	      continent_city.at({continent: v`continent`, city: v`city`}),
-	      city.at({name: v`city`, population: v`pop`}),
-	   ]
-	});
-}
 test_query_no_bindings ::= function () {
 	$.checkLike(
 		new Set($.queryRecords($.continentCity, {})),

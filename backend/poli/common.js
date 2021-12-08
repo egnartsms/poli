@@ -43,6 +43,12 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
+hasOwnDefinedProperty ::= function (obj, prop) {
+   return $.hasOwnProperty(obj, prop) && obj[prop] !== undefined;
+}
+ownPropertyValue ::= function (obj, prop) {
+   return $.hasOwnProperty(obj, prop) ? obj[prop] : undefined;
+}
 isObjectWithOwnProperty ::= function (obj, prop) {
    return obj != null && $.hasOwnProperty(obj, prop);
 }
@@ -138,6 +144,21 @@ maximumBy ::= function (items, keyOf) {
    }
 
    return maxItem;
+}
+minimumBy ::= function (items, keyOf) {
+   let minKey = Infinity;
+   let minItem = undefined;
+
+   for (let item of items) {
+      let key = keyOf(item);
+
+      if (key < minKey) {
+         minKey = key;
+         minItem = item;
+      }
+   }
+
+   return minItem;
 }
 extendArray ::= function (A, X) {
    let i = A.length;

@@ -6,9 +6,21 @@ common
 dedb-relation
    recKeyBindingMakesSenseFor
 dedb-base
-   * as: base
+   makeProjection as: makeBaseProjection
+   freeProjection as: freeBaseProjection
+   updateProjection as: updateBaseProjection
+   clsBaseRelation
+   clsFullProjection
+   clsNoHitProjection
+   clsHitProjection
+   clsUniqueHitProjection
+   clsRecKeyBoundProjection
 dedb-derived
-   * as: derived
+   makeProjection as: makeDerivedProjection
+   freeProjection as: freeDerivedProjection
+   updateProjection as: updateDerivedProjection
+   clsDerivedRelation
+   clsDerivedProjection
 dedb-rec-key
    recVal
 -----
@@ -21,26 +33,26 @@ makeProjectionRegistry ::= function () {
       parent: null
    });
 }
-makeProjection ::= function (rel, recKey, bindings) {
-   if (rel.type === $.RelationType.base) {
-      return $.base.makeProjection(rel, recKey, bindings);
+makeProjection ::= function (rel, rkey, bindings) {
+   if (rel.class === $.clsBaseRelation) {
+      return $.makeBaseProjection(rel, rkey, bindings);
    }
-   else if (rel.type === $.RelationType.derived) {
-      return $.derived.makeProjection(rel, recKey, bindings);
+   else if (rel.class === $.clsDerivedRelation) {
+      return $.makeDerivedProjection(rel, rkey, bindings);
    }
    else {
       throw new Error(`Cannot make projection of a relation of type '${rel.type}'`);
    }
 }
-projectionFor ::= function (rel, recKey, bindings) {
-   $.check(recKey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
+projectionFor ::= function (rel, rkey, bindings) {
+   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
       `Binding rec key does not make sense for the relation '${rel.name}'`
    );
 
    let map = rel.projections;
 
    for (let [key, isFinal] of
-         $.trackingFinal($.genProjectionKey(rel, recKey, bindings))) {
+         $.trackingFinal($.genProjectionKey(rel, rkey, bindings))) {
       if (map.has(key)) {
          map = map.get(key);
       }
@@ -51,7 +63,7 @@ projectionFor ::= function (rel, recKey, bindings) {
             next = {
                parent: map,
                key: key,
-               proj: $.makeProjection(rel, recKey, bindings)
+               proj: $.makeProjection(rel, rkey, bindings)
             };
 
             next.proj.regPoint = next;
@@ -88,9 +100,9 @@ releaseProjection ::= function (proj) {
       $.freeProjection(proj);      
    }
 }
-genProjectionKey ::= function* (rel, recKey, bindings) {
+genProjectionKey ::= function* (rel, rkey, bindings) {
    if ($.recKeyBindingMakesSenseFor(rel)) {
-      yield recKey;
+      yield rkey;
    }
 
    for (let attr of rel.attrs) {
@@ -98,13 +110,13 @@ genProjectionKey ::= function* (rel, recKey, bindings) {
    }
 }
 freeProjection ::= function (proj) {
-   let {rel} = proj;
+   let {relation: rel} = proj;
 
-   if (rel.type === $.RelationType.base) {
-      $.base.freeProjection(proj);
+   if (rel.class === $.clsBaseRelation) {
+      $.freeBaseProjection(proj);
    }
-   else if (rel.type === $.RelationType.derived) {
-      $.derived.freeProjection(proj);
+   else if (rel.class === $.clsDerivedRelation) {
+      $.freeDerivedProjection(proj);
    }
    else {
       throw new Error;
@@ -129,13 +141,11 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   let {rel} = proj;
-
-   if (rel.type === $.RelationType.base) {
-      $.base.updateProjection(proj);
+   if (proj.relation.class === $.clsBaseRelation) {
+      $.updateBaseProjection(proj);
    }
-   else if (rel.type === $.RelationType.derived) {
-      $.derived.updateProjection(proj);
+   else if (proj.relation.class === $.clsDerivedRelation) {
+      $.updateDerivedProjection(proj);
    }
    else {
       throw new Error;
@@ -145,4 +155,47 @@ makeRecords ::= function (owner, iterable) {
    let records = new (owner.isKeyed ? Map : Set)(iterable);
    records.owner = owner;
    return records;
+}
+projectionSize ::= function (proj) {
+   if (proj.class === $.clsDerivedProjection) {
+      return proj.records.size;
+   }
+
+   if (proj.class === $.clsFullProjection) {
+      return proj.relation.records.size;
+   }
+
+   if (proj.class === $.clsUniqueHitProjection ||
+         proj.class === $.clsRecKeyBoundProjection) {
+      return 1;
+   }
+
+   if (proj.class === $.clsHitProjection || proj.class === $.clsNoHitProjection) {
+      return Infinity;
+   }
+
+   throw new Error;
+}
+projectionRecords ::= function (proj) {
+   if (proj.class === $.clsDerivedProjection) {
+      return proj.records;
+   }
+
+   if (proj.class === $.clsFullProjection) {
+      return proj.relation.records;
+   }
+
+   if (proj.class === $.clsUniqueHitProjection) {
+      return [proj.rec];
+   }
+
+   if (proj.class === $.clsRecKeyBoundProjection) {
+      if (proj.rval === undefined) {
+         return [];
+      }
+
+      return [proj.isKeyed ? [proj.rkey, proj.rval] : proj.rval];
+   }
+
+   throw new Error;   
 }

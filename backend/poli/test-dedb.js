@@ -14,14 +14,14 @@ test-dedb-extver
    * as: extver
 -----
 runTests ::= function () {
-   console.time('test-dedb');
+   console.time('tests');
    $.runTestsIn($.base);
-   // $.runTestsIn($.derived);
+   $.runTestsIn($.derived);
    // $.runTestsIn($.keyed);
    // $.runTestsIn($.disjunction);
    // $.runTestsIn($.functional);
    // $.runTestsIn($.extver);
-   console.timeEnd('test-dedb')
+   console.timeEnd('tests')
 }
 runTestsIn ::= function (ns) {
    $.clearRelationCache();

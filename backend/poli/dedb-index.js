@@ -2,12 +2,22 @@ common
    assert
    map
    trackingFinal
+   commonArrayPrefixLength
 -----
 unique ::= 1
-indexOn ::= function (attrs, options={}) {
-   let idx = Array.from(attrs);
-   idx.isUnique = !!options.isUnique;
-   return idx;
+indexFromSpec ::= function (spec) {
+   let index;
+
+   if (spec[spec.length - 1] === $.unique) {
+      index = spec.slice(0, -1);
+      index.isUnique = true;
+   }
+   else {
+      index = spec.slice();
+      index.isUnique = false;
+   }
+
+   return index;
 }
 superIndexOfAnother ::= function (index1, index2) {
    let len = $.commonArrayPrefixLength(index1, index2);
@@ -27,7 +37,7 @@ copyIndex ::= function (index) {
 reduceIndex ::= function (index, boundAttrs) {
    let reduced = $.copyIndex(index);
 
-   for (let attr of attrs) {
+   for (let attr of boundAttrs) {
       let i = reduced.indexOf(attr);
       if (i !== -1) {
          reduced.splice(i, 1);
@@ -36,9 +46,14 @@ reduceIndex ::= function (index, boundAttrs) {
 
    return reduced;
 }
-isIndexCovered ::= function (index) {
-   return index.length === 0;
+isFullyCoveredBy ::= function (index, boundAttrs) {
+   return $.reduceIndex(index, boundAttrs) === 0;
 }
+Fitness ::= ({
+   hit: 0,
+   uniqueHit: 1,
+   all: 2
+})
 indexFitness ::= function (index, boundAttrs) {
    let i = 0;
 
@@ -50,12 +65,20 @@ indexFitness ::= function (index, boundAttrs) {
       return -Infinity;
    }
 
-   let fitness = i - index.length;
-
-   return (fitness === 0 && index.isUnique) ? 1 : fitness;
+   return $.computeFitness(i, index);
 }
 uniqueIndexFullHit ::= function (index, boundAttrs) {
    return $.indexFitness(index, boundAttrs) === 1;
+}
+computeFitness ::= function (len, index) {
+   let diff = len - index.length;
+
+   if (diff === $.Fitness.hit && index.isUnique) {
+      return $.Fitness.uniqueHit;
+   }
+   else {
+      return diff;
+   }
 }
 indexKeys ::= function (index, bindings) {
    let keys = [];

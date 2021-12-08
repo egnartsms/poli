@@ -21,7 +21,6 @@ dedb-base
    addFact
    removeFact
 dedb-index
-   indexOn
 -----
 countryCode ::= ({
    name: 'countryCode',

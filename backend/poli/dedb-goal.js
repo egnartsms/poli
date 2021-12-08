@@ -7,6 +7,7 @@ common
    filter
    firstDuplicate
    hasOwnProperty
+   isA
    mapfilter
    notAny
    ownEntries
@@ -15,28 +16,42 @@ common
    singleQuoteJoinComma
 dedb-index
    reduceIndex
-   isIndexCovered
    copyIndex
 dedb-rec-key
    recKey
    recVal
+dedb-relation
+   clsRelation
+   getRelation
+   recKeyBindingMakesSenseFor
 set-map
    * as: set
 -----
-GoalType ::= ({
-   and: 'and',
-   or: 'or',
-   rel: 'rel',
-   func: 'func'
+clsAndGoal ::= ({
+   name: 'goal.and',
+   'goal': true,
+   'goal.and': true
 })
-isLeafGoal ::= function (goal) {
-   return goal.type === $.GoalType.rel || goal.type === $.GoalType.func;
-}
+clsOrGoal ::= ({
+   name: 'goal.or',
+   'goal': true,
+   'goal.or': true
+})
+clsRelGoal ::= ({
+   name: 'goal.rel',
+   'goal': true,
+   'goal.rel': true
+})
+clsFuncGoal ::= ({
+   name: 'goal.func',
+   'goal': true,
+   'goal.func': true
+})
 and ::= function (...subgoals) {
    let conjuncts = [];
 
    for (let subgoal of subgoals) {
-      if (subgoal.type === $.GoalType.and) {
+      if (subgoal.class === $.clsAndGoal) {
          conjuncts.splice(conjuncts.length, 0, ...subgoal.subgoals);
       }
       else {
@@ -51,7 +66,7 @@ and ::= function (...subgoals) {
    }
 
    return {
-      type: $.GoalType.and,
+      class: $.clsAndGoal,
       subgoals: conjuncts,
    };
 }
@@ -59,7 +74,7 @@ or ::= function (...subgoals) {
    let disjuncts = [];
 
    for (let subgoal of subgoals) {
-      if (subgoal.type === $.GoalType.or) {
+      if (subgoal.class === $.clsOrGoal) {
          disjuncts.splice(disjuncts.length, 0, ...subgoal.subgoals);
       }
       else {
@@ -74,7 +89,7 @@ or ::= function (...subgoals) {
    }
    
    return {
-      type: $.GoalType.or,
+      class: $.clsOrGoal,
       subgoals: disjuncts,
    };
 }
@@ -87,21 +102,37 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-join ::= function (rel, recKey, bindings) {
-   $.check(
-      rel.type === $.RelationType.base || rel.type === $.RelationType.derived,
-      `Expected a (base or derived) relation as argument to join()`
-   );
+join ::= function (relInfo, rkey, bindings) {
+   let rel = $.getRelation(relInfo);
 
    if (arguments.length === 2) {
-      bindings = recKey;
-      recKey = null;
+      bindings = rkey;
+      rkey = undefined;
+   }
+
+   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel));
+
+   let rkeyBound, rkeyLvar;
+
+   if ($.isLvar(rkey)) {
+      rkeyBound = undefined;
+      rkeyLvar = rkey[$.lvarSym];
+   }
+   else {
+      rkeyBound = rkey;
+      rkeyLvar = null;
    }
 
    let [firmBindings, looseBindings] = $.computeFirmAndLooseBindings(bindings);
 
    {
-      let dupVar = $.firstDuplicate(Object.values(looseBindings));
+      let lvars = Object.values(looseBindings);
+
+      if (rkeyLvar !== null) {
+         lvars.unshift(rkeyLvar);
+      }
+
+      let dupVar = $.firstDuplicate(lvars);
 
       $.check(dupVar === undefined, () =>
          `Duplicate lvar '${dupVar}' in the goal for '${rel.name}'`
@@ -109,31 +140,26 @@ join ::= function (rel, recKey, bindings) {
    }
 
    return {
-      type: $.GoalType.rel,
+      class: $.clsRelGoal,
       rel,
-      recKeyBound: $.isLvar(recKey) ? null : recKey,
-      recKeyLvar: $.isLvar(recKey) ? recKey[$.lvarSym] : null,
+      rkeyBound,
+      rkeyLvar,
       firmBindings,
       looseBindings,
       projNum: -1,
       depNum: -1,
    }
 }
-availableIndices ::= function (rel) {
-   if (rel.type === $.RelationType.base) {
-      return Array.from(rel.indices, inst => inst.attrs);
+goalLvars ::= function* (goal) {
+   if (goal.rkeyLvar !== null) {
+      yield goal.rkeyLvar;
    }
 
-   if (rel.type === $.RelationType.derived) {
-      return rel.potentialIndices;
-   }
-
-   throw new Error;
-}
-goalLvars ::= function (goal) {
-   return Object.values(goal.looseBindings);
+   yield* Object.values(goal.looseBindings);
 }
 funcGoal ::= function (rel, attrs) {
+   throw new Error;
+
    $.check(rel.type === $.RelationType.functional);
 
    $.check($.all(Reflect.ownKeys(attrs), a => rel.attrs.includes(a)), () =>
@@ -173,6 +199,9 @@ computeFirmAndLooseBindings ::= function (bindings) {
 
    return [firmBindings, looseBindings];
 }
+isLeafGoal ::= function (goal) {
+   return goal.class === $.clsRelGoal || goal.class === $.clsFuncGoal;
+}
 leafGoalsBeneath ::= function* gen(root) {
    if ($.isLeafGoal(root)) {
       yield root;
@@ -184,14 +213,14 @@ leafGoalsBeneath ::= function* gen(root) {
    }
 }
 relGoalsBeneath ::= function (root) {
-   return $.filter($.leafGoalsBeneath(root), leaf => leaf.type === $.GoalType.rel);
+   return $.filter($.leafGoalsBeneath(root), leaf => leaf.class === $.clsRelGoal);
 }
 walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
    (function walk(goal, K) {
       if ($.isLeafGoal(goal)) {
          onLeaf(goal, K);
       }
-      else if (goal.type === $.GoalType.and) {
+      else if (goal.class === $.clsAndGoal) {
          (function rec(chain) {
             if (chain === null) {
                K();
@@ -201,7 +230,7 @@ walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
             }
          })($.arrayChain(goal.subgoals));
       }
-      else if (goal.type === $.GoalType.or) {
+      else if (goal.class === $.clsOrGoal) {
          for (let disjunct of goal.subgoals) {
             walk(disjunct, K);
          }
@@ -214,16 +243,24 @@ walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
 checkVarUsageAndReturnVars ::= function (rootGoal, attrs) {
    let usageCount = new Map;
 
+   function inc(lvar) {
+      usageCount.set(lvar, (usageCount.get(lvar) ?? 0) + 1);
+   }
+
+   function dec(lvar) {
+      usageCount.set(lvar, usageCount.get(lvar) - 1);
+   }
+
    $.walkPaths(rootGoal, {
       onLeaf: (goal, K) => {
          for (let lvar of $.goalLvars(goal)) {
-            usageCount.set(lvar, (usageCount.get(lvar) ?? 0) + 1);
+            inc(lvar);
          }
 
          K();
 
          for (let lvar of $.goalLvars(goal)) {
-            usageCount.set(lvar, usageCount.get(lvar) - 1);
+            dec(lvar);
          }
       },
       onPath: () => {
@@ -234,9 +271,9 @@ checkVarUsageAndReturnVars ::= function (rootGoal, attrs) {
          }
 
          for (let [lvar, count] of usageCount) {
-            $.check(count !== 1 || attrs.includes(lvar), () =>
-               `Lvar '${lvar}' is not used`
-            );
+            if (count === 1) {
+               $.check(attrs.includes(lvar), () => `Lvar '${lvar}' is not used`);
+            }
          }
       }
    });
@@ -244,10 +281,10 @@ checkVarUsageAndReturnVars ::= function (rootGoal, attrs) {
    return Array.from(usageCount.keys());
 }
 numberRelGoals ::= function (rootGoal) {
-   $.assignProjNumForRelGoals(rootGoal);
-   $.assignDepNumForRelGoals(rootGoal);
+   $.assignProjNumToRelGoals(rootGoal);
+   $.assignDepNumToRelGoals(rootGoal);
 }
-assignProjNumForRelGoals ::= function (rootGoal) {
+assignProjNumToRelGoals ::= function (rootGoal) {
    let num = 0;
 
    for (let goal of $.relGoalsBeneath(rootGoal)) {
@@ -255,37 +292,36 @@ assignProjNumForRelGoals ::= function (rootGoal) {
       num += 1;
    }
 }
-assignDepNumForRelGoals ::= function (rootGoal) {
+assignDepNumToRelGoals ::= function (rootGoal) {
    let num = 0;
 
-   (function process(goal) {
-      if (goal.type === $.GoalType.rel) {
+   (function rec(goal) {
+      if (goal.class === $.clsRelGoal) {
          $.assert(() => goal.depNum === -1);
 
          goal.depNum = num;
          num += 1;
       }
-      else if (goal.type === $.GoalType.and) {
+      else if (goal.class === $.clsAndGoal) {
          for (let subgoal of goal.subgoals) {
-            process(subgoal);
+            rec(subgoal);
          }
       }
-      else if (goal.type === $.GoalType.or) {
+      else if (goal.class === $.clsOrGoal) {
          let num0 = num;
          let biggestNum = -1;
 
          for (let subgoal of goal.subgoals) {
             num = num0;
-            process(subgoal);
+            rec(subgoal);
             biggestNum = Math.max(biggestNum, num);
          }
 
          num = biggestNum;
       }
-      else {
-         $.assert(() => goal.type === $.GoalType.func);
-      }
-   })();
+   })(rootGoal);
+
+   return num;
 }
 Shrunk ::= ({
    min: 0,

@@ -33,6 +33,7 @@ dedb-index
    indexKeys
    uniqueIndexFullHit
    indexFitness
+   indexFromSpec
 dedb-index-instance
    rebuildIndex
    indexAdd
@@ -81,14 +82,8 @@ makeRelation ::= function ({
    let indices = [];
 
    for (let spec of indexSpecs) {
-      let inst;
-
-      if (spec[spec.length - 1] === $.unique) {
-         inst = $.makeIndexInstance(spec.slice(0, -1), {isUnique: true, isKeyed});
-      }
-      else {
-         inst = $.makeIndexInstance(spec, {isUnique: false, isKeyed});
-      }
+      let index = $.indexFromSpec(spec);
+      let inst = $.makeIndexInstance(index, {isKeyed});
 
       $.rebuildIndex(inst, rel.records);
       
@@ -132,7 +127,7 @@ getRecords ::= function (rel, bindings) {
    let recs = $.indexRefWithBindings(inst, bindings);
    let filterBy = $.computeFilterBy(inst.index, bindings);
 
-   return $.filter(recs, rec => $.suitsFilterBy(rel.isKeyed ? rec[1] : rec, filterBy));
+   return $.filter(recs, $.predFilterBy(rel.isKeyed, filterBy));
 }
 findUniqueIdxInst ::= function (rel, boundAttrs) {
    return rel.indices.find(({index}) => $.uniqueIndexFullHit(index, boundAttrs));
@@ -153,14 +148,22 @@ computeFilterBy ::= function (index, bindings) {
    
    return Object.entries(filterBy);
 }
-suitsFilterBy ::= function (recVal, filterBy) {
+suitsFilterBy ::= function (rval, filterBy) {
    for (let [attr, val] of filterBy) {
-      if (recVal[attr] !== val) {
+      if (rval[attr] !== val) {
          return false;
       }
    }
 
    return true;
+}
+predFilterBy ::= function (isKeyed, filterBy) {
+   if (isKeyed) {
+      return ([rkey, rval]) => $.suitsFilterBy(rval, filterBy);
+   }
+   else {
+      return rec => $.suitsFilterBy(rec, filterBy);
+   }
 }
 clsBaseProjection ::= ({
    name: 'projection.base',
@@ -269,6 +272,7 @@ updateProjection ::= function (proj) {
    let {relation: rel, class: cls} = proj;
 
    if (cls === $.clsFullProjection) {
+      ;
    }
    else if (cls === $.clsRecKeyBoundProjection) {
       let rval = rel.records.valueAt(proj.rkey);

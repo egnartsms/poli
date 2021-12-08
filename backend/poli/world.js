@@ -21,58 +21,42 @@ dedb-rec-key
    recKey
    recVal
 dedb-index
-   indexOn
 dedb-query
    dumpRecencyList
 -----
-rel ::= ({
-   module: null,
-   entry: null,
-   import: null,
-   star_import: null
+module ::= ({
+   name: 'module',
+   isKeyed: true,
+   isEntity: true,
+   attrs: ['name', 'lang', 'members'],
+   indices: [
+      ['name', 1]
+   ]
 })
-createRelations ::= function () {
-   Object.assign($.rel, {
-      module: $.baseRelation({
-         name: 'module',
-         recType: $.RecordType.keyTuple,
-         isEntity: true,
-         attrs: ['name', 'lang', 'members'],
-         indices: [
-            $.indexOn(['name'], {isUnique: true})
-         ]
-      }),
-
-      entry: $.baseRelation({
-         name: 'entry',
-         recType: $.RecordType.keyTuple,
-         isEntity: true,
-         attrs: ['name', 'strDef', 'def', 'module'],
-         indices: [
-            $.indexOn(['module']),
-            $.indexOn(['module', 'name'], {isUnique: true})
-         ]
-      }),
-
-      import: $.baseRelation({
-         name: 'import',
-         recType: $.RecordType.tuple,
-         attrs: ['entry', 'recp', 'alias'],
-         indices: [
-            // $.indexOn([''])
-         ]
-      }),
-
-      star_import: $.baseRelation({
-         name: 'star_import',
-         recType: $.RecordType.tuple,
-         attrs: ['donor', 'recp', 'alias'],
-         indices: [
-         ]
-      })
-   });
-}
+entry ::= ({
+   name: 'entry',
+   isKeyed: true,
+   isEntity: true,
+   attrs: ['name', 'strDef', 'def', 'module'],
+   indices: [
+      ['module', 'name', 1]
+   ]
+})
+import ::= ({
+   name: 'import',
+   attrs: ['entry', 'recp', 'alias'],
+   indices: [
+   ]
+})
+starImport ::= ({
+   name: 'starImport',
+   attrs: ['donor', 'recp', 'alias'],
+   indices: [
+   ]
+})
 tryOut ::= function () {
+   throw new Error;
+
    let entry_potential_references = $.derivedRelation({
       name: 'entry_potential_references',
       recType: $.RecordType.keyVal,
@@ -103,8 +87,6 @@ tryOut ::= function () {
 }
 load ::= function (minfos) {
    console.time('load world');
-
-   $.createRelations();
 
    // Modules and entries
    for (let minfo of minfos) {

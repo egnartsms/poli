@@ -11,6 +11,7 @@ common
    filter
    isSubset
    hasOwnProperty
+   ownPropertyValue
    map
    mapfilter
    ownEntries
@@ -31,17 +32,25 @@ common
 dedb-rec-key
    recKey
 dedb-goal
-   GoalType
    Shrunk
    goalLvars
    indexShrunk
    walkPaths
    instantiationShrunk
+   clsRelGoal
+   clsFuncGoal
+   relGoalsBeneath
 dedb-index
+   Fitness
    superIndexOfAnother
    copyIndex
-   isIndexCovered
-   indexOn
+   isFullyCoveredBy
+   reduceIndex
+   computeFitness
+dedb-base
+   clsBaseRelation
+dedb-projection
+   projectionFor
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
    throw new Error;
@@ -67,62 +76,105 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
 }
 computeIncrementalUpdatePlan ::= function (rootGoal) {
    let {goalPaths, pathGoals} = $.computePaths(rootGoal);
-   let {lvar2ff, ffs0} = $.computeFulfillments(rootGoal);
+   let lvar2ff = $.computeFulfillments(rootGoal);
    let indexRegistry = $.makeIndexRegistry();
 
    return {
-      plan: Array.from($.walkRelGoals(rootGoal), goal => ({
+      plan: Array.from($.relGoalsBeneath(rootGoal), goal => ({
+         rkeyLvar: goal.rkeyLvar,
          // [[attr, lvar]] to start from
-         startAttrs: Array.from(goal.looseAttrs),
+         start: Object.entries(goal.looseBindings),
          joinTree: $.computeJoinTreeFrom(goal, {
             indexRegistry,
             pathGoals,
             goalPaths,
             lvar2ff,
-            ffs0
          })
       })),
       appliedIndices: indexRegistry
    }
 }
-makeSubBoundAttrsProducer ::= function (rootGoal, attrs) {
-   let firms = Array.from($.walkRelGoals(rootGoal), relGoal => relGoal.firmAttrs);
-   let routes = new Map($.map(attrs, attr => [attr, []]));
+makeSubsProducer ::= function (rootGoal, logicalAttrs) {
+   let info = Array.from($.relGoalsBeneath(rootGoal), goal => {
+      return {
+         rel: goal.rel,
+         depNum: goal.depNum,
+         firms: goal.firmBindings,
+         loose: Array.from(
+            $.mapfilter(
+               Object.entries(goal.looseBindings), ([attr, lvar]) => {
+                  if (logicalAttrs.includes(lvar)) {
+                     return [lvar, attr];
+                  }
+               }
+            )
+         ),
+         rkeyBound: goal.rkeyBound,
+         rkeyAttr: (
+            goal.rkeyLvar !== null && logicalAttrs.include(goal.rkeyLvar) ? goal.rkeyLvar : null
+         )
+      }
+   });
+   
+   return function* (rkey, bindings) {
+      if (rkey !== undefined) {
+         bindings = {...bindings, [$.recKey]: rkey};
+      }
 
-   for (let [attr, route] of routes) {
-      for (let {looseAttrs, num} of $.walkRelGoals(rootGoal)) {
-         for (let [subAttr, lvar] of looseAttrs) {
-            if (lvar === attr) {
-               route.push([num, subAttr]);
-               break;  // attr can be found at most once in a given goal
+      for (let {rel, depNum, firms, loose, rkeyBound, rkeyAttr} of info) {
+         let sub = {...firms};
+
+         for (let [attr, subAttr] of loose) {
+            if ($.ownPropertyValue(bindings, attr) !== undefined) {
+               sub[subAttr] = bindings[attr];
             }
          }
+
+         let proj = $.projectionFor(
+            rel,
+            rkeyBound !== undefined ? rkeyBound :
+               rkeyAttr !== null ? bindings[rkeyAttr] : undefined,
+            sub
+         );
+
+         proj.refCount += 1;
+
+         yield {
+            proj,
+            ver: null,
+            depNum
+         };
       }
-   }
-
-   return function (boundAttrs) {
-      let subBounds = Array.from(firms, firm => Object.assign({}, firm));
-
-      for (let attr of Reflect.ownKeys(boundAttrs)) {
-         let route = routes.get(attr);
-         if (route === undefined) {
-            continue;
-         }
-
-         for (let [num, subAttr] of route) {
-            subBounds[num][subAttr] = boundAttrs[attr];
-         }
-      }
-
-      return subBounds;
-   }
+   };
 }
-JoinType ::= ({
-   either: 'either',
-   all: 'all',
-   index: 'index',
-   pk: 'pk',
-   func: 'func',
+clsJoin ::= ({
+   name: 'join',
+   'join': true
+})
+clsJoinAll ::= ({
+   name: 'join.all',
+   'join': true,
+   'join.all': true
+})
+clsJoinIndex ::= ({
+   name: 'join.index',
+   'join': true,
+   'join.index': true
+})
+clsJoinRecKey ::= ({
+   name: 'join.recKey',
+   'join': true,
+   'join.recKey': true
+})
+clsJoinEither ::= ({
+   name: 'join.either',
+   'join.either': true,
+   'join': true
+})
+clsJoinFunc ::= ({
+   name: 'join.func',
+   'join.func': true,
+   'join': true
 })
 computePaths ::= function (rootGoal) {
    let [goalPaths, pathGoals] = $.many2many();
@@ -151,47 +203,31 @@ computePaths ::= function (rootGoal) {
 }
 computeFulfillments ::= function (rootGoal) {
    let lvar2ff = $.multimap();
-   // for those goals which are already shrunk (> Shrunk.min) due to firmAttrs
-   let ffs0 = new Set;
 
    (function walk(goal) {
-      if (goal.type === $.GoalType.rel) {
-         if (goal.shrunk > $.Shrunk.min) {
-            ffs0.add({
-               joinType: $.JoinType.all,
-               count: 0,
-               shrunk: goal.shrunk,
-               goal
-            });
-         }
-
-         for (let index of goal.indices) {
-            let ff = {
-               joinType: $.JoinType.index,
-               count: index.length,
-               shrunk: $.indexShrunk(index),
-               goal,
-               index,
+      if (goal.class === $.clsRelGoal) {
+         for (let [ff, lvars] of $.relGoalFulfillments(goal)) {
+            ff = {
+               join: ff.join,
+               fitness: ff.fitness,
+               count: lvars.length,
+               goal: goal,
+               props: ff.props,
             };
 
-            for (let attr of index) {
-               $.mmapAdd(lvar2ff, goal.looseAttrs.get(attr), ff);
+            if (lvars.length === 0) {
+               $.mmapAdd(lvar2ff, true, ff);
+            }
+            else {
+               for (let lvar of lvars) {
+                  $.mmapAdd(lvar2ff, lvar, ff);
+               }
             }
          }
-
-         if (goal.looseAttrs.has($.recKey)) {
-            let pklvar = goal.looseAttrs.get($.recKey);
-
-            $.mmapAdd(lvar2ff, pklvar, {
-               joinType: $.JoinType.pk,
-               count: 1,
-               shrunk: $.Shrunk.one,
-               goal,
-               pklvar,
-            })
-         }
       }
-      else if (goal.type === $.GoalType.func) {
+      else if (goal.class === $.clsFuncGoal) {
+         throw new Error;
+
          let {rel} = goal;
          let plusMinus = new Array(rel.attrs.length);
          let lvars = new Set;
@@ -249,191 +285,107 @@ computeFulfillments ::= function (rootGoal) {
       }
    })(rootGoal);
 
-   return {lvar2ff, ffs0};
+   return lvar2ff;
 }
-computeJoinTreeFrom ::= function (Dgoal, {
-      indexRegistry, pathGoals, goalPaths, lvar2ff, ffs0
-}) {
+relGoalFulfillments ::= function* (goal) {
+   $.assert(() => goal.class === $.clsRelGoal);
+
+   if (goal.rkeyBound !== undefined) {
+      yield [
+         {
+            join: $.clsJoinAll,
+            fitness: $.Fitness.all,
+         },
+         []
+      ];
+      return;
+   }
+
+   if (goal.rkeyLvar !== null) {
+      yield [
+         {
+            join: $.clsJoinRecKey,
+            fitness: $.Fitness.uniqueHit,
+            props: {
+               rkeyLvar: goal.rkeyLvar
+            }
+         },
+         [goal.rkeyLvar]
+      ];
+   }
+
+   let {rel, firmBindings, looseBindings} = goal;
+   let indices = rel.class === $.clsBaseRelation ?
+      Array.from(rel.indices, ({index}) => index) :
+      rel.indices;
+
+   if ($.any(indices, index => $.isFullyCoveredBy(index, Object.keys(firmBindings)))) {
+      yield [
+         {
+            join: $.clsJoinAll,
+            fitness: $.Fitness.all,
+         },
+         []
+      ];
+      // No need to seek for any other index hits once we have at least one fully
+      // covered by firm bindings
+      return;      
+   }
+
+   for (let index of indices) {
+      index = $.reduceIndex(index, Object.keys(firmBindings));
+
+      $.assert(() => index.length > 0);
+
+      let lvars = [];
+
+      for (let attr of index) {
+         if ($.ownPropertyValue(looseBindings, attr) === undefined) {
+            break;
+         }
+
+         lvars.push(looseBindings[attr]);
+         
+         yield [
+            {
+               join: $.clsJoinIndex,
+               fitness: $.computeFitness(lvars.length, index),
+               props: {
+                  index,
+                  keys: lvars,
+               }
+            },
+            lvars
+         ]
+      }
+   }
+}
+computeJoinTreeFrom ::= function (Dgoal, {indexRegistry, pathGoals, goalPaths, lvar2ff}) {
    let boundLvars = new Set;
    let bindStack = [];
    
-   let buildTree = withStackPreserved(function (paths, goals, fulfillments, goal0) {
-      $.assert(() => goals.has(goal0));
+   function bind(lvar) {
+      $.assert(() => !boundLvars.has(lvar));
 
-      function bindLvar(lvar) {
-         $.assert(() => !boundLvars.has(lvar));
+      boundLvars.add(lvar);
+      bindStack.push(lvar);
 
-         boundLvars.add(lvar);
-         bindStack.push(lvar);
+      let becameReady = [];
 
-         for (let ff of lvar2ff.get(lvar) ?? []) {
-            $.assert(() => ff.count > 0);
+      for (let ff of lvar2ff.get(lvar) ?? []) {
+         $.assert(() => ff.count > 0);
 
-            ff.count -= 1;
+         ff.count -= 1;
 
-            if (ff.count === 0 && goals.has(ff.goal)) {
-               fulfillments.add(ff);
-            }
+         if (ff.count === 0) {
+            becameReady.push(ff);
          }
       }
 
-      function joinGoal(goal) {
-         for (let lvar of $.goalLvars(goal)) {
-            if (!boundLvars.has(lvar)) {
-               bindLvar(lvar);
-            }
-         }
-
-         goals.delete(goal);
-
-         for (let ff of fulfillments) {
-            if (ff.goal === goal) {
-               fulfillments.delete(ff);
-            }
-         }
-      }
-
-      function bestFulfillmentToJoin() {
-         if (fulfillments.size === 0) {
-            return null;
-         }
-
-         return $.reduce(fulfillments, (ff1, ff2) => {
-            if (ff1.shrunk > ff2.shrunk) {
-               return ff1;
-            }
-            else if (ff1.shrunk < ff2.shrunk) {
-               return ff2;
-            }
-            else if (
-                  ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
-                  ff1.goal === ff2.goal) {
-               if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
-                  return ff1;
-               }
-               else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
-                  return ff2;
-               }
-            }
-            
-            if (isGoalFull(ff1.goal)) {
-               return ff1;
-            }
-            else if (isGoalFull(ff2.goal)) {
-               return ff2;
-            }
-            else {
-               return ff1;
-            }
-         });
-      }
-
-      function isGoalFull(goal) {
-         return $.isSubset(paths, goalPaths.get(goal));
-      }
-
-      joinGoal(goal0);
-
-      let jnodeHead = null, jnodeTail = null;
-      let branchFF = null;
-
-      while (goals.size > 0) {
-         let ff = bestFulfillmentToJoin();
-
-         if (ff === null) {
-            throw new Error(`Cannot join!`);
-         }
-
-         let jgoal = ff.goal;
-
-         if (!isGoalFull(jgoal)) {
-            branchFF = ff;
-            break;
-         }
-
-         let jnode = makeJoinNode(ff);
-
-         if (jnodeHead === null) {
-            jnodeHead = jnodeTail = jnode;
-         }
-         else {
-            jnodeTail.next = jnode;
-            jnodeTail = jnode;
-         }
-         
-         joinGoal(jgoal);
-      }
-
-      if (branchFF === null) {
-         // All have been processed in a single branch
-         return jnodeHead;
-      }
-
-      // Branching
-      let eitherNode = {
-         type: $.JoinType.either,
-         branches: []
-      };
-
-      while (true) {
-         let jgoal = branchFF.goal;
-
-         let branchPaths = $.setInter(paths, goalPaths.get(jgoal));
-         let [branchGoals, branchFulfillments] = lyingOnPaths(
-            branchPaths, goals, fulfillments
-         );
-
-         let node0 = makeJoinNode(branchFF);
-         node0.next = buildTree(branchPaths, branchGoals, branchFulfillments, jgoal);
-         eitherNode.branches.push(node0);
-
-         paths = $.setDiff(paths, goalPaths.get(jgoal));
-         [goals, fulfillments] = lyingOnPaths(paths, goals, fulfillments);
-
-         if (goals.size === 0) {
-            break;
-         }
-
-         branchFF = bestFulfillmentToJoin();
-
-         if (branchFF === null) {
-            throw new Error(`Cannot join!`);
-         }
-      }
-
-      if (jnodeTail !== null) {
-         jnodeTail.next = eitherNode;
-
-         return jnodeHead;
-      }
-      else {
-         return eitherNode;
-      }
-   });
-
-   function withStackPreserved(callback) {
-      return function () {
-         let n = bindStack.length;
-         let res = callback.apply(this, arguments);
-
-         while (bindStack.length > n) {
-            unbind1();
-         }
-
-         return res;
-      };
+      return becameReady;
    }
 
-   function lyingOnPaths(paths1, goals, fulfillments) {
-      let goals1 = $.setInter(
-         goals, $.concat($.map(paths1, path => pathGoals.get(path)))
-      );
-      let fulfillments1 = new Set($.filter(fulfillments, ff => goals.has(ff.goal)))
-
-      return [goals1, fulfillments1];
-   }
-
-   function unbind1() {
+   function unbind() {
       $.assert(() => bindStack.length > 0);
 
       let lvar = bindStack.pop();
@@ -448,39 +400,42 @@ computeJoinTreeFrom ::= function (Dgoal, {
    }
 
    function makeJoinNode(ff) {
-      let {joinType: type, goal} = ff;
+      let {join: cls, goal} = ff;
 
-      if (type === $.JoinType.all) {
+      if (cls === $.clsJoinAll) {
          return {
-            type: $.JoinType.all,
-            projNum: goal.num,
-            checkAttrs: collectCheckAttrs(goal),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            ...propsForCheckExtract(goal),
             next: null
          }
       }
-      else if (type === $.JoinType.index) {
+      else if (cls === $.clsJoinIndex) {
+         let {index, keys} = ff.props;
+
          return {
-            type: $.JoinType.index,
-            projNum: goal.num,
-            indexNum: $.registerGoalIndex(indexRegistry, goal, ff.index),
-            indexLvars: Array.from(ff.index, attr => goal.looseAttrs.get(attr)),
-            checkAttrs: collectCheckAttrs(goal, ff.index),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            indexNum: $.registerGoalIndex(indexRegistry, goal, index),
+            indexKeys: keys,
+            ...propsForCheckExtract(goal, index),
             next: null
          }
       }
-      else if (type === $.JoinType.pk) {
+      else if (cls === $.clsJoinRecKey) {
+         let {rkeyLvar} = ff.props;
+
          return {
-            type: $.JoinType.pk,
-            projNum: goal.num,
-            pklvar: ff.pklvar,
-            checkAttrs: collectCheckAttrs(goal, [$.recKey]),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            rkeyLvar: rkeyLvar,
+            ...propsForCheckExtract(goal),
             next: null
          }
       }
-      else if (type === $.JoinType.func) {
+      else if (cls === $.clsJoinFunc) {
+         throw new Error;
+
          let {rel} = goal;
 
          for (let [attr, char] of $.zip(rel.attrs, ff.icode)) {
@@ -525,25 +480,204 @@ computeJoinTreeFrom ::= function (Dgoal, {
       }
    }
 
-   function collectCheckAttrs(goal, index=null) {
-      return Array.from($.mapfilter(goal.looseAttrs, ([attr, lvar]) => {
-         if (boundLvars.has(lvar) && (index === null || !index.includes(attr))) {
-            return [attr, lvar];
-         }
-      }));
+   function propsForCheckExtract(goal, noCheck=[]) {
+      return {
+         checkAttrs:
+            Array.from(
+               $.mapfilter(Object.entries(goal.looseBindings), ([attr, lvar]) => {
+                  if (boundLvars.has(lvar) && !noCheck.includes(attr)) {
+                     return [attr, lvar];
+                  }
+               })
+            ),
+         extractAttrs:
+            Array.from(
+               $.mapfilter(Object.entries(goal.looseBindings), ([attr, lvar]) => {
+                  if (!boundLvars.has(lvar)) {
+                     return [attr, lvar];
+                  }
+               })
+            ),
+         extractRkeyInto: goal.rkeyLvar !== null && !boundLvars.has(goal.rkeyLvar) ?
+            goal.rkeyLvar : null
+      }
    }
 
-   function collectExtractAttrs(goal) {
-      return Array.from($.mapfilter(goal.looseAttrs, ([attr, lvar]) => {
-         if (!boundLvars.has(lvar)) {
-            return [attr, lvar];
-         }
-      }));
+   function lyingOnPaths(paths1, goals, fulfillments) {
+      let goals1 = $.setInter(
+         goals, $.concat($.map(paths1, path => pathGoals.get(path)))
+      );
+      let fulfillments1 = new Set($.filter(fulfillments, ff => goals1.has(ff.goal)))
+
+      return [goals1, fulfillments1];
    }
+
+   function withStackPreserved(callback) {
+      return function () {
+         let n = bindStack.length;
+         let res = callback.apply(this, arguments);
+
+         while (bindStack.length > n) {
+            unbind();
+         }
+
+         return res;
+      };
+   }
+
+   let buildTree = withStackPreserved(function (paths, goals, readyFFs, goal0) {
+      $.assert(() => goals.has(goal0));
+
+      function bindLvar(lvar) {
+         let becameReady = bind(lvar);
+
+         for (let ff of becameReady) {
+            if (goals.has(ff.goal)) {
+               readyFFs.add(ff);
+            }
+         }
+      }
+
+      function joinGoal(goal) {
+         for (let lvar of $.goalLvars(goal)) {
+            if (!boundLvars.has(lvar)) {
+               bindLvar(lvar);
+            }
+         }
+
+         goals.delete(goal);
+
+         for (let ff of readyFFs) {
+            if (ff.goal === goal) {
+               readyFFs.delete(ff);
+            }
+         }
+      }
+
+      function findBestFF() {
+         if (readyFFs.size === 0) {
+            return null;
+         }
+
+         return $.reduce(readyFFs, (ff1, ff2) => {
+            if (ff1.fitness > ff2.fitness) {
+               return ff1;
+            }
+            else if (ff2.fitness > ff1.fitness) {
+               return ff2;
+            }
+            // else if (
+            //       ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
+            //       ff1.goal === ff2.goal) {
+            //    if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
+            //       return ff1;
+            //    }
+            //    else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
+            //       return ff2;
+            //    }
+            // }
+            
+            if (isGoalFull(ff1.goal)) {
+               return ff1;
+            }
+            else if (isGoalFull(ff2.goal)) {
+               return ff2;
+            }
+            else {
+               return ff1;
+            }
+         });
+      }
+
+      function isGoalFull(goal) {
+         return $.isSubset(paths, goalPaths.get(goal));
+      }
+
+      joinGoal(goal0);
+
+      let jnodeHead = null, jnodeTail = null;
+      let branchFF = null;
+
+      while (goals.size > 0) {
+         let ff = findBestFF();
+
+         if (ff === null) {
+            throw new Error(`Cannot join!`);
+         }
+
+         let jgoal = ff.goal;
+
+         if (!isGoalFull(jgoal)) {
+            branchFF = ff;
+            break;
+         }
+
+         let jnode = makeJoinNode(ff);
+
+         if (jnodeHead === null) {
+            jnodeHead = jnodeTail = jnode;
+         }
+         else {
+            jnodeTail.next = jnode;
+            jnodeTail = jnode;
+         }
+         
+         joinGoal(jgoal);
+      }
+
+      if (branchFF === null) {
+         // All have been processed in a single branch
+         return jnodeHead;
+      }
+
+      // Branching
+      let eitherNode = {
+         class: $.clsJoinEither,
+         branches: []
+      };
+
+      while (true) {
+         let jgoal = branchFF.goal;
+
+         let branchPaths = $.setInter(paths, goalPaths.get(jgoal));
+         let [branchGoals, branchFFs] = lyingOnPaths(branchPaths, goals, readyFFs);
+
+         let node0 = makeJoinNode(branchFF);
+         node0.next = buildTree(branchPaths, branchGoals, branchFFs, jgoal);
+         eitherNode.branches.push(node0);
+
+         paths = $.setDiff(paths, goalPaths.get(jgoal));
+         [goals, readyFFs] = lyingOnPaths(paths, goals, readyFFs);
+
+         if (goals.size === 0) {
+            break;
+         }
+
+         branchFF = findBestFF();
+
+         if (branchFF === null) {
+            throw new Error(`Cannot join!`);
+         }
+      }
+
+      if (jnodeTail !== null) {
+         jnodeTail.next = eitherNode;
+
+         return jnodeHead;
+      }
+      else {
+         return eitherNode;
+      }
+   });
 
    let paths0 = new Set(goalPaths.get(Dgoal));
-   let [goals0, fulfillments0] = lyingOnPaths(paths0, goalPaths.keys(), ffs0);
-   return buildTree(paths0, goals0, fulfillments0, Dgoal);
+   let [goals0, readyFFs0] = lyingOnPaths(
+      paths0,
+      goalPaths.keys(),
+      lvar2ff.get(true) ?? new Set
+   );
+   
+   return buildTree(paths0, goals0, readyFFs0, Dgoal);
 }
 isInstantiationCodeMoreSpecialized ::= function (icodeS, icodeG) {
    $.assert(() => icodeS.length === icodeG.length);
@@ -554,7 +688,7 @@ makeIndexRegistry ::= function () {
    return [];
 }
 registerGoalIndex ::= function (registry, goal, index) {
-   return $.registerProjNumIndex(registry, goal.num, index);
+   return $.registerProjNumIndex(registry, goal.projNum, index);
 }
 registerProjNumIndex ::= function (registry, projNum, index) {
    let n = registry.findIndex(({projNum: xProjNum, index: xIndex}) => {
@@ -569,6 +703,7 @@ registerProjNumIndex ::= function (registry, projNum, index) {
    return registry.length - 1;
 }
 narrowConfig ::= function (config0, bindList) {
+   throw new Error;
    let {plan, appliedIndices} = $.narrowJoinPlan(
       config0.plan, config0.appliedIndices, bindList
    );
@@ -583,6 +718,7 @@ narrowConfig ::= function (config0, bindList) {
    }
 }
 narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
+   throw new Error;
    let indexRegistry = $.makeIndexRegistry();
 
    function narrow(jnode) {
