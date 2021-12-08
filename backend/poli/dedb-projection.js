@@ -171,22 +171,22 @@ projectionSize ::= function (proj) {
    }
 
    if (proj.class === $.clsHitProjection || proj.class === $.clsNoHitProjection) {
-      return Infinity;
+      return Number.MAX_SAFE_INTEGER;
    }
 
    throw new Error;
 }
-projectionRecords ::= function (proj) {
+projectionRecKeyVals ::= function (proj) {
    if (proj.class === $.clsDerivedProjection) {
-      return proj.records;
+      return proj.records.keyVals();
    }
 
    if (proj.class === $.clsFullProjection) {
-      return proj.relation.records;
+      return proj.relation.records.keyVals();
    }
 
    if (proj.class === $.clsUniqueHitProjection) {
-      return [proj.rec];
+      return proj.isKeyed ? [proj.rec] : [[proj.rec, proj.rec]];
    }
 
    if (proj.class === $.clsRecKeyBoundProjection) {
@@ -194,7 +194,7 @@ projectionRecords ::= function (proj) {
          return [];
       }
 
-      return [proj.isKeyed ? [proj.rkey, proj.rval] : proj.rval];
+      return [[proj.rkey, proj.rval]];
    }
 
    throw new Error;   

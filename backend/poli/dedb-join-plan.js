@@ -54,6 +54,7 @@ dedb-projection
 -----
 visualizeIncrementalUpdateScheme ::= function (rel) {
    throw new Error;
+
    function* gen(dconj, jpath) {
       yield `D(${dconj.rel.name})`;
       for (let link of jpath) {
@@ -74,7 +75,7 @@ visualizeIncrementalUpdateScheme ::= function (rel) {
       console.log(Array.from(gen(dconj, jpath)).join(''));
    }
 }
-computeIncrementalUpdatePlan ::= function (rootGoal) {
+computeIncrementalUpdatePlan ::= function (rootGoal, logicalAttrs) {
    let {goalPaths, pathGoals} = $.computePaths(rootGoal);
    let lvar2ff = $.computeFulfillments(rootGoal);
    let indexRegistry = $.makeIndexRegistry();
@@ -91,10 +92,12 @@ computeIncrementalUpdatePlan ::= function (rootGoal) {
             lvar2ff,
          })
       })),
-      appliedIndices: indexRegistry
+      appliedIndices: indexRegistry,
+      subsProducer: $.makeSubsProducer(rootGoal, logicalAttrs, goalPaths),
+      numPaths: pathGoals.size
    }
 }
-makeSubsProducer ::= function (rootGoal, logicalAttrs) {
+makeSubsProducer ::= function (rootGoal, logicalAttrs, goalPaths) {
    let info = Array.from($.relGoalsBeneath(rootGoal), goal => {
       return {
          rel: goal.rel,
@@ -111,8 +114,11 @@ makeSubsProducer ::= function (rootGoal, logicalAttrs) {
          ),
          rkeyBound: goal.rkeyBound,
          rkeyAttr: (
-            goal.rkeyLvar !== null && logicalAttrs.include(goal.rkeyLvar) ? goal.rkeyLvar : null
-         )
+            goal.rkeyLvar !== null && logicalAttrs.include(goal.rkeyLvar) ?
+               goal.rkeyLvar :
+               null
+         ),
+         coveredPaths: goalPaths.get(goal)
       }
    });
    
@@ -121,7 +127,18 @@ makeSubsProducer ::= function (rootGoal, logicalAttrs) {
          bindings = {...bindings, [$.recKey]: rkey};
       }
 
-      for (let {rel, depNum, firms, loose, rkeyBound, rkeyAttr} of info) {
+      for (let [
+                  i, 
+                  {
+                     rel,
+                     depNum,
+                     firms,
+                     loose,
+                     rkeyBound,
+                     rkeyAttr,
+                     coveredPaths
+                  }
+               ] of $.enumerate(info)) {
          let sub = {...firms};
 
          for (let [attr, subAttr] of loose) {
@@ -140,9 +157,11 @@ makeSubsProducer ::= function (rootGoal, logicalAttrs) {
          proj.refCount += 1;
 
          yield {
+            num: i,
             proj,
             ver: null,
-            depNum
+            depNum,
+            coveredPaths
          };
       }
    };
@@ -197,8 +216,7 @@ computePaths ::= function (rootGoal) {
 
    return {
       goalPaths,
-      pathGoals,
-      numPaths: pathNum
+      pathGoals
    }
 }
 computeFulfillments ::= function (rootGoal) {

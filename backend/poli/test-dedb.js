@@ -18,7 +18,7 @@ runTests ::= function () {
    $.runTestsIn($.base);
    $.runTestsIn($.derived);
    // $.runTestsIn($.keyed);
-   // $.runTestsIn($.disjunction);
+   $.runTestsIn($.disjunction);
    // $.runTestsIn($.functional);
    // $.runTestsIn($.extver);
    console.timeEnd('tests')

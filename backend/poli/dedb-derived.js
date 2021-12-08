@@ -21,9 +21,12 @@ common
    multimap
    mmapAdd
    mmapDelete
+   range
 data-structures
    RecordMap
    RecordSet
+set-map
+   deleteAll
 dedb-rec-key
    recKey
    recVal
@@ -34,7 +37,7 @@ dedb-projection
    updateProjection as: gUpdateProjection
    makeProjectionRegistry
    projectionSize
-   projectionRecords
+   projectionRecKeyVals
 dedb-goal
    * as: goal
 dedb-version
@@ -129,17 +132,21 @@ makeRelation ::= function ({
    }
 
    $.goal.assignProjNumToRelGoals(rootGoal);
+
    let numDeps = $.goal.assignDepNumToRelGoals(rootGoal);
-
    let lvars = $.goal.checkVarUsageAndReturnVars(rootGoal, logicalAttrs);
+   let {
+      plan,
+      appliedIndices,
+      subsProducer,
+      numPaths
+   } = $.computeIncrementalUpdatePlan(rootGoal, logicalAttrs);
 
-   let {appliedIndices, plan} = $.computeIncrementalUpdatePlan(rootGoal);
    let config0 = {
       attrs,
       lvars,
       appliedIndices,
       plan,
-      numDeps
    };
 
    return {
@@ -147,9 +154,11 @@ makeRelation ::= function ({
       name: relname,
       attrs: attrs,
       indices: Array.from(potentialIndices, $.indexFromSpec),
-      subsProducer: $.makeSubsProducer(rootGoal, logicalAttrs),
+      subsProducer,
       config0: config0,
       configs: {0: config0},
+      numPaths,
+      numDeps,
       projections: $.makeProjectionRegistry(),
    };
 }
@@ -181,14 +190,14 @@ makeProjection ::= function (rel, rkey, bindings) {
       isValid: false,
       validRevDeps: new Set,
       config: config,
-      subs: subs,
-      subIndexInstances: subIndexInstances,
+      subs,
+      subIndexInstances,
       myVer: null,
       records: null,  // dry in the beginning
       // forward: rkey -> [subkey, subkey, ...]
       recDeps: new Map,
       // backward: [ {subkey -> Set{rkey, rkey, ...}}, ...], numDeps in length
-      subrecDeps: $.produceArray(config.numDeps, $.multimap),
+      subrecDeps: $.produceArray(rel.numDeps, $.multimap),
       myIndexInstances: [],
    };
 
@@ -276,33 +285,9 @@ rebuildProjection ::= function (proj) {
    //    }
    // }
 
-   let subKeys = new Array(config.numDeps).fill(null);
-
-   let sub0 = $.minimumBy(proj.subs, ({proj: subProj}) => $.projectionSize(subProj));
-
-   $.check(sub0 !== undefined);
-
-   let plan0 = config.plan[proj.subs.indexOf(sub0)];
-   
    proj.records = new (proj.isKeyed ? $.RecordMap : $.RecordSet)();
 
-   for (let rec of $.projectionRecords(sub0.proj)) {
-      let [rkey, rval] = sub0.proj.isKeyed ? rec : [rec, rec];
-
-      if (plan0.rkeyLvar !== null) {
-         ns[plan0.rkeyLvar] = rkey;
-      }
-
-      for (let [attr, lvar] of plan0.start) {
-         ns[lvar] = rval[attr];
-      }
-
-      subKeys[sub0.depNum] = rkey;
-      run(plan0.joinTree);
-      subKeys[sub0.depNum] = null;
-   }
-  
-   $.markProjectionValid(proj);
+   let subKeys = new Array(rel.numDeps).fill(null);
 
    function run(jnode) {
       if (jnode === null) {
@@ -363,6 +348,45 @@ rebuildProjection ::= function (proj) {
          run(jnode.next);
          subKeys[depNum] = null;
       }
+   }
+
+   $.coverAllPaths(proj.subs, rel.numPaths, (sub0) => {
+      let plan0 = config.plan[sub0.num];
+      
+      for (let [rkey, rval] of $.projectionRecKeyVals(sub0.proj)) {
+         if (plan0.rkeyLvar !== null) {
+            ns[plan0.rkeyLvar] = rkey;
+         }
+
+         for (let [attr, lvar] of plan0.start) {
+            ns[lvar] = rval[attr];
+         }
+
+         subKeys[sub0.depNum] = rkey;
+         run(plan0.joinTree);
+         subKeys[sub0.depNum] = null;
+      }
+   });
+
+   $.markProjectionValid(proj);
+}
+coverAllPaths ::= function (subs, numPaths, callback) {
+   // Greedy algorithm
+   subs = [...subs];
+   subs.sort(({proj: A}, {proj: B}) => $.projectionSize(B) - $.projectionSize(A));
+
+   let paths = new Set($.range(numPaths));
+   
+   while (paths.size > 0) {
+      let osize = paths.size;
+      let sub;
+
+      while (paths.size === osize) {
+         sub = subs.pop();
+         $.deleteAll(paths, sub.coveredPaths);
+      }
+
+      callback(sub);
    }
 }
 updateProjection ::= function (proj) {
