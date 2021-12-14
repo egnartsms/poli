@@ -2,19 +2,6 @@ common
    check
    isLike
    filter
-dedb-base
-   baseRelation
-   addFact
-   removeFact
-   changeFact
-   revertTo
-dedb-rec-key
-   recKey
-   recVal
-dedb-version
-   refCurrentStateExt
-dedb-common
-   RecordType
 -----
 setup ::= function () {
    let country = $.baseRelation({

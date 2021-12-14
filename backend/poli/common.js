@@ -1,10 +1,29 @@
 trie
    * as: trie
 -----
+isA ::= function (obj, ...classes) {
+   for (let cls of classes) {
+      if (obj.class[cls.name] === true) {
+         return true;
+      }
+   }
+   
+   return false;
+}
 check ::= function (cond, msg=`Check failed`) {
    if (!cond) {
       throw new Error(typeof msg === 'function' ? msg() : msg);
    }
+}
+checkThrows ::= function (callback) {
+   try {
+      callback();
+   }
+   catch (e) {
+      return;
+   }
+
+   throw new Error(`Expected to have thrown but didn't`);
 }
 assert ::= function (callback) {
    if (!callback()) {
@@ -24,21 +43,17 @@ objId ::= function (obj) {
 hasOwnProperty ::= function (obj, prop) {
    return Object.prototype.hasOwnProperty.call(obj, prop);
 }
+hasOwnDefinedProperty ::= function (obj, prop) {
+   return $.hasOwnProperty(obj, prop) && obj[prop] !== undefined;
+}
+ownPropertyValue ::= function (obj, prop) {
+   return $.hasOwnProperty(obj, prop) ? obj[prop] : undefined;
+}
 isObjectWithOwnProperty ::= function (obj, prop) {
    return obj != null && $.hasOwnProperty(obj, prop);
 }
 selectProps ::= function (obj, props) {
    return Object.fromEntries(props.map(p => [p, obj[p]]));
-}
-patchObj ::= function (obj, patch) {
-   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj, patch);
-}
-patchNullableObj ::= function (obj1, obj2) {
-   if (obj2 == null) {
-      return obj1;
-   }
-   
-   return {...obj1, ...obj2};
 }
 arrayify ::= function (X) {
    return X instanceof Array ? X : Array.from(X);
@@ -114,6 +129,36 @@ propagateValueToRecipients ::= function (module, name) {
 }
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
+}
+maximumBy ::= function (items, keyOf) {
+   let maxKey = -Infinity;
+   let maxItem = undefined;
+
+   for (let item of items) {
+      let key = keyOf(item);
+
+      if (key > maxKey) {
+         maxKey = key;
+         maxItem = item;
+      }
+   }
+
+   return maxItem;
+}
+minimumBy ::= function (items, keyOf) {
+   let minKey = Infinity;
+   let minItem = undefined;
+
+   for (let item of items) {
+      let key = keyOf(item);
+
+      if (key < minKey) {
+         minKey = key;
+         minItem = item;
+      }
+   }
+
+   return minItem;
 }
 extendArray ::= function (A, X) {
    let i = A.length;
@@ -480,6 +525,9 @@ isLike ::= function isLike(A, B) {
    }
 
    return false;
+}
+checkLike ::= function (A, B) {
+   $.check($.isLike(A, B));
 }
 enumerate ::= function* (xs) {
    let i = 0;

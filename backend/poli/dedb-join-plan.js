@@ -11,6 +11,7 @@ common
    filter
    isSubset
    hasOwnProperty
+   ownPropertyValue
    map
    mapfilter
    ownEntries
@@ -31,190 +32,184 @@ common
 dedb-rec-key
    recKey
 dedb-goal
-   GoalType
    Shrunk
    goalLvars
    indexShrunk
-   walkRelGoals
+   walkPaths
    instantiationShrunk
+   clsRelGoal
+   clsFuncGoal
+   relGoalsBeneath
 dedb-index
+   Fitness
    superIndexOfAnother
    copyIndex
-   isIndexCovered
-   indexOn
+   isFullyCoveredBy
+   reduceIndex
+   computeFitness
+dedb-base
+   clsBaseRelation
+dedb-projection
+   projectionFor
 -----
-visualizeIncrementalUpdateScheme ::= function (rel) {
-   throw new Error;
-   function* gen(dconj, jpath) {
-      yield `D(${dconj.rel.name})`;
-      for (let link of jpath) {
-         yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
-         if (link.checkAttrs.length > 0) {
-            yield ` checking (${link.checkAttrs.join(', ')})`;
-         }
-         if (link.extractAttrs.length > 0) {
-            yield ` getting (${link.extractAttrs.join(', ')})`;
-         }
-      }
-      yield '\n';
-   }
+visualizeIncrementalUpdateScheme ::= function* (rel) {
+   // function* gen(jnode) {
+   //    yield `D(${dconj.rel.name})`;
+   //    for (let link of jpath) {
+   //       yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
+   //       if (link.toCheck.length > 0) {
+   //          yield ` checking (${link.toCheck.join(', ')})`;
+   //       }
+   //       if (link.toExtract.length > 0) {
+   //          yield ` getting (${link.toExtract.join(', ')})`;
+   //       }
+   //    }
+   //    yield '\n';
+   // }
 
-   for (let [num, jpath] of $.enumerate(rel.config0.jpaths)) {
-      let dconj = rel.config0.conjs[num];
+   // for (let num = 0; num < rel.numProjs; num += 1) {
+   //    yield `D(${rel.subInfos[num].rel.name}):`;
 
-      console.log(Array.from(gen(dconj, jpath)).join(''));
-   }
+   //    yield* (function* rec(jnode) {
+   //       let subInfo = rel.subInfos[jnode.projNum];
+
+   //       if (jnode.class === $.clsJoinAll) {
+   //          yield ` <-> ${subInfo.rel.name}(*)`;
+   //       }
+   //       else if (jnode.class === $.clsJoinIndex) {
+   //          let {indexNum, indexKeys} = jnode;
+   //          let index = idxReg[indexNum];
+   //          yield ` <-> ${subInfo.rel.name}(${})`;
+   //       }
+   //    })();
+
+   //    for (let jnode of config.plans[num].)
+   //    let dconj = rel.config0.conjs[num];
+
+   //    console.log(Array.from(gen(dconj, jpath)).join(''));
+   // }
 }
-computeIncrementalUpdatePlan ::= function (rootGoal) {
+computeIncrementalUpdatePlan ::= function (rootGoal, outVars) {
    let {goalPaths, pathGoals} = $.computePaths(rootGoal);
-   let {lvar2ff, ffs0} = $.computeFulfillments(rootGoal);
-   let indexRegistry = $.makeIndexRegistry();
+   let lvar2ff = $.computeFulfillments(rootGoal);
+   let idxReg = [];
 
    return {
-      plan: Array.from($.walkRelGoals(rootGoal), goal => ({
+      plans: Array.from($.relGoalsBeneath(rootGoal), goal => ({
+         rkeyExtract: goal.looseBindings[$.recKey] ?? null,
+         rvalExtract: goal.looseBindings[$.recVal] ?? null,
          // [[attr, lvar]] to start from
-         startAttrs: Array.from(goal.looseAttrs),
+         start: Object.entries(goal.looseBindings),
          joinTree: $.computeJoinTreeFrom(goal, {
-            indexRegistry,
+            idxReg,
             pathGoals,
             goalPaths,
             lvar2ff,
-            ffs0
          })
       })),
-      appliedIndices: indexRegistry
+      idxReg,
+      subInfos: $.makeSubInfos(rootGoal, outVars, goalPaths),
+      numPaths: pathGoals.size
    }
 }
-makeSubBoundAttrsProducer ::= function (rootGoal, attrs) {
-   let firms = Array.from($.walkRelGoals(rootGoal), relGoal => relGoal.firmAttrs);
-   let routes = new Map($.map(attrs, attr => [attr, []]));
-
-   for (let [attr, route] of routes) {
-      for (let {looseAttrs, num} of $.walkRelGoals(rootGoal)) {
-         for (let [subAttr, lvar] of looseAttrs) {
-            if (lvar === attr) {
-               route.push([num, subAttr]);
-               break;  // attr can be found at most once in a given goal
-            }
-         }
-      }
-   }
-
-   return function (boundAttrs) {
-      let subBounds = Array.from(firms, firm => Object.assign({}, firm));
-
-      for (let attr of Reflect.ownKeys(boundAttrs)) {
-         let route = routes.get(attr);
-         if (route === undefined) {
-            continue;
-         }
-
-         for (let [num, subAttr] of route) {
-            subBounds[num][subAttr] = boundAttrs[attr];
-         }
-      }
-
-      return subBounds;
-   }
+makeSubInfos ::= function (rootGoal, outVars, goalPaths) {
+   return Array.from($.relGoalsBeneath(rootGoal), goal => ({
+      rel: goal.rel,
+      projNum: goal.projNum,
+      depNum: goal.depNum,
+      coveredPaths: goalPaths.get(goal),
+      firmBindings: goal.firmBindings,
+      looseBindings: Object.fromEntries(
+         $.filter(
+            $.ownEntries(goal.looseBindings),
+            ([attr, lvar]) => outVars.includes(lvar)
+         )
+      )
+   }))
 }
-JoinType ::= ({
-   either: 'either',
-   all: 'all',
-   index: 'index',
-   pk: 'pk',
-   func: 'func',
+clsJoin ::= ({
+   name: 'join',
+   'join': true
+})
+clsJoinAll ::= ({
+   name: 'join.all',
+   'join': true,
+   'join.all': true
+})
+clsJoinIndex ::= ({
+   name: 'join.index',
+   'join': true,
+   'join.index': true
+})
+clsJoinRecKey ::= ({
+   name: 'join.recKey',
+   'join': true,
+   'join.recKey': true
+})
+clsJoinEither ::= ({
+   name: 'join.either',
+   'join.either': true,
+   'join': true
+})
+clsJoinFunc ::= ({
+   name: 'join.func',
+   'join.func': true,
+   'join': true
 })
 computePaths ::= function (rootGoal) {
    let [goalPaths, pathGoals] = $.many2many();
    let goals = [];
-
-   function walk(goal, K) {
-      if (goal.type === $.GoalType.rel || goal.type === $.GoalType.func) {
-         goals.push(goal);
-         K();
-         goals.pop(goal);
-      }
-      else if (goal.type === $.GoalType.and) {
-         (function rec(chain) {
-            if (chain === null) {
-               K();
-            }
-            else {
-               walk(chain.item, () => rec(chain.next()))
-            }
-         })($.arrayChain(goal.subgoals));
-      }
-      else if (goal.type === $.GoalType.or) {
-         for (let disjunct of goal.subgoals) {
-            walk(disjunct, K);
-         }
-      }
-      else {
-         throw new Error;
-      }
-   }
-
    let pathNum = 0;
 
-   walk(rootGoal, () => {
-      $.m2mAddAll(pathGoals, pathNum, goals);
-      pathNum += 1;
+   $.walkPaths(rootGoal, {
+      onLeaf: (goal, K) => {
+         goals.push(goal);
+         K();
+         goals.pop();
+      },
+      onPath: () => {
+         $.m2mAddAll(pathGoals, pathNum, goals);
+         pathNum += 1;
+      }
    });
 
    $.assert(() => goals.length === 0);
 
    return {
       goalPaths,
-      pathGoals,
-      numPaths: pathNum
+      pathGoals
    }
 }
 computeFulfillments ::= function (rootGoal) {
    let lvar2ff = $.multimap();
-   // for those goals which are already shrunk (> Shrunk.min) due to firmAttrs
-   let ffs0 = new Set;
 
    (function walk(goal) {
-      if (goal.type === $.GoalType.rel) {
-         if (goal.shrunk > $.Shrunk.min) {
-            ffs0.add({
-               joinType: $.JoinType.all,
-               count: 0,
-               shrunk: goal.shrunk,
-               goal
-            });
-         }
-
-         for (let index of goal.indices) {
-            let ff = {
-               joinType: $.JoinType.index,
-               count: index.length,
-               shrunk: $.indexShrunk(index),
-               goal,
-               index,
+      if (goal.class === $.clsRelGoal) {
+         for (let [ff, vars] of $.relGoalFulfillments(goal)) {
+            ff = {
+               join: ff.join,
+               fitness: ff.fitness,
+               count: vars.length,
+               goal: goal,
+               props: ff.props,
             };
 
-            for (let attr of index) {
-               $.mmapAdd(lvar2ff, goal.looseAttrs.get(attr), ff);
+            if (vars.length === 0) {
+               $.mmapAdd(lvar2ff, true, ff);
+            }
+            else {
+               for (let lvar of vars) {
+                  $.mmapAdd(lvar2ff, lvar, ff);
+               }
             }
          }
-
-         if (goal.looseAttrs.has($.recKey)) {
-            let pklvar = goal.looseAttrs.get($.recKey);
-
-            $.mmapAdd(lvar2ff, pklvar, {
-               joinType: $.JoinType.pk,
-               count: 1,
-               shrunk: $.Shrunk.one,
-               goal,
-               pklvar,
-            })
-         }
       }
-      else if (goal.type === $.GoalType.func) {
+      else if (goal.class === $.clsFuncGoal) {
+         throw new Error;
+
          let {rel} = goal;
          let plusMinus = new Array(rel.attrs.length);
-         let lvars = new Set;
+         let vars = new Set;
 
          (function rec(i) {
             if (i === rel.attrs.length) {
@@ -224,17 +219,17 @@ computeFulfillments ::= function (rootGoal) {
                   let {shrunk} = rel.instantiations[icode];
                   let ff = {
                      joinType: $.JoinType.func,
-                     count: lvars.size,
+                     count: vars.size,
                      shrunk,
                      goal,
                      icode,
                   };
 
-                  if (lvars.size === 0) {
+                  if (vars.size === 0) {
                      ffs0.add(ff);
                   }
                   else {
-                     for (let lvar of lvars) {
+                     for (let lvar of vars) {
                         $.mmapAdd(lvar2ff, lvar, ff);
                      }
                   }
@@ -256,9 +251,9 @@ computeFulfillments ::= function (rootGoal) {
                rec(i + 1);
 
                plusMinus[i] = '+';
-               lvars.add(lvar);
+               vars.add(lvar);
                rec(i + 1);
-               lvars.delete(lvar);
+               vars.delete(lvar);
             }
          })(0);
       }
@@ -269,191 +264,108 @@ computeFulfillments ::= function (rootGoal) {
       }
    })(rootGoal);
 
-   return {lvar2ff, ffs0};
+   return lvar2ff;
 }
-computeJoinTreeFrom ::= function (Dgoal, {
-      indexRegistry, pathGoals, goalPaths, lvar2ff, ffs0
-}) {
+relGoalFulfillments ::= function* (goal) {
+   $.assert(() => goal.class === $.clsRelGoal);
+
+   let {rel, firmBindings, looseBindings} = goal;
+
+   if ($.hasOwnProperty(firmBindings, $.recKey)) {
+      yield [
+         {
+            join: $.clsJoinAll,
+            fitness: $.Fitness.uniqueHit,
+         },
+         []
+      ];
+      return;
+   }
+
+   if ($.hasOwnProperty(looseBindings, $.recKey)) {
+      yield [
+         {
+            join: $.clsJoinRecKey,
+            fitness: $.Fitness.uniqueHit,
+            props: {
+               rkeyVar: looseBindings[$.recKey]
+            }
+         },
+         [looseBindings[$.recKey]]
+      ];
+   }
+
+   let indices = rel.class === $.clsBaseRelation ?
+      Array.from(rel.indices, ({index}) => index) :
+      rel.indices;
+
+   if ($.any(indices, index => $.isFullyCoveredBy(index, Object.keys(firmBindings)))) {
+      yield [
+         {
+            join: $.clsJoinAll,
+            fitness: $.Fitness.hit,
+         },
+         []
+      ];
+      // No need to seek for any other index hits once we have at least one fully
+      // covered by firm bindings
+      return;      
+   }
+
+   for (let index of indices) {
+      index = $.reduceIndex(index, Object.keys(firmBindings));
+
+      $.assert(() => index.length > 0);
+
+      let vars = [];
+
+      for (let attr of index) {
+         if (!$.hasOwnProperty(looseBindings, attr)) {
+            break;
+         }
+
+         vars.push(looseBindings[attr]);
+
+         yield [
+            {
+               join: $.clsJoinIndex,
+               fitness: $.computeFitness(vars.length, index),
+               props: {
+                  index,
+                  keys: Array.from(vars),
+               }
+            },
+            vars
+         ]
+      }
+   }
+}
+computeJoinTreeFrom ::= function (Dgoal, {idxReg, pathGoals, goalPaths, lvar2ff}) {
    let boundLvars = new Set;
    let bindStack = [];
    
-   let buildTree = withStackPreserved(function (paths, goals, fulfillments, goal0) {
-      $.assert(() => goals.has(goal0));
+   function bind(lvar) {
+      $.assert(() => !boundLvars.has(lvar));
 
-      function bindLvar(lvar) {
-         $.assert(() => !boundLvars.has(lvar));
+      boundLvars.add(lvar);
+      bindStack.push(lvar);
 
-         boundLvars.add(lvar);
-         bindStack.push(lvar);
+      let becameReady = [];
 
-         for (let ff of lvar2ff.get(lvar) ?? []) {
-            $.assert(() => ff.count > 0);
+      for (let ff of lvar2ff.get(lvar) ?? []) {
+         $.assert(() => ff.count > 0);
 
-            ff.count -= 1;
+         ff.count -= 1;
 
-            if (ff.count === 0 && goals.has(ff.goal)) {
-               fulfillments.add(ff);
-            }
+         if (ff.count === 0) {
+            becameReady.push(ff);
          }
       }
 
-      function joinGoal(goal) {
-         for (let lvar of $.goalLvars(goal)) {
-            if (!boundLvars.has(lvar)) {
-               bindLvar(lvar);
-            }
-         }
-
-         goals.delete(goal);
-
-         for (let ff of fulfillments) {
-            if (ff.goal === goal) {
-               fulfillments.delete(ff);
-            }
-         }
-      }
-
-      function bestFulfillmentToJoin() {
-         if (fulfillments.size === 0) {
-            return null;
-         }
-
-         return $.reduce(fulfillments, (ff1, ff2) => {
-            if (ff1.shrunk > ff2.shrunk) {
-               return ff1;
-            }
-            else if (ff1.shrunk < ff2.shrunk) {
-               return ff2;
-            }
-            else if (
-                  ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
-                  ff1.goal === ff2.goal) {
-               if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
-                  return ff1;
-               }
-               else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
-                  return ff2;
-               }
-            }
-            
-            if (isGoalFull(ff1.goal)) {
-               return ff1;
-            }
-            else if (isGoalFull(ff2.goal)) {
-               return ff2;
-            }
-            else {
-               return ff1;
-            }
-         });
-      }
-
-      function isGoalFull(goal) {
-         return $.isSubset(paths, goalPaths.get(goal));
-      }
-
-      joinGoal(goal0);
-
-      let jnodeHead = null, jnodeTail = null;
-      let branchFF = null;
-
-      while (goals.size > 0) {
-         let ff = bestFulfillmentToJoin();
-
-         if (ff === null) {
-            throw new Error(`Cannot join!`);
-         }
-
-         let jgoal = ff.goal;
-
-         if (!isGoalFull(jgoal)) {
-            branchFF = ff;
-            break;
-         }
-
-         let jnode = makeJoinNode(ff);
-
-         if (jnodeHead === null) {
-            jnodeHead = jnodeTail = jnode;
-         }
-         else {
-            jnodeTail.next = jnode;
-            jnodeTail = jnode;
-         }
-         
-         joinGoal(jgoal);
-      }
-
-      if (branchFF === null) {
-         // All have been processed in a single branch
-         return jnodeHead;
-      }
-
-      // Branching
-      let eitherNode = {
-         type: $.JoinType.either,
-         branches: []
-      };
-
-      while (true) {
-         let jgoal = branchFF.goal;
-
-         let branchPaths = $.setInter(paths, goalPaths.get(jgoal));
-         let [branchGoals, branchFulfillments] = lyingOnPaths(
-            branchPaths, goals, fulfillments
-         );
-
-         let node0 = makeJoinNode(branchFF);
-         node0.next = buildTree(branchPaths, branchGoals, branchFulfillments, jgoal);
-         eitherNode.branches.push(node0);
-
-         paths = $.setDiff(paths, goalPaths.get(jgoal));
-         [goals, fulfillments] = lyingOnPaths(paths, goals, fulfillments);
-
-         if (goals.size === 0) {
-            break;
-         }
-
-         branchFF = bestFulfillmentToJoin();
-
-         if (branchFF === null) {
-            throw new Error(`Cannot join!`);
-         }
-      }
-
-      if (jnodeTail !== null) {
-         jnodeTail.next = eitherNode;
-
-         return jnodeHead;
-      }
-      else {
-         return eitherNode;
-      }
-   });
-
-   function withStackPreserved(callback) {
-      return function () {
-         let n = bindStack.length;
-         let res = callback.apply(this, arguments);
-
-         while (bindStack.length > n) {
-            unbind1();
-         }
-
-         return res;
-      };
+      return becameReady;
    }
 
-   function lyingOnPaths(paths1, goals, fulfillments) {
-      let goals1 = $.setInter(
-         goals, $.concat($.map(paths1, path => pathGoals.get(path)))
-      );
-      let fulfillments1 = new Set($.filter(fulfillments, ff => goals.has(ff.goal)))
-
-      return [goals1, fulfillments1];
-   }
-
-   function unbind1() {
+   function unbind() {
       $.assert(() => bindStack.length > 0);
 
       let lvar = bindStack.pop();
@@ -468,39 +380,42 @@ computeJoinTreeFrom ::= function (Dgoal, {
    }
 
    function makeJoinNode(ff) {
-      let {joinType: type, goal} = ff;
+      let {join: cls, goal} = ff;
 
-      if (type === $.JoinType.all) {
+      if (cls === $.clsJoinAll) {
          return {
-            type: $.JoinType.all,
-            projNum: goal.num,
-            checkAttrs: collectCheckAttrs(goal),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            ...propsForCheckExtract(goal),
             next: null
          }
       }
-      else if (type === $.JoinType.index) {
+      else if (cls === $.clsJoinIndex) {
+         let {index, keys} = ff.props;
+
          return {
-            type: $.JoinType.index,
-            projNum: goal.num,
-            indexNum: $.registerGoalIndex(indexRegistry, goal, ff.index),
-            indexLvars: Array.from(ff.index, attr => goal.looseAttrs.get(attr)),
-            checkAttrs: collectCheckAttrs(goal, ff.index),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            indexNum: $.registerGoalIndex(idxReg, goal, index),
+            indexKeys: keys,
+            ...propsForCheckExtract(goal, index),
             next: null
          }
       }
-      else if (type === $.JoinType.pk) {
+      else if (cls === $.clsJoinRecKey) {
+         let {rkeyVar} = ff.props;
+
          return {
-            type: $.JoinType.pk,
-            projNum: goal.num,
-            pklvar: ff.pklvar,
-            checkAttrs: collectCheckAttrs(goal, [$.recKey]),
-            extractAttrs: collectExtractAttrs(goal),
+            class: cls,
+            projNum: goal.projNum,
+            rkeyVar: rkeyVar,
+            ...propsForCheckExtract(goal),
             next: null
          }
       }
-      else if (type === $.JoinType.func) {
+      else if (cls === $.clsJoinFunc) {
+         throw new Error;
+
          let {rel} = goal;
 
          for (let [attr, char] of $.zip(rel.attrs, ff.icode)) {
@@ -545,36 +460,233 @@ computeJoinTreeFrom ::= function (Dgoal, {
       }
    }
 
-   function collectCheckAttrs(goal, index=null) {
-      return Array.from($.mapfilter(goal.looseAttrs, ([attr, lvar]) => {
-         if (boundLvars.has(lvar) && (index === null || !index.includes(attr))) {
-            return [attr, lvar];
+   function propsForCheckExtract(goal, noCheck=[]) {
+      let {looseBindings} = goal;
+
+      let res = {
+         toCheck:
+            Array.from($.filter(
+               Object.entries(looseBindings),
+               ([attr, lvar]) => boundLvars.has(lvar) && !noCheck.includes(attr)
+            )),
+         toExtract:
+            Array.from($.filter(
+               Object.entries(looseBindings),
+               ([attr, lvar]) => !boundLvars.has(lvar)
+            )),
+         rkeyExtract: null,
+         rvalExtract: null,
+         rvalCheck: null,
+      };
+
+      if ($.hasOwnProperty(looseBindings, $.recKey)) {
+         let lvar = looseBindings[$.recKey];
+         
+         if (boundLvars.has(lvar)) {
+            // Nothing to do here as bound recKey should've been handled as rec-key bound
          }
-      }));
+         else {
+            res.rkeyExtract = lvar;
+         }
+      }
+      
+      if ($.hasOwnProperty(looseBindings, $.recVal)) {
+         let lvar = looseBindings[$.recVal];
+
+         if (boundLvars.has(lvar)) {
+            res.rvalCheck = lvar;
+         }
+         else {
+            res.rvalExtract = lvar;
+         }
+      }
+
+      return res;
    }
 
-   function collectExtractAttrs(goal) {
-      return Array.from($.mapfilter(goal.looseAttrs, ([attr, lvar]) => {
-         if (!boundLvars.has(lvar)) {
-            return [attr, lvar];
-         }
-      }));
+   function lyingOnPaths(paths1, goals, fulfillments) {
+      let goals1 = $.setInter(
+         goals, $.concat($.map(paths1, path => pathGoals.get(path)))
+      );
+      let fulfillments1 = new Set($.filter(fulfillments, ff => goals1.has(ff.goal)))
+
+      return [goals1, fulfillments1];
    }
+
+   function withStackPreserved(callback) {
+      return function () {
+         let n = bindStack.length;
+         let res = callback.apply(this, arguments);
+
+         while (bindStack.length > n) {
+            unbind();
+         }
+
+         return res;
+      };
+   }
+
+   let buildTree = withStackPreserved(function (paths, goals, readyFFs, goal0) {
+      $.assert(() => goals.has(goal0));
+
+      function bindLvar(lvar) {
+         let becameReady = bind(lvar);
+
+         for (let ff of becameReady) {
+            if (goals.has(ff.goal)) {
+               readyFFs.add(ff);
+            }
+         }
+      }
+
+      function joinGoal(goal) {
+         for (let lvar of $.goalLvars(goal)) {
+            if (!boundLvars.has(lvar)) {
+               bindLvar(lvar);
+            }
+         }
+
+         goals.delete(goal);
+
+         for (let ff of readyFFs) {
+            if (ff.goal === goal) {
+               readyFFs.delete(ff);
+            }
+         }
+      }
+
+      function findBestFF() {
+         if (readyFFs.size === 0) {
+            return null;
+         }
+
+         return $.reduce(readyFFs, (ff1, ff2) => {
+            if (ff1.fitness > ff2.fitness) {
+               return ff1;
+            }
+            else if (ff2.fitness > ff1.fitness) {
+               return ff2;
+            }
+            // else if (
+            //       ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
+            //       ff1.goal === ff2.goal) {
+            //    if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
+            //       return ff1;
+            //    }
+            //    else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
+            //       return ff2;
+            //    }
+            // }
+            
+            if (isGoalFull(ff1.goal)) {
+               return ff1;
+            }
+            else if (isGoalFull(ff2.goal)) {
+               return ff2;
+            }
+            else {
+               return ff1;
+            }
+         });
+      }
+
+      function isGoalFull(goal) {
+         return $.isSubset(paths, goalPaths.get(goal));
+      }
+
+      joinGoal(goal0);
+
+      let jnodeHead = null, jnodeTail = null;
+      let branchFF = null;
+
+      while (goals.size > 0) {
+         let ff = findBestFF();
+
+         if (ff === null) {
+            throw new Error(`Cannot join!`);
+         }
+
+         let jgoal = ff.goal;
+
+         if (!isGoalFull(jgoal)) {
+            branchFF = ff;
+            break;
+         }
+
+         let jnode = makeJoinNode(ff);
+
+         if (jnodeHead === null) {
+            jnodeHead = jnodeTail = jnode;
+         }
+         else {
+            jnodeTail.next = jnode;
+            jnodeTail = jnode;
+         }
+         
+         joinGoal(jgoal);
+      }
+
+      if (branchFF === null) {
+         // All have been processed in a single branch
+         return jnodeHead;
+      }
+
+      // Branching
+      let eitherNode = {
+         class: $.clsJoinEither,
+         branches: []
+      };
+
+      while (true) {
+         let jgoal = branchFF.goal;
+
+         let branchPaths = $.setInter(paths, goalPaths.get(jgoal));
+         let [branchGoals, branchFFs] = lyingOnPaths(branchPaths, goals, readyFFs);
+
+         let node0 = makeJoinNode(branchFF);
+         node0.next = buildTree(branchPaths, branchGoals, branchFFs, jgoal);
+         eitherNode.branches.push(node0);
+
+         paths = $.setDiff(paths, goalPaths.get(jgoal));
+         [goals, readyFFs] = lyingOnPaths(paths, goals, readyFFs);
+
+         if (goals.size === 0) {
+            break;
+         }
+
+         branchFF = findBestFF();
+
+         if (branchFF === null) {
+            throw new Error(`Cannot join!`);
+         }
+      }
+
+      if (jnodeTail !== null) {
+         jnodeTail.next = eitherNode;
+
+         return jnodeHead;
+      }
+      else {
+         return eitherNode;
+      }
+   });
 
    let paths0 = new Set(goalPaths.get(Dgoal));
-   let [goals0, fulfillments0] = lyingOnPaths(paths0, goalPaths.keys(), ffs0);
-   return buildTree(paths0, goals0, fulfillments0, Dgoal);
+   let [goals0, readyFFs0] = lyingOnPaths(
+      paths0,
+      goalPaths.keys(),
+      lvar2ff.get(true) ?? new Set
+   );
+   
+   return buildTree(paths0, goals0, readyFFs0, Dgoal);
 }
 isInstantiationCodeMoreSpecialized ::= function (icodeS, icodeG) {
    $.assert(() => icodeS.length === icodeG.length);
 
    return $.all($.zip(icodeS, icodeG), ([s, g]) => s === '+' || g === '-');
 }
-makeIndexRegistry ::= function () {
-   return [];
-}
 registerGoalIndex ::= function (registry, goal, index) {
-   return $.registerProjNumIndex(registry, goal.num, index);
+   return $.registerProjNumIndex(registry, goal.projNum, index);
 }
 registerProjNumIndex ::= function (registry, projNum, index) {
    let n = registry.findIndex(({projNum: xProjNum, index: xIndex}) => {
@@ -588,166 +700,202 @@ registerProjNumIndex ::= function (registry, projNum, index) {
    registry.push({projNum, index});
    return registry.length - 1;
 }
-narrowConfig ::= function (config0, bindList) {
-   let {plan, appliedIndices} = $.narrowJoinPlan(
-      config0.plan, config0.appliedIndices, bindList
-   );
-
-   return {
-      attrs: config0.attrs.filter(a => !bindList.includes(a)),
-      plainAttrs: config0.plainAttrs === null ? null :
-         config0.plainAttrs.filter(a => !bindList.includes(a)),
-      lvars: config0.lvars.filter(lvar => !bindList.includes(lvar)),
-      appliedIndices: appliedIndices,
-      plan: plan
-   }
-}
-narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
-   let indexRegistry = $.makeIndexRegistry();
-
-   function narrow(jnode) {
-      if (jnode === null) {
-         return null;
-      }
-
-      if (jnode.type === $.JoinType.all) {
-         return {
-            type: $.JoinType.all,
-            projNum: jnode.projNum,
-            checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-            extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-            next: narrow(jnode.next)
-         }
-      }
-      
-      if (jnode.type === $.JoinType.index) {
-         let {indexLvars, indexNum} = jnode;
-         let narrowedIndex = $.copyIndex(appliedIndices[indexNum].index);
-
-         for (let i = indexLvars.length - 1; i >= 0; i -= 1) {
-            if (bindList.includes(indexLvars[i])) {
-               narrowedIndex.splice(i, 1);
-            }
+narrowConfig ::= function (config0, subInfos, boundAttrs) {
+   function narrowPlan(plan, idxReg, idxRegNw) {
+      function narrow(jnode) {
+         if (jnode === null) {
+            return null;
          }
 
-         if ($.isIndexCovered(narrowedIndex)) {
+         if (jnode.class === $.clsJoinAll) {
             return {
-               type: $.JoinType.all,
+               class: $.clsJoinAll,
                projNum: jnode.projNum,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               ...narrowCheckExtract(jnode),
                next: narrow(jnode.next)
             }
          }
-         else {
-            return {
-               type: $.JoinType.index,
-               projNum: jnode.projNum,
-               indexNum: $.registerProjNumIndex(
-                  indexRegistry, jnode.projNum, narrowedIndex
-               ),
-               indexLvars: jnode.indexLvars.filter(lvar => !bindList.includes(lvar)),
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-      }
-      
-      if (jnode.type === $.JoinType.pk) {
-         if (bindList.includes(jnode.pklvar)) {
-            return {
-               type: $.JoinType.all,
-               projNum: jnode.projNum,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-         else {
-            return {
-               type: $.JoinType.pk,
-               projNum: jnode.projNum,
-               pklvar: jnode.pklvar,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-      }
+         
+         if (jnode.class === $.clsJoinIndex) {
+            let {projNum, indexNum, indexKeys, rkeyExtract} = jnode;
 
-      if (jnode.type === $.JoinType.func) {
-         let {args} = jnode;
-         let n_args = [], idxAdditionallyBound = [];
+            let {looseBindings} = subInfos[projNum];
 
-         for (let [i, arg] of $.enumerate(args)) {
-            if ($.hasOwnProperty(arg, 'getValue')) {
-               n_args.push(arg);
-               continue;
-            }
+            $.assert(() => idxReg[indexNum].projNum === projNum);
 
-            let {lvar, isBound} = arg;
-
-            if (!bindList.includes(lvar)) {
-               n_args.push(arg);
-               continue;
-            }
-
-            n_args.push({
-               getValue(boundAttrs) {
-                  return boundAttrs[lvar];
-               }
-            });
-
-            if (!isBound) {
-               idxAdditionallyBound.push(i);
-            }
-         }
-
-         let n_icode = jnode.icode;
-
-         if (idxAdditionallyBound.length > 0) {
-            let arr = Array.from(jnode.icode);
-            for (let idx of idxAdditionallyBound) {
-               arr[idx] = '+';
-            }
-
-            n_icode = arr.join('');
-
-            $.check($.hasOwnProperty(jnode.rel.instantiations, n_icode), () =>
-               `Narrowing impossible: instantiation '${n_icode}' in '${jnode.rel.name}'` +
-               ` is unavailable`
+            let indexKeysNw = indexKeys.filter(lvar => !boundAttrs.includes(lvar));
+            let index = idxReg[indexNum].index;
+            let indexNw = index.filter(
+               attr => !($.hasOwnProperty(looseBindings, attr) &&
+                           boundAttrs.includes(looseBindings[attr]))
             );
+
+            indexNw.isUnique = index.isUnique;
+
+            if (rkeyExtract !== null && boundAttrs.includes(rkeyExtract)) {
+               // jnode becomes 'join all' because of rec key binding. The narrowed index
+               // becomes a part of 'toCheck' list
+               let {toCheck, ...rest} = narrowCheckExtract(jnode);
+
+               for (let pair of $.zip(indexNw, indexKeysNw)) {
+                  toCheck.push(pair);
+               }
+
+               return {
+                  class: $.clsJoinAll,
+                  projNum: projNum,
+                  toCheck,
+                  ...rest,
+                  next: narrow(jnode.next)
+               }
+            }
+            
+            if (indexNw.length === 0) {
+               return {
+                  class: $.clsJoinAll,
+                  projNum: jnode.projNum,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
+            
+            return {
+               class: $.clsJoinIndex,
+               projNum: jnode.projNum,
+               indexNum: $.registerProjNumIndex(idxRegNw, jnode.projNum, indexNw),
+               indexKeys: indexKeysNw,
+               ...narrowCheckExtract(jnode),
+               next: narrow(jnode.next)
+            }
+         }
+         
+         if (jnode.class === $.clsJoinRecKey) {
+            let {rkeyVar} = jnode;
+
+            if (boundAttrs.includes(rkeyVar)) {
+               return {
+                  class: $.clsJoinAll,
+                  projNum: jnode.projNum,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
+            else {
+               return {
+                  class: $.clsJoinRecKey,
+                  projNum: jnode.projNum,
+                  rkeyVar: jnode.rkeyVar,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
          }
 
-         return {
-            type: $.JoinType.func,
-            args: n_args,
-            icode: n_icode,
-            run: jnode.rel.instantiations[n_icode].run,
-            rel: jnode.rel,
-            next: narrow(jnode.next)
+         if (jnode.class === $.clsJoinFunc) {
+            throw new Error;
+
+            let {args} = jnode;
+            let n_args = [], idxAdditionallyBound = [];
+
+            for (let [i, arg] of $.enumerate(args)) {
+               if ($.hasOwnProperty(arg, 'getValue')) {
+                  n_args.push(arg);
+                  continue;
+               }
+
+               let {lvar, isBound} = arg;
+
+               if (!bindList.includes(lvar)) {
+                  n_args.push(arg);
+                  continue;
+               }
+
+               n_args.push({
+                  getValue(boundAttrs) {
+                     return boundAttrs[lvar];
+                  }
+               });
+
+               if (!isBound) {
+                  idxAdditionallyBound.push(i);
+               }
+            }
+
+            let n_icode = jnode.icode;
+
+            if (idxAdditionallyBound.length > 0) {
+               let arr = Array.from(jnode.icode);
+               for (let idx of idxAdditionallyBound) {
+                  arr[idx] = '+';
+               }
+
+               n_icode = arr.join('');
+
+               $.check($.hasOwnProperty(jnode.rel.instantiations, n_icode), () =>
+                  `Narrowing impossible: instantiation '${n_icode}' in '${jnode.rel.name}'` +
+                  ` is unavailable`
+               );
+            }
+
+            return {
+               type: $.JoinType.func,
+               args: n_args,
+               icode: n_icode,
+               run: jnode.rel.instantiations[n_icode].run,
+               rel: jnode.rel,
+               next: narrow(jnode.next)
+            }
          }
+
+         if (jnode.class === $.clsJoinEither) {
+            return {
+               class: $.clsJoinEither,
+               branches: Array.from(jnode.branches, narrow)
+            }
+         }
+
+         throw new Error;
       }
 
-      if (jnode.type === $.JoinType.either) {
-         return {
-            type: $.JoinType.either,
-            branches: Array.from(jnode.branches, narrow)
-         }
-      }
+      let {rkeyVar, start, joinTree} = plan;
 
-      throw new Error;
+      return {
+         rkeyVar: rkeyVar === null ? null :
+            boundAttrs.includes(rkeyVar) ? null : rkeyVar,
+         start: narrowPairs(start, boundAttrs),
+         joinTree: narrow(joinTree)
+      }
    }
+
+   function narrowCheckExtract(jnode) {
+      let {toCheck, toExtract, rkeyExtract, rvalCheck, rvalExtract} = jnode;
+
+      function bindVar(lvar) {
+         return lvar !== null && !boundAttrs.includes(lvar) ? lvar : null;
+      }
+
+      return {
+         toCheck: narrowPairs(toCheck),
+         toExtract: narrowPairs(toExtract),
+         rkeyExtract: bindVar(rkeyExtract),
+         rvalExtract: bindVar(rvalExtract),
+         rvalCheck: bindVar(rvalCheck),
+      }
+   }
+
+   function narrowPairs(pairs) {
+      return pairs.filter(([attr, lvar]) => !boundAttrs.includes(lvar));
+   }
+
+   let {attrs, vars, outVars, idxReg, plans} = config0;
+   let isNotBound = (a) => !boundAttrs.includes(a);
+   let idxRegNw = [];
 
    return {
-      plan: Array.from(plan, ({startAttrs, joinTree}) => ({
-         startAttrs: $.narrowAttrList(startAttrs, bindList),
-         joinTree: narrow(joinTree)
-      })),
-      appliedIndices: indexRegistry
+      attrs: attrs.filter(isNotBound),
+      vars: vars.filter(isNotBound),
+      outVars: outVars.filter(isNotBound),
+      idxReg: idxRegNw,
+      plans: Array.from(plans, plan => narrowPlan(plan, idxReg, idxRegNw))
    }
-}
-narrowAttrList ::= function (attrList, bindList) {
-   return attrList.filter(([attr, lvar]) => !bindList.includes(lvar));
 }

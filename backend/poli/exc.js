@@ -37,3 +37,7 @@ rethrowCodeErrorsOn ::= function (source, callback) {
 detour ::= function () {
    return 'fuck';
 }
+callHer ::= function () {
+   let v = $.vec.Vector(['a', 'b', 'c']);
+   return $.vec.at(v, 2);
+}

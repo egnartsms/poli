@@ -1,152 +1,99 @@
 common
    check
+   checkLike
    isLike
    find
    sortedArray
-dedb-query
-   query
-dedb-projection
-   projectionFor
-   releaseProjection
-   updateProjection
+dedb-goal
+   join
 dedb-base
-   baseRelation
    addFact
-   removeFact
-   changeFact
-dedb-derived
-   derivedRelation
-dedb-index
-   indexOn
+   makeEntity
+   removeEntity
+   patchEntity
+dedb-projection
+   updateProjection
+dedb-query
+   queryOne
+   valueAt
+   getDerivedProjection
 dedb-rec-key
    recKey
-   recVal
-dedb-common
-   RecordType
 -----
-setup ::= function () {
-   let
-      // These 'name' property is just for ease of display/debug
-      joe = {dev: 'joe', order: 1},
-      jack = {dev: 'jack', order: 2},
-      jim = {dev: 'jim', order: 3},
-      kelly = {dev: 'kelly', order: 4},
-      stasy = {dev: 'stasy', order: 5},
-      greg = {dev: 'greg', order: 6};
+dev ::= ({
+   name: 'dev',
+   isKeyed: true,
+   isEntity: true,
+   attrs: ['name', 'company'],
+   indices: [
+      ['company']
+   ]
+})
+company ::= ({
+   name: 'company',
+   isKeyed: false,
+   attrs: ['name', 'salary'],
+   indices: [
+      ['name', 1]
+   ],
+   records: [
+      {name: 'SoftServe', salary: 2500},
+      {name: 'GlobalLogic', salary: 2800},
+      {name: 'LuxSoft', salary: 3000},
+      {name: 'DataArt', salary: 3300},
+      {name: 'SiteCore', salary: 4000},
+      {name: 'Ciklum', salary: 4400}
+   ],
+})
+devSalary ::= ({
+   name: 'devSalary',
+   isKeyed: true,
+   body: v => [
+      $.join($.dev, v.key, {company: v`company`}),
+      $.join($.company, {name: v`company`, salary: v.value})
+   ]
+})
+devCompany ::= ({
+   name: 'devCompany',
+   isKeyed: true,
+   body: v => [
+      $.join($.dev, v.key, {company: v`company`}),
+      $.join($.company, v.value, {name: v`company`})
+   ]   
+})
+test_basic ::= function () {
+   let joe = $.makeEntity($.dev, {name: 'Joe', company: 'DataArt'});
+   $.check($.valueAt($.devSalary, joe) === 3300);
 
-   let
-      company_J = {company: 'J systems'},
-      company_C = {company: 'C systems'},
-      company_P = {company: 'P systems'};
+   $.patchEntity(joe, val => ({...val, company: 'Ciklum'}));
+   $.check($.valueAt($.devSalary, joe) === 4400);
 
-   let dev = $.baseRelation({
-      name: 'dev',
-      recType: $.RecordType.keyTuple,
-      attrs: ['company', 'name'],
-      indices: [
-         $.indexOn(['company'])
-      ],
-      records: [
-         [joe, {company: company_J, name: 'joe'}],
-         [jack, {company: company_J, name: 'jack'}],
-         [jim, {company: company_C, name: 'joe'}],
-         [kelly, {company: company_C, name: 'kelly'}],
-         [stasy, {company: company_C, name: 'stasy'}],
-         [greg, {company: company_P, name: 'joe'}],
-      ],
-   });
-
-   let company = $.baseRelation({
-      name: 'company',
-      recType: $.RecordType.keyTuple,
-      attrs: ['name', 'lang'],
-      indices: [
-         $.indexOn(['name'], {isUnique: true}),
-      ],
-      records: [
-         [company_J, {name: 'J systems', lang: 'java'}],
-         [company_C, {name: 'C systems', lang: 'cpp'}],
-         [company_P, {name: 'P systems', lang: 'php'}]
-      ],
-   });
-
-   let dev_lang = $.derivedRelation({
-      name: 'dev_lang',
-      recType: $.RecordType.keyVal,
-      indices: [],
-      body: v => [
-         dev.at({[$.recKey]: v.recKey, company: v`company`}),
-         company.at({[$.recKey]: v`company`, lang: v.recVal}),
-      ]
-   });
-
-   return {
-      dev, company, dev_lang,
-      company_J, company_C, company_P,
-      joe, jack, jim, kelly, stasy, greg,
-   };
+   $.removeEntity(joe);
+   $.check($.valueAt($.devSalary, joe) === undefined);
 }
-test_query ::= function ({
-   dev_lang,
-   joe, jack, jim, kelly, stasy, greg,
-}) {
-   $.check($.isLike(
-      // TODO: implement map comparison with isLike
-      new Set($.query(dev_lang, {})),
-      [
-         [joe, 'java'],
-         [jack, 'java'],
-         [jim, 'cpp'],
-         [kelly, 'cpp'],
-         [stasy, 'cpp'],
-         [greg, 'php'],
-      ]
-   ));
-}
-test_update_dev ::= function ({
-   dev, company,
-   dev_lang,
-   joe, jack, jim, kelly, stasy, greg,
-   company_P,
-}) {
-   let proj = $.projectionFor(dev_lang, {});
+test_partial ::= function () {
+   let joe = $.makeEntity($.dev, {name: 'Joe', company: 'DataArt'});
+   let jim = $.makeEntity($.dev, {name: 'Jim', company: 'GlobalLogic'});
+   let jay = $.makeEntity($.dev, {name: 'Jay', company: 'SoftServe'});
+   let val;
 
-   $.changeFact(dev, stasy, {company: company_P, name: 'stasy'});
+   let proj = $.getDerivedProjection($.devSalary, {[$.recKey]: jim});
+
+   $.check(proj.records.size === 1);
+   [[, val]] = proj.records;
+   $.check(val === 2800);
+
+   $.patchEntity(jim, val => ({...val, company: 'Ciklum'}));
    $.updateProjection(proj);
-
-   $.check($.isLike(
-      $.sortedArray(proj.records, ([dev]) => dev.order),
-      [
-         [joe, 'java'],
-         [jack, 'java'],
-         [jim, 'cpp'],
-         [kelly, 'cpp'],
-         [stasy, 'php'],
-         [greg, 'php'],
-      ]
-   ));
+   [[, val]] = proj.records;
+   $.check(val === 4400);
 }
-test_update_company ::= function ({
-   dev, company,
-   dev_lang,
-   joe, jack, jim, kelly, stasy, greg,
-   company_C, company_P, company_J,
-}) {
-   let proj = $.projectionFor(dev_lang, {});
+test_grab_fact_identity ::= function () {
+   let joe = $.makeEntity($.dev, {name: 'Joe', company: 'DataArt'});
+   let jim = $.makeEntity($.dev, {name: 'Jim', company: 'GlobalLogic'});
+   let jay = $.makeEntity($.dev, {name: 'Jay', company: 'SoftServe'});
 
-   $.changeFact(company, company_J, {name: "J systems", lang: 'js'});
-   $.changeFact(company, company_C, {name: "C systems", lang: 'objc'});
-   $.updateProjection(proj);
-
-   $.check($.isLike(
-      $.sortedArray(proj.records, ([dev]) => dev.order),
-      [
-         [joe, 'js'],
-         [jack, 'js'],
-         [jim, 'objc'],
-         [kelly, 'objc'],
-         [stasy, 'objc'],
-         [greg, 'php'],
-      ]
-   ));
+   $.checkLike($.valueAt($.devCompany, joe), {name: 'DataArt', salary: 3300});
+   $.checkLike($.valueAt($.devCompany, jim), {name: 'GlobalLogic', salary: 2800});
+   $.checkLike($.valueAt($.devCompany, jay), {name: 'SoftServe', salary: 2500});
 }

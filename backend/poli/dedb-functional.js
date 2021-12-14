@@ -1,5 +1,3 @@
-dedb-common
-    RelationType
 dedb-goal
    funcGoal
 -----

@@ -10,29 +10,27 @@ function run(rawModules) {
       mTest.ns['runTests']();
    }
    
-   {
-      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-      Mworld.ns['load'](minfos);
-   }
+   return;
+   
+   let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+   Mworld.ns['load'](minfos);
+
+   let Mrun = minfos.find(m => m.name === RUN_MODULE);
+
+   // That's our contract with RUN_MODULE:
+   //   * we give it the way to send a message over the wire
+   //   * it gives us operation handler which we call on incoming operation request
+   let websocket = makeWebsocket();
+
+   let handleMessage = Mrun.ns['main'](
+      message => websocket.send(JSON.stringify(message))
+   );
+
+   websocket.addEventListener('message', ev => {
+      handleMessage(JSON.parse(ev.data));
+   });
 
    return;
-
-   // window.exp = minfos.find(m => m.name === 'exp').ns;
-
-   // let Mrun = minfos.find(m => m.name === RUN_MODULE);
-
-   // // That's our contract with RUN_MODULE:
-   // //   * we give it the way to send a message over the wire
-   // //   * it gives us operation handler which we call on incoming operation request
-   // let websocket = makeWebsocket();
-
-   // let handleMessage = Mrun.ns['main'](
-   //    message => websocket.send(JSON.stringify(message))
-   // );
-
-   // websocket.addEventListener('message', ev => {
-   //    handleMessage(JSON.parse(ev.data));
-   // });
 }
 
 

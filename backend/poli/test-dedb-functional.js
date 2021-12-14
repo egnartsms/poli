@@ -1,25 +1,6 @@
 common
    check
    isLike
-dedb-query
-   query
-dedb-functional
-   functionalRelation
-dedb-base
-   baseRelation
-   addFact
-   removeFact
-   changeFact
-dedb-derived
-   derivedRelation
-dedb-projection
-dedb-goal
-   Shrunk
-dedb-rec-key
-   recKey
-   recVal
-dedb-common
-   RecordType
 -----
 setup ::= function () {
    let country_cities = $.baseRelation({

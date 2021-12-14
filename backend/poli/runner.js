@@ -8,8 +8,6 @@ common
    indexOf
    joindot
    map
-   patchNullableObj
-   patchObj
 code-modify
    globalCodeModifications
 exc
@@ -20,9 +18,33 @@ trie
 vector
    * as: vec
 world
+dedb-common
+   RecordType
+dedb-rec-key
+   recKey
+   recVal
+dedb-query
 -----
 delmark ::= Object.create(null)
+RentryFromModuleNamed ::= null
 main ::= function (sendMessage) {
+   $.RentryFromModuleNamed = $.derivedRelation({
+      name: 'entry_from_module_named',
+      recType: $.RecordType.tuple,
+      attrs: ['entry', 'entryName', 'moduleName'],
+      body: v => [
+         $.rel.entry.at({
+            [$.recKey]: v`entry`,
+            name: v`entryName`,
+            module: v`module`
+         }),
+         $.rel.module.at({
+            [$.recKey]: v`module`,
+            name: v`moduleName`
+         })
+      ]
+   });
+
    return msg => $.handleMessage(msg, sendMessage);
 }
 pendingCodeModifications ::= false
@@ -73,18 +95,18 @@ handleMessage ::= function (msg, sendMessage) {
 
    try {      
       let result = $.operationHandlers[msg['op']](msg['args']);
-      let codeModifications = $.globalCodeModifications();
+      // let codeModifications = $.globalCodeModifications();
 
-      if (codeModifications.length > 0) {
-         console.log("Code modifications:", codeModifications);
-         $.pendingCodeModifications = true;
-      }
+      // if (codeModifications.length > 0) {
+      //    console.log("Code modifications:", codeModifications);
+      //    $.pendingCodeModifications = true;
+      // }
 
       sendMessage({
          type: 'api-call-result',
          success: true,
-         result: result === undefined ? null : result,
-         modifyCode: codeModifications
+         result: result ?? null,
+         modifyCode: [] // codeModifications
       });
 
       console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
@@ -161,10 +183,12 @@ operationHandlers ::= ({
    },
    
    getDefinition: function ({module: moduleName, name}) {
-      let module = $.moduleByName(moduleName);
-      let entry = $.entryByName(module, name);
+      let [{entry}] = $.query($.RentryFromModuleNamed, {
+         moduleName: moduleName,
+         entryName: name,
+      });
 
-      return entry.v.strDef;
+      return entry.strDef;
    },
    
    getCompletions: function ({module: moduleName, star, prefix}) {

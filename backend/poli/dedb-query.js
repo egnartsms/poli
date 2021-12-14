@@ -1,46 +1,102 @@
 common
+   assert
    check
+   isA
 dedb-projection
    projectionFor
    releaseProjection
    updateProjection
+dedb-relation
+   toRelation
+dedb-base
+   getUniqueRecord
+   getRecords
+   clsBaseRelation
+dedb-derived
+   makeProjection as: makeDerivedProjection
+   clsDerivedRelation
 -----
 time ::= 0
-projectionCache ::= new Map
-recencyList ::= null
+derivedProjectionCache ::= new Map
+recencyHead ::= null
 dumpRecencyList ::= function () {
    console.log('Q time:', $.time);
-   console.log('Q rec list:', $.recencyList);
-   console.log('Q proj cache:', $.projectionCache);
+   console.log('Q rec list:', $.recencyHead);
+   console.log('Q proj cache:', $.derivedProjectionCache);
 }
-queryScalarKey ::= function (rel, boundAttrs) {
-   let records = $.query(rel, boundAttrs);
+valueAt ::= function (relInfo, recKey) {
+   let rel = $.toRelation(relInfo);
 
-   if (records.size === 1) {
-      let [[rkey, rval]] = records;
+   $.check(rel.isKeyed);
 
-      return rkey;
+   if (rel.class === $.clsBaseRelation) {
+      return rel.records.valueAt(recKey);
    }
-   else if (records.size === 0) {
-      return undefined;
+
+   if (rel.class === $.clsDerivedRelation) {
+      let fullProj = $.lookupDerivedProjection(rel, {});
+
+      return fullProj.records.valueAt(recKey);
    }
-   else {
-      throw new Error(`Not a scalar`);
-   }
+
+   throw new Error;
 }
-query ::= function (rel, boundAttrs) {
-   let proj = $.projectionFor(rel, boundAttrs);
-   let rec = $.projectionCache.get(proj);
+queryOne ::= function (relInfo, bindings) {
+   let rel = $.toRelation(relInfo);
+      
+   if (rel.class === $.clsBaseRelation) {
+      return $.getUniqueRecord(rel, bindings);
+   }
+
+   if (rel.class === $.clsDerivedRelation) {
+      let proj = $.lookupDerivedProjection(rel, bindings);
+      
+      $.check(proj.records.size <= 1);
+
+      let [rec] = proj.records;
+
+      return rec;
+   }
+   
+   throw new Error;
+}
+query ::= function (relInfo, bindings) {
+   let rel = $.toRelation(relInfo);
+
+   if (rel.class === $.clsBaseRelation) {
+      return $.getRecords(rel, bindings);
+   }
+
+   if (rel.class === $.clsDerivedRelation) {
+      let proj = $.lookupDerivedProjection(rel, bindings);
+
+      return proj.records;
+   }
+
+   throw new Error;
+}
+getDerivedProjection ::= function (relInfo, bindings) {
+   let rel = $.toRelation(relInfo);
+
+   $.check(rel.class === $.clsDerivedRelation);
+
+   return $.lookupDerivedProjection(rel, bindings);
+}
+lookupDerivedProjection ::= function (rel, bindings) {
+   $.assert(() => rel.class === $.clsDerivedRelation);
+
+   let proj = $.projectionFor(rel, bindings);
+   let rec = $.derivedProjectionCache.get(proj);
 
    if (rec === undefined) {
       proj.refCount += 1;
       rec = {
+         proj: proj,
+         lastUsed: 0,
          prev: null,
          next: null,
-         proj: proj,
-         lastUsed: 0
       };
-      $.projectionCache.set(proj, rec);
+      $.derivedProjectionCache.set(proj, rec);
    }
 
    $.time += 1;
@@ -48,10 +104,10 @@ query ::= function (rel, boundAttrs) {
 
    $.updateProjection(proj);
 
-   return proj.records;
+   return proj;
 }
 setAsNewHead ::= function (rec) {
-   if ($.recencyList !== null && $.recencyList !== rec) {
+   if ($.recencyHead !== null && $.recencyHead !== rec) {
       if (rec.prev !== null) {
          rec.prev.next = rec.next;
       }
@@ -59,18 +115,18 @@ setAsNewHead ::= function (rec) {
          rec.next.prev = rec.prev;
       }
       rec.prev = null;
-      rec.next = $.recencyList;
-      $.recencyList.prev = rec;
+      rec.next = $.recencyHead;
+      $.recencyHead.prev = rec;
    }
 
-   $.recencyList = rec;
-   $.recencyList.lastUsed = $.time;
+   $.recencyHead = rec;
+   $.recencyHead.lastUsed = $.time;
 }
 clearProjectionCache ::= function () {
-   for (let proj of $.projectionCache.keys()) {
+   for (let proj of $.derivedProjectionCache.keys()) {
       $.releaseProjection(proj);
    }
    
-   $.projectionCache.clear();
-   $.recencyList = null;
+   $.derivedProjectionCache.clear();
+   $.recencyHead = null;
 }

@@ -1,7 +1,13 @@
+dedb-relation
+   clearRelationCache
+dedb-query
+   clearProjectionCache
+test-dedb-base
+   * as: base
+test-dedb-derived
+   * as: derived
 test-dedb-keyed
    * as: keyed
-test-dedb-nonkeyed
-   * as: nonkeyed
 test-dedb-disjunction
    * as: disjunction
 test-dedb-functional
@@ -10,24 +16,28 @@ test-dedb-extver
    * as: extver
 -----
 runTests ::= function () {
-   console.time('test-dedb');
-   $.runTestsIn($.nonkeyed);
-   $.runTestsIn($.keyed);
-   $.runTestsIn($.disjunction);
-   $.runTestsIn($.functional);
-   $.runTestsIn($.extver);
-   console.timeEnd('test-dedb')
+   console.time('tests');
+   $.runTestsIn('base', $.base);
+   $.runTestsIn('derived', $.derived);
+   $.runTestsIn('keyed', $.keyed);
+   $.runTestsIn('disjunction', $.disjunction);
+   // $.runTestsIn($.functional);
+   // $.runTestsIn($.extver);
+   console.log('--- DONE')
+   console.timeEnd('tests')
 }
-runTestsIn ::= function (ns) {
-   let setup = ns['setup'];
+runTestsIn ::= function (moduleName, ns) {
+   console.log('---', moduleName);
 
    for (let [k, v] of Object.entries(ns)) {
       if (k.startsWith('test_')) {
+         $.clearRelationCache();
+         $.clearProjectionCache();
+
          let t0 = performance.now();
          
          try {
-            let rels = setup ? setup() : undefined;
-            v(rels);
+            v();
          }
          catch (e) {
             let t1 = performance.now();
