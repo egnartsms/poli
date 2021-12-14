@@ -94,4 +94,6 @@ test_grab_fact_identity ::= function () {
    let jay = $.makeEntity($.dev, {name: 'Jay', company: 'SoftServe'});
 
    $.checkLike($.valueAt($.devCompany, joe), {name: 'DataArt', salary: 3300});
+   $.checkLike($.valueAt($.devCompany, jim), {name: 'GlobalLogic', salary: 2800});
+   $.checkLike($.valueAt($.devCompany, jay), {name: 'SoftServe', salary: 2500});
 }
