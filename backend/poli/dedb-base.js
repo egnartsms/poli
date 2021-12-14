@@ -24,7 +24,6 @@ dedb-rec-key
 dedb-version
    refCurrentExtState
    releaseExtVersion
-   isVersionFresh
    versionAddKey
    versionRemove
    unchainVersion
@@ -34,6 +33,7 @@ dedb-index
    uniqueIndexFullHit
    indexFitness
    indexFromSpec
+   Fitness
 dedb-index-instance
    rebuildIndex
    indexAdd
@@ -49,6 +49,8 @@ dedb-common
    RecordType
    recTypeProto
    makeRecords
+dedb-relation
+   toRelation
 -----
 clsBaseRelation ::= ({
    name: 'relation.base',
@@ -133,7 +135,14 @@ findUniqueIdxInst ::= function (rel, boundAttrs) {
    return rel.indices.find(({index}) => $.uniqueIndexFullHit(index, boundAttrs));
 }
 findSuitableIdxInst ::= function (rel, boundAttrs) {
-   return $.maximumBy(rel.indices, ({index}) => $.indexFitness(index, boundAttrs));
+   let inst = $.maximumBy(rel.indices, ({index}) => $.indexFitness(index, boundAttrs));
+
+   if (inst === undefined ||
+         $.indexFitness(inst.index, boundAttrs) === $.Fitness.minimum) {
+      return undefined;
+   }
+
+   return inst;
 }
 computeFilterBy ::= function (index, bindings) {
    let filterBy = {...bindings};
@@ -200,10 +209,10 @@ clsFullProjection ::= ({
    'projection.base': true,
    'projection': true
 })
-makeProjection ::= function (rel, rkey, bindings) {
+makeProjection ::= function (rel, bindings) {
    let proj = {
       class: null,  // initialized below
-      relation: rel,
+      rel,
       isKeyed: rel.isKeyed,
       refCount: 0,
       regPoint: null,   // initialized by the calling code
@@ -211,7 +220,9 @@ makeProjection ::= function (rel, rkey, bindings) {
       validRevDeps: new Set,
    };
 
-   if (rkey !== undefined) {
+   if (bindings[$.recKey] !== undefined) {
+      let rkey = bindings[$.recKey];
+
       proj.class = $.clsRecKeyBoundProjection;
       proj.rkey = rkey;
       proj.rval = undefined;
@@ -229,7 +240,7 @@ makeProjection ::= function (rel, rkey, bindings) {
                configurable: true,
                enumerable: true,
                get() {
-                  return this.relation.myVer;
+                  return this.rel.myVer;
                }
             })
          }
@@ -259,17 +270,19 @@ makeProjection ::= function (rel, rkey, bindings) {
       }
    }
 
+   $.updateProjection(proj);
+
    return proj;
 }
 freeProjection ::= function (proj) {
-   proj.relation.validRevDeps.delete(proj);
+   proj.rel.validRevDeps.delete(proj);
 }
 markAsValid ::= function (proj) {
    proj.isValid = true;
-   proj.relation.validRevDeps.add(proj);
+   proj.rel.validRevDeps.add(proj);
 }
 updateProjection ::= function (proj) {
-   let {relation: rel, class: cls} = proj;
+   let {rel, class: cls} = proj;
 
    if (cls === $.clsFullProjection) {
       ;
@@ -296,31 +309,29 @@ updateProjection ::= function (proj) {
    else if (cls === $.clsHitProjection || cls === $.clsNoHitProjection) {
       $.assert(() => (proj.depVer === null) === (proj.myVer === null));
 
-      if (proj.depVer === null) {
-         return;
-      }
+      if (proj.depVer !== null) {
+         $.unchainVersion(proj.depVer);
 
-      $.unchainVersion(proj.depVer);
+         for (let rec of proj.depVer.removed) {
+            let rval = proj.isKeyed ? rec[1] : rec;
 
-      for (let rec of proj.depVer.removed) {
-         let rval = proj.isKeyed ? rec[1] : rec;
-
-         if ($.suitsFilterBy(rval, proj.filterBy)) {
-            $.versionRemove(proj.myVer, rec);
+            if ($.suitsFilterBy(rval, proj.filterBy)) {
+               $.versionRemove(proj.myVer, rec);
+            }
          }
-      }
 
-      for (let rkey of proj.depVer.added) {
-         let rval = rel.records.valueAtExisting(rkey);
+         for (let rkey of proj.depVer.added) {
+            let rval = rel.records.valueAtExisting(rkey);
 
-         if ($.suitsFilterBy(rval, proj.filterBy)) {
-            $.versionAddKey(proj.myVer, rkey);
+            if ($.suitsFilterBy(rval, proj.filterBy)) {
+               $.versionAddKey(proj.myVer, rkey);
+            }
          }
+         
+         let newDepVer = $.refCurrentExtState(proj.rel);
+         $.releaseExtVersion(proj.depVer);
+         proj.depVer = newDepVer;
       }
-      
-      let newDepVer = $.refCurrentExtState(proj.relation);
-      $.releaseExtVersion(proj.depVer);
-      proj.depVer = newDepVer;
    }
    else {
       throw new Error;
@@ -358,13 +369,15 @@ removeRecByKeyFromRel ::= function (rel, rkey) {
 
    return removed;
 }
-addFact ::= function (rel, rkey, rval=rkey) {
+addFact ::= function (relInfo, rkey, rval=rkey) {
+   let rel = $.toRelation(relInfo);
+
    $.check(rel.isKeyed || rkey === rval, `Keyed/non-keyed misuse`);
    $.check(!rel.records.hasKey(rkey), `Duplicate record`);
 
    let rec = rel.isKeyed ? [rkey, rval] : rkey;
 
-   rel.addRecord(rec);
+   rel.records.addRecord(rec);
 
    if (rel.myVer !== null) {
       $.versionAddKey(rel.myVer, rkey);
@@ -380,13 +393,18 @@ addFact ::= function (rel, rkey, rval=rkey) {
 
    $.invalidate(rel);
 }
-removeFact ::= function (rel, rkey) {
+removeFact ::= function (relInfo, rkey) {
+   let rel = $.toRelation(relInfo);
    let rec = rel.records.recordAt(rkey);
 
    if (rec === undefined) {
       throw new Error(`Missing record`);
    }
 
+   $.doRemove(rel, rec);
+   $.invalidate(rel);
+}
+doRemove ::= function (rel, rec) {
    rel.records.removeRecord(rec);
 
    if (rel.myVer !== null) {
@@ -398,12 +416,25 @@ removeFact ::= function (rel, rkey) {
    }
 
    if (rel.entityProto !== false) {
+      let rkey = rel.isKeyed ? rec[0] : rec;
+
       rkey[$.symEntityTuple] = null;
+   }
+}
+removeIf ::= function (relInfo, pred) {
+   let rel = $.toRelation(relInfo);
+
+   let toRemove = Array.from($.filter(rel.records, pred));
+
+   for (let rec of toRemove) {
+      $.doRemove(rel, rec);
    }
 
    $.invalidate(rel);
 }
-changeFact ::= function (rel, rkey, rvalNew) {
+changeFact ::= function (relInfo, rkey, rvalNew) {
+   let rel = $.toRelation(relInfo);
+
    $.check(rel.isKeyed, `Cannot change fact in a non-keyed relation`);
    
    $.removeFact(rel, rkey);
@@ -432,7 +463,8 @@ makeEntityPrototype ::= function (rel) {
 }
 symEntityTuple ::= Symbol.for('poli.entityTuple')
 symEntityRelation ::= Symbol.for('poli.entityRelation')
-makeEntity ::= function (rel, tuple) {
+makeEntity ::= function (relInfo, tuple) {
+   let rel = $.toRelation(relInfo);
    let entity = Object.create(rel.entityProto);
 
    entity[$.symEntityTuple] = tuple;
@@ -451,6 +483,8 @@ patchEntity ::= function (entity, fn, ...args) {
    $.setEntity(entity, newTuple);
 }
 revertTo ::= function (extVer) {
+   throw new Error;
+
    let baserel = extVer.owner;
 
    if (baserel.isKeyed) {

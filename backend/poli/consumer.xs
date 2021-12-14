@@ -271,8 +271,8 @@ define | narrow-config config0 bind-list
                else: | config0.plain-attrs.filter
                           fun :(a)
                              ! | bind-list.includes a
-         lvars:
-            config0.lvars.filter | fun :(lvar)
+         vars:
+            config0.vars.filter | fun :(lvar)
                                       ! (bind-list.includes lvar)
          applied-indices:
             \ applied-indices

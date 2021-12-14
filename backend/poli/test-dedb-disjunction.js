@@ -6,9 +6,9 @@ dedb-goal
    join
    or
 dedb-relation
-   getRelation
+   toRelation
 dedb-query
-   queryRecords
+   query
 -----
 country ::= ({
    name: 'country',
@@ -65,7 +65,7 @@ relevantCountryPopulation ::= ({
 })
 test_basic ::= function () {
    $.checkLike(
-      new Set($.queryRecords($.relevantCountryPopulation, {})),
+      new Set($.query($.relevantCountryPopulation, {})),
       [
          {country: 'canada', population: 35},
          {country: 'france', population: 67},

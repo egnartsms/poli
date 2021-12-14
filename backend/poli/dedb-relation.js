@@ -13,7 +13,11 @@ clsRelation ::= ({
    'relation': true
 })
 info2rel ::= new WeakMap
-getRelation ::= function (relInfo) {
+toRelation ::= function (relInfo) {
+	if (typeof relInfo.class === 'object' && relInfo.class['relation'] === true) {
+		return relInfo;
+	}
+
 	let relation = $.info2rel.get(relInfo);
 
 	if (relation === undefined) {

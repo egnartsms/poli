@@ -52,119 +52,80 @@ dedb-base
 dedb-projection
    projectionFor
 -----
-visualizeIncrementalUpdateScheme ::= function (rel) {
-   throw new Error;
+visualizeIncrementalUpdateScheme ::= function* (rel) {
+   // function* gen(jnode) {
+   //    yield `D(${dconj.rel.name})`;
+   //    for (let link of jpath) {
+   //       yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
+   //       if (link.toCheck.length > 0) {
+   //          yield ` checking (${link.toCheck.join(', ')})`;
+   //       }
+   //       if (link.toExtract.length > 0) {
+   //          yield ` getting (${link.toExtract.join(', ')})`;
+   //       }
+   //    }
+   //    yield '\n';
+   // }
 
-   function* gen(dconj, jpath) {
-      yield `D(${dconj.rel.name})`;
-      for (let link of jpath) {
-         yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
-         if (link.checkAttrs.length > 0) {
-            yield ` checking (${link.checkAttrs.join(', ')})`;
-         }
-         if (link.extractAttrs.length > 0) {
-            yield ` getting (${link.extractAttrs.join(', ')})`;
-         }
-      }
-      yield '\n';
-   }
+   // for (let num = 0; num < rel.numProjs; num += 1) {
+   //    yield `D(${rel.subInfos[num].rel.name}):`;
 
-   for (let [num, jpath] of $.enumerate(rel.config0.jpaths)) {
-      let dconj = rel.config0.conjs[num];
+   //    yield* (function* rec(jnode) {
+   //       let subInfo = rel.subInfos[jnode.projNum];
 
-      console.log(Array.from(gen(dconj, jpath)).join(''));
-   }
+   //       if (jnode.class === $.clsJoinAll) {
+   //          yield ` <-> ${subInfo.rel.name}(*)`;
+   //       }
+   //       else if (jnode.class === $.clsJoinIndex) {
+   //          let {indexNum, indexKeys} = jnode;
+   //          let index = idxReg[indexNum];
+   //          yield ` <-> ${subInfo.rel.name}(${})`;
+   //       }
+   //    })();
+
+   //    for (let jnode of config.plans[num].)
+   //    let dconj = rel.config0.conjs[num];
+
+   //    console.log(Array.from(gen(dconj, jpath)).join(''));
+   // }
 }
-computeIncrementalUpdatePlan ::= function (rootGoal, logicalAttrs) {
+computeIncrementalUpdatePlan ::= function (rootGoal, outVars) {
    let {goalPaths, pathGoals} = $.computePaths(rootGoal);
    let lvar2ff = $.computeFulfillments(rootGoal);
-   let indexRegistry = $.makeIndexRegistry();
+   let idxReg = [];
 
    return {
-      plan: Array.from($.relGoalsBeneath(rootGoal), goal => ({
-         rkeyLvar: goal.rkeyLvar,
+      plans: Array.from($.relGoalsBeneath(rootGoal), goal => ({
+         rkeyExtract: goal.looseBindings[$.recKey] ?? null,
+         rvalExtract: goal.looseBindings[$.recVal] ?? null,
          // [[attr, lvar]] to start from
          start: Object.entries(goal.looseBindings),
          joinTree: $.computeJoinTreeFrom(goal, {
-            indexRegistry,
+            idxReg,
             pathGoals,
             goalPaths,
             lvar2ff,
          })
       })),
-      appliedIndices: indexRegistry,
-      subsProducer: $.makeSubsProducer(rootGoal, logicalAttrs, goalPaths),
+      idxReg,
+      subInfos: $.makeSubInfos(rootGoal, outVars, goalPaths),
       numPaths: pathGoals.size
    }
 }
-makeSubsProducer ::= function (rootGoal, logicalAttrs, goalPaths) {
-   let info = Array.from($.relGoalsBeneath(rootGoal), goal => {
-      return {
-         rel: goal.rel,
-         depNum: goal.depNum,
-         firms: goal.firmBindings,
-         loose: Array.from(
-            $.mapfilter(
-               Object.entries(goal.looseBindings), ([attr, lvar]) => {
-                  if (logicalAttrs.includes(lvar)) {
-                     return [lvar, attr];
-                  }
-               }
-            )
-         ),
-         rkeyBound: goal.rkeyBound,
-         rkeyAttr: (
-            goal.rkeyLvar !== null && logicalAttrs.include(goal.rkeyLvar) ?
-               goal.rkeyLvar :
-               null
-         ),
-         coveredPaths: goalPaths.get(goal)
-      }
-   });
-   
-   return function* (rkey, bindings) {
-      if (rkey !== undefined) {
-         bindings = {...bindings, [$.recKey]: rkey};
-      }
-
-      for (let [
-                  i, 
-                  {
-                     rel,
-                     depNum,
-                     firms,
-                     loose,
-                     rkeyBound,
-                     rkeyAttr,
-                     coveredPaths
-                  }
-               ] of $.enumerate(info)) {
-         let sub = {...firms};
-
-         for (let [attr, subAttr] of loose) {
-            if ($.ownPropertyValue(bindings, attr) !== undefined) {
-               sub[subAttr] = bindings[attr];
-            }
-         }
-
-         let proj = $.projectionFor(
-            rel,
-            rkeyBound !== undefined ? rkeyBound :
-               rkeyAttr !== null ? bindings[rkeyAttr] : undefined,
-            sub
-         );
-
-         proj.refCount += 1;
-
-         yield {
-            num: i,
-            proj,
-            ver: null,
-            depNum,
-            coveredPaths
-         };
-      }
-   };
+makeSubInfos ::= function (rootGoal, outVars, goalPaths) {
+   return Array.from($.relGoalsBeneath(rootGoal), goal => ({
+      rel: goal.rel,
+      projNum: goal.projNum,
+      depNum: goal.depNum,
+      coveredPaths: goalPaths.get(goal),
+      firmBindings: goal.firmBindings,
+      looseBindings: Object.fromEntries(
+         $.filter(
+            $.ownEntries(goal.looseBindings),
+            ([attr, lvar]) => outVars.includes(lvar)
+         )
+      )
+   }))
 }
 clsJoin ::= ({
    name: 'join',
@@ -224,20 +185,20 @@ computeFulfillments ::= function (rootGoal) {
 
    (function walk(goal) {
       if (goal.class === $.clsRelGoal) {
-         for (let [ff, lvars] of $.relGoalFulfillments(goal)) {
+         for (let [ff, vars] of $.relGoalFulfillments(goal)) {
             ff = {
                join: ff.join,
                fitness: ff.fitness,
-               count: lvars.length,
+               count: vars.length,
                goal: goal,
                props: ff.props,
             };
 
-            if (lvars.length === 0) {
+            if (vars.length === 0) {
                $.mmapAdd(lvar2ff, true, ff);
             }
             else {
-               for (let lvar of lvars) {
+               for (let lvar of vars) {
                   $.mmapAdd(lvar2ff, lvar, ff);
                }
             }
@@ -248,7 +209,7 @@ computeFulfillments ::= function (rootGoal) {
 
          let {rel} = goal;
          let plusMinus = new Array(rel.attrs.length);
-         let lvars = new Set;
+         let vars = new Set;
 
          (function rec(i) {
             if (i === rel.attrs.length) {
@@ -258,17 +219,17 @@ computeFulfillments ::= function (rootGoal) {
                   let {shrunk} = rel.instantiations[icode];
                   let ff = {
                      joinType: $.JoinType.func,
-                     count: lvars.size,
+                     count: vars.size,
                      shrunk,
                      goal,
                      icode,
                   };
 
-                  if (lvars.size === 0) {
+                  if (vars.size === 0) {
                      ffs0.add(ff);
                   }
                   else {
-                     for (let lvar of lvars) {
+                     for (let lvar of vars) {
                         $.mmapAdd(lvar2ff, lvar, ff);
                      }
                   }
@@ -290,9 +251,9 @@ computeFulfillments ::= function (rootGoal) {
                rec(i + 1);
 
                plusMinus[i] = '+';
-               lvars.add(lvar);
+               vars.add(lvar);
                rec(i + 1);
-               lvars.delete(lvar);
+               vars.delete(lvar);
             }
          })(0);
       }
@@ -308,31 +269,32 @@ computeFulfillments ::= function (rootGoal) {
 relGoalFulfillments ::= function* (goal) {
    $.assert(() => goal.class === $.clsRelGoal);
 
-   if (goal.rkeyBound !== undefined) {
+   let {rel, firmBindings, looseBindings} = goal;
+
+   if ($.hasOwnProperty(firmBindings, $.recKey)) {
       yield [
          {
             join: $.clsJoinAll,
-            fitness: $.Fitness.all,
+            fitness: $.Fitness.uniqueHit,
          },
          []
       ];
       return;
    }
 
-   if (goal.rkeyLvar !== null) {
+   if ($.hasOwnProperty(looseBindings, $.recKey)) {
       yield [
          {
             join: $.clsJoinRecKey,
             fitness: $.Fitness.uniqueHit,
             props: {
-               rkeyLvar: goal.rkeyLvar
+               rkeyVar: looseBindings[$.recKey]
             }
          },
-         [goal.rkeyLvar]
+         [looseBindings[$.recKey]]
       ];
    }
 
-   let {rel, firmBindings, looseBindings} = goal;
    let indices = rel.class === $.clsBaseRelation ?
       Array.from(rel.indices, ({index}) => index) :
       rel.indices;
@@ -341,7 +303,7 @@ relGoalFulfillments ::= function* (goal) {
       yield [
          {
             join: $.clsJoinAll,
-            fitness: $.Fitness.all,
+            fitness: $.Fitness.hit,
          },
          []
       ];
@@ -355,30 +317,30 @@ relGoalFulfillments ::= function* (goal) {
 
       $.assert(() => index.length > 0);
 
-      let lvars = [];
+      let vars = [];
 
       for (let attr of index) {
-         if ($.ownPropertyValue(looseBindings, attr) === undefined) {
+         if (!$.hasOwnProperty(looseBindings, attr)) {
             break;
          }
 
-         lvars.push(looseBindings[attr]);
-         
+         vars.push(looseBindings[attr]);
+
          yield [
             {
                join: $.clsJoinIndex,
-               fitness: $.computeFitness(lvars.length, index),
+               fitness: $.computeFitness(vars.length, index),
                props: {
                   index,
-                  keys: lvars,
+                  keys: Array.from(vars),
                }
             },
-            lvars
+            vars
          ]
       }
    }
 }
-computeJoinTreeFrom ::= function (Dgoal, {indexRegistry, pathGoals, goalPaths, lvar2ff}) {
+computeJoinTreeFrom ::= function (Dgoal, {idxReg, pathGoals, goalPaths, lvar2ff}) {
    let boundLvars = new Set;
    let bindStack = [];
    
@@ -434,19 +396,19 @@ computeJoinTreeFrom ::= function (Dgoal, {indexRegistry, pathGoals, goalPaths, l
          return {
             class: cls,
             projNum: goal.projNum,
-            indexNum: $.registerGoalIndex(indexRegistry, goal, index),
+            indexNum: $.registerGoalIndex(idxReg, goal, index),
             indexKeys: keys,
             ...propsForCheckExtract(goal, index),
             next: null
          }
       }
       else if (cls === $.clsJoinRecKey) {
-         let {rkeyLvar} = ff.props;
+         let {rkeyVar} = ff.props;
 
          return {
             class: cls,
             projNum: goal.projNum,
-            rkeyLvar: rkeyLvar,
+            rkeyVar: rkeyVar,
             ...propsForCheckExtract(goal),
             next: null
          }
@@ -499,26 +461,47 @@ computeJoinTreeFrom ::= function (Dgoal, {indexRegistry, pathGoals, goalPaths, l
    }
 
    function propsForCheckExtract(goal, noCheck=[]) {
-      return {
-         checkAttrs:
-            Array.from(
-               $.mapfilter(Object.entries(goal.looseBindings), ([attr, lvar]) => {
-                  if (boundLvars.has(lvar) && !noCheck.includes(attr)) {
-                     return [attr, lvar];
-                  }
-               })
-            ),
-         extractAttrs:
-            Array.from(
-               $.mapfilter(Object.entries(goal.looseBindings), ([attr, lvar]) => {
-                  if (!boundLvars.has(lvar)) {
-                     return [attr, lvar];
-                  }
-               })
-            ),
-         extractRkeyInto: goal.rkeyLvar !== null && !boundLvars.has(goal.rkeyLvar) ?
-            goal.rkeyLvar : null
+      let {looseBindings} = goal;
+
+      let res = {
+         toCheck:
+            Array.from($.filter(
+               Object.entries(looseBindings),
+               ([attr, lvar]) => boundLvars.has(lvar) && !noCheck.includes(attr)
+            )),
+         toExtract:
+            Array.from($.filter(
+               Object.entries(looseBindings),
+               ([attr, lvar]) => !boundLvars.has(lvar)
+            )),
+         rkeyExtract: null,
+         rvalExtract: null,
+         rvalCheck: null,
+      };
+
+      if ($.hasOwnProperty(looseBindings, $.recKey)) {
+         let lvar = looseBindings[$.recKey];
+         
+         if (boundLvars.has(lvar)) {
+            // Nothing to do here as bound recKey should've been handled as rec-key bound
+         }
+         else {
+            res.rkeyExtract = lvar;
+         }
       }
+      
+      if ($.hasOwnProperty(looseBindings, $.recVal)) {
+         let lvar = looseBindings[$.recVal];
+
+         if (boundLvars.has(lvar)) {
+            res.rvalCheck = lvar;
+         }
+         else {
+            res.rvalExtract = lvar;
+         }
+      }
+
+      return res;
    }
 
    function lyingOnPaths(paths1, goals, fulfillments) {
@@ -702,9 +685,6 @@ isInstantiationCodeMoreSpecialized ::= function (icodeS, icodeG) {
 
    return $.all($.zip(icodeS, icodeG), ([s, g]) => s === '+' || g === '-');
 }
-makeIndexRegistry ::= function () {
-   return [];
-}
 registerGoalIndex ::= function (registry, goal, index) {
    return $.registerProjNumIndex(registry, goal.projNum, index);
 }
@@ -720,168 +700,202 @@ registerProjNumIndex ::= function (registry, projNum, index) {
    registry.push({projNum, index});
    return registry.length - 1;
 }
-narrowConfig ::= function (config0, bindList) {
-   throw new Error;
-   let {plan, appliedIndices} = $.narrowJoinPlan(
-      config0.plan, config0.appliedIndices, bindList
-   );
-
-   return {
-      attrs: config0.attrs.filter(a => !bindList.includes(a)),
-      plainAttrs: config0.plainAttrs === null ? null :
-         config0.plainAttrs.filter(a => !bindList.includes(a)),
-      lvars: config0.lvars.filter(lvar => !bindList.includes(lvar)),
-      appliedIndices: appliedIndices,
-      plan: plan
-   }
-}
-narrowJoinPlan ::= function (plan, appliedIndices, bindList) {
-   throw new Error;
-   let indexRegistry = $.makeIndexRegistry();
-
-   function narrow(jnode) {
-      if (jnode === null) {
-         return null;
-      }
-
-      if (jnode.type === $.JoinType.all) {
-         return {
-            type: $.JoinType.all,
-            projNum: jnode.projNum,
-            checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-            extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-            next: narrow(jnode.next)
-         }
-      }
-      
-      if (jnode.type === $.JoinType.index) {
-         let {indexLvars, indexNum} = jnode;
-         let narrowedIndex = $.copyIndex(appliedIndices[indexNum].index);
-
-         for (let i = indexLvars.length - 1; i >= 0; i -= 1) {
-            if (bindList.includes(indexLvars[i])) {
-               narrowedIndex.splice(i, 1);
-            }
+narrowConfig ::= function (config0, subInfos, boundAttrs) {
+   function narrowPlan(plan, idxReg, idxRegNw) {
+      function narrow(jnode) {
+         if (jnode === null) {
+            return null;
          }
 
-         if ($.isIndexCovered(narrowedIndex)) {
+         if (jnode.class === $.clsJoinAll) {
             return {
-               type: $.JoinType.all,
+               class: $.clsJoinAll,
                projNum: jnode.projNum,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
+               ...narrowCheckExtract(jnode),
                next: narrow(jnode.next)
             }
          }
-         else {
-            return {
-               type: $.JoinType.index,
-               projNum: jnode.projNum,
-               indexNum: $.registerProjNumIndex(
-                  indexRegistry, jnode.projNum, narrowedIndex
-               ),
-               indexLvars: jnode.indexLvars.filter(lvar => !bindList.includes(lvar)),
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-      }
-      
-      if (jnode.type === $.JoinType.pk) {
-         if (bindList.includes(jnode.pklvar)) {
-            return {
-               type: $.JoinType.all,
-               projNum: jnode.projNum,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-         else {
-            return {
-               type: $.JoinType.pk,
-               projNum: jnode.projNum,
-               pklvar: jnode.pklvar,
-               checkAttrs: $.narrowAttrList(jnode.checkAttrs, bindList),
-               extractAttrs: $.narrowAttrList(jnode.extractAttrs, bindList),
-               next: narrow(jnode.next)
-            }
-         }
-      }
+         
+         if (jnode.class === $.clsJoinIndex) {
+            let {projNum, indexNum, indexKeys, rkeyExtract} = jnode;
 
-      if (jnode.type === $.JoinType.func) {
-         let {args} = jnode;
-         let n_args = [], idxAdditionallyBound = [];
+            let {looseBindings} = subInfos[projNum];
 
-         for (let [i, arg] of $.enumerate(args)) {
-            if ($.hasOwnProperty(arg, 'getValue')) {
-               n_args.push(arg);
-               continue;
-            }
+            $.assert(() => idxReg[indexNum].projNum === projNum);
 
-            let {lvar, isBound} = arg;
-
-            if (!bindList.includes(lvar)) {
-               n_args.push(arg);
-               continue;
-            }
-
-            n_args.push({
-               getValue(boundAttrs) {
-                  return boundAttrs[lvar];
-               }
-            });
-
-            if (!isBound) {
-               idxAdditionallyBound.push(i);
-            }
-         }
-
-         let n_icode = jnode.icode;
-
-         if (idxAdditionallyBound.length > 0) {
-            let arr = Array.from(jnode.icode);
-            for (let idx of idxAdditionallyBound) {
-               arr[idx] = '+';
-            }
-
-            n_icode = arr.join('');
-
-            $.check($.hasOwnProperty(jnode.rel.instantiations, n_icode), () =>
-               `Narrowing impossible: instantiation '${n_icode}' in '${jnode.rel.name}'` +
-               ` is unavailable`
+            let indexKeysNw = indexKeys.filter(lvar => !boundAttrs.includes(lvar));
+            let index = idxReg[indexNum].index;
+            let indexNw = index.filter(
+               attr => !($.hasOwnProperty(looseBindings, attr) &&
+                           boundAttrs.includes(looseBindings[attr]))
             );
+
+            indexNw.isUnique = index.isUnique;
+
+            if (rkeyExtract !== null && boundAttrs.includes(rkeyExtract)) {
+               // jnode becomes 'join all' because of rec key binding. The narrowed index
+               // becomes a part of 'toCheck' list
+               let {toCheck, ...rest} = narrowCheckExtract(jnode);
+
+               for (let pair of $.zip(indexNw, indexKeysNw)) {
+                  toCheck.push(pair);
+               }
+
+               return {
+                  class: $.clsJoinAll,
+                  projNum: projNum,
+                  toCheck,
+                  ...rest,
+                  next: narrow(jnode.next)
+               }
+            }
+            
+            if (indexNw.length === 0) {
+               return {
+                  class: $.clsJoinAll,
+                  projNum: jnode.projNum,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
+            
+            return {
+               class: $.clsJoinIndex,
+               projNum: jnode.projNum,
+               indexNum: $.registerProjNumIndex(idxRegNw, jnode.projNum, indexNw),
+               indexKeys: indexKeysNw,
+               ...narrowCheckExtract(jnode),
+               next: narrow(jnode.next)
+            }
+         }
+         
+         if (jnode.class === $.clsJoinRecKey) {
+            let {rkeyVar} = jnode;
+
+            if (boundAttrs.includes(rkeyVar)) {
+               return {
+                  class: $.clsJoinAll,
+                  projNum: jnode.projNum,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
+            else {
+               return {
+                  class: $.clsJoinRecKey,
+                  projNum: jnode.projNum,
+                  rkeyVar: jnode.rkeyVar,
+                  ...narrowCheckExtract(jnode),
+                  next: narrow(jnode.next)
+               }
+            }
          }
 
-         return {
-            type: $.JoinType.func,
-            args: n_args,
-            icode: n_icode,
-            run: jnode.rel.instantiations[n_icode].run,
-            rel: jnode.rel,
-            next: narrow(jnode.next)
+         if (jnode.class === $.clsJoinFunc) {
+            throw new Error;
+
+            let {args} = jnode;
+            let n_args = [], idxAdditionallyBound = [];
+
+            for (let [i, arg] of $.enumerate(args)) {
+               if ($.hasOwnProperty(arg, 'getValue')) {
+                  n_args.push(arg);
+                  continue;
+               }
+
+               let {lvar, isBound} = arg;
+
+               if (!bindList.includes(lvar)) {
+                  n_args.push(arg);
+                  continue;
+               }
+
+               n_args.push({
+                  getValue(boundAttrs) {
+                     return boundAttrs[lvar];
+                  }
+               });
+
+               if (!isBound) {
+                  idxAdditionallyBound.push(i);
+               }
+            }
+
+            let n_icode = jnode.icode;
+
+            if (idxAdditionallyBound.length > 0) {
+               let arr = Array.from(jnode.icode);
+               for (let idx of idxAdditionallyBound) {
+                  arr[idx] = '+';
+               }
+
+               n_icode = arr.join('');
+
+               $.check($.hasOwnProperty(jnode.rel.instantiations, n_icode), () =>
+                  `Narrowing impossible: instantiation '${n_icode}' in '${jnode.rel.name}'` +
+                  ` is unavailable`
+               );
+            }
+
+            return {
+               type: $.JoinType.func,
+               args: n_args,
+               icode: n_icode,
+               run: jnode.rel.instantiations[n_icode].run,
+               rel: jnode.rel,
+               next: narrow(jnode.next)
+            }
          }
+
+         if (jnode.class === $.clsJoinEither) {
+            return {
+               class: $.clsJoinEither,
+               branches: Array.from(jnode.branches, narrow)
+            }
+         }
+
+         throw new Error;
       }
 
-      if (jnode.type === $.JoinType.either) {
-         return {
-            type: $.JoinType.either,
-            branches: Array.from(jnode.branches, narrow)
-         }
-      }
+      let {rkeyVar, start, joinTree} = plan;
 
-      throw new Error;
+      return {
+         rkeyVar: rkeyVar === null ? null :
+            boundAttrs.includes(rkeyVar) ? null : rkeyVar,
+         start: narrowPairs(start, boundAttrs),
+         joinTree: narrow(joinTree)
+      }
    }
+
+   function narrowCheckExtract(jnode) {
+      let {toCheck, toExtract, rkeyExtract, rvalCheck, rvalExtract} = jnode;
+
+      function bindVar(lvar) {
+         return lvar !== null && !boundAttrs.includes(lvar) ? lvar : null;
+      }
+
+      return {
+         toCheck: narrowPairs(toCheck),
+         toExtract: narrowPairs(toExtract),
+         rkeyExtract: bindVar(rkeyExtract),
+         rvalExtract: bindVar(rvalExtract),
+         rvalCheck: bindVar(rvalCheck),
+      }
+   }
+
+   function narrowPairs(pairs) {
+      return pairs.filter(([attr, lvar]) => !boundAttrs.includes(lvar));
+   }
+
+   let {attrs, vars, outVars, idxReg, plans} = config0;
+   let isNotBound = (a) => !boundAttrs.includes(a);
+   let idxRegNw = [];
 
    return {
-      plan: Array.from(plan, ({startAttrs, joinTree}) => ({
-         startAttrs: $.narrowAttrList(startAttrs, bindList),
-         joinTree: narrow(joinTree)
-      })),
-      appliedIndices: indexRegistry
+      attrs: attrs.filter(isNotBound),
+      vars: vars.filter(isNotBound),
+      outVars: outVars.filter(isNotBound),
+      idxReg: idxRegNw,
+      plans: Array.from(plans, plan => narrowPlan(plan, idxReg, idxRegNw))
    }
-}
-narrowAttrList ::= function (attrList, bindList) {
-   return attrList.filter(([attr, lvar]) => !bindList.includes(lvar));
 }

@@ -1,5 +1,7 @@
 dedb-relation
    clearRelationCache
+dedb-query
+   clearProjectionCache
 test-dedb-base
    * as: base
 test-dedb-derived
@@ -15,19 +17,23 @@ test-dedb-extver
 -----
 runTests ::= function () {
    console.time('tests');
-   $.runTestsIn($.base);
-   $.runTestsIn($.derived);
-   // $.runTestsIn($.keyed);
-   $.runTestsIn($.disjunction);
+   $.runTestsIn('base', $.base);
+   $.runTestsIn('derived', $.derived);
+   $.runTestsIn('keyed', $.keyed);
+   $.runTestsIn('disjunction', $.disjunction);
    // $.runTestsIn($.functional);
    // $.runTestsIn($.extver);
+   console.log('--- DONE')
    console.timeEnd('tests')
 }
-runTestsIn ::= function (ns) {
-   $.clearRelationCache();
+runTestsIn ::= function (moduleName, ns) {
+   console.log('---', moduleName);
 
    for (let [k, v] of Object.entries(ns)) {
       if (k.startsWith('test_')) {
+         $.clearRelationCache();
+         $.clearProjectionCache();
+
          let t0 = performance.now();
          
          try {

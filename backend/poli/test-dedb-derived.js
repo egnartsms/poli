@@ -1,9 +1,19 @@
 common
 	checkLike
+	check
 dedb-query
-	queryRecords
+	getDerivedProjection
+	query
+	queryOne
 dedb-goal
 	join
+dedb-base
+	addFact
+	removeFact
+   removeIf
+dedb-projection
+	updateProjection
+	releaseProjection
 -----
 continent ::= ({
 	name: 'continent',
@@ -90,7 +100,7 @@ continentCity ::= ({
 })
 test_query_no_bindings ::= function () {
 	$.checkLike(
-		new Set($.queryRecords($.continentCity, {})),
+		new Set($.query($.continentCity, {})),
 		[
 			{continent: 'Europe', city: 'Paris'},
 			{continent: 'Europe', city: 'Marseille'},
@@ -122,121 +132,69 @@ test_query_no_bindings ::= function () {
 		]
 	);
 }
-legacy ::= function () {
-	return;
-	test_derived_partial_projection = function ({continent_city}) {
-	   $.check($.isLike(
-	      $.query(continent_city, {continent: 'America'}),
-	      [
-	         {city: 'Toronto'},
-	         {city: 'Montreal'},
-	         {city: 'Vancouver'}
-	      ]
-	   ));
-	}
+test_full_projection_updates ::= function () {
+   let proj = $.getDerivedProjection($.continentCity, {});
 
-	test_derived_full_projection_updates = function ({continent_city, continent, city}) {
-	   let proj = $.projectionFor(continent_city, {});
+   $.check(proj.records.size === 25);
 
-	   $.check(proj.records.size === 21);
+   let f_europe = $.queryOne($.continent, {name: 'Europe'});
+   $.removeFact($.continent, f_europe);
+   $.updateProjection(proj);
+   $.check(proj.records.size === 16);
+   
+   $.addFact($.city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
+   $.addFact($.continent, f_europe);
+   $.updateProjection(proj);
 
-	   let f_europe = $.find(continent.records, rec => rec.name === 'Europe');
-	   $.removeFact(continent, f_europe);
-	   $.updateProjection(proj);
-	   $.check(proj.records.size === 12);
-	   
-	   $.addFact(city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
-	   $.addFact(continent, f_europe);
-	   $.updateProjection(proj);
-	   $.check(proj.records.size === 22);
-	}
+   $.check(proj.records.size === 26);
 
-	test_derived_partial_projection_updates = function ({continent_city, city, country}) {
-	   let proj = $.projectionFor(continent_city, {continent: 'America'});
-	   proj.refCount += 1;
+   let f_china = $.queryOne($.country, {name: 'China'});
+   $.removeFact($.country, f_china);
+   $.updateProjection(proj);
+   $.check(proj.records.size === 23);
+}
+test_partial_projection ::= function () {
+   $.checkLike(
+      new Set($.query($.continentCity, {continent: 'America'})),
+      [
+         {city: 'Toronto'},
+         {city: 'Montreal'},
+         {city: 'Vancouver'},
+         {city: 'New York'},
+         {city: 'Los Angeles'},
+         {city: 'Chicago'},
+         {city: 'Houston'},
+      ]
+   );
+}
+test_partial_updates ::= function () {
+   let proj = $.getDerivedProjection($.continentCity, {continent: 'America'});
 
-	   let f_newyork = {country: 'USA', name: 'New York', population: 20}
-	   $.addFact(city, f_newyork);
-	   $.updateProjection(proj);
-	   
-	   $.check($.isLike(
-	      proj.records,
-	      [
-	         {city: 'Toronto'},
-	         {city: 'Montreal'},
-	         {city: 'Vancouver'},
-	         {city: 'New York'}
-	      ]
-	   ));
+   let f_canada = $.queryOne($.country, {name: 'Canada'});
+   $.removeIf($.country, ({name}) => name === 'Canada');
+   $.updateProjection(proj);
+   $.check(proj.records.size === 4);
 
-	   let f_canada = $.find(country.records, rec => rec.name === 'Canada');
-	   $.removeFact(country, f_canada);
-	   $.updateProjection(proj);
+   $.addFact($.country, {name: 'Canada', continent: 'America'});
+   $.addFact($.city, {country: 'USA', name: 'Seattle', population: 2.2});
+   $.updateProjection(proj);
+   $.check(proj.records.size === 8);
+}
+test_scalar_updates ::= function () {
+   let rec = $.queryOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   $.check(rec !== undefined);
 
-	   $.check($.isLike(
-	      proj.records,
-	      [
-	         {city: 'New York'}
-	      ]
-	   ));
+   $.removeIf($.country, ({name}) => name === 'Ruthenia');
 
-	   $.releaseProjection(proj);
-	}
-	test_derived_scalar_updates = function ({continent_city, city}) {
-	   let proj = $.projectionFor(continent_city, {continent: 'America', city: 'Toronto'});
-	   proj.refCount += 1;
+   rec = $.queryOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   $.check(rec === undefined);
 
-	   $.check(proj.records.size === 1);
+   $.addFact($.country, {name: 'Ruthenia', continent: 'Asia'});
+   rec = $.queryOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   $.check(rec === undefined);   
 
-	   let f_toronto = $.find(city.records, rec => rec.name === 'Toronto');
-	   $.removeFact(city, f_toronto);
-	   $.updateProjection(proj);
-
-	   $.check(proj.records.size === 0);
-
-	   $.addFact(city, f_toronto);
-	   $.updateProjection(proj);
-
-	   $.check(proj.records.size === 1);
-	}
-
-	test_derived_of_derived_updates = function ({continent_pop, city}) {
-	   let proj = $.projectionFor(continent_pop, {continent: 'America'});
-	   proj.refCount += 1;
-
-	   $.check($.isLike(
-	      proj.records,
-	      [
-	         {pop: 6.417},
-	         {pop: 4.247},
-	         {pop: 2.463},
-	      ]
-	   ));
-
-	   let f_newyork = {country: 'USA', name: 'New York', population: 20};
-	   $.addFact(city, f_newyork);
-	   $.updateProjection(proj);
-
-	   $.check($.isLike(
-	      proj.records,
-	      [
-	         {pop: 6.417},
-	         {pop: 4.247},
-	         {pop: 2.463},
-	         {pop: 20}
-	      ]
-	   ));
-
-	   $.removeFact(city, f_newyork);
-	   $.updateProjection(proj);
-
-	   $.check($.isLike(
-	      proj.records,
-	      [
-	         {pop: 6.417},
-	         {pop: 4.247},
-	         {pop: 2.463},
-	      ]
-	   ));
-	}
+   $.removeIf($.country, ({name}) => name === 'Ruthenia');
+   $.addFact($.country, {name: 'Ruthenia', continent: 'Europe'});
+   rec = $.queryOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   $.check(rec !== undefined);
 }

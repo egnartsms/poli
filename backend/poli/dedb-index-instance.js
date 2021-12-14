@@ -6,6 +6,7 @@ common
    filter
 dedb-base
    predFilterBy
+   clsHitProjection
    clsNoHitProjection
    clsFullProjection
 dedb-index
@@ -15,12 +16,12 @@ dedb-derived
    clsDerivedProjection
 -----
 refIndexInstance ::= function (proj, desired) {
-   if (proj.class === $.clsNoHitProjection) {
-      return $.makeBaseInstance(proj.relation, desired, proj.filterBy);
+   if (proj.class === $.clsNoHitProjection || proj.class === $.clsHitProjection) {
+      return $.makeBaseInstance(proj.rel, desired, proj.filterBy);
    }
 
    if (proj.class === $.clsFullProjection) {
-      return $.makeBaseInstance(proj.relation, desired, []);
+      return $.makeBaseInstance(proj.rel, desired, []);
    }
 
    if (proj.class === $.clsDerivedProjection) {
@@ -140,7 +141,7 @@ makeReducedIndexInstance ::= function ({instance, template, filterBy}) {
 }
 makeRefcountedIndexInstance ::= function (index, owner) {
    return {
-      class: $.clsReducedIndexInstance,
+      class: $.clsRefcountedIndexInstance,
       refCount: 0,
       index,
       isKeyed: owner.isKeyed,

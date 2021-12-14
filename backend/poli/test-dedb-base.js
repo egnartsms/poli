@@ -6,11 +6,11 @@ common
    find
    sortedArray
 dedb-query
-   queryRecords
-   queryUniqueRecord
-   valueAtKey
+   query
+   queryOne
+   valueAt
 dedb-relation
-   getRelation
+   toRelation
 dedb-common
    RecordType
 dedb-projection
@@ -109,40 +109,40 @@ cityInfo ::= ({
    ]
 })
 test_value_at_key ::= function () {
-   $.checkLike($.valueAtKey($.countryCode, 'Ruthenia'), 'ru');
-   $.checkLike($.valueAtKey($.countryCode, 'Poland'), 'pl');
+   $.checkLike($.valueAt($.countryCode, 'Ruthenia'), 'ru');
+   $.checkLike($.valueAt($.countryCode, 'Poland'), 'pl');
 }
 test_query_unique_record ::= function () {
    // non-keyed
    $.checkLike(
-      $.queryUniqueRecord($.city, {country: 'France', city: 'Lyon'}),
+      $.queryOne($.city, {country: 'France', city: 'Lyon'}),
       {country: 'France', city: 'Lyon', population: 2.323}
    );
 
    $.checkLike(
-      $.queryUniqueRecord($.city, {country: 'Turkey', city: 'Ankara'}),
+      $.queryOne($.city, {country: 'Turkey', city: 'Ankara'}),
       {country: 'Turkey', city: 'Ankara', population: 4.587}
    );
 
    // keyed
    $.checkLike(
-      $.queryUniqueRecord($.cityInfo, {country: 'France', big: 2}),
+      $.queryOne($.cityInfo, {country: 'France', big: 2}),
       ['Lyon', {country: 'France', big: 2}]
    );
 
    $.checkLike(
-      $.queryUniqueRecord($.cityInfo, {country: 'Turkey', big: 2}),
+      $.queryOne($.cityInfo, {country: 'Turkey', big: 2}),
       ['Ankara', {country: 'Turkey', big: 2}]
    );
 }
 test_query_records ::= function () {
    $.checkLike(
-      Array.from($.queryRecords($.city, {country: 'Ruthenia', city: 'Kyiv'})),
+      Array.from($.query($.city, {country: 'Ruthenia', city: 'Kyiv'})),
       [{country: 'Ruthenia', city: 'Kyiv', population: 3.375}]
    );
 
    $.checkLike(
-      new Set($.queryRecords($.city, {country: 'Ruthenia'})),
+      new Set($.query($.city, {country: 'Ruthenia'})),
       [
          {country: 'Ruthenia', city: 'Kyiv', population: 3.375},
          {country: 'Ruthenia', city: 'Lviv', population: 0.720},
@@ -151,13 +151,13 @@ test_query_records ::= function () {
    );
 
    $.checkLike(
-      Array.from($.queryRecords($.cityInfo, {country: 'Ruthenia', big: 3})),
+      Array.from($.query($.cityInfo, {country: 'Ruthenia', big: 3})),
       [['Lviv', {country: 'Ruthenia', big: 3}]]
    );
 
    $.checkLike(
       // order is arbitrary
-      new Set($.queryRecords($.cityInfo, {country: 'Ruthenia'})),
+      new Set($.query($.cityInfo, {country: 'Ruthenia'})),
       [
          ['Kyiv', {country: 'Ruthenia', big: 1}],
          ['Dnipro', {country: 'Ruthenia', big: 2}],
@@ -167,7 +167,7 @@ test_query_records ::= function () {
 }
 test_query_records_extra_bound ::= function () {
    $.checkLike(
-      Array.from($.queryRecords($.city, {
+      Array.from($.query($.city, {
          country: 'Ruthenia',
          city: 'Kyiv',
          population: 3.375
@@ -176,7 +176,7 @@ test_query_records_extra_bound ::= function () {
    );
 
    $.checkLike(
-      Array.from($.queryRecords($.city, {
+      Array.from($.query($.city, {
          country: 'Ruthenia',
          city: 'Kyiv',
          population: 3.376
@@ -185,7 +185,7 @@ test_query_records_extra_bound ::= function () {
    );
 
    $.checkLike(
-      Array.from($.queryRecords($.city, {
+      Array.from($.query($.city, {
          country: 'Ruthenia',
          population: 0.993
       })),
@@ -194,6 +194,6 @@ test_query_records_extra_bound ::= function () {
 }
 test_query_no_index_hit_results_in_exc ::= function () {
    $.checkThrows(() => {
-      $.queryRecords($.city, {city: 'Paris'});
+      $.query($.city, {city: 'Paris'});
    });
 }

@@ -1,4 +1,5 @@
 common
+   all
    assert
    map
    trackingFinal
@@ -47,12 +48,12 @@ reduceIndex ::= function (index, boundAttrs) {
    return reduced;
 }
 isFullyCoveredBy ::= function (index, boundAttrs) {
-   return $.reduceIndex(index, boundAttrs) === 0;
+   return $.all(index, attr => boundAttrs.includes(attr));
 }
 Fitness ::= ({
+   minimum: -10,  // unless we have that large indices
    hit: 0,
    uniqueHit: 1,
-   all: 2
 })
 indexFitness ::= function (index, boundAttrs) {
    let i = 0;
@@ -62,13 +63,10 @@ indexFitness ::= function (index, boundAttrs) {
    }
 
    if (i === 0) {
-      return -Infinity;
+      return $.Fitness.minimum;
    }
 
    return $.computeFitness(i, index);
-}
-uniqueIndexFullHit ::= function (index, boundAttrs) {
-   return $.indexFitness(index, boundAttrs) === 1;
 }
 computeFitness ::= function (len, index) {
    let diff = len - index.length;
@@ -79,6 +77,9 @@ computeFitness ::= function (len, index) {
    else {
       return diff;
    }
+}
+uniqueIndexFullHit ::= function (index, boundAttrs) {
+   return $.indexFitness(index, boundAttrs) === $.Fitness.uniqueHit;
 }
 indexKeys ::= function (index, bindings) {
    let keys = [];

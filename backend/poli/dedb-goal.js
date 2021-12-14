@@ -22,7 +22,7 @@ dedb-rec-key
    recVal
 dedb-relation
    clsRelation
-   getRelation
+   toRelation
    recKeyBindingMakesSenseFor
 set-map
    * as: set
@@ -103,59 +103,49 @@ makeLvar ::= function (name) {
    }
 }
 join ::= function (relInfo, rkey, bindings) {
-   let rel = $.getRelation(relInfo);
+   let rel = $.toRelation(relInfo);
 
    if (arguments.length === 2) {
       bindings = rkey;
       rkey = undefined;
    }
 
-   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel));
+   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
+      `Cannot grab the rec key of relation '${rel.name}': makes no sense`
+   );
 
-   let rkeyBound, rkeyLvar;
-
-   if ($.isLvar(rkey)) {
-      rkeyBound = undefined;
-      rkeyLvar = rkey[$.lvarSym];
-   }
-   else {
-      rkeyBound = rkey;
-      rkeyLvar = null;
+   if ($.isLvar(bindings)) {
+      $.check(rel.class === $.clsDerivedRelation && rel.isKeyed, () =>
+         `Cannot grab the rec val of relation '${rel.name}': makes no sense`
+      )
    }
 
-   let [firmBindings, looseBindings] = $.computeFirmAndLooseBindings(bindings);
-
+   let firmBindings = $.computeFirmBindings(rkey, bindings);
+   let looseBindings = $.computeLooseBindings(rkey, bindings);
+   
    {
-      let lvars = Object.values(looseBindings);
+      let vars = Array.from(Reflect.ownKeys(looseBindings), a => looseBindings[a]);
 
-      if (rkeyLvar !== null) {
-         lvars.unshift(rkeyLvar);
-      }
-
-      let dupVar = $.firstDuplicate(lvars);
+      let dupVar = $.firstDuplicate(vars);
 
       $.check(dupVar === undefined, () =>
-         `Duplicate lvar '${dupVar}' in the goal for '${rel.name}'`
+         `Duplicate variable '${String(dupVar)}' in the goal for '${rel.name}'`
       );
    }
 
    return {
       class: $.clsRelGoal,
       rel,
-      rkeyBound,
-      rkeyLvar,
       firmBindings,
       looseBindings,
       projNum: -1,
       depNum: -1,
    }
 }
-goalLvars ::= function* (goal) {
-   if (goal.rkeyLvar !== null) {
-      yield goal.rkeyLvar;
-   }
+goalLvars ::= function (goal) {
+   let {looseBindings} = goal;
 
-   yield* Object.values(goal.looseBindings);
+   return Array.from(Reflect.ownKeys(looseBindings), a => looseBindings[a]);
 }
 funcGoal ::= function (rel, attrs) {
    throw new Error;
@@ -172,7 +162,7 @@ funcGoal ::= function (rel, attrs) {
 
    let [firmAttrs, looseAttrs] = $.computeFirmAndLooseBindings(attrs);
 
-   $.check(looseAttrs.size > 0, () => `No lvars used in the goal for '${rel.name}'`);
+   $.check(looseAttrs.size > 0, () => `No vars used in the goal for '${rel.name}'`);
 
    return {
       type: $.GoalType.func,
@@ -181,23 +171,45 @@ funcGoal ::= function (rel, attrs) {
       looseAttrs
    }
 }
-computeFirmAndLooseBindings ::= function (bindings) {
-   let firmBindings = Object.fromEntries(
-      $.mapfilter(Object.entries(bindings), ([a, val]) => {
-         if (!$.isLvar(val)) {
-            return [a, val];
-         }
-      })
-   );
-   let looseBindings = Object.fromEntries(
-      $.mapfilter(Object.entries(bindings), ([a, lvar]) => {
-         if ($.isLvar(lvar)) {
-            return [a, lvar[$.lvarSym]];
-         }
-      })
-   );
+computeFirmBindings ::= function (rkey, bindings) {
+   let firms = $.isLvar(bindings) ? {} :
+      Object.fromEntries(
+         $.mapfilter(Object.entries(bindings), ([a, val]) => {
+            if (val !== undefined && !$.isLvar(val)) {
+               return [a, val];
+            }
+         })
+      );
 
-   return [firmBindings, looseBindings];
+   if (rkey !== undefined && !$.isLvar(rkey)) {
+      firms[$.recKey] = rkey;
+   }
+
+   return firms;
+}
+computeLooseBindings ::= function (rkey, bindings) {
+   let loose;
+
+   if ($.isLvar(bindings)) {
+      loose = {
+         [$.recVal]: bindings[$.lvarSym]
+      }
+   }
+   else {
+      loose = Object.fromEntries(
+         $.mapfilter(Object.entries(bindings), ([a, lvar]) => {
+            if ($.isLvar(lvar)) {
+               return [a, lvar[$.lvarSym]];
+            }
+         })
+      );
+   }
+
+   if ($.isLvar(rkey)) {
+      loose[$.recKey] = rkey[$.lvarSym];
+   }
+   
+   return loose;
 }
 isLeafGoal ::= function (goal) {
    return goal.class === $.clsRelGoal || goal.class === $.clsFuncGoal;
@@ -240,7 +252,7 @@ walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
       }
    })(rootGoal, onPath);
 }
-checkVarUsageAndReturnVars ::= function (rootGoal, attrs) {
+checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
    let usageCount = new Map;
 
    function inc(lvar) {
@@ -264,15 +276,17 @@ checkVarUsageAndReturnVars ::= function (rootGoal, attrs) {
          }
       },
       onPath: () => {
-         for (let attr of attrs) {
-            $.check(usageCount.get(attr) >= 1, () =>
-               `Attribute '${attr}': variable misuse`
+         for (let lvar of outVars) {
+            $.check(usageCount.get(lvar) > 0, () =>
+               `Attribute '${String(lvar)}': variable misuse`
             );
          }
 
          for (let [lvar, count] of usageCount) {
             if (count === 1) {
-               $.check(attrs.includes(lvar), () => `Lvar '${lvar}' is not used`);
+               $.check(outVars.includes(lvar), () =>
+                  `Variable '${String(lvar)}' is only mentioned once`
+               );
             }
          }
       }
@@ -291,6 +305,8 @@ assignProjNumToRelGoals ::= function (rootGoal) {
       goal.projNum = num;
       num += 1;
    }
+
+   return num;
 }
 assignDepNumToRelGoals ::= function (rootGoal) {
    let num = 0;

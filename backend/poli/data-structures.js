@@ -32,12 +32,16 @@ RecordMap ::= class RecordMap {
       return this.map.get(key);
    }
 
+   valueAtExisting(key) {
+      return this.valueAt(key);
+   }
+
    recordAt(key) {
       return this.map.has(key) ? [key, this.map.get(key)] : undefined;
    }
 
-   valueAtExisting(key) {
-      return this.valueAt(key);
+   recordAtExisting(key) {
+      return [key, this.map.get(key)];
    }
 
    addRecord([key, val]) {
@@ -91,11 +95,15 @@ RecordSet ::= class RecordSet {
       return this.set.has(key) ? key : undefined;
    }
 
+   valueAtExisting(key) {
+      return key;
+   }
+
    recordAt(key) {
       return this.valueAt(key);
    }
 
-   valueAtExisting(key) {
+   recordAtExisting(key) {
       return key;
    }
 

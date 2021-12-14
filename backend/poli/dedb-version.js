@@ -18,19 +18,24 @@ set-map
    setAll
 -----
 refCurrentState ::= function (owner) {
-   if (owner.class === $.clsBaseRelation ||
-         owner.class === $.clsHitProjection ||
-         owner.class === $.clsNoHitProjection ||
-         owner.class === $.clsDerivedProjection) {
+   if (owner.class === $.clsBaseRelation || owner.class === $.clsDerivedProjection) {
+      return $.refMultiVersion(owner);
+   }
+
+   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
+      if (owner.depVer === null) {
+         owner.depVer = $.refCurrentExtState(owner.rel);
+      }
+
       return $.refMultiVersion(owner);
    }
 
    if (owner.class === $.clsRecKeyBoundProjection) {
-      return $.makeRecValVersion(owner);
+      return $.makeRecKeyBoundVersion(owner);
    }
 
    if (owner.class === $.clsUniqueHitProjection) {
-      return $.makeRecVersion(owner);
+      return $.makeUniqueHitVersion(owner);
    }
 
    if (owner.class === $.clsFullProjection) {
@@ -44,19 +49,24 @@ refCurrentExtState ::= function (owner) {
       return $.refCurrentState(owner);
    }
 
-   if (owner.class === $.clsBaseRelation ||
-         owner.class === $.clsHitProjection ||
-         owner.class === $.clsNoHitProjection ||
-         owner.class === $.clsDerivedProjection) {
+   if (owner.class === $.clsBaseRelation || owner.class === $.clsDerivedProjection) {
+      return $.refMultiExtVersion(owner);
+   }
+
+   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
+      if (owner.depVer === null) {
+         owner.depVer = $.refCurrentExtState(owner.rel);
+      }
+
       return $.refMultiExtVersion(owner);
    }
 
    if (owner.class === $.clsRecKeyBoundProjection) {
-      return $.makeRecValVersion(owner);
+      return $.makeRecKeyBoundVersion(owner);
    }
 
    if (owner.class === $.clsUniqueHitProjection) {
-      return $.makeRecVersion(owner);
+      return $.makeUniqueHitVersion(owner);
    }
 
    if (owner.class === $.clsFullProjection) {
@@ -69,30 +79,30 @@ clsVersion ::= ({
    name: 'version',
    'version': true
 })
-clsRecVersion ::= ({
-   name: 'version.rec',
-   'version.rec': true,
+clsUniqueHitVersion ::= ({
+   name: 'version.uniqueHit',
+   'version.uniqueHit': true,
    'version': true
 })
-makeRecVersion ::= function (proj) {
+makeUniqueHitVersion ::= function (proj) {
    $.assert(() => proj.class === $.clsUniqueHitProjection);
 
    return {
-      class: $.clsRecVersion,
+      class: $.clsUniqueHitVersion,
       proj: proj,
       rec: proj.rec
    }
 }
-clsRecValVersion ::= ({
-   name: 'version.recval',
-   'version.recval': true,
+clsRecKeyBoundVersion ::= ({
+   name: 'version.recKeyBound',
+   'version.recKeyBound': true,
    'version': true
 })
-makeRecValVersion ::= function (proj) {
+makeRecKeyBoundVersion ::= function (proj) {
    $.assert(() => proj.class === $.clsRecKeyBoundProjection);
 
    return {
-      class: $.clsRecValVersion,
+      class: $.clsRecKeyBoundVersion,
       proj: proj,
       rval: proj.rval
    }
@@ -100,7 +110,7 @@ makeRecValVersion ::= function (proj) {
 refFullProjectionVersion ::= function (proj) {
    $.assert(() => proj.class === $.clsFullProjection);
 
-   return $.refCurrentState(proj.relation);
+   return $.refCurrentState(proj.rel);
 }
 clsMultiVersion ::= ({
    name: 'version.multi',
@@ -117,7 +127,7 @@ refMultiVersion ::= function (owner) {
 refMultiExtVersion ::= function (owner) {
    $.ensureTopmostFresh(owner);
 
-   if (!$.isVersionExtended(owner.myVer)) {
+   if (!$.isMultiVersionExtended(owner.myVer)) {
       owner.myVer.removed = new Map;
    }
 
@@ -130,14 +140,14 @@ refMultiExtVersion ::= function (owner) {
 ensureTopmostFresh ::= function (owner) {
    let prev = owner.myVer;
    
-   if (prev !== null && $.isVersionFresh(prev)) {
+   if (prev !== null && $.isMultiVersionFresh(prev)) {
       return;
    }
 
    let ver;
 
    if (owner.isKeyed) {
-      let initiallyExtended = prev !== null && $.isVersionExtended(prev);
+      let initiallyExtended = prev !== null && $.isMultiVersionExtended(prev);
 
       ver = {
          class: $.clsMultiVersion,
@@ -169,13 +179,17 @@ ensureTopmostFresh ::= function (owner) {
 
    owner.myVer = ver;
 }
-isVersionFresh ::= function (ver) {
+isMultiVersionFresh ::= function (ver) {
    return ver.added.size === 0 && ver.removed.size === 0;
 }
-isVersionExtended ::= function (ver) {
+isMultiVersionExtended ::= function (ver) {
    return ver.extTotal > 0;
 }
 releaseVersion ::= function (ver) {
+   if (ver.class !== $.clsMultiVersion) {
+      return;
+   }
+
    $.assert(
       () => ver.refCount > 0 && (!ver.owner.isKeyed || ver.extCount < ver.refCount)
    );
@@ -190,9 +204,18 @@ releaseVersion ::= function (ver) {
    if (ver.refCount === 0) {
       $.assert(() => ver.owner.myVer === ver);
       ver.owner.myVer = null;
+
+      if (ver.owner.class === $.clsHitProjection || ver.owner.class === $.clsNoHitProjection) {
+         $.releaseExtVersion(ver.owner.depVer);
+         ver.owner.depVer = null;
+      }
    }
 }
 releaseExtVersion ::= function (ver) {
+   if (ver.class !== $.clsMultiVersion) {
+      return;
+   }
+
    if (!ver.owner.isKeyed) {
       $.releaseVersion(ver);
       return;
@@ -210,6 +233,11 @@ releaseExtVersion ::= function (ver) {
          if (ver.next === null) {
             $.assert(() => ver.owner.myVer === ver);
             ver.owner.myVer = null;
+
+            if (ver.owner.class === $.clsHitProjection || ver.owner.class === $.clsNoHitProjection) {
+               $.releaseExtVersion(ver.owner.depVer);
+               ver.owner.depVer = null;
+            }
          }
          else {
             ver.next.refCount -= 1;
@@ -224,6 +252,10 @@ releaseExtVersion ::= function (ver) {
    }
 }
 unchainVersion ::= function (ver) {
+   if (ver.class !== $.clsMultiVersion) {
+      return;
+   }
+
    if (ver.next === null) {
       return;
    }
@@ -253,7 +285,7 @@ unchainVersion ::= function (ver) {
       topmost.refCount += 1;
       $.releaseVersion(next);
 
-      if (next.refCount > 0 && owner.isKeyed && $.isVersionExtended(next)) {
+      if (next.refCount > 0 && owner.isKeyed && $.isMultiVersionExtended(next)) {
          next.extTotal -= ver.extTotal;
 
          if (next.extTotal === 0) {
@@ -289,11 +321,11 @@ unchain1tupled ::= function (ver) {
 }
 unchain1keyed ::= function (ver) {
    let next = ver.next;
-   let isExtended = $.isVersionExtended(ver);
+   let isExtended = $.isMultiVersionExtended(ver);
    let isNextDone = next.refCount === 1;
 
    if (isNextDone) {
-      $.assert(() => $.isVersionExtended(next) === isExtended);
+      $.assert(() => $.isMultiVersionExtended(next) === isExtended);
 
       $.deleteIntersection(ver.added, next.removed);
 
@@ -366,7 +398,7 @@ versionRemove ::= function (ver, rec) {
       if (ver.added.has(rkey)) {
          ver.added.delete(rkey);
       }
-      else if ($.isVersionExtended(ver)) {
+      else if ($.isMultiVersionExtended(ver)) {
          ver.removed.set(rkey, rval);
       }
       else {
@@ -381,4 +413,120 @@ versionRemove ::= function (ver, rec) {
          ver.removed.add(rec);
       }
    }
+}
+isVersionFresh ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      return ver.rval === proj.rval;
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      // proj.rec is fetched from unique index, so we can count on referential equality
+      return ver.rec === proj.rec;
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return $.isMultiVersionFresh(ver);
+   }
+
+   throw new Error;
+}
+hasVersionAdded ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      return ver.rval !== proj.rval && proj.rval !== undefined;
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      return ver.rec !== proj.rec && proj.rec !== undefined;
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return ver.added.size > 0;
+   }
+
+   throw new Error;
+}
+versionAddedKeys ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      if (ver.rval !== proj.rval && proj.rval !== undefined) {
+         return [proj.rkey];
+      }
+      else {
+         return [];
+      }
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      if (ver.rec !== proj.rec && proj.rec !== undefined) {
+         return [proj.isKeyed ? proj.rec[0] : proj.rec];
+      }
+      else {
+         return [];
+      }
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return ver.added;
+   }
+
+   throw new Error;
+}
+hasVersionRemoved ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      return ver.rval !== proj.rval && ver.rval !== undefined;
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      return ver.rec !== proj.rec && ver.rec !== undefined;
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return ver.removed.size > 0;
+   }
+
+   throw new Error;
+}
+versionRemovedKeys ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      if (ver.rval !== proj.rval && ver.rval !== undefined) {
+         return [proj.rkey];
+      }
+      else {
+         return [];
+      }
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      if (ver.rec !== proj.rec && ver.rec !== undefined) {
+         return [proj.isKeyed ? ver.rec[0] : ver.rec];
+      }
+      else {
+         return [];
+      }
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return ver.removed.keys();
+   }
+
+   throw new Error;
 }
