@@ -160,6 +160,12 @@ minimumBy ::= function (items, keyOf) {
 
    return minItem;
 }
+isIterableEmpty ::= function (Xs) {
+   let itor = Xs[Symbol.iterator]();
+   let {done} = itor.next();
+
+   return done;
+}
 extendArray ::= function (A, X) {
    let i = A.length;
    let j = 0;

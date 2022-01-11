@@ -4,8 +4,12 @@ common
    all
    check
    filter
+   isA
+   map
 dedb-base
    predFilterBy
+   suitsFilterBy
+   clsBaseRelation
    clsHitProjection
    clsNoHitProjection
    clsFullProjection
@@ -14,14 +18,20 @@ dedb-index
    indexKeys
 dedb-derived
    clsDerivedProjection
+dedb-relation
+   rec2pair
+   rec2pairFn
+   rec2valFn
+   pair2rec
+   recordCollection
 -----
 refIndexInstance ::= function (proj, desired) {
    if (proj.class === $.clsNoHitProjection || proj.class === $.clsHitProjection) {
-      return $.makeBaseInstance(proj.rel, desired, proj.filterBy);
+      return $.makeReducedIndexInstance(proj.rel, desired, proj.filterBy);
    }
 
    if (proj.class === $.clsFullProjection) {
-      return $.makeBaseInstance(proj.rel, desired, []);
+      return $.makeReducedIndexInstance(proj.rel, desired, []);
    }
 
    if (proj.class === $.clsDerivedProjection) {
@@ -31,13 +41,14 @@ refIndexInstance ::= function (proj, desired) {
    // For other types of projection, it makes no sense to request index instances
    throw new Error;
 }
-makeBaseInstance ::= function (rel, desired, filterBy) {
+makeReducedIndexInstance ::= function (rel, desired, filterBy) {
    let found = null;
 
-   for (let inst of rel.indices) {
-      if ($.all(desired, a => inst.index.includes(a)) &&
-            $.all(inst.index, a => desired.includes(a) ||
-                                    filterBy.some(([A, V]) => A === a))) {
+   for (let inst of rel.myIndexInstances) {
+      let {index} = inst;
+
+      if ($.all(desired, a => index.includes(a)) &&
+            $.all(index, a => desired.includes(a) || filterBy.some(([A, V]) => A === a))) {
          found = inst;
          break;
       }
@@ -62,17 +73,22 @@ makeBaseInstance ::= function (rel, desired, filterBy) {
       return V;
    });
 
-   return $.makeReducedIndexInstance({instance: found, template, filterBy});
+   return {
+      class: $.clsReducedIndexInstance,
+      instance: found,
+      template,
+      filterBy
+   }
 }
 refDerivedInstance ::= function (proj, desired) {
-   for (let index of proj.myIndexInstances) {
-      if ($.arraysEqual(index, desired)) {
-         index.refCount += 1;
-         return index;
+   for (let inst of proj.myIndexInstances) {
+      if ($.arraysEqual(inst.index, desired)) {
+         inst.refCount += 1;
+         return inst;
       }
    }
 
-   let inst = $.makeRefcountedIndexInstance(desired, proj);
+   let inst = $.makeIndexInstance(proj, desired);
 
    inst.refCount += 1;
 
@@ -87,7 +103,7 @@ refDerivedInstance ::= function (proj, desired) {
    return inst;
 }
 releaseIndexInstance ::= function (inst) {
-   if (inst.class === $.clsRefcountedIndexInstance) {
+   if (inst.class === $.clsIndexInstance) {
       let instances = inst.owner.myIndexInstances;
 
       $.assert(() => inst.refCount > 0);
@@ -111,63 +127,38 @@ releaseIndexInstance ::= function (inst) {
 }
 clsIndexInstance ::= ({
    name: 'index-instance',
-   'index-instance': true
+   'index-instance': true,
 })
 clsReducedIndexInstance ::= ({
    name: 'index-instance.reduced',
    'index-instance.reduced': true,
    'index-instance': true
 })
-clsRefcountedIndexInstance ::= ({
-   name: 'index-instance.refcounted',
-   'index-instance.refcounted': true,
-   'index-instance': true
-})
-makeIndexInstance ::= function (index, {isKeyed}) {
+makeIndexInstance ::= function (owner, index) {
+   $.assert(() => $.isA(owner, $.clsDerivedProjection, $.clsBaseRelation));
+
    return {
       class: $.clsIndexInstance,
+      refCount: 0,
+      owner,
       index,
-      isKeyed,
       records: new Map,
    }
 }
-makeReducedIndexInstance ::= function ({instance, template, filterBy}) {
-   return {
-      class: $.clsReducedIndexInstance,
-      instance,
-      template,
-      filterBy
-   }
-}
-makeRefcountedIndexInstance ::= function (index, owner) {
-   return {
-      class: $.clsRefcountedIndexInstance,
-      refCount: 0,
-      index,
-      isKeyed: owner.isKeyed,
-      owner,
-      records: new Map
-   }
-}
 indexRef ::= function* (inst, keys) {
-   keys = keys[Symbol.iterator]();
-
    if (inst.class === $.clsIndexInstance) {
-      let {index, records: map} = inst;
+      keys = keys[Symbol.iterator]();
+
+      let {index} = inst;
 
       yield* (function* rec(map, lvl) {
          if (lvl === 0) {
-            if (index.isUnique) {
-               yield map;
-            }
-            else {
-               yield* map;
-            }
+            index.isUnique ? (yield map) : (yield* map);
          }
          else {
-            let {done, value: key} = keys.next();
+            let {value: key} = keys.next();
 
-            if (done) {
+            if (key === undefined) {
                for (let sub of map.values()) {
                   yield* rec(sub, lvl - 1);
                }
@@ -180,38 +171,55 @@ indexRef ::= function* (inst, keys) {
                }
             }
          }
-      })(map, index.length);
+      }(inst.records, index.length));
 
       return;
    }
 
    if (inst.class === $.clsReducedIndexInstance) {
       let {instance, template, filterBy} = inst;
-
+      let rec2val = $.rec2valFn(instance.owner);
+      
       yield* $.filter(
-         $.indexRef(instance, function* () {
-            for (let thing of template) {
-               if (thing !== undefined) {
-                  yield thing;
-                  continue;
-               }
-
-               let {value, done} = keys.next();
-
-               if (done) {
-                  return;
-               }
-
-               yield value;
-            }
-         }()),
-         $.predFilterBy(instance.isKeyed, filterBy)
+         $.indexRef(instance, $.genKeysForReducedIndex(template, keys)),
+         (rec) => $.suitsFilterBy(rec2val(rec), filterBy)
       );
 
       return;
    }
 
    throw new Error;
+}
+indexRefPairs ::= function (inst, keys) {
+   let owner;
+
+   if (inst.class === $.clsIndexInstance) {
+      owner = inst.owner;
+   }
+   else if (inst.class === $.clsReducedIndexInstance) {
+      owner = inst.instance.owner;
+   }
+   else {
+      throw new Error;
+   }
+
+   return $.map($.indexRef(inst, keys), $.rec2pairFn(owner));
+}
+genKeysForReducedIndex ::= function* (template, keys) {
+   keys = keys[Symbol.iterator]();
+
+   for (let thing of template) {
+      let value;
+
+      if (thing !== undefined) {
+         value = thing;
+      }
+      else {
+         ({value} = keys.next());
+      }
+
+      yield value;
+   }
 }
 indexRefOne ::= function (inst, keys) {
    let [rec] = $.indexRef(inst, keys);
@@ -223,56 +231,96 @@ indexRefWithBindings ::= function (inst, bindings) {
 indexRefOneWithBindings ::= function (inst, bindings) {
    return $.indexRefOne(inst, $.indexKeys(inst.index, bindings));
 }
+indexRefSize ::= function (inst, keys) {
+   // No special treatment for undefined keys
+
+   if (inst.class === $.clsIndexInstance) {
+      let {index, records: map} = inst;
+      let lvl = 0;
+
+      for (let key of keys) {
+         if (lvl === index.length) {
+            break;
+         }
+
+         if (!map.has(key)) {
+            return 0;
+         }
+
+         map = map.get(key);
+         lvl += 1;
+      }
+
+      if (lvl === index.length) {
+         return index.isUnique ? 1 : map.size;
+      }
+      else {
+         return map.totalSize;
+      }
+   }
+
+   if (inst.class === $.clsReducedIndexInstance) {
+      let {instance, template} = inst;
+
+      return $.indexRefSize(instance, $.genKeysForReducedIndex(template, keys));
+   }
+
+   throw new Error;
+}
 rebuildIndex ::= function (inst, records) {
    inst.records.clear();
 
    for (let rec of records) {
-      $.indexAdd(inst, rec);
+      let [rkey, rval] = $.rec2pair(inst.owner, rec);
+      $.indexAdd(inst, rkey, rval);
    }
 }
-indexAdd ::= function (inst, rec) {
-   let [rkey, rval] = inst.isKeyed ? rec : [rec, rec];
-   let {index, records: map} = inst;
-   
-   for (let i = 0; ; i += 1) {
+indexAdd ::= function (inst, rkey, rval=rkey) {
+   $.assert(() => inst.owner.isKeyed || rkey === rval);
+
+   let {index, owner} = inst;
+
+   (function go(i, map) {
       let key = rval[index[i]];
 
       if (i + 1 === index.length) {
-         if (map.has(key)) {
-            if (inst.index.isUnique) {
+         if (index.isUnique) {
+            if (map.has(key)) {
                throw new Error(`Unique index violation`);
             }
-            else if (inst.isKeyed) {
-               map.get(key).set(rkey, rval);
-            }
-            else {
-               map.get(key).add(rval);
-            }
+
+            map.set(key, $.pair2rec(owner, rkey, rval));
          }
          else {
-            let rec = inst.isKeyed ? [rkey, rval] : rval;
+            let bucket = map.get(key);
 
-            map.set(
-               key,
-               inst.index.isUnique ? rec : new (inst.isKeyed ? Map : Set)([rec])
-            );
+            if (bucket === undefined) {
+               bucket = new ($.recordCollection(owner));
+               map.set(key, bucket);
+            }
+
+            bucket.addPair(rkey, rval);
+         }
+      }
+      else {
+         let next = map.get(key);
+
+         if (next === undefined) {
+            next = Object.assign(new Map, {
+               totalSize: 0
+            });
+            map.set(key, next);
          }
 
-         break;
+         go(i + 1, next);
       }
 
-      let next = map.get(key);
-
-      if (next === undefined) {
-         next = new Map;
-         map.set(key, next);
-      }
-
-      map = next;
-   }
+      map.totalSize += 1;
+   })(0, inst.records);
 }
-indexRemove ::= function (inst, rec) {
-   let [rkey, rval] = inst.isKeyed ? rec : [rec, rec];
+indexRemove ::= function (inst, rkey, rval=rkey) {
+   $.assert(() => inst.owner.isKeyed || rkey === rval);
+
    let {index} = inst;
 
    (function go(i, map) {
@@ -283,13 +331,13 @@ indexRemove ::= function (inst, rec) {
       }  
 
       if (i + 1 === index.length) {
-         if (inst.index.isUnique) {
+         if (index.isUnique) {
             map.delete(key);
          }
          else {
             let bucket = map.get(key);
 
-            bucket.delete(rkey);
+            bucket.removeAt(rkey);
 
             if (bucket.size === 0) {
                map.delete(key);
@@ -305,5 +353,7 @@ indexRemove ::= function (inst, rec) {
             map.delete(key);
          }
       }
+
+      map.totalSize -= 1;
    })(0, inst.records);
 }

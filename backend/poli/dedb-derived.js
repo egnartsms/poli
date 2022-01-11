@@ -24,9 +24,6 @@ common
    mmapDelete
    range
    settify
-data-structures
-   RecordMap
-   RecordSet
 set-map
    deleteAll
 dedb-rec-key
@@ -39,9 +36,9 @@ dedb-projection
    updateProjection as: gUpdateProjection
    makeProjectionRegistry
    projectionSizeEstimate
-   projectionRecords
-   projectionRecordAt
-   projectionRvalAtExisting
+   projectionPairs
+   projectionRvalAt
+   projectionRvalAtX
 dedb-goal
    * as: goal
 dedb-version
@@ -49,8 +46,8 @@ dedb-version
    releaseVersion
    isVersionFresh
    unchainVersion
-   versionAddKey
-   versionRemove
+   multiVersionAddKey
+   multiVersionRemoveKey
    versionAddedKeys
    versionRemovedKeys
    hasVersionAdded
@@ -62,7 +59,7 @@ dedb-index-instance
    releaseIndexInstance
    indexAdd
    indexRemove
-   indexRef
+   indexRefPairs
 dedb-join-plan
    computeIncrementalUpdatePlan
    narrowConfig
@@ -71,10 +68,8 @@ dedb-join-plan
    clsJoinRecKey
    clsJoinFunc
    clsJoinEither
-dedb-common
-   RecordType
-   recTypeProto
-   makeRecords
+dedb-relation
+   recordCollection
 -----
 clsDerivedRelation ::= ({
    name: 'relation.derived',
@@ -109,7 +104,7 @@ makeRelation ::= function ({
 
    function vTagged(strings) {
       if (strings.length !== 1) {
-         throw new Error(`Logical variable names don't support inline expressions`);
+         throw new Error(`Variable names don't support inline expressions`);
       }
 
       let [name] = strings;
@@ -160,6 +155,7 @@ makeRelation ::= function ({
       class: $.clsDerivedRelation,
       name: relname,
       attrs,
+      virtualAttrs: outVars,
       isKeyed,
       indices: Array.from(potentialIndices, $.indexFromSpec),
       subInfos,
@@ -173,15 +169,13 @@ makeRelation ::= function ({
 }
 clsDerivedProjection ::= ({
    name: 'projection.derived',
-   projection: true,
-   'projection.derived': true
+   'projection.derived': true,
+   'projection': true,
 })
 makeProjection ::= function (rel, bindings) {
    let config = $.configFor(rel, bindings);
-
    let subProjs = $.refSubProjections(rel.subInfos, bindings);
    let subVers = new Array(rel.numProjs).fill(null);
-
    let subIndexInstances = Array.from(
       config.idxReg,
       ({projNum, index}) => $.refIndexInstance(subProjs[projNum], index)
@@ -298,7 +292,7 @@ rebuildProjection ::= function (proj) {
       subVers[num] = newVer;
    }
 
-   proj.records = new (proj.isKeyed ? $.RecordMap : $.RecordSet)();
+   proj.records = new ($.recordCollection(proj));
 
    let subKeys = new Array(rel.numDeps).fill(null);
    let ns = Object.fromEntries($.map(config.vars, lvar => [lvar, undefined]));
@@ -315,14 +309,13 @@ rebuildProjection ::= function (proj) {
 
    function run(jnode) {
       if (jnode === null) {
-         let rec = $.makeRecordFor(proj, ns);
-         let rkey = proj.isKeyed ? rec[0] : rec;
+         let [rkey, rval] = $.makeRecordPairFor(proj, ns);
 
-         proj.records.addRecord(rec);
+         proj.records.addPair(rkey, rval);
          $.recDep(proj, rkey, subKeys);
 
          for (let inst of proj.myIndexInstances) {
-            $.indexAdd(inst, rec);
+            $.indexAdd(inst, rkey, rval);
          }
 
          // No need to adjust myVer because it's null
@@ -352,9 +345,7 @@ rebuildProjection ::= function (proj) {
       let depNum = rel.subInfos[projNum].depNum;
 
       outer:
-      for (let subrec of $.joinRecords(proj, jnode, ns)) {
-         let [subkey, subval] = subProj.isKeyed ? subrec : [subrec, subrec];
-
+      for (let [subkey, subval] of $.joinRecords(proj, jnode, ns)) {
          if (rvalCheck !== null && subval !== ns[rvalCheck]) {
             continue outer;
          }
@@ -386,11 +377,9 @@ rebuildProjection ::= function (proj) {
    $.coverAllPaths(proj, (num) => {
       let {rkeyExtract, rvalExtract, start, joinTree} = config.plans[num];
       let subProj = subProjs[num];
-      let depNum = rel.subInfos[num].depNum;
+      let {depNum} = rel.subInfos[num];
       
-      for (let rec of $.projectionRecords(subProj)) {
-         let [subkey, subval] = subProj.isKeyed ? rec : [rec, rec];
-
+      for (let [subkey, subval] of $.projectionPairs(subProj)) {
          if (rkeyExtract !== null) {
             ns[rkeyExtract] = subkey;
          }
@@ -448,16 +437,16 @@ updateProjection ::= function (proj) {
       let rkeys = $.subrecUndep(proj, depNum, subkey);
 
       for (let rkey of rkeys) {
-         let rec = proj.records.recordAtExisting(rkey);
+         let rval = proj.records.valueAtX(rkey);
 
          proj.records.removeAt(rkey);
 
          if (proj.myVer !== null) {
-            $.versionRemove(proj.myVer, rec);
+            $.multiVersionRemoveKey(proj.myVer, rkey);
          }
 
          for (let inst of proj.myIndexInstances) {
-            $.indexRemove(inst, rec);
+            $.indexRemove(inst, rkey, rval);
          }
       }
    }
@@ -508,18 +497,17 @@ updateProjection ::= function (proj) {
 
       function run(jnode) {
          if (jnode === null) {
-            let rec = $.makeRecordFor(proj, ns);
-            let rkey = proj.isKeyed ? rec[0] : rec;
+            let [rkey, rval] = $.makeRecordPairFor(proj, ns);
 
-            proj.records.addRecord(rec);
+            proj.records.addPair(rkey, rval);
             $.recDep(proj, rkey, subKeys);
 
             for (let inst of proj.myIndexInstances) {
-               $.indexAdd(inst, rec);
+               $.indexAdd(inst, rkey, rval);
             }
 
             if (proj.myVer !== null) {
-               $.versionAddKey(proj.myVer, rkey);
+               $.multiVersionAddKey(proj.myVer, rkey);
             }
 
             return;
@@ -559,9 +547,7 @@ updateProjection ::= function (proj) {
          }
 
          outer:
-         for (let subrec of $.joinRecords(proj, jnode, ns)) {
-            let [subkey, subval] = subProj.isKeyed ? subrec : [subrec, subrec];
-
+         for (let [subkey, subval] of $.joinRecords(proj, jnode, ns)) {
             if (keysToExclude.has(subkey)) {
                continue;
             }
@@ -595,7 +581,7 @@ updateProjection ::= function (proj) {
       }
 
       for (let subkey of $.versionAddedKeys(ver)) {
-         let subval = $.projectionRvalAtExisting(subProj, subkey);
+         let subval = $.projectionRvalAtX(subProj, subkey);
 
          if (rkeyExtract !== null) {
             ns[rkeyExtract] = subkey;
@@ -648,25 +634,26 @@ joinRecords ::= function (proj, jnode, ns) {
    let subProj = proj.subProjs[projNum];
    
    if (cls === $.clsJoinAll) {
-      return $.projectionRecords(subProj);
+      return $.projectionPairs(subProj);
    }
 
    if (cls === $.clsJoinRecKey) {
-      let rec = $.projectionRecordAt(subProj, ns[jnode.rkeyVar]);
-      return rec !== undefined ? [rec] : [];
+      let rkey = ns[jnode.rkeyVar]
+      let rval = $.projectionRvalAt(subProj, rkey);
+      return rval !== undefined ? [[rkey, rval]] : [];
    }
 
    if (cls === $.clsJoinIndex) {
       let {indexNum, indexKeys} = jnode;
 
-      return $.indexRef(
+      return $.indexRefPairs(
          proj.subIndexInstances[indexNum], $.map(indexKeys, lvar => ns[lvar])
       );
    }
 
    throw new Error(`Cannot handle this join type here: ${type}`);
 }
-makeRecordFor ::= function (proj, ns) {
+makeRecordPairFor ::= function (proj, ns) {
    let {isKeyed, config} = proj;
 
    if (isKeyed) {
@@ -681,7 +668,9 @@ makeRecordFor ::= function (proj, ns) {
       }
    }
    else {
-      return Object.fromEntries($.map(config.attrs, a => [a, ns[a]]));
+      let rec = Object.fromEntries($.map(config.attrs, a => [a, ns[a]]))
+
+      return [rec, rec];
    }
 }
 recDep ::= function (proj, rkey, subKeys) {

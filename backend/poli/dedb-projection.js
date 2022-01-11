@@ -4,15 +4,17 @@ common
    hasOwnProperty
    trackingFinal
    filter
-dedb-relation
-   recKeyBindingMakesSenseFor
+   isA
 dedb-index-instance
    indexRef
+   indexRefSize
+   indexRefPairs
 dedb-base
    makeProjection as: makeBaseProjection
    freeProjection as: freeBaseProjection
    updateProjection as: updateBaseProjection
    clsBaseRelation
+   clsBaseProjection
    clsFullProjection
    clsNoHitProjection
    clsHitProjection
@@ -51,10 +53,6 @@ makeProjection ::= function (rel, bindings) {
    }
 }
 projectionFor ::= function (rel, bindings) {
-   // $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
-   //    `Binding rec key does not make sense for the relation '${rel.name}'`
-   // );
-
    let map = rel.projections;
 
    for (let [key, isFinal] of
@@ -107,19 +105,9 @@ releaseProjection ::= function (proj) {
    }
 }
 genProjectionKey ::= function* (rel, bindings) {
-   if (rel.class === $.clsBaseRelation) {
-      yield bindings[$.recKey];
-
-      for (let attr of rel.attrs) {
+   if (rel.class === $.clsBaseRelation || rel.class === $.clsDerivedRelation) {
+      for (let attr of rel.virtualAttrs) {
          yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
-      }
-
-      return;
-   }
-
-   if (rel.class === $.clsDerivedRelation) {
-      for (let lvar of rel.config0.outVars) {
-         yield $.hasOwnProperty(bindings, lvar) ? bindings[lvar] : undefined;
       }
 
       return;
@@ -159,20 +147,15 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if (proj.rel.class === $.clsBaseRelation) {
+   if ($.isA(proj, $.clsBaseProjection)) {
       $.updateBaseProjection(proj);
    }
-   else if (proj.rel.class === $.clsDerivedRelation) {
+   else if ($.isA(proj, $.clsDerivedProjection)) {
       $.updateDerivedProjection(proj);
    }
    else {
       throw new Error;
    }
-}
-makeRecords ::= function (owner, iterable) {
-   let records = new (owner.isKeyed ? Map : Set)(iterable);
-   records.owner = owner;
-   return records;
 }
 projectionSizeEstimate ::= function (proj) {
    // Either a real size or an estimate (in case of hit projections)
@@ -190,35 +173,42 @@ projectionSizeEstimate ::= function (proj) {
    }
 
    if (proj.class === $.clsHitProjection) {
-      return 10;  // just a guess
+      return $.indexRefSize(proj.indexInstance, proj.indexKeys);
    }
 
    throw new Error;
 }
-projectionRecords ::= function (proj) {
+projectionPairs ::= function (proj) {
    if (proj.class === $.clsDerivedProjection) {
-      return proj.records;
+      return proj.records.pairs();
    }
 
    if (proj.class === $.clsFullProjection) {
-      return proj.rel.records;
+      return proj.rel.records.pairs();
    }
 
    if (proj.class === $.clsUniqueHitProjection) {
-      return proj.rec === undefined ? [] : [proj.rec];
+      let {rec} = proj;
+
+      return rec === undefined ? [] : [$.rec2pair(proj, rec)];
    }
 
    if (proj.class === $.clsHitProjection) {
       let {indexInstance, indexKeys, filterIndexedBy} = proj;
 
       return $.filter(
-         $.indexRef(indexInstance, indexKeys),
-         $.predFilterBy(proj.isKeyed, filterIndexedBy)
+         $.indexRefPairs(indexInstance, indexKeys),
+         ([rkey, rval]) => $.suitsFilterBy(rval, filterIndexedBy)
       );
    }
 
    if (proj.class === $.clsNoHitProjection) {
-      return $.filter(proj.rel.records, $.predFilterBy(proj.isKeyed, proj.filterBy));
+      let {filterBy} = proj;
+
+      return $.filter(
+         proj.rel.records.pairs(),
+         ([rkey, rval]) => $.suitsFilterBy(rval, filterBy)
+      );
    }
 
    if (proj.class === $.clsRecKeyBoundProjection) {
@@ -226,57 +216,69 @@ projectionRecords ::= function (proj) {
          return [];
       }
 
-      return [proj.isKeyed ? [proj.rkey, proj.rval] : proj.rval];
-   }
-
-   throw new Error;   
-}
-projectionRecordAt ::= function (proj, rkey) {
-   if (proj.class === $.clsDerivedProjection) {
-      return proj.records.recordAt(rkey);
-   }
-
-   if (proj.class === $.clsFullProjection) {
-      return proj.rel.records.recordAt(rkey);
-   }
-
-   if (proj.class === $.clsNoHitProjection ||
-         proj.class === $.clsHitProjection ||
-         proj.class === $.clsUniqueHitProjection) {
-      let rec = proj.rel.records.recordAt(rkey);
-
-      if (rec === undefined) {
-         return undefined;
-      }
-
-      let rval = proj.isKeyed ? rec[1] : rec;
-
-      return $.suitsFilterBy(rval, proj.filterBy) ? rec : undefined;
+      return [[proj.rkey, proj.rval]];
    }
 
    throw new Error;
 }
-projectionRvalAtExisting ::= function (proj, rkey) {
-   if (!proj.isKeyed) {
-      return rkey;
+projectionRvalAt ::= function (proj, rkey) {
+   if (proj.class === $.clsDerivedProjection) {
+      return proj.records.valueAt(rkey);
    }
-   
-   if (proj.class === $.clsFullProjection ||
-         proj.class === $.clsNoHitProjection ||
-         proj.class === $.clsHitProjection) {
+
+   if (proj.class === $.clsFullProjection) {
       return proj.rel.records.valueAt(rkey);
    }
 
+   if (proj.class === $.clsRecKeyBoundProjection) {
+      return (rkey === proj.rkey) ? proj.rval : undefined;
+   }
+
    if (proj.class === $.clsUniqueHitProjection) {
-      return proj.rec[1];
+      if (proj.rec === undefined) {
+         return undefined;
+      }
+
+      let [pkey, pval] = $.rec2pair(proj, proj.rec);
+
+      return rkey === pkey ? pval : undefined;
+   }
+
+   if (proj.class === $.clsNoHitProjection ||
+         proj.class === $.clsHitProjection) {
+      let rval = proj.rel.records.valueAt(rkey);
+
+      if (rval === undefined) {
+         return undefined;
+      }
+
+      return $.suitsFilterBy(rval, proj.filterBy) ? rval : undefined;
+   }
+
+   throw new Error;
+}
+projectionRvalAtX ::= function (proj, rkey) {
+   if (!proj.isKeyed) {
+      return rkey;
+   }
+
+   if (proj.class === $.clsDerivedProjection) {
+      return proj.records.valueAt(rkey);
    }
 
    if (proj.class === $.clsRecKeyBoundProjection) {
       return proj.rval;
    }
 
-   if (proj.class === $.clsDerivedProjection) {
-      return proj.records.valueAt(rkey);
+   if (proj.class === $.clsUniqueHitProjection) {
+      return $.rec2val(proj, proj.rec);
+   }
+
+
+   if (proj.class === $.clsFullProjection ||
+         proj.class === $.clsNoHitProjection ||
+         proj.class === $.clsHitProjection) {
+      return proj.rel.records.valueAt(rkey);
    }
 
    throw new Error;

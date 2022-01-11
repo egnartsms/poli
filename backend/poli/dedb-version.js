@@ -2,6 +2,7 @@ common
    assert
    check
    isA
+   isIterableEmpty
 dedb-base
    clsBaseRelation
    clsRecKeyBoundProjection
@@ -11,6 +12,8 @@ dedb-base
    clsFullProjection
 dedb-derived
    clsDerivedProjection
+dedb-relation
+   rec2key
 set-map
    deleteIntersection
    greaterLesser
@@ -24,41 +27,10 @@ refCurrentState ::= function (owner) {
 
    if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
       if (owner.depVer === null) {
-         owner.depVer = $.refCurrentExtState(owner.rel);
+         owner.depVer = $.refCurrentState(owner.rel);
       }
 
       return $.refMultiVersion(owner);
-   }
-
-   if (owner.class === $.clsRecKeyBoundProjection) {
-      return $.makeRecKeyBoundVersion(owner);
-   }
-
-   if (owner.class === $.clsUniqueHitProjection) {
-      return $.makeUniqueHitVersion(owner);
-   }
-
-   if (owner.class === $.clsFullProjection) {
-      return $.refFullProjectionVersion(owner);
-   }
-
-   throw new Error;
-}
-refCurrentExtState ::= function (owner) {
-   if (!owner.isKeyed) {
-      return $.refCurrentState(owner);
-   }
-
-   if (owner.class === $.clsBaseRelation || owner.class === $.clsDerivedProjection) {
-      return $.refMultiExtVersion(owner);
-   }
-
-   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
-      if (owner.depVer === null) {
-         owner.depVer = $.refCurrentExtState(owner.rel);
-      }
-
-      return $.refMultiExtVersion(owner);
    }
 
    if (owner.class === $.clsRecKeyBoundProjection) {
@@ -124,19 +96,6 @@ refMultiVersion ::= function (owner) {
 
    return owner.myVer;
 }
-refMultiExtVersion ::= function (owner) {
-   $.ensureTopmostFresh(owner);
-
-   if (!$.isMultiVersionExtended(owner.myVer)) {
-      owner.myVer.removed = new Map;
-   }
-
-   owner.myVer.refCount += 1;
-   owner.myVer.extCount += 1;
-   owner.myVer.extTotal += 1;
-
-   return owner.myVer;
-}
 ensureTopmostFresh ::= function (owner) {
    let prev = owner.myVer;
    
@@ -144,34 +103,15 @@ ensureTopmostFresh ::= function (owner) {
       return;
    }
 
-   let ver;
-
-   if (owner.isKeyed) {
-      let initiallyExtended = prev !== null && $.isMultiVersionExtended(prev);
-
-      ver = {
-         class: $.clsMultiVersion,
-         owner,
-         num: 1 + (prev === null ? 0 : prev.num),
-         refCount: prev === null ? 0 : 1,
-         extCount: 0,
-         extTotal: prev === null ? 0 : prev.extTotal,
-         added: new Set,
-         removed: new (initiallyExtended ? Map : Set),
-         next: null,
-      };
-   }
-   else {
-      ver = {
-         class: $.clsMultiVersion,
-         owner,
-         num: 1 + (prev === null ? 0 : prev.num),
-         refCount: prev === null ? 0 : 1,
-         added: new Set,
-         removed: new Set,
-         next: null,
-      };
-   }
+   let ver = {
+      class: $.clsMultiVersion,
+      owner,
+      num: 1 + (prev === null ? 0 : prev.num),
+      refCount: prev === null ? 0 : 1,
+      added: new Set,
+      removed: new ($.requiresExtendedVersion(owner) ? Map : Set),
+      next: null,
+   };
 
    if (prev !== null) {
       prev.next = ver;
@@ -182,17 +122,18 @@ ensureTopmostFresh ::= function (owner) {
 isMultiVersionFresh ::= function (ver) {
    return ver.added.size === 0 && ver.removed.size === 0;
 }
+requiresExtendedVersion ::= function (owner) {
+   return owner.class === $.clsBaseRelation && owner.isKeyed;
+}
 isMultiVersionExtended ::= function (ver) {
-   return ver.extTotal > 0;
+   return $.requiresExtendedVersion(ver.owner);
 }
 releaseVersion ::= function (ver) {
    if (ver.class !== $.clsMultiVersion) {
       return;
    }
 
-   $.assert(
-      () => ver.refCount > 0 && (!ver.owner.isKeyed || ver.extCount < ver.refCount)
-   );
+   $.assert(() => ver.refCount > 0);
 
    ver.refCount -= 1;
 
@@ -203,52 +144,18 @@ releaseVersion ::= function (ver) {
 
    if (ver.refCount === 0) {
       $.assert(() => ver.owner.myVer === ver);
-      ver.owner.myVer = null;
-
-      if (ver.owner.class === $.clsHitProjection || ver.owner.class === $.clsNoHitProjection) {
-         $.releaseExtVersion(ver.owner.depVer);
-         ver.owner.depVer = null;
-      }
+      
+      $.nullifyMyVer(ver.owner);
    }
 }
-releaseExtVersion ::= function (ver) {
-   if (ver.class !== $.clsMultiVersion) {
-      return;
-   }
+nullifyMyVer ::= function (owner) {
+   owner.myVer = null;
 
-   if (!ver.owner.isKeyed) {
-      $.releaseVersion(ver);
-      return;
-   }
-
-   $.assert(() => ver.refCount > 0 && ver.extCount > 0);
-
-   ver.refCount -= 1;
-   ver.extCount -= 1;
-
-   while (ver !== null) {
-      ver.extTotal -= 1;
-
-      if (ver.refCount === 0) {
-         if (ver.next === null) {
-            $.assert(() => ver.owner.myVer === ver);
-            ver.owner.myVer = null;
-
-            if (ver.owner.class === $.clsHitProjection || ver.owner.class === $.clsNoHitProjection) {
-               $.releaseExtVersion(ver.owner.depVer);
-               ver.owner.depVer = null;
-            }
-         }
-         else {
-            ver.next.refCount -= 1;
-         }
-      }
-      else if (ver.extTotal === 0) {
-         // Transition to a non-extended version
-         ver.removed = new Set(ver.removed.keys());
-      }
-
-      ver = ver.next;
+   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
+      $.assert(() => owner.depVer !== null);
+      
+      $.releaseVersion(owner.depVer);
+      owner.depVer = null;
    }
 }
 unchainVersion ::= function (ver) {
@@ -284,14 +191,6 @@ unchainVersion ::= function (ver) {
       ver.next = topmost;
       topmost.refCount += 1;
       $.releaseVersion(next);
-
-      if (next.refCount > 0 && owner.isKeyed && $.isMultiVersionExtended(next)) {
-         next.extTotal -= ver.extTotal;
-
-         if (next.extTotal === 0) {
-            next.removed = new Set(next.removed.keys());
-         }
-      }
    }
 }
 unchain1tupled ::= function (ver) {
@@ -325,15 +224,12 @@ unchain1keyed ::= function (ver) {
    let isNextDone = next.refCount === 1;
 
    if (isNextDone) {
-      $.assert(() => $.isMultiVersionExtended(next) === isExtended);
-
       $.deleteIntersection(ver.added, next.removed);
 
       let [ga, la] = $.greaterLesser(ver.added, next.added);
       let [gr, lr] = $.greaterLesser(ver.removed, next.removed);
 
       $.addAll(ga, la);
-
       (isExtended ? $.setAll : $.addAll)(gr, lr);
 
       ver.added = ga;
@@ -343,75 +239,56 @@ unchain1keyed ::= function (ver) {
       next.removed = null;
    }
    else {
-      $.setAll(ver.added, next.added);
-
-      if (isExtended) {
-         $.mapSplitMerge(next.removed, ver.added, ver.removed);
-      }
-      else {
-         // Here, next.removed may be either Set or Map (next can be extended or not)
-         $.setSplitMerge(next.removed.keys(), ver.added, ver.removed);
-      }
+      $.addAll(ver.added, next.added);
+      (isExtended ? $.mapSplitMerge : $.setSplitMerge)(next.removed, ver.added, ver.removed);
    }
 }
 setSplitMerge ::= function (source, toRemove, toAdd) {
    for (let x of source) {
-      if (toRemove.has(x)) {
-         toRemove.delete(x);
-      }
-      else {
-         toAdd.add(x);
-      }
+      $.removeOrAdd(x, toRemove, toAdd);
+   }
+}
+removeOrAdd ::= function (item, toRemove, toAdd) {
+   if (toRemove.has(item)) {
+      toRemove.delete(item);
+   }
+   else {
+      toAdd.add(item);
    }
 }
 mapSplitMerge ::= function (source, toRemove, toAdd) {
    for (let [key, val] of source) {
-      if (toRemove.has(key)) {
-         toRemove.delete(key);
-      }
-      else {
-         toAdd.set(key, val);
-      }
+      $.removeOrSet(key, val, toRemove, toAdd);
    }
 }
-versionAddKey ::= function (ver, rkey) {
-   $.assert(() => ver.class === $.clsMultiVersion);
-
+removeOrSet ::= function (key, val, toRemove, toAdd) {
+   if (toRemove.has(key)) {
+      toRemove.delete(key);
+   }
+   else {
+      toAdd.set(key, val);
+   }
+}
+multiVersionAddKey ::= function (ver, rkey) {
    if (ver.owner.isKeyed) {
       ver.added.add(rkey);
    }
    else {
-      if (ver.removed.has(rkey)) {
-         ver.removed.delete(rkey);
-      }
-      else {
-         ver.added.add(rkey);
-      }
+      $.removeOrAdd(rkey, ver.removed, ver.added);
    }
 }
-versionRemove ::= function (ver, rec) {
-   $.assert(() => ver.class === $.clsMultiVersion);
+multiVersionRemoveKey ::= function (ver, rkey) {
+   $.assert(() => !$.isMultiVersionExtended(ver));
 
-   if (ver.owner.isKeyed) {
-      let [rkey, rval] = rec;
-
-      if (ver.added.has(rkey)) {
-         ver.added.delete(rkey);
-      }
-      else if ($.isMultiVersionExtended(ver)) {
-         ver.removed.set(rkey, rval);
-      }
-      else {
-         ver.removed.add(rkey);
-      }
+   $.removeOrAdd(rkey, ver.added, ver.removed);
+}
+multiVersionRemovePair ::= function (ver, rkey, rval) {
+   if ($.isMultiVersionExtended(ver)) {
+      $.removeOrSet(rkey, rval, ver.added, ver.removed);
    }
    else {
-      if (ver.added.has(rec)) {
-         ver.added.delete(rec);
-      }
-      else {
-         ver.removed.add(rec);
-      }
+      $.assert(() => rkey === rval);
+      $.removeOrAdd(rkey, ver.added, ver.removed);
    }
 }
 isVersionFresh ::= function (ver) {
@@ -435,23 +312,7 @@ isVersionFresh ::= function (ver) {
    throw new Error;
 }
 hasVersionAdded ::= function (ver) {
-   if (ver.class === $.clsRecKeyBoundVersion) {
-      let {proj} = ver;
-
-      return ver.rval !== proj.rval && proj.rval !== undefined;
-   }
-
-   if (ver.class === $.clsUniqueHitVersion) {
-      let {proj} = ver;
-
-      return ver.rec !== proj.rec && proj.rec !== undefined;
-   }
-
-   if (ver.class === $.clsMultiVersion) {
-      return ver.added.size > 0;
-   }
-
-   throw new Error;
+   return !$.isIterableEmpty($.versionAddedKeys(ver));
 }
 versionAddedKeys ::= function (ver) {
    if (ver.class === $.clsRecKeyBoundVersion) {
@@ -469,7 +330,7 @@ versionAddedKeys ::= function (ver) {
       let {proj} = ver;
 
       if (ver.rec !== proj.rec && proj.rec !== undefined) {
-         return [proj.isKeyed ? proj.rec[0] : proj.rec];
+         return [$.rec2key(proj, proj.rec)];
       }
       else {
          return [];
@@ -483,23 +344,7 @@ versionAddedKeys ::= function (ver) {
    throw new Error;
 }
 hasVersionRemoved ::= function (ver) {
-   if (ver.class === $.clsRecKeyBoundVersion) {
-      let {proj} = ver;
-
-      return ver.rval !== proj.rval && ver.rval !== undefined;
-   }
-
-   if (ver.class === $.clsUniqueHitVersion) {
-      let {proj} = ver;
-
-      return ver.rec !== proj.rec && ver.rec !== undefined;
-   }
-
-   if (ver.class === $.clsMultiVersion) {
-      return ver.removed.size > 0;
-   }
-
-   throw new Error;
+   return !$.isIterableEmpty($.versionRemovedKeys(ver));
 }
 versionRemovedKeys ::= function (ver) {
    if (ver.class === $.clsRecKeyBoundVersion) {

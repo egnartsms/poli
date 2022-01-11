@@ -1,7 +1,14 @@
+common
+   assert
+   filter
 -----
-RecordMap ::= class RecordMap {
-   constructor(entries) {
-      this.map = new Map(entries);
+ExpRecords ::= class KeyedRecords {
+   constructor(kvpairs) {
+      this.map = new Map(kvpairs);
+   }
+
+   static fromKeyValPairs(kvpairs) {
+      return new $.KeyedRecords(kvpairs);
    }
 
    get size() {
@@ -9,62 +16,58 @@ RecordMap ::= class RecordMap {
    }
 
    [Symbol.iterator]() {
-      return this.map.entries();
+      return this.map[Symbol.iterator]();
+   }
+
+   pairs() {
+      return this.map;
    }
 
    keys() {
       return this.map.keys();
    }
 
-   keyVals() {
-      return this.map.entries();
+   hasAt(rkey) {
+      return this.map.has(rkey);
    }
 
-   hasKey(key) {
-      return this.map.has(key);
+   valueAt(rkey) {
+      return this.map.get(rkey);
    }
 
-   hasRecord([key, val]) {
-      return this.map.has(key);
+   valueAtX(rkey) {
+      return this.valueAt(rkey);
    }
 
-   valueAt(key) {
-      return this.map.get(key);
+   addPair(rkey, rval) {
+      $.assert(() => !this.hasAt(rkey));
+
+      this.map.set(rkey, rval);
    }
 
-   valueAtExisting(key) {
-      return this.valueAt(key);
-   }
-
-   recordAt(key) {
-      return this.map.has(key) ? [key, this.map.get(key)] : undefined;
-   }
-
-   recordAtExisting(key) {
-      return [key, this.map.get(key)];
-   }
-
-   addRecord([key, val]) {
-      this.map.set(key, val);
-   }
-
-   addRecords(recs) {
-      for (let rec of recs) {
-         this.addRecord(rec);
+   addPairs(recs) {
+      for (let [rkey, rval] of recs) {
+         this.addPair(rkey, rval);
       }
    }
 
-   removeAt(key) {
-      return this.map.delete(key);
-   }
-
-   removeRecord([key, val]) {
-      return this.map.delete(key);
+   removeAt(rkey) {
+      let didDelete = this.map.delete(rkey);
+      $.assert(() => didDelete);
    }
 }
-RecordSet ::= class RecordSet {
-   constructor(entries) {
-      this.set = new Set(entries);
+ImpRecords ::= class Records {
+   constructor(tuples) {
+      this.set = new Set(tuples);
+   }
+
+   static fromKeyValPairs(kvpairs) {
+      return new $.Records(
+         $.filter(kvpairs, ([rkey, rval]) => {
+            $.assert(() => rkey === rval);
+            return rkey;
+         })
+      );
    }
 
    get size() {
@@ -75,54 +78,41 @@ RecordSet ::= class RecordSet {
       return this.set[Symbol.iterator]();
    }
 
-   keys() {
-      return this.set.keys();
-   }
-
-   keyVals() {
+   pairs() {
       return this.set.entries();
    }
 
-   hasKey(key) {
-      return this.set.has(key);
+   keys() {
+      return this.set;
    }
 
-   hasRecord(rec) {
-      return this.set.has(rec);
+   hasAt(rkey) {
+      return this.set.has(rkey);
    }
 
-   valueAt(key) {
-      return this.set.has(key) ? key : undefined;
+   valueAt(rkey) {
+      return this.hasAt(rkey) ? rkey : undefined;
    }
 
-   valueAtExisting(key) {
-      return key;
+   valueAtX(rkey) {
+      return rkey;
    }
 
-   recordAt(key) {
-      return this.valueAt(key);
+   addPair(rkey, rval) {
+      $.assert(() => rkey === rval && !this.hasAt(rkey));
+
+      this.set.add(rkey);
    }
 
-   recordAtExisting(key) {
-      return key;
-   }
-
-   addRecord(rec) {
-      this.set.add(rec);
-   }
-
-   addRecords(recs) {
-      for (let rec of recs) {
-         this.addRecord(rec);
+   addPairs(recs) {
+      for (let [rkey, rval] of recs) {
+         this.addPair(rkey, rval);
       }
    }
 
-   removeAt(key) {
-      return this.set.delete(key);
-   }
-
-   removeRecord(rec) {
-      return this.set.delete(rec);
+   removeAt(rkey) {
+      let didDelete = this.set.delete(rkey);
+      $.assert(() => didDelete);
    }
 }
 deleteIntersection ::= function (recsA, recsB) {

@@ -4,6 +4,7 @@ common
    map
    trackingFinal
    commonArrayPrefixLength
+   hasOwnDefinedProperty
 -----
 unique ::= 1
 indexFromSpec ::= function (spec) {
@@ -52,7 +53,7 @@ isFullyCoveredBy ::= function (index, boundAttrs) {
 }
 Fitness ::= ({
    minimum: -10,  // unless we have that large indices
-   hit: 0,
+   hit: 0,   // this must be 0 because of the way we computeFitness()
    uniqueHit: 1,
 })
 indexFitness ::= function (index, boundAttrs) {
@@ -71,7 +72,7 @@ indexFitness ::= function (index, boundAttrs) {
 computeFitness ::= function (len, index) {
    let diff = len - index.length;
 
-   if (diff === $.Fitness.hit && index.isUnique) {
+   if (diff === 0 && index.isUnique) {
       return $.Fitness.uniqueHit;
    }
    else {
@@ -85,7 +86,7 @@ indexKeys ::= function (index, bindings) {
    let keys = [];
 
    for (let attr of index) {
-      if (bindings[attr] === undefined) {
+      if (!$.hasOwnDefinedProperty(bindings, attr)) {
          break;
       }
 

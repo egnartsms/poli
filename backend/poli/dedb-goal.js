@@ -23,7 +23,6 @@ dedb-rec-key
 dedb-relation
    clsRelation
    toRelation
-   recKeyBindingMakesSenseFor
 set-map
    * as: set
 -----
@@ -110,7 +109,7 @@ join ::= function (relInfo, rkey, bindings) {
       rkey = undefined;
    }
 
-   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
+   $.check(rkey === undefined || rel.virtualAttrs.includes($.recKey), () =>
       `Cannot grab the rec key of relation '${rel.name}': makes no sense`
    );
 

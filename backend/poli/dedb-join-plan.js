@@ -296,7 +296,7 @@ relGoalFulfillments ::= function* (goal) {
    }
 
    let indices = rel.class === $.clsBaseRelation ?
-      Array.from(rel.indices, ({index}) => index) :
+      Array.from(rel.myIndexInstances, ({index}) => index) :
       rel.indices;
 
    if ($.any(indices, index => $.isFullyCoveredBy(index, Object.keys(firmBindings)))) {

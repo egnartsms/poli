@@ -11,8 +11,6 @@ trie
    Map
 vector
    Vector
-dedb-common
-   RecordType
 dedb-base
    addFact
    makeEntity

@@ -7,6 +7,7 @@ common
    find
    hasNoEnumerableProps
    hasOwnProperty
+   hasOwnDefinedProperty
    concat
    map
    maximumBy
@@ -15,17 +16,18 @@ common
    selectProps
    trackingFinal
 data-structures
-   RecordMap
-   RecordSet
+   ExpRecords
+   ImpRecords
 dedb-rec-key
    recKey
    recVal
    normalizeAttrs
 dedb-version
-   refCurrentExtState
-   releaseExtVersion
-   versionAddKey
-   versionRemove
+   refCurrentState
+   releaseVersion
+   multiVersionAddKey
+   multiVersionRemoveKey
+   multiVersionRemovePair
    unchainVersion
 dedb-index
    unique
@@ -45,17 +47,15 @@ dedb-index-instance
 dedb-projection
    invalidateProjections
    makeProjectionRegistry
-dedb-common
-   RecordType
-   recTypeProto
-   makeRecords
 dedb-relation
    toRelation
+   rec2val
+   rec2pair
 -----
 clsBaseRelation ::= ({
    name: 'relation.base',
-   relation: true,
-   'relation.base': true
+   'relation.base': true,
+   'relation': true,
 })
 makeRelation ::= function ({
    name,
@@ -72,27 +72,28 @@ makeRelation ::= function ({
       class: $.clsBaseRelation,
       name,
       attrs,
+      virtualAttrs: [$.recKey, ...attrs],
       isKeyed,
-      indices: null,   // initialized below
+      myIndexInstances: null,   // initialized below
       projections: $.makeProjectionRegistry(),
       myVer: null,
-      records: new (isKeyed ? $.RecordMap : $.RecordSet)(records),
+      records: new (isKeyed ? $.ExpRecords : $.ImpRecords)(records),
       validRevDeps: new Set,  // 'revdeps' here means projections
       entityProto: false,  // initialized below if necessary
    };
 
-   let indices = [];
+   let instances = [];
 
    for (let spec of indexSpecs) {
       let index = $.indexFromSpec(spec);
-      let inst = $.makeIndexInstance(index, {isKeyed});
+      let inst = $.makeIndexInstance(rel, index);
 
       $.rebuildIndex(inst, rel.records);
-      
-      indices.push(inst);
+
+      instances.push(inst);
    }
 
-   rel.indices = indices;
+   rel.myIndexInstances = instances;
 
    if (isEntity) {
       rel.entityProto = $.makeEntityPrototype(rel);
@@ -132,10 +133,12 @@ getRecords ::= function (rel, bindings) {
    return $.filter(recs, $.predFilterBy(rel.isKeyed, filterBy));
 }
 findUniqueIdxInst ::= function (rel, boundAttrs) {
-   return rel.indices.find(({index}) => $.uniqueIndexFullHit(index, boundAttrs));
+   return rel.myIndexInstances.find(({index}) => $.uniqueIndexFullHit(index, boundAttrs));
 }
 findSuitableIdxInst ::= function (rel, boundAttrs) {
-   let inst = $.maximumBy(rel.indices, ({index}) => $.indexFitness(index, boundAttrs));
+   let inst = $.maximumBy(
+      rel.myIndexInstances, ({index}) => $.indexFitness(index, boundAttrs)
+   );
 
    if (inst === undefined ||
          $.indexFitness(inst.index, boundAttrs) === $.Fitness.minimum) {
@@ -148,7 +151,7 @@ computeFilterBy ::= function (index, bindings) {
    let filterBy = {...bindings};
 
    for (let attr of index) {
-      if (bindings[attr] === undefined) {
+      if (!$.hasOwnDefinedProperty(bindings, attr)) {
          break;
       }
 
@@ -254,7 +257,7 @@ makeProjection ::= function (rel, bindings) {
       else {
          proj.indexInstance = inst;
          proj.indexKeys = $.indexKeys(inst.index, bindings);
-         
+
          if (inst.isUnique) {
             proj.class = $.clsUniqueHitProjection;
             proj.filterBy = $.computeFilterBy(inst.index, bindings);
@@ -284,9 +287,8 @@ markAsValid ::= function (proj) {
 updateProjection ::= function (proj) {
    let {rel, class: cls} = proj;
 
-   if (cls === $.clsFullProjection) {
+   if (cls === $.clsFullProjection)
       ;
-   }
    else if (cls === $.clsRecKeyBoundProjection) {
       let rval = rel.records.valueAt(proj.rkey);
 
@@ -300,7 +302,7 @@ updateProjection ::= function (proj) {
       let rec = $.indexRefOne(proj.indexInstance, proj.indexKeys);
 
       if (rec !== undefined && rec !== proj.rec &&
-            !$.suitsFilterBy(proj.isKeyed ? rec[1] : rec, proj.filterBy)) {
+            !$.suitsFilterBy($.rec2val(proj, rec), proj.filterBy)) {
          rec = undefined;
       }
 
@@ -312,24 +314,22 @@ updateProjection ::= function (proj) {
       if (proj.depVer !== null) {
          $.unchainVersion(proj.depVer);
 
-         for (let rec of proj.depVer.removed) {
-            let rval = proj.isKeyed ? rec[1] : rec;
-
+         for (let [rkey, rval] of proj.depVer.removed.entries()) {
             if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.versionRemove(proj.myVer, rec);
+               $.multiVersionRemoveKey(proj.myVer, rkey);
             }
          }
 
          for (let rkey of proj.depVer.added) {
-            let rval = rel.records.valueAtExisting(rkey);
+            let rval = rel.records.valueAtX(rkey);
 
             if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.versionAddKey(proj.myVer, rkey);
+               $.multiVersionAddKey(proj.myVer, rkey);
             }
          }
          
-         let newDepVer = $.refCurrentExtState(proj.rel);
-         $.releaseExtVersion(proj.depVer);
+         let newDepVer = $.refCurrentState(rel);
+         $.releaseVersion(proj.depVer);
          proj.depVer = newDepVer;
       }
    }
@@ -373,18 +373,16 @@ addFact ::= function (relInfo, rkey, rval=rkey) {
    let rel = $.toRelation(relInfo);
 
    $.check(rel.isKeyed || rkey === rval, `Keyed/non-keyed misuse`);
-   $.check(!rel.records.hasKey(rkey), `Duplicate record`);
+   $.check(!rel.records.hasAt(rkey), `Duplicate record`);
 
-   let rec = rel.isKeyed ? [rkey, rval] : rkey;
-
-   rel.records.addRecord(rec);
+   rel.records.addPair(rkey, rval);
 
    if (rel.myVer !== null) {
-      $.versionAddKey(rel.myVer, rkey);
+      $.multiVersionAddKey(rel.myVer, rkey);
    }
 
-   for (let inst of rel.indices) {
-      $.indexAdd(inst, rec);
+   for (let inst of rel.myIndexInstances) {
+      $.indexAdd(inst, rkey, rval);
    }
    
    if (rel.entityProto !== false) {
@@ -395,29 +393,27 @@ addFact ::= function (relInfo, rkey, rval=rkey) {
 }
 removeFact ::= function (relInfo, rkey) {
    let rel = $.toRelation(relInfo);
-   let rec = rel.records.recordAt(rkey);
+   let rval = rel.records.valueAt(rkey);
 
-   if (rec === undefined) {
+   if (rval === undefined) {
       throw new Error(`Missing record`);
    }
 
-   $.doRemove(rel, rec);
+   $.doRemove(rel, rkey, rval);
    $.invalidate(rel);
 }
-doRemove ::= function (rel, rec) {
-   rel.records.removeRecord(rec);
+doRemove ::= function (rel, rkey, rval) {
+   rel.records.removeAt(rkey);
 
    if (rel.myVer !== null) {
-      $.versionRemove(rel.myVer, rec);
+      $.multiVersionRemovePair(rel.myVer, rkey, rval);
    }
 
-   for (let inst of rel.indices) {
-      $.indexRemove(inst, rec);
+   for (let inst of rel.myIndexInstances) {
+      $.indexRemove(inst, rkey, rval);
    }
 
    if (rel.entityProto !== false) {
-      let rkey = rel.isKeyed ? rec[0] : rec;
-
       rkey[$.symEntityTuple] = null;
    }
 }
@@ -427,7 +423,8 @@ removeIf ::= function (relInfo, pred) {
    let toRemove = Array.from($.filter(rel.records, pred));
 
    for (let rec of toRemove) {
-      $.doRemove(rel, rec);
+      let [rkey, rval] = $.rec2pair(rel, rec);
+      $.doRemove(rel, rkey, rval);
    }
 
    $.invalidate(rel);

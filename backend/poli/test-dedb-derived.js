@@ -99,7 +99,9 @@ continentCity ::= ({
 	]
 })
 test_query_no_bindings ::= function () {
-	$.checkLike(
+	console.log($.query($.continentCity, {}));
+   
+   $.checkLike(
 		new Set($.query($.continentCity, {})),
 		[
 			{continent: 'Europe', city: 'Paris'},
