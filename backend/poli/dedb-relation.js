@@ -22,6 +22,7 @@ clsRelation ::= ({
 info2rel ::= new WeakMap
 toRelation ::= function (relInfo) {
 	if (typeof relInfo.class === 'object' && relInfo.class['relation'] === true) {
+		// $.toRelation is idempotent
 		return relInfo;
 	}
 
@@ -44,7 +45,7 @@ clearRelationCache ::= function () {
 	$.info2rel = new WeakMap();
 }
 accessorForAttr ::= function (rel, attr) {
-	$.assert(() => rel.virtualAttrs.includes($.recVal));
+	$.assert(() => rel.logAttrs.includes($.recVal));
 
 	if (attr === $.recKey) {
 		if (rel.isKeyed) {

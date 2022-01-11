@@ -72,7 +72,7 @@ makeRelation ::= function ({
       class: $.clsBaseRelation,
       name,
       attrs,
-      virtualAttrs: [$.recKey, ...attrs],
+      logAttrs: [$.recKey, ...attrs],
       isKeyed,
       myIndexInstances: null,   // initialized below
       projections: $.makeProjectionRegistry(),

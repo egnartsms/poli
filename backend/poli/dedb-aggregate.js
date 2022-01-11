@@ -25,7 +25,7 @@ makeRelation ::= function ({
    let target = $.toRelation(getTargetRelInfo());
    let groupBy = $.prepareGroupByPairs(relname, groupBySpec);
 
-   $.check($.all(groupBy, ([attr, alias]) => target.virtualAttrs.includes(attr)));
+   $.check($.all(groupBy, ([attr, alias]) => target.logAttrs.includes(attr)));
 
    return {
       class: $.clsAggregateRelation,

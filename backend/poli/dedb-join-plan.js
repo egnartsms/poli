@@ -89,7 +89,7 @@ visualizeIncrementalUpdateScheme ::= function* (rel) {
    //    console.log(Array.from(gen(dconj, jpath)).join(''));
    // }
 }
-computeIncrementalUpdatePlan ::= function (rootGoal, outVars) {
+computeIncrementalUpdatePlan ::= function (rootGoal, logAttrs) {
    let {goalPaths, pathGoals} = $.computePaths(rootGoal);
    let lvar2ff = $.computeFulfillments(rootGoal);
    let idxReg = [];
@@ -108,11 +108,11 @@ computeIncrementalUpdatePlan ::= function (rootGoal, outVars) {
          })
       })),
       idxReg,
-      subInfos: $.makeSubInfos(rootGoal, outVars, goalPaths),
+      subInfos: $.makeSubInfos(rootGoal, logAttrs, goalPaths),
       numPaths: pathGoals.size
    }
 }
-makeSubInfos ::= function (rootGoal, outVars, goalPaths) {
+makeSubInfos ::= function (rootGoal, logAttrs, goalPaths) {
    return Array.from($.relGoalsBeneath(rootGoal), goal => ({
       rel: goal.rel,
       projNum: goal.projNum,
@@ -122,7 +122,7 @@ makeSubInfos ::= function (rootGoal, outVars, goalPaths) {
       looseBindings: Object.fromEntries(
          $.filter(
             $.ownEntries(goal.looseBindings),
-            ([attr, lvar]) => outVars.includes(lvar)
+            ([attr, lvar]) => logAttrs.includes(lvar)
          )
       )
    }))
@@ -887,14 +887,13 @@ narrowConfig ::= function (config0, subInfos, boundAttrs) {
       return pairs.filter(([attr, lvar]) => !boundAttrs.includes(lvar));
    }
 
-   let {attrs, vars, outVars, idxReg, plans} = config0;
+   let {attrs, vars, idxReg, plans} = config0;
    let isNotBound = (a) => !boundAttrs.includes(a);
    let idxRegNw = [];
 
    return {
       attrs: attrs.filter(isNotBound),
       vars: vars.filter(isNotBound),
-      outVars: outVars.filter(isNotBound),
       idxReg: idxRegNw,
       plans: Array.from(plans, plan => narrowPlan(plan, idxReg, idxRegNw))
    }

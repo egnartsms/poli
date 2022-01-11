@@ -109,7 +109,7 @@ join ::= function (relInfo, rkey, bindings) {
       rkey = undefined;
    }
 
-   $.check(rkey === undefined || rel.virtualAttrs.includes($.recKey), () =>
+   $.check(rkey === undefined || rel.logAttrs.includes($.recKey), () =>
       `Cannot grab the rec key of relation '${rel.name}': makes no sense`
    );
 
@@ -251,7 +251,7 @@ walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
       }
    })(rootGoal, onPath);
 }
-checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
+checkVarUsageAndReturnVars ::= function (rootGoal, logAttrs) {
    let usageCount = new Map;
 
    function inc(lvar) {
@@ -275,7 +275,7 @@ checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
          }
       },
       onPath: () => {
-         for (let lvar of outVars) {
+         for (let lvar of logAttrs) {
             $.check(usageCount.get(lvar) > 0, () =>
                `Attribute '${String(lvar)}': variable misuse`
             );
@@ -283,7 +283,7 @@ checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
 
          for (let [lvar, count] of usageCount) {
             if (count === 1) {
-               $.check(outVars.includes(lvar), () =>
+               $.check(logAttrs.includes(lvar), () =>
                   `Variable '${String(lvar)}' is only mentioned once`
                );
             }

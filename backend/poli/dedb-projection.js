@@ -106,7 +106,7 @@ releaseProjection ::= function (proj) {
 }
 genProjectionKey ::= function* (rel, bindings) {
    if (rel.class === $.clsBaseRelation || rel.class === $.clsDerivedRelation) {
-      for (let attr of rel.virtualAttrs) {
+      for (let attr of rel.logAttrs) {
          yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
       }
 

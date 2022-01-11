@@ -86,21 +86,21 @@ makeRelation ::= function ({
 }) {
    $.check(isKeyed || attrs.length > 0);
 
-   let outVars;
+   let logAttrs;
 
    if (isKeyed) {
-      if (attrs.length > 0) {
-         outVars = [$.recKey, ...attrs];
+      if (attrs.length === 0) {
+         logAttrs = [$.recKey, $.recVal];
       }
       else {
-         outVars = [$.recKey, $.recVal];
+         logAttrs = [$.recKey, ...attrs];
       }
    }
    else {
-      outVars = attrs;
+      logAttrs = attrs;
    }
 
-   $.check(outVars.length <= $.MAX_REL_ATTRS, `Too many attributes`);
+   $.check(logAttrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
    function vTagged(strings) {
       if (strings.length !== 1) {
@@ -135,18 +135,17 @@ makeRelation ::= function ({
    
    let numProjs = $.goal.assignProjNumToRelGoals(rootGoal);
    let numDeps = $.goal.assignDepNumToRelGoals(rootGoal);
-   let vars = $.goal.checkVarUsageAndReturnVars(rootGoal, outVars);
+   let vars = $.goal.checkVarUsageAndReturnVars(rootGoal, logAttrs);
    let {
       plans,
       idxReg,
       subInfos,
       numPaths
-   } = $.computeIncrementalUpdatePlan(rootGoal, outVars);
+   } = $.computeIncrementalUpdatePlan(rootGoal, logAttrs);
 
    let config0 = {
       attrs,
       vars,
-      outVars,
       idxReg,
       plans
    };
@@ -155,7 +154,7 @@ makeRelation ::= function ({
       class: $.clsDerivedRelation,
       name: relname,
       attrs,
-      virtualAttrs: outVars,
+      logAttrs,
       isKeyed,
       indices: Array.from(potentialIndices, $.indexFromSpec),
       subInfos,
@@ -251,7 +250,7 @@ markProjectionValid ::= function (proj) {
    proj.isValid = true;
 }
 configFor ::= function (rel, bindings) {
-   let cfgkey = $.bindings2configKeys(rel.config0.outVars, bindings);
+   let cfgkey = $.bindings2configKeys(rel.logAttrs, bindings);
 
    if (!$.hasOwnProperty(rel.configs, cfgkey)) {
       rel.configs[cfgkey] = $.narrowConfig(
@@ -261,11 +260,11 @@ configFor ::= function (rel, bindings) {
    
    return rel.configs[cfgkey];
 }
-bindings2configKeys ::= function (outVars, bindings) {
+bindings2configKeys ::= function (logAttrs, bindings) {
    let cfgkey = 0;
 
-   for (let i = 0; i < outVars.length; i += 1) {
-      if ($.hasOwnDefinedProperty(bindings, outVars[i])) {
+   for (let i = 0; i < logAttrs.length; i += 1) {
+      if ($.hasOwnDefinedProperty(bindings, logAttrs[i])) {
          cfgkey |= (1 << i);
       }
    }
