@@ -74,10 +74,4 @@ test_basic ::= function () {
          {country: 'china', population: 1398}
       ]
    );
-
-   // let Pproj = $.projectionFor(pop, {country: 'canada'});
-
-   // $.check($.isLike(Pproj.records, [
-   //    {population: 35},
-   // ]));
 }

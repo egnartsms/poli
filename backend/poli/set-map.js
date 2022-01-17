@@ -1,3 +1,5 @@
+common
+   settify
 -----
 uniquesDups ::= function (...Xs) {
    let uniques = new Set;
@@ -55,5 +57,43 @@ addAll ::= function (set, xs) {
 setAll ::= function (map, entries) {
    for (let [k, v] of entries) {
       map.set(k, v);
+   }
+}
+intersection ::= function (X, Y) {
+   X = $.settify(X);
+
+   let res = new Set();
+
+   for (let y of Y) {
+      if (X.has(y)) {
+         res.add(y);
+      }
+   }
+
+   return res;
+}
+difference ::= function (X, Y) {
+   let R = new Set(X);
+
+   for (let y of Y) {
+      R.delete(y);
+   }
+
+   return R;
+}
+intersect ::= function (S, Si) {
+   Si = $.settify(Si);
+   
+   for (let s of S) {
+      if (!Si.has(s)) {
+         S.delete(s);
+      }
+   }
+}
+purgeSet ::= function (S, pred) {
+   for (let s of S) {
+      if (!pred(s)) {
+         S.delete(s);
+      }
    }
 }

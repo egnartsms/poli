@@ -10,9 +10,6 @@ dedb-base
    predFilterBy
    suitsFilterBy
    clsBaseRelation
-   clsHitProjection
-   clsNoHitProjection
-   clsFullProjection
 dedb-index
    copyIndex
    indexKeys
@@ -25,17 +22,17 @@ dedb-relation
    pair2rec
    recordCollection
 -----
-refIndexInstance ::= function (proj, desired) {
-   if (proj.class === $.clsNoHitProjection || proj.class === $.clsHitProjection) {
-      return $.makeReducedIndexInstance(proj.rel, desired, proj.filterBy);
+refIndexInstance ::= function (owner, desired) {
+   if (owner.class === $.clsDerivedProjection) {
+      return $.refDerivedInstance(owner, desired);
    }
 
-   if (proj.class === $.clsFullProjection) {
-      return $.makeReducedIndexInstance(proj.rel, desired, []);
-   }
+   if (owner.class === $.clsBaseRelation) {
+      let inst = $.refDesiredIndexInstance(owner, desired);
 
-   if (proj.class === $.clsDerivedProjection) {
-      return $.refDerivedInstance(proj, desired);
+      $.assert(() => inst !== undefined);
+
+      return inst;
    }
 
    // For other types of projection, it makes no sense to request index instances
@@ -58,7 +55,7 @@ makeReducedIndexInstance ::= function (rel, desired, filterBy) {
       `Could not find index '${desired}' on a relation '${rel.name}'`
    );
 
-   filterBy = [...filterBy];
+   filterBy = Array.from(filterBy);
 
    let template = Array.from(found.index, a => {
       if (desired.includes(a)) {
@@ -81,17 +78,14 @@ makeReducedIndexInstance ::= function (rel, desired, filterBy) {
    }
 }
 refDerivedInstance ::= function (proj, desired) {
-   for (let inst of proj.myIndexInstances) {
-      if ($.arraysEqual(inst.index, desired)) {
-         inst.refCount += 1;
-         return inst;
-      }
+   let inst = $.refDesiredIndexInstance(proj, desired);
+
+   if (inst !== undefined) {
+      return inst;
    }
 
-   let inst = $.makeIndexInstance(proj, desired);
-
+   inst = $.makeIndexInstance(proj, desired);
    inst.refCount += 1;
-
    proj.myIndexInstances.push(inst);
 
    // For unfilled projections, we cannot build index right away. Will do that when the
@@ -101,6 +95,16 @@ refDerivedInstance ::= function (proj, desired) {
    }
 
    return inst;
+}
+refDesiredIndexInstance ::= function (owner, desired) {
+   for (let inst of owner.myIndexInstances) {
+      if ($.arraysEqual(inst.index, desired)) {
+         inst.refCount += 1;
+         return inst;
+      }
+   }
+
+   return undefined;
 }
 releaseIndexInstance ::= function (inst) {
    if (inst.class === $.clsIndexInstance) {
@@ -117,10 +121,6 @@ releaseIndexInstance ::= function (inst) {
       }
 
       return; 
-   }
-
-   if (inst.class === $.clsReducedIndexInstance) {
-      return;
    }
 
    throw new Error;

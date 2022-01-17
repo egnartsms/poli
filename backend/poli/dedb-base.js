@@ -10,9 +10,10 @@ common
    hasOwnDefinedProperty
    concat
    map
-   maximumBy
+   greatestBy
    ownEntries
    newObj
+   noUndefinedProps
    selectProps
    trackingFinal
 data-structures
@@ -128,7 +129,7 @@ getRecords ::= function (rel, bindings) {
    $.check(inst !== undefined, `Could not find suitable index`);
 
    let recs = $.indexRefWithBindings(inst, bindings);
-   let filterBy = $.computeFilterBy(inst.index, bindings);
+   let filterBy = $.computeFilterBy(bindings, inst.index);
 
    return $.filter(recs, $.predFilterBy(rel.isKeyed, filterBy));
 }
@@ -136,29 +137,14 @@ findUniqueIdxInst ::= function (rel, boundAttrs) {
    return rel.myIndexInstances.find(({index}) => $.uniqueIndexFullHit(index, boundAttrs));
 }
 findSuitableIdxInst ::= function (rel, boundAttrs) {
-   let inst = $.maximumBy(
+   let [inst, fitness] = $.greatestBy(
       rel.myIndexInstances, ({index}) => $.indexFitness(index, boundAttrs)
    );
 
-   if (inst === undefined ||
-         $.indexFitness(inst.index, boundAttrs) === $.Fitness.minimum) {
-      return undefined;
-   }
-
-   return inst;
+   return (fitness > $.Fitness.minimum) ? inst : undefined;
 }
-computeFilterBy ::= function (index, bindings) {
-   let filterBy = {...bindings};
-
-   for (let attr of index) {
-      if (!$.hasOwnDefinedProperty(bindings, attr)) {
-         break;
-      }
-
-      delete filterBy[attr];
-   }
-   
-   return Object.entries(filterBy);
+computeFilterBy ::= function (bindings, exceptAttrs=[]) {
+   return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
 }
 suitsFilterBy ::= function (rval, filterBy) {
    for (let [attr, val] of filterBy) {
@@ -194,15 +180,9 @@ clsUniqueHitProjection ::= ({
    'projection.base': true,
    'projection': true
 })
-clsHitProjection ::= ({
-   name: 'projection.base.indexHit',
-   'projection.base.indexHit': true,
-   'projection.base': true,
-   'projection': true
-})
-clsNoHitProjection ::= ({
-   name: 'projection.base.noIndex',
-   'projection.base.noIndex': true,
+clsPartialProjection ::= ({
+   name: 'projection.base.partial',
+   'projection.base.partial': true,
    'projection.base': true,
    'projection': true
 })
@@ -213,6 +193,8 @@ clsFullProjection ::= ({
    'projection': true
 })
 makeProjection ::= function (rel, bindings) {
+   bindings = $.noUndefinedProps(bindings);
+
    let proj = {
       class: null,  // initialized below
       rel,
@@ -229,13 +211,21 @@ makeProjection ::= function (rel, bindings) {
       proj.class = $.clsRecKeyBoundProjection;
       proj.rkey = rkey;
       proj.rval = undefined;
-      proj.filterBy = Object.entries(bindings);
+      // recKey won't be included in 'filterBy' because it excludes all symbols
+      proj.filterBy = $.computeFilterBy(bindings);
    }
    else {
       let inst = $.findSuitableIdxInst(rel, Object.keys(bindings));
 
-      if (inst === undefined) {
-         let filterBy = Object.entries(bindings);
+      if (inst !== undefined && inst.index.isUnique) {
+         proj.class = $.clsUniqueHitProjection;
+         proj.indexInstance = inst;
+         proj.indexKeys = $.indexKeys(inst.index, bindings);
+         proj.filterBy = $.computeFilterBy(bindings, inst.index);
+         proj.rec = undefined;
+      }
+      else {
+         let filterBy = $.computeFilterBy(bindings);
          
          if (filterBy.length === 0) {
             proj.class = $.clsFullProjection;
@@ -248,27 +238,10 @@ makeProjection ::= function (rel, bindings) {
             })
          }
          else {
-            proj.class = $.clsNoHitProjection;
+            proj.class = $.clsPartialProjection;
             proj.myVer = null;
             proj.depVer = null;
             proj.filterBy = filterBy;
-         }
-      }
-      else {
-         proj.indexInstance = inst;
-         proj.indexKeys = $.indexKeys(inst.index, bindings);
-
-         if (inst.isUnique) {
-            proj.class = $.clsUniqueHitProjection;
-            proj.filterBy = $.computeFilterBy(inst.index, bindings);
-            proj.rec = undefined;
-         }
-         else {
-            proj.class = $.clsHitProjection;
-            proj.filterBy = Object.entries(bindings);
-            proj.filterIndexedBy = $.computeFilterBy(inst.index, bindings);
-            proj.myVer = null;
-            proj.depVer = null;
          }
       }
    }
@@ -290,25 +263,27 @@ updateProjection ::= function (proj) {
    if (cls === $.clsFullProjection)
       ;
    else if (cls === $.clsRecKeyBoundProjection) {
-      let rval = rel.records.valueAt(proj.rkey);
+      let {rkey, filterBy} = proj;
+      let rval = rel.records.valueAt(rkey);
 
-      if (rval !== undefined && !$.suitsFilterBy(rval, proj.filterBy)) {
+      if (rval !== undefined && !$.suitsFilterBy(rval, filterBy)) {
          rval = undefined;
       }
 
       proj.rval = rval;
    }
    else if (cls === $.clsUniqueHitProjection) {
-      let rec = $.indexRefOne(proj.indexInstance, proj.indexKeys);
+      let {indexInstance, indexKeys, filterBy} = proj;
+      let rec = $.indexRefOne(indexInstance, indexKeys);
 
       if (rec !== undefined && rec !== proj.rec &&
-            !$.suitsFilterBy($.rec2val(proj, rec), proj.filterBy)) {
+            !$.suitsFilterBy($.rec2val(proj, rec), filterBy)) {
          rec = undefined;
       }
 
       proj.rec = rec;
    }
-   else if (cls === $.clsHitProjection || cls === $.clsNoHitProjection) {
+   else if (cls === $.clsPartialProjection) {
       $.assert(() => (proj.depVer === null) === (proj.myVer === null));
 
       if (proj.depVer !== null) {
@@ -339,35 +314,37 @@ updateProjection ::= function (proj) {
 
    $.markAsValid(proj);
 }
-removeRecByKey ::= function (parent, rkey) {
-   let rec = parent.recAt(rkey);
+cloak ::= function () {
+   // removeRecByKey ::= function (parent, rkey) {
+   //    let rec = parent.recAt(rkey);
 
-   if (rec === undefined) {
-      return false;
-   }
+   //    if (rec === undefined) {
+   //       return false;
+   //    }
 
-   parent.records.delete(rkey);
+   //    parent.records.delete(rkey);
 
-   if (parent.myVer !== null) {
-      $.versionRemove(parent.myVer, rec);
-   }
+   //    if (parent.myVer !== null) {
+   //       $.multiVersionRemoveKey(parent.myVer, rec);
+   //    }
 
-   for (let idxInst of parent.myIndexInstances) {
-      $.indexRemove(idxInst, rec);
-   }
+   //    for (let idxInst of parent.myIndexInstances) {
+   //       $.indexRemove(idxInst, rec);
+   //    }
 
-   return true;
-}
-removeRecByKeyFromRel ::= function (rel, rkey) {
-   let removed = $.removeRecByKey(rel, rkey);
+   //    return true;
+   // }
+   // removeRecByKeyFromRel ::= function (rel, rkey) {
+   //    let removed = $.removeRecByKey(rel, rkey);
 
-   if (removed && rel.entityProto !== false) {
-      let entity = rkey;
+   //    if (removed && rel.entityProto !== false) {
+   //       let entity = rkey;
 
-      entity[$.symEntityTuple] = null;
-   }
+   //       entity[$.symEntityTuple] = null;
+   //    }
 
-   return removed;
+   //    return removed;
+   // }   
 }
 addFact ::= function (relInfo, rkey, rval=rkey) {
    let rel = $.toRelation(relInfo);

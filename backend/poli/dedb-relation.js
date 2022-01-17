@@ -19,6 +19,9 @@ clsRelation ::= ({
    name: 'relation',
    'relation': true
 })
+isStatefulRelation ::= function (rel) {
+	return $.isA(rel, $.clsBaseRelation, $.clsDerivedRelation);
+}
 info2rel ::= new WeakMap
 toRelation ::= function (relInfo) {
 	if (typeof relInfo.class === 'object' && relInfo.class['relation'] === true) {

@@ -5,6 +5,7 @@ common
    trackingFinal
    commonArrayPrefixLength
    hasOwnDefinedProperty
+   hasOwnProperty
 -----
 unique ::= 1
 indexFromSpec ::= function (spec) {
@@ -86,7 +87,7 @@ indexKeys ::= function (index, bindings) {
    let keys = [];
 
    for (let attr of index) {
-      if (!$.hasOwnDefinedProperty(bindings, attr)) {
+      if (!$.hasOwnProperty(bindings, attr)) {
          break;
       }
 

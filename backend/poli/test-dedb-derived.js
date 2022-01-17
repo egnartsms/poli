@@ -99,8 +99,6 @@ continentCity ::= ({
 	]
 })
 test_query_no_bindings ::= function () {
-	console.log($.query($.continentCity, {}));
-   
    $.checkLike(
 		new Set($.query($.continentCity, {})),
 		[

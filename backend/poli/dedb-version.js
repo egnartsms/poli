@@ -7,8 +7,7 @@ dedb-base
    clsBaseRelation
    clsRecKeyBoundProjection
    clsUniqueHitProjection
-   clsHitProjection
-   clsNoHitProjection
+   clsPartialProjection
    clsFullProjection
 dedb-derived
    clsDerivedProjection
@@ -25,7 +24,7 @@ refCurrentState ::= function (owner) {
       return $.refMultiVersion(owner);
    }
 
-   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
+   if (owner.class === $.clsPartialProjection) {
       if (owner.depVer === null) {
          owner.depVer = $.refCurrentState(owner.rel);
       }
