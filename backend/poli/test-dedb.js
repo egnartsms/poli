@@ -12,8 +12,6 @@ test-dedb-disjunction
    * as: disjunction
 test-dedb-functional
    * as: functional
-test-dedb-extver
-   * as: extver
 -----
 runTests ::= function () {
    console.time('tests');
@@ -22,8 +20,9 @@ runTests ::= function () {
    $.runTestsIn('keyed', $.keyed);
    $.runTestsIn('disjunction', $.disjunction);
    $.runTestsIn('functional', $.functional);
-   // $.runTestsIn($.extver);
-   console.log('--- DONE')
+   $.clearRelationCache();
+   $.clearProjectionCache();
+   console.log('--- DONE');
    console.timeEnd('tests')
 }
 runTestsIn ::= function (moduleName, ns) {
