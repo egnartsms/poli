@@ -5,7 +5,7 @@ common
 dedb-index
    Fitness
 dedb-goal
-   join
+   use
 dedb-query
    query
    valueAt
@@ -26,8 +26,8 @@ countryCity ::= ({
    name: 'countryCity',
    attrs: ['country', 'city'],
    body: v => [
-      $.join($.countryCities, v`country`, v`cities`),
-      $.join($.setItem, {set: v`cities`, item: v`city`})
+      $.use($.countryCities, v`country`, v`cities`),
+      $.use($.setItem, {set: v`cities`, item: v`city`})
    ]
 })
 setItem ::= () => ({
@@ -119,9 +119,9 @@ growth ::= ({
    name: 'growth',
    isKeyed: true,
    body: v => [
-      $.join($.born, v.key, v`born`),
-      $.join($.died, v.key, v`died`),
-      $.join($.plus, {op1: v`died`, op2: v.value, sum: v`born`})
+      $.use($.born, v.key, v`born`),
+      $.use($.died, v.key, v`died`),
+      $.use($.plus, {op1: v`died`, op2: v.value, sum: v`born`})
    ]
 })
 plus ::= () => ({

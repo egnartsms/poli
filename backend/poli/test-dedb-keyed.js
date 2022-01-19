@@ -5,7 +5,7 @@ common
    find
    sortedArray
 dedb-goal
-   join
+   use
 dedb-base
    addFact
    makeEntity
@@ -49,16 +49,16 @@ devSalary ::= () => ({
    name: 'devSalary',
    isKeyed: true,
    body: v => [
-      $.join($.dev, v.key, {company: v`company`}),
-      $.join($.company, {name: v`company`, salary: v.value})
+      $.use($.dev, v.key, {company: v`company`}),
+      $.use($.company, {name: v`company`, salary: v.value})
    ]
 })
 devCompany ::= () => ({
    name: 'devCompany',
    isKeyed: true,
    body: v => [
-      $.join($.dev, v.key, {company: v`company`}),
-      $.join($.company, v.value, {name: v`company`})
+      $.use($.dev, v.key, {company: v`company`}),
+      $.use($.company, v.value, {name: v`company`})
    ]   
 })
 test_basic ::= function () {

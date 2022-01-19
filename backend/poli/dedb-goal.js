@@ -106,7 +106,7 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-join ::= function (relDescriptor, rkey, bindings) {
+use ::= function (relDescriptor, rkey, bindings) {
    let rel = $.toRelation(relDescriptor);
 
    $.check($.isA(rel, $.clsRelation), `Cannot join smth which is not a relation`);

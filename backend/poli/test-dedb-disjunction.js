@@ -3,7 +3,7 @@ common
    isLike
    checkLike
 dedb-goal
-   join
+   use
    or
 dedb-relation
    toRelation
@@ -53,13 +53,13 @@ relevantCountryPopulation ::= () => ({
    name: 'relevantCountryPopulation',
    attrs: ['country', 'population'],
    body: v => [
-      $.join($.country, {
+      $.use($.country, {
          name: v`country`,
          population: v`population`
       }),
       $.or(
-         $.join($.goodCountries, {country: v`country`}),
-         $.join($.importantCountries, {country: v`country`})
+         $.use($.goodCountries, {country: v`country`}),
+         $.use($.importantCountries, {country: v`country`})
       )
    ]
 })
