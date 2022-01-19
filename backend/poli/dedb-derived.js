@@ -109,32 +109,7 @@ makeRelation ::= function ({
 
    $.check(logAttrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
-   function vTagged(strings) {
-      if (strings.length !== 1) {
-         throw new Error(`Variable names don't support inline expressions`);
-      }
-
-      let [name] = strings;
-
-      return $.makeLvar(name);
-   }
-
-   if (isKeyed) {
-      Object.defineProperties(vTagged, {
-         key: {
-            get() {
-               return $.makeLvar($.recKey)
-            }
-         },
-         value: {
-            get() {
-               return $.makeLvar($.recVal)
-            }
-         }
-      });
-   }
-
-   let rootGoal = bodyCallback(vTagged);
+   let rootGoal = bodyCallback($.taggedVarProducer);
 
    if (rootGoal instanceof Array) {
       rootGoal = $.goal.and(...rootGoal);
@@ -182,6 +157,33 @@ makeRelation ::= function ({
       projections: $.makeProjectionRegistry(),
    };
 }
+taggedVarProducer ::= (function () {
+   function vTagged(strings) {
+      if (strings.length !== 1) {
+         throw new Error(`Variable names don't support inline expressions`);
+      }
+
+      let [name] = strings;
+
+      return $.makeLvar(name);
+   }
+
+   Object.defineProperties(vTagged, {
+      key: {
+         get() {
+            return $.makeLvar($.recKey)
+         }
+      },
+      value: {
+         get() {
+            return $.makeLvar($.recVal)
+         }
+      }
+   });
+
+   return vTagged;
+})()
+
 clsDerivedProjection ::= ({
    name: 'projection.derived',
    'projection.derived': true,
@@ -370,9 +372,7 @@ rebuildProjection ::= function (proj) {
       }
 
       if (jnode.class === $.clsJoinFunc) {
-         throw new Error;
-
-         for (let _ of $.joinFuncRel(proj, jnode, ns)) {
+         for (let _ of $.joinFunc(proj, jnode)) {
             join(jnode.next);
          }
 
@@ -380,7 +380,6 @@ rebuildProjection ::= function (proj) {
       }
 
       let {toCheck, toExtract, rkeyExtract, rvalExtract, rvalCheck, subNum} = jnode;
-      let {proj: subProj} = proj.subs[subNum];
       let {depNum} = rel.subStateful[subNum];
 
       outer:
@@ -568,9 +567,7 @@ updateProjection ::= function (proj) {
          }
 
          if (jnode.class === $.clsJoinFunc) {
-            throw new Error;
-
-            for (let _ of $.joinFuncRel(proj, jnode, ns)) {
+            for (let _ of $.joinFunc(proj, jnode)) {
                rec(jnode.next);
             }
 
@@ -642,24 +639,20 @@ updateProjection ::= function (proj) {
    updateVersions();
    $.markProjectionValid(proj);
 }
-joinFuncRel ::= function (proj, jnode, ns) {
-   throw new Error;
+joinFunc ::= function* (proj, jnode) {
+   let {ns} = proj;
+   let {run, args, toCheck} = jnode;
 
-   let {run, args} = jnode;
-   let array = [ns];
-
-   for (let arg of args) {
-      if ($.hasOwnProperty(arg, 'getValue')) {
-         array.push(arg.getValue(proj.boundAttrs));
+   outer:
+   for (let _ of run(ns, ...args)) {
+      for (let [v1, v2] of toCheck) {
+         if (ns[v1] !== ns[v2]) {
+            continue outer;
+         }
       }
-      else {
-         let {isBound, lvar} = arg;
 
-         array.push(isBound ? ns[lvar] : lvar);
-      }
+      yield;
    }
-   
-   return run.apply(null, array);
 }
 joinRecords ::= function (proj, jnode) {
    let {class: cls, subNum} = jnode;

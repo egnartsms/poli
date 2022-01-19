@@ -11,6 +11,8 @@ dedb-derived
 	* as: derived
 	clsDerivedRelation
 	clsDerivedProjection
+dedb-functional
+	* as: functional
 dedb-rec-key
 	recKey
 	recVal
@@ -23,25 +25,32 @@ isStatefulRelation ::= function (rel) {
 	return $.isA(rel, $.clsBaseRelation, $.clsDerivedRelation);
 }
 info2rel ::= new WeakMap
-toRelation ::= function (relInfo) {
-	if (typeof relInfo.class === 'object' && relInfo.class['relation'] === true) {
+toRelation ::= function (relDescriptor) {
+	if (typeof relDescriptor.class === 'object' && $.isA(relDescriptor, $.clsRelation)) {
 		// $.toRelation is idempotent
-		return relInfo;
+		return relDescriptor;
 	}
 
-	let relation = $.info2rel.get(relInfo);
+	let relation = $.info2rel.get(relDescriptor);
 
-	if (relation === undefined) {
-		if (relInfo.body !== undefined) {
-			relation = $.derived.makeRelation(relInfo);
-		}
-		else {
-			relation = $.base.makeRelation(relInfo);
-		}
-
-		$.info2rel.set(relInfo, relation);
+	if (relation !== undefined) {
+		return relation;
 	}
-	
+
+	let relInfo = typeof relDescriptor === 'function' ? relDescriptor() : relDescriptor;
+
+	if (relInfo.body !== undefined) {
+		relation = $.derived.makeRelation(relInfo);
+	}
+	else if (relInfo.instantiations !== undefined) {
+		relation = $.functional.makeRelation(relInfo);
+	}
+	else {
+		relation = $.base.makeRelation(relInfo);
+	}
+
+	$.info2rel.set(relDescriptor, relation);
+
 	return relation;
 }
 clearRelationCache ::= function () {

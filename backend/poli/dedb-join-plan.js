@@ -36,10 +36,7 @@ dedb-rec-key
    recKey
    recVal
 dedb-goal
-   Shrunk
-   indexShrunk
    walkPaths
-   instantiationShrunk
    clsRelGoal
    relGoalsBeneath
 dedb-index
@@ -51,6 +48,8 @@ dedb-index
    computeFitness
 dedb-base
    clsBaseRelation
+dedb-derived
+   clsDerivedRelation
 dedb-projection
    projectionFor
 -----
@@ -126,6 +125,16 @@ makeConfig ::= function (rel, boundAttrs) {
    }
 
    let idxReg = [];
+   let vpool = new $.AnonymousVarPool();
+   let plans = Array.from(rel.subStateful, ({goal}) =>
+      $.computeJoinTreeFrom(rel, boundAttrs, goal, idxReg, vpool)
+   );
+
+   let vars = rel.vars.filter(isNotBound).concat(vpool.vars);
+
+   if (vpool.dumbVarCreated) {
+      vars.push($.dumbVar);
+   }
 
    return {
       attrs: rel.attrs.filter(isNotBound),
@@ -135,15 +144,12 @@ makeConfig ::= function (rel, boundAttrs) {
       ),
       // array of vars -- variables used in computations. Does not include non-evaporated
       // and firm vars
-      vars: rel.vars.filter(isNotBound),
+      vars: vars,
       idxReg,
-      plans: Array.from(
-         rel.subStateful,
-         ({goal}) => $.computeJoinTreeFrom(rel, boundAttrs, goal, idxReg)
-      )
+      plans: plans
    };
 }
-computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg) {
+computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
    // Remember that here 'goal' is just a number
    let {path2goals, goal2paths, var2ff, subGoals} = rel;
    let boundLvars = new Set;
@@ -186,44 +192,38 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg) {
       let {join: cls, goal} = ff;
 
       if (cls === $.clsJoinFunc) {
-         throw new Error;
+         let {run, fetched} = ff.props;
+         let {rel, bindings} = subGoals[goal];
 
-         let {rel} = goal;
+         let args = [];
+         let toCheck = [];
 
-         for (let [attr, char] of $.zip(rel.attrs, ff.icode)) {
-            if (char === '-' && goal.looseAttrs.has(attr)) {
-               let lvar = goal.looseAttrs.get(attr);
-               $.check(!boundLvars.has(lvar), () =>
-                  `Functional relation '${rel.name}': instantiation '${ff.icode}' ` +
-                  `was found as the best match but the attribute '${attr}' is bound`
-               );
+         vpool.reset();
+
+         for (let attr of rel.attrs) {
+            if (!bindings.has(attr)) {
+               args.push(vpool.getDumbVar());
+               continue;
+            }
+
+            let lvar = bindings.get(attr);
+
+            if (fetched.includes(attr) && boundLvars.has(lvar)) {
+               let temp = vpool.getVar();
+
+               args.push(temp);
+               toCheck.push([temp, lvar]);
+            }
+            else {
+               args.push(lvar);
             }
          }
 
-         let args = Array.from($.zip(rel.attrs, ff.icode), ([attr, char]) => {
-            if (char === '-' || goal.looseAttrs.has(attr)) {
-               return {
-                  lvar: goal.looseAttrs.get(attr),
-                  isBound: char === '+'
-               }
-            }
-            else {
-               let firmValue = goal.firmAttrs[attr];
-
-               return {
-                  getValue(boundAttrs) {
-                     return firmValue
-                  }
-               }
-            }
-         });
-
          return {
-            type: $.JoinType.func,
+            class: cls,
+            run,
             args,
-            icode: ff.icode,
-            run: rel.instantiations[ff.icode].run,
-            rel,
+            toCheck,
             next: null,
          }
       }
@@ -539,11 +539,6 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg) {
       return Djnode;
    });
 }
-isInstantiationCodeMoreSpecialized ::= function (icodeS, icodeG) {
-   $.assert(() => icodeS.length === icodeG.length);
-
-   return $.all($.zip(icodeS, icodeG), ([s, g]) => s === '+' || g === '-');
-}
 registerIndex ::= function (registry, subNum, index) {
    let n = registry.findIndex(({subNum: xSubNum, index: xIndex}) => {
       return xSubNum === subNum && $.arraysEqual(xIndex, index);
@@ -556,3 +551,36 @@ registerIndex ::= function (registry, subNum, index) {
    registry.push({subNum, index});
    return registry.length - 1;
 }
+AnonymousVarPool ::= class {
+   constructor() {
+      this.vars = [];
+      this.idx = 0;
+      this.dumbVarCreated = false;
+   }
+
+   getVar() {
+      let lvar;
+
+      if (this.idx < this.vars.length) {
+         lvar = this.vars[this.idx];
+      }
+      else {
+         lvar = `--anon-${this.idx}`;
+         this.vars.push(lvar);
+      }
+
+      this.idx += 1;
+
+      return lvar;      
+   }
+
+   getDumbVar() {
+      this.dumbVarCreated = true;
+      return $.dumbVar;
+   }
+
+   reset() {
+      this.idx = 0;
+   }
+}
+dumbVar ::= '--dumb'

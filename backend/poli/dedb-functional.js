@@ -4,15 +4,11 @@ clsFuncRelation ::= ({
    relation: true,
    'relation.func': true
 })
-functionalRelation ::= function ({name, attrs, instantiations}) {
+makeRelation ::= function ({name, attrs, instantiations}) {
    return {
-      type: $.RelationType.functional,
+      class: $.clsFuncRelation,
       name,
       attrs,
       instantiations,
-
-      at(attrs) {
-         return $.funcGoal(this, attrs);
-      }
    }
 }

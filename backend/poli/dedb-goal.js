@@ -106,19 +106,21 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-join ::= function (relInfo, rkey, bindings) {
-   let rel = $.toRelation(relInfo);
+join ::= function (relDescriptor, rkey, bindings) {
+   let rel = $.toRelation(relDescriptor);
 
-   $.check($.isA(rel, $.clsRelation), `Joining smth which is not a relation`);
+   $.check($.isA(rel, $.clsRelation), `Cannot join smth which is not a relation`);
 
    if (arguments.length === 2) {
       bindings = rkey;
       rkey = undefined;
    }
 
-   $.check(rkey === undefined || rel.logAttrs[0] === $.recKey, () =>
-      `Cannot grab the rec key of relation '${rel.name}': makes no sense`
-   );
+   if (rkey !== undefined) {
+      $.check($.isStatefulRelation(rel) && rel.logAttrs[0] === $.recKey, () =>
+         `Cannot grab the rec key of relation '${rel.name}': makes no sense`
+      );
+   }
 
    if ($.isLvar(bindings)) {
       $.check(
@@ -146,19 +148,15 @@ join ::= function (relInfo, rkey, bindings) {
       firmBindings,
       looseBindings,
       num: -1,
-      // for all except derived relations, we introduce firm (fictitious) vars for firm
-      // bindings, so 'bindings' would be a union of looseBindings + firmBindings where
-      // values get replaced by these fictitious vars. For derived relations,
-      // firmBindings completely evaporate.
-      ...(rel.class !== $.clsDerivedRelation && {
-         bindings: null
-      }),
+      // For derived relation goals, firm attrs evaporate; for other types of relations
+      // they don't. So for all except derived relations, we introduce firm
+      // (fictitious) vars for firm bindings, so 'bindings' for them would be a union of
+      // looseBindings + firmBindings where values get replaced with these fictitious
+      // vars. For derived relations, bindings is the same as looseBindings.
+      bindings: null,
       // following props make sense for only stateful relations
-      ...($.isStatefulRelation(rel) && {
-         statefulNum: -1,
-         depNum: -1,
-      }),
-      
+      statefulNum: -1,
+      depNum: -1,
    }
 }
 computeFirmBindings ::= function (rkey, bindings) {
@@ -358,6 +356,7 @@ setupFirmVars ::= function (rootGoal) {
 
    for (let goal of $.relGoalsBeneath(rootGoal)) {
       if (goal.rel.class === $.clsDerivedRelation) {
+         goal.bindings = goal.looseBindings;
          continue;
       }
 
@@ -373,66 +372,4 @@ setupFirmVars ::= function (rootGoal) {
    }
    
    return firmVarBindings;
-}
-Shrunk ::= ({
-   min: 0,
-   all: 0,
-   part: 1,
-   one: 2,
-   max: 2,
-})
-indexShrunk ::= function (index) {
-   return $.isIndexCovered(index) ?
-      (index.isUnique ? $.Shrunk.one : $.Shrunk.part) :
-      $.Shrunk.all;
-}
-funcRelShrunk ::= function (rel, firmAttrs) {
-   throw new Error;
-
-   let icode = $.instantiationCode(rel, firmAttrs);
-
-   if (!$.hasOwnProperty(rel.instantiations, icode)) {
-      return $.Shrunk.all;
-   }
-
-   let instantiation = rel.instantiations[icode];
-
-   if ($.hasOwnProperty(instantiation, 'det')) {
-      return $.Shrunk.one;
-   }
-   else if ($.hasOwnProperty(instantiation, 'nondet')) {
-      return $.Shrunk.part;
-   }
-   else {
-      throw new Error;
-   }
-}
-instantiationShrunk ::= function (ins) {
-   throw new Error;
-
-   if ($.hasOwnProperty(ins, 'det')) {
-      return $.Shrunk.one;
-   }
-   else if ($.hasOwnProperty(ins, 'nondet')) {
-      return $.Shrunk.part;
-   }
-   else {
-      throw new Error;
-   }
-}
-instantiationCode ::= function (rel, firmAttrs) {
-   throw new Error;
-
-   let codes = new Array(rel.attrs.length);
-
-   for (let attr of rel.attrs) {
-      if ($.hasOwnProperty(firmAttrs, attr)) {
-         codes.push('+');
-      }
-      else {
-         codes.push('-');
-      }
-   }
-
-   return codes.join('');
 }

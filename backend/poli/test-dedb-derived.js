@@ -87,7 +87,7 @@ city ::= ({
 	   {country: 'USA', name: 'Houston', population: 2.378},
 	]
 })
-continentCity ::= ({
+continentCity ::= () => ({
 	name: 'continentCity',
 	attrs: ['continent', 'city'],
 	potentialIndices: [

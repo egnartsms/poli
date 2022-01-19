@@ -7,6 +7,7 @@ common
    many2many
    m2mAddAll
    hasOwnProperty
+   zip
 dedb-goal
    relGoalsBeneath
    statefulGoalsBeneath
@@ -16,6 +17,7 @@ dedb-join-plan
    clsJoinRecKey
    clsJoinIndex
    clsJoinAll
+   clsJoinFunc
    clsJoinEither
 dedb-base
    clsBaseRelation
@@ -53,24 +55,21 @@ buildScaffolding ::= function (rootGoal) {
    let {goal2paths, path2goals} = $.computePaths(rootGoal);
    let var2ff = $.computeFulfillments(rootGoal);
 
+   let subGoals = Array.from($.relGoalsBeneath(rootGoal), goal => ({
+      rel: goal.rel,
+      goal: goal.num,
+      subNum: goal.statefulNum,  // -1 if it's not stateful
+      bindings: goal.bindings,
+      depNum: goal.depNum,  // -1 if it's not stateful
+      coveredPaths: $.isStatefulRelation(goal.rel) ? goal2paths.get(goal.num) : null,
+   }));
+
    return {
       goal2paths,
       path2goals,
       var2ff,
-      subGoals: Array.from($.relGoalsBeneath(rootGoal), goal => ({
-         subNum: goal.statefulNum ?? -1,  // we won't use it if it's not stateful
-         bindings: (
-            goal.rel.class !== $.clsDerivedRelation ?
-            goal.bindings :
-            goal.looseBindings
-         )
-      })),
-      subStateful: Array.from($.statefulGoalsBeneath(rootGoal), goal => ({
-         rel: goal.rel,
-         goal: goal.num,
-         depNum: goal.depNum,
-         coveredPaths: goal2paths.get(goal.num),
-      })),
+      subGoals: subGoals,
+      subStateful: subGoals.filter(g => g.subNum !== -1),
    }
 }
 computePaths ::= function (rootGoal) {
@@ -100,14 +99,27 @@ computePaths ::= function (rootGoal) {
 computeFulfillments ::= function (rootGoal) {
    let var2ff = $.multimap();
 
+   function registerFF(vars, ff) {
+      if (vars.length === 0) {
+         $.mmapAdd(var2ff, true, ff);
+      }
+      else {
+         for (let lvar of vars) {
+            $.mmapAdd(var2ff, lvar, ff);
+         }
+      }      
+   }
+
    for (let goal of $.relGoalsBeneath(rootGoal)) {
-      if ($.isStatefulRelation(goal.rel)) {
+      let {rel} = goal;
+
+      if ($.isStatefulRelation(rel)) {
          let ffPairs;
 
-         if (goal.rel.class === $.clsBaseRelation) {
+         if (rel.class === $.clsBaseRelation) {
             ffPairs = $.baseRelGoalFulfillments(goal);
          }
-         else if (goal.rel.class === $.clsDerivedRelation) {
+         else if (rel.class === $.clsDerivedRelation) {
             ffPairs = $.derivedRelGoalFulfillments(goal);
          }
          else {
@@ -115,76 +127,48 @@ computeFulfillments ::= function (rootGoal) {
          }
 
          for (let [ff, vars] of ffPairs) {
-            ff = {
+            registerFF(vars, {
                join: ff.join,
                fitness: ff.fitness,
                count: vars.length,
                goal: goal.num,
                props: ff.props,
-            };
-
-            if (vars.length === 0) {
-               $.mmapAdd(var2ff, true, ff);
-            }
-            else {
-               for (let lvar of vars) {
-                  $.mmapAdd(var2ff, lvar, ff);
-               }
-            }
+            });
          }
       }
-      else if (goal.rel === $.clsFuncRelation) {
-         throw new Error;
+      else if (rel.class === $.clsFuncRelation) {
+         instantiation:
+         for (let [icode, spec] of Object.entries(rel.instantiations)) {
+            let inVars = [];
+            let fetched = [];
 
-         let {rel} = goal;
-         let plusMinus = new Array(rel.attrs.length);
-         let vars = new Set;
+            for (let [pm, attr] of $.zip(icode, rel.attrs)) {
+               let lvar = goal.bindings.get(attr);
 
-         (function rec(i) {
-            if (i === rel.attrs.length) {
-               let icode = plusMinus.join('');
-
-               if ($.hasOwnProperty(rel.instantiations, icode)) {
-                  let {shrunk} = rel.instantiations[icode];
-                  let ff = {
-                     joinType: $.JoinType.func,
-                     count: vars.size,
-                     shrunk,
-                     goal,
-                     icode,
-                  };
-
-                  if (vars.size === 0) {
-                     ffs0.add(ff);
+               if (pm === '+') {
+                  if (lvar === undefined) {
+                     // It's not even mentioned in bindings, so skip to the next
+                     // instantiation
+                     continue instantiation;
                   }
-                  else {
-                     for (let lvar of vars) {
-                        $.mmapAdd(var2ff, lvar, ff);
-                     }
-                  }
+                  inVars.push(lvar);
                }
-
-               return;
+               else {
+                  fetched.push(attr);
+               }
             }
 
-            let attr = rel.attrs[i];
-
-            if ($.hasOwnProperty(goal.firmAttrs, attr)) {
-               plusMinus[i] = '+';
-               rec(i + 1);
-            }
-            else {
-               let lvar = goal.looseAttrs.get(attr);
-
-               plusMinus[i] = '-';
-               rec(i + 1);
-
-               plusMinus[i] = '+';
-               vars.add(lvar);
-               rec(i + 1);
-               vars.delete(lvar);
-            }
-         })(0);
+            registerFF(inVars, {
+               join: $.clsJoinFunc,
+               fitness: spec.fitness,
+               count: inVars.length,
+               goal: goal.num,
+               props: {
+                  run: spec.run,
+                  fetched
+               }
+            });
+         }
       }
       else {
          throw new Error;

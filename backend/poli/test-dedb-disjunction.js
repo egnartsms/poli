@@ -49,7 +49,7 @@ importantCountries ::= ({
       {country: 'china'}
    ]
 })
-relevantCountryPopulation ::= ({
+relevantCountryPopulation ::= () => ({
    name: 'relevantCountryPopulation',
    attrs: ['country', 'population'],
    body: v => [

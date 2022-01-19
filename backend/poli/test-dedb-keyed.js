@@ -45,7 +45,7 @@ company ::= ({
       {name: 'Ciklum', salary: 4400}
    ],
 })
-devSalary ::= ({
+devSalary ::= () => ({
    name: 'devSalary',
    isKeyed: true,
    body: v => [
@@ -53,7 +53,7 @@ devSalary ::= ({
       $.join($.company, {name: v`company`, salary: v.value})
    ]
 })
-devCompany ::= ({
+devCompany ::= () => ({
    name: 'devCompany',
    isKeyed: true,
    body: v => [

@@ -21,7 +21,7 @@ runTests ::= function () {
    $.runTestsIn('derived', $.derived);
    $.runTestsIn('keyed', $.keyed);
    $.runTestsIn('disjunction', $.disjunction);
-   // $.runTestsIn($.functional);
+   $.runTestsIn('functional', $.functional);
    // $.runTestsIn($.extver);
    console.log('--- DONE')
    console.timeEnd('tests')
