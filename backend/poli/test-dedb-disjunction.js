@@ -3,7 +3,7 @@ common
    isLike
    checkLike
 dedb-goal
-   join
+   use
    or
 dedb-relation
    toRelation
@@ -49,17 +49,17 @@ importantCountries ::= ({
       {country: 'china'}
    ]
 })
-relevantCountryPopulation ::= ({
+relevantCountryPopulation ::= () => ({
    name: 'relevantCountryPopulation',
    attrs: ['country', 'population'],
    body: v => [
-      $.join($.country, {
+      $.use($.country, {
          name: v`country`,
          population: v`population`
       }),
       $.or(
-         $.join($.goodCountries, {country: v`country`}),
-         $.join($.importantCountries, {country: v`country`})
+         $.use($.goodCountries, {country: v`country`}),
+         $.use($.importantCountries, {country: v`country`})
       )
    ]
 })
@@ -74,10 +74,4 @@ test_basic ::= function () {
          {country: 'china', population: 1398}
       ]
    );
-
-   // let Pproj = $.projectionFor(pop, {country: 'canada'});
-
-   // $.check($.isLike(Pproj.records, [
-   //    {population: 35},
-   // ]));
 }

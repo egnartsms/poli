@@ -2,12 +2,11 @@
 empty-root ::=
    fun (:)
       Object.assign (%arr)
-         %obj
-            leaf? true
-            fresh? true
-            min-key null
-            max-key null
-            size 0
+         %obj | leaf? true
+                fresh? true
+                min-key null
+                max-key null
+                size 0
 freeze ::=
    fun (: root)
       if (not root.fresh?)
@@ -15,6 +14,88 @@ freeze ::=
 
       fun freeze :(node)
          set! node.fresh? false
+         case | if: (negative? x)
+                   console.log "< 0"
+                if: (zero? x)
+                   console.log "= 0"
+                else:
+                   console.log "neither"
+         (with ([x 0] [y (+ x 1)])
+            (console.log x y)
+            )
+
+         _ | subres = | gl-render | + x 1
+                                    + y 1
+                                    \ -2
+                                    \ -2
+            console.log subres
+
+         with | : x 10
+                : y (+ x 1)
+            console.log x y
+
+         check-like
+            new Set | query continent-city (obj%)
+            arr%
+               obj% -(continent: "Europe") -(city: "Paris")
+               obj% -(continent: "Europe") -(city: "Marseille")
+               obj% -(continent: "Europe") -(city: "Lyon")
+               ...
+
+         let proj | get-derived-projection continent-city (obj%)
+
+         check (=== proj.records.size 25)
+
+         let f-europe
+            query-one continent (obj% -(name: "Europe"))
+
+         remove-fact continent f-europe
+         update-projection proj
+
+         check | === proj.records.size 16
+
+         add-fact | \ city
+                    obj%
+                       - country: "Ruthenia"
+                       - name: "Chernivtsi"
+                       - population: 0.400
+
+
+
+
+
+
+
+
+         (let D (- (** b 2) (* 4 a c)))
+         let D = | - (** b 2) (* 4 a c)
+
+         let D = (- (** b 2) (* 4 a c))
+         let D = b ** 2 - 4 * a * c
+         let X =
+            xml
+               <head>
+                  text Header: ${(user.name)}
+                  <table>
+                     for | @arr a b
+                           \ of: (get-names)
+                        xxx
+
+
+                     for :((@arr a b) of: (get-names))
+                        <tr>
+                           <td>
+
+            
+
+         case (customer-name John)
+            if: *("first" "second" "third")
+               console.log Get-me
+            if: "joshua"
+               ...
+            else:
+               ...
+
          if (! node.leaf?)
             for subnode in: node
                if subnode.fresh?
@@ -149,7 +230,7 @@ edit-entry ::=
       let ximports =
          trie.at xG.imports.into module.id trie.make-empty
       
-      cond
+      case
          if: | and
                   index-more-specific?
                      get-intrinsic-index (@ A 0)
@@ -159,8 +240,25 @@ edit-entry ::=
          if:
                index-more-specific? idx2 idx1
             \ idx2
-         else:
+         otherwise:
             console.log "Miss"
+
+version-removed-keys ::=
+   function :(ver)
+      case
+         if: | === ver.class cls-rec-key-bound-version
+            let (obj% -(proj: proj)) ver
+
+            if | &&
+                    !== ver.rval proj.rval
+                    !== ver.rval undefined
+               return (arr% proj.rkey)
+               return (arr%)
+
+         if: | === ver.class ...
+            #; Fucking shit
+               Do hast mich gefragt
+
 
 define (compile-to-zo src dest namespace eval? verbose? mod?)
    :call | if eval?

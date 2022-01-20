@@ -1,77 +1,85 @@
 common
    check
    isLike
+   checkLike
+dedb-index
+   Fitness
+dedb-goal
+   use
+dedb-query
+   query
+   valueAt
+dedb-base
+   addFact
+   removeFact
+   changeFact
 -----
-setup ::= function () {
-   let country_cities = $.baseRelation({
-      name: 'country_cities',
-      recType: $.RecordType.keyVal,
-      records: [
-         ['ukraine', new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])],
-         ['poland', new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])]
-      ]
-   });
-
-   let set_member = $.functionalRelation({
-      name: 'set_member',
-      attrs: ['set', 'member'],
-      instantiations: {
-         '++': {
-            shrunk: $.Shrunk.one,
-            *run(ns, set, member) {
-               if (set.has(member)) {
-                  yield;
-               }
+countryCities ::= ({
+   name: 'countryCities',
+   isKeyed: true,
+   records: [
+      ['ruthenia', new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])],
+      ['poland', new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])]
+   ]
+})
+countryCity ::= ({
+   name: 'countryCity',
+   attrs: ['country', 'city'],
+   body: v => [
+      $.use($.countryCities, v`country`, v`cities`),
+      $.use($.setItem, {set: v`cities`, item: v`city`})
+   ]
+})
+setItem ::= () => ({
+   name: 'setItem',
+   attrs: ['set', 'item'],
+   instantiations: {
+      '++': {
+         fitness: $.Fitness.uniqueHit,
+         *run(ns, vset, vitem) {
+            if (ns[vset].has(ns[vitem])) {
+               yield;
             }
-         },
-         '+-': {
-            shrunk: $.Shrunk.part,
-            *run(ns, set, vmember) {
-               for (let x of set) {
-                  ns[vmember] = x;
-                  yield;
-               }
+         }
+      },
+      '+-': {
+         fitness: $.Fitness.hit,
+         *run(ns, vset, vitem) {
+            for (let x of ns[vset]) {
+               ns[vitem] = x;
+               yield;
             }
          }
       }
-   });
-
-   let country_city = $.derivedRelation({
-      name: 'country_city',
-      recType: $.RecordType.tuple,
-      attrs: ['country', 'city'],
-      body: v => [
-         country_cities.at({[$.recKey]: v`country`, [$.recVal]: v`cities`}),
-         set_member.at({set: v`cities`, member: v`city`})
-      ]
-   });
-
-   return {country_cities, country_city};
-}
-test_basic ::= function ({country_city}) {
-   $.check($.isLike(
-      $.query(country_city, {country: 'poland'}),
-      [
+   }
+})
+test_basic ::= function () {
+   $.checkLike(
+      $.query($.countryCity, {country: 'poland'}),
+      new Set([
          {city: 'warsaw'},
          {city: 'wroclaw'},
          {city: 'gdansk'},
          {city: 'lodz'},
          {city: 'poznan'}
-      ]
-   ));
+      ])
+   );
 }
-test_remove ::= function ({country_cities, country_city}) {
-   $.changeFact(country_cities, 'ukraine', new Set(['kyiv', 'dnipro']));
+test_remove ::= function () {
+   $.changeFact($.countryCities, 'ruthenia', new Set(['kyiv', 'dnipro']));
 
-   $.check($.isLike($.query(country_city, {country: 'ukraine'}), [
-      {city: 'kyiv'},
-      {city: 'dnipro'}
-   ]));
+   $.checkLike(
+      $.query($.countryCity, {country: 'ruthenia'}),
+      new Set([
+         {city: 'kyiv'},
+         {city: 'dnipro'}
+      ])
+   );
 }
-test_add ::= function ({country_cities, country_city}) {
-   $.addFact(country_cities, 'england', new Set(['london', 'manchester', 'sheffield']));
+test_add ::= function () {
+   $.addFact($.countryCities, 'england', new Set(['london', 'manchester', 'sheffield']));
 
-   $.check($.isLike($.query(country_city, {}), [
+   $.checkLike($.query($.countryCity, {}), new Set([
       {country: 'poland', city: 'warsaw'},
       {country: 'poland', city: 'wroclaw'},
       {country: 'poland', city: 'gdansk'},
@@ -89,54 +97,60 @@ test_add ::= function ({country_cities, country_city}) {
       {country: 'england', city: 'sheffield'},
    ]));
 }
-test_arithmetics ::= function () {
-   let born = $.baseRelation({
-      name: 'born',
-      recType: $.RecordType.keyVal,
-      records: [
-         ['ukraine', 120],
-         ['poland', 150],
-         ['germany', 220],
-      ]
-   });
-
-   let died = $.baseRelation({
-      name: 'died',
-      recType: $.RecordType.keyVal,
-      records: [
-         ['ukraine', 135],
-         ['poland', 155],
-         ['germany', 205],
-      ]
-   });
-
-   let subtraction = $.functionalRelation({
-      name: 'subtraction',
-      attrs: ['minuend', 'subtrahend', 'result'],
-      instantiations: {
-         '++-': {
-            shrunk: $.Shrunk.one,
-            *run(ns, minuend, subtrahend, vresult) {
-               ns[vresult] = minuend - subtrahend;
-               yield;
-            }
-         },
+born ::= ({
+   name: 'born',
+   isKeyed: true,
+   records: [
+      ['ruthenia', 120],
+      ['poland', 150],
+      ['germany', 220],
+   ]
+})
+died ::= ({
+   name: 'died',
+   isKeyed: true,
+   records: [
+      ['ruthenia', 135],
+      ['poland', 155],
+      ['germany', 205],
+   ]
+})
+growth ::= ({
+   name: 'growth',
+   isKeyed: true,
+   body: v => [
+      $.use($.born, v.key, v`born`),
+      $.use($.died, v.key, v`died`),
+      $.use($.plus, {op1: v`died`, op2: v.value, sum: v`born`})
+   ]
+})
+plus ::= () => ({
+   name: 'plus',
+   attrs: ['op1', 'op2', 'sum'],
+   instantiations: {
+      '+-+': {
+         fitness: $.Fitness.uniqueHit,
+         *run(ns, vop1, vop2, vsum) {
+            ns[vop2] = ns[vsum] - ns[vop1];
+            yield;
+         }
       }
-   });
-
-   let growth = $.derivedRelation({
-      name: 'growth',
-      recType: $.RecordType.keyVal,
-      body: v => [
-         born.at({[$.recKey]: v.recKey, [$.recVal]: v`born`}),
-         died.at({[$.recKey]: v.recKey, [$.recVal]: v`died`}),
-         subtraction.at({minuend: v`born`, subtrahend: v`died`, result: v.recVal})
-      ]
-   });
-
-   $.check($.isLike($.query(growth, {}), [
-      ['ukraine', -15],
+   }
+})
+test_arithmetics ::= function () {
+   $.checkLike($.query($.growth, {}), new Set([
+      ['ruthenia', -15],
       ['poland', -5],
       ['germany', 15]
    ]));
+}
+test_arithmetics_changes ::= function () {
+   let born = $.valueAt($.born, 'ruthenia');
+   let died = $.valueAt($.died, 'ruthenia');
+   let growth = $.valueAt($.growth, 'ruthenia');
+
+   $.changeFact($.born, 'ruthenia', born + 10);
+   $.changeFact($.died, 'ruthenia', died + 5);
+
+   $.check($.valueAt($.growth, 'ruthenia') === growth + 5);
 }

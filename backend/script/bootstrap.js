@@ -3,7 +3,7 @@ var poli = (function () {
 
    function loadModules(rawModules) {
       function moduleEval(ns, entry, code) {
-         code = code.replace(/^ function \(/, () => ` function ${entry} (`);
+         code = code.replace(/(?<=^ function\*? )(?=\()/, entry);
          let fun = Function('$', `"use strict";\n   return (${code})`);
          return fun.call(null, ns);
       }

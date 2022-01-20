@@ -130,7 +130,7 @@ propagateValueToRecipients ::= function (module, name) {
 moduleNames ::= function (module) {
    return [...module.entries, ...module.importedNames];
 }
-maximumBy ::= function (items, keyOf) {
+greatestBy ::= function (items, keyOf) {
    let maxKey = -Infinity;
    let maxItem = undefined;
 
@@ -143,9 +143,9 @@ maximumBy ::= function (items, keyOf) {
       }
    }
 
-   return maxItem;
+   return [maxItem, maxKey];
 }
-minimumBy ::= function (items, keyOf) {
+leastBy ::= function (items, keyOf) {
    let minKey = Infinity;
    let minItem = undefined;
 
@@ -158,7 +158,13 @@ minimumBy ::= function (items, keyOf) {
       }
    }
 
-   return minItem;
+   return [minItem, minKey];
+}
+isIterableEmpty ::= function (Xs) {
+   let itor = Xs[Symbol.iterator]();
+   let {done} = itor.next();
+
+   return done;
 }
 extendArray ::= function (A, X) {
    let i = A.length;
@@ -183,28 +189,6 @@ isSubset ::= function (X, Y) {
    }
 
    return true;
-}
-setInter ::= function (X, Y) {
-   X = $.settify(X);
-
-   let res = new Set();
-
-   for (let y of Y) {
-      if (X.has(y)) {
-         res.add(y);
-      }
-   }
-
-   return res;
-}
-setDiff ::= function (X, Y) {
-   let R = new Set(X);
-
-   for (let y of Y) {
-      R.delete(y);
-   }
-
-   return R;
 }
 setsIntersect ::= function (s1, s2) {
    if (s1.size > s2.size) {
@@ -671,6 +655,15 @@ ownEntries ::= function* (obj) {
    for (let key of Reflect.ownKeys(obj)) {
       yield [key, obj[key]];
    }
+}
+noUndefinedProps ::= function (obj) {
+   if ($.notAny(Reflect.ownKeys(obj), key => obj[key] === undefined)) {
+      return obj;
+   }
+   
+   return Object.fromEntries(
+      $.filter($.ownEntries(obj), ([k, v]) => v !== undefined)
+   );
 }
 commonArrayPrefixLength ::= function (A1, A2) {
    let i = 0;

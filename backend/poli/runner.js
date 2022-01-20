@@ -18,8 +18,6 @@ trie
 vector
    * as: vec
 world
-dedb-common
-   RecordType
 dedb-rec-key
    recKey
    recVal

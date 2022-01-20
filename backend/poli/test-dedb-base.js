@@ -11,8 +11,6 @@ dedb-query
    valueAt
 dedb-relation
    toRelation
-dedb-common
-   RecordType
 dedb-projection
    projectionFor
    releaseProjection

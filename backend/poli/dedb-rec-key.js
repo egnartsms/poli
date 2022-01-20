@@ -1,7 +1,5 @@
 common
    check
-dedb-common
-   RecordType
 -----
 recKey ::= Symbol.for('poli.recKey')
 recVal ::= Symbol.for('poli.recVal')

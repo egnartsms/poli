@@ -4,10 +4,13 @@ common
    arrayChain
    assert
    check
+   concat
    filter
    firstDuplicate
    hasOwnProperty
+   enumerate
    isA
+   map
    mapfilter
    notAny
    ownEntries
@@ -23,9 +26,15 @@ dedb-rec-key
 dedb-relation
    clsRelation
    toRelation
-   recKeyBindingMakesSenseFor
+   isStatefulRelation
+dedb-base
+   clsBaseRelation
+dedb-derived
+   clsDerivedRelation
 set-map
-   * as: set
+   deleteAll
+   addAll
+   intersect
 -----
 clsAndGoal ::= ({
    name: 'goal.and',
@@ -41,11 +50,6 @@ clsRelGoal ::= ({
    name: 'goal.rel',
    'goal': true,
    'goal.rel': true
-})
-clsFuncGoal ::= ({
-   name: 'goal.func',
-   'goal': true,
-   'goal.func': true
 })
 and ::= function (...subgoals) {
    let conjuncts = [];
@@ -102,21 +106,27 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-join ::= function (relInfo, rkey, bindings) {
-   let rel = $.toRelation(relInfo);
+use ::= function (relDescriptor, rkey, bindings) {
+   let rel = $.toRelation(relDescriptor);
+
+   $.check($.isA(rel, $.clsRelation), `Cannot join smth which is not a relation`);
 
    if (arguments.length === 2) {
       bindings = rkey;
       rkey = undefined;
    }
 
-   $.check(rkey === undefined || $.recKeyBindingMakesSenseFor(rel), () =>
-      `Cannot grab the rec key of relation '${rel.name}': makes no sense`
-   );
+   if (rkey !== undefined) {
+      $.check($.isStatefulRelation(rel) && rel.logAttrs[0] === $.recKey, () =>
+         `Cannot grab the rec key of relation '${rel.name}': makes no sense`
+      );
+   }
 
    if ($.isLvar(bindings)) {
-      $.check(rel.class === $.clsDerivedRelation && rel.isKeyed, () =>
-         `Cannot grab the rec val of relation '${rel.name}': makes no sense`
+      $.check(
+         rel.class === $.clsBaseRelation && rel.isKeyed ||
+            rel.class === $.clsDerivedRelation && rel.isUnwrapped,
+         () => `Cannot grab the rec val of relation '${rel.name}': makes no sense`
       )
    }
 
@@ -124,8 +134,7 @@ join ::= function (relInfo, rkey, bindings) {
    let looseBindings = $.computeLooseBindings(rkey, bindings);
    
    {
-      let vars = Array.from(Reflect.ownKeys(looseBindings), a => looseBindings[a]);
-
+      let vars = Array.from(looseBindings.values());
       let dupVar = $.firstDuplicate(vars);
 
       $.check(dupVar === undefined, () =>
@@ -138,51 +147,30 @@ join ::= function (relInfo, rkey, bindings) {
       rel,
       firmBindings,
       looseBindings,
-      projNum: -1,
+      num: -1,
+      // For derived relation goals, firm attrs evaporate; for other types of relations
+      // they don't. So for all except derived relations, we introduce firm
+      // (fictitious) vars for firm bindings, so 'bindings' for them would be a union of
+      // looseBindings + firmBindings where values get replaced with these fictitious
+      // vars. For derived relations, bindings is the same as looseBindings.
+      bindings: null,
+      // following props make sense for only stateful relations
+      statefulNum: -1,
       depNum: -1,
    }
 }
-goalLvars ::= function (goal) {
-   let {looseBindings} = goal;
-
-   return Array.from(Reflect.ownKeys(looseBindings), a => looseBindings[a]);
-}
-funcGoal ::= function (rel, attrs) {
-   throw new Error;
-
-   $.check(rel.type === $.RelationType.functional);
-
-   $.check($.all(Reflect.ownKeys(attrs), a => rel.attrs.includes(a)), () =>
-      `Invalid attr(s) in the goal for '${rel.name}'`
-   );
-
-   $.check($.all(rel.attrs, a => $.hasOwnProperty(attrs, a)), () =>
-      `Not all attrs were supplied in the goal for '${rel.name}'`
-   );
-
-   let [firmAttrs, looseAttrs] = $.computeFirmAndLooseBindings(attrs);
-
-   $.check(looseAttrs.size > 0, () => `No vars used in the goal for '${rel.name}'`);
-
-   return {
-      type: $.GoalType.func,
-      rel: rel,
-      firmAttrs,
-      looseAttrs
-   }
-}
 computeFirmBindings ::= function (rkey, bindings) {
-   let firms = $.isLvar(bindings) ? {} :
-      Object.fromEntries(
+   let firms = new Map(
+      $.isLvar(bindings) ? [] :
          $.mapfilter(Object.entries(bindings), ([a, val]) => {
             if (val !== undefined && !$.isLvar(val)) {
                return [a, val];
             }
          })
-      );
+   );
 
    if (rkey !== undefined && !$.isLvar(rkey)) {
-      firms[$.recKey] = rkey;
+      firms.set($.recKey, rkey);
    }
 
    return firms;
@@ -191,12 +179,10 @@ computeLooseBindings ::= function (rkey, bindings) {
    let loose;
 
    if ($.isLvar(bindings)) {
-      loose = {
-         [$.recVal]: bindings[$.lvarSym]
-      }
+      loose = new Map([[$.recVal, bindings[$.lvarSym]]]);
    }
    else {
-      loose = Object.fromEntries(
+      loose = new Map(
          $.mapfilter(Object.entries(bindings), ([a, lvar]) => {
             if ($.isLvar(lvar)) {
                return [a, lvar[$.lvarSym]];
@@ -206,16 +192,13 @@ computeLooseBindings ::= function (rkey, bindings) {
    }
 
    if ($.isLvar(rkey)) {
-      loose[$.recKey] = rkey[$.lvarSym];
+      loose.set($.recKey, rkey[$.lvarSym]);
    }
    
    return loose;
 }
-isLeafGoal ::= function (goal) {
-   return goal.class === $.clsRelGoal || goal.class === $.clsFuncGoal;
-}
-leafGoalsBeneath ::= function* gen(root) {
-   if ($.isLeafGoal(root)) {
+relGoalsBeneath ::= function* gen(root) {
+   if (root.class === $.clsRelGoal) {
       yield root;
    }
    else {
@@ -224,12 +207,35 @@ leafGoalsBeneath ::= function* gen(root) {
       }
    }
 }
-relGoalsBeneath ::= function (root) {
-   return $.filter($.leafGoalsBeneath(root), leaf => leaf.class === $.clsRelGoal);
+statefulGoalsBeneath ::= function gen(root) {
+   return $.filter($.relGoalsBeneath(root), ({rel}) => $.isStatefulRelation(rel));
+}
+initGoalTree ::= function (rootGoal, logAttrs) {
+   for (let [num, goal] of $.enumerate($.relGoalsBeneath(rootGoal))) {
+      goal.num = num;
+   }
+
+   for (let [num, goal] of $.enumerate($.statefulGoalsBeneath(rootGoal))) {
+      goal.statefulNum = num;
+   }
+
+   let numDeps = $.setupDepNums(rootGoal);
+   let firmVarBindings = $.setupFirmVars(rootGoal);
+   let vars = $.collectVars(rootGoal);
+   let nonEvaporatables = $.collectNonEvaporatableVars(rootGoal);
+
+   $.intersect(nonEvaporatables, new Set(logAttrs));
+
+   return {
+      numDeps,
+      firmVarBindings,
+      vars,
+      nonEvaporatables
+   }
 }
 walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
    (function walk(goal, K) {
-      if ($.isLeafGoal(goal)) {
+      if (goal.class === $.clsRelGoal) {
          onLeaf(goal, K);
       }
       else if (goal.class === $.clsAndGoal) {
@@ -252,7 +258,7 @@ walkPaths ::= function (rootGoal, {onLeaf, onPath}) {
       }
    })(rootGoal, onPath);
 }
-checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
+checkVarUsage ::= function (rootGoal, logAttrs) {
    let usageCount = new Map;
 
    function inc(lvar) {
@@ -264,59 +270,43 @@ checkVarUsageAndReturnVars ::= function (rootGoal, outVars) {
    }
 
    $.walkPaths(rootGoal, {
-      onLeaf: (goal, K) => {
-         for (let lvar of $.goalLvars(goal)) {
+      onLeaf(goal, K) {
+         for (let lvar of goal.looseBindings.values()) {
             inc(lvar);
          }
 
          K();
 
-         for (let lvar of $.goalLvars(goal)) {
+         for (let lvar of goal.looseBindings.values()) {
             dec(lvar);
          }
       },
-      onPath: () => {
-         for (let lvar of outVars) {
+      onPath() {
+         for (let lvar of logAttrs) {
             $.check(usageCount.get(lvar) > 0, () =>
-               `Attribute '${String(lvar)}': variable misuse`
+               `Attribute '${lvar}': variable misuse`
             );
          }
 
          for (let [lvar, count] of usageCount) {
             if (count === 1) {
-               $.check(outVars.includes(lvar), () =>
-                  `Variable '${String(lvar)}' is only mentioned once`
+               $.check(logAttrs.includes(lvar), () =>
+                  `Variable '${lvar}' is only mentioned once`
                );
             }
          }
       }
    });
-
-   return Array.from(usageCount.keys());
 }
-numberRelGoals ::= function (rootGoal) {
-   $.assignProjNumToRelGoals(rootGoal);
-   $.assignDepNumToRelGoals(rootGoal);
-}
-assignProjNumToRelGoals ::= function (rootGoal) {
-   let num = 0;
-
-   for (let goal of $.relGoalsBeneath(rootGoal)) {
-      goal.projNum = num;
-      num += 1;
-   }
-
-   return num;
-}
-assignDepNumToRelGoals ::= function (rootGoal) {
+setupDepNums ::= function (rootGoal) {
    let num = 0;
 
    (function rec(goal) {
       if (goal.class === $.clsRelGoal) {
-         $.assert(() => goal.depNum === -1);
-
-         goal.depNum = num;
-         num += 1;
+         if ($.isStatefulRelation(goal.rel)) {
+            goal.depNum = num;
+            num += 1;   
+         }
       }
       else if (goal.class === $.clsAndGoal) {
          for (let subgoal of goal.subgoals) {
@@ -335,69 +325,51 @@ assignDepNumToRelGoals ::= function (rootGoal) {
 
          num = biggestNum;
       }
+      else {
+         throw new Error;
+      }
    })(rootGoal);
 
    return num;
 }
-Shrunk ::= ({
-   min: 0,
-   all: 0,
-   part: 1,
-   one: 2,
-   max: 2,
-})
-indexShrunk ::= function (index) {
-   return $.isIndexCovered(index) ?
-      (index.isUnique ? $.Shrunk.one : $.Shrunk.part) :
-      $.Shrunk.all;
+collectVars ::= function (rootGoal) {
+   return Array.from(
+      new Set(
+         $.concat($.map($.relGoalsBeneath(rootGoal), g => g.looseBindings.values()))
+      )
+   );
 }
-funcRelShrunk ::= function (rel, firmAttrs) {
-   throw new Error;
+collectNonEvaporatableVars ::= function (rootGoal) {
+   let nonEvaporatables = new Set([$.recKey, $.recVal]);
 
-   let icode = $.instantiationCode(rel, firmAttrs);
-
-   if (!$.hasOwnProperty(rel.instantiations, icode)) {
-      return $.Shrunk.all;
-   }
-
-   let instantiation = rel.instantiations[icode];
-
-   if ($.hasOwnProperty(instantiation, 'det')) {
-      return $.Shrunk.one;
-   }
-   else if ($.hasOwnProperty(instantiation, 'nondet')) {
-      return $.Shrunk.part;
-   }
-   else {
-      throw new Error;
-   }
-}
-instantiationShrunk ::= function (ins) {
-   throw new Error;
-
-   if ($.hasOwnProperty(ins, 'det')) {
-      return $.Shrunk.one;
-   }
-   else if ($.hasOwnProperty(ins, 'nondet')) {
-      return $.Shrunk.part;
-   }
-   else {
-      throw new Error;
-   }
-}
-instantiationCode ::= function (rel, firmAttrs) {
-   throw new Error;
-
-   let codes = new Array(rel.attrs.length);
-
-   for (let attr of rel.attrs) {
-      if ($.hasOwnProperty(firmAttrs, attr)) {
-         codes.push('+');
-      }
-      else {
-         codes.push('-');
+   for (let goal of $.relGoalsBeneath(rootGoal)) {
+      if (goal.rel.class !== $.clsDerivedRelation) {
+         $.addAll(nonEvaporatables, goal.looseBindings.values());
       }
    }
 
-   return codes.join('');
+   return nonEvaporatables;
+}
+setupFirmVars ::= function (rootGoal) {
+   let firmVarBindings = new Map;
+   let counter = 0;
+
+   for (let goal of $.relGoalsBeneath(rootGoal)) {
+      if (goal.rel.class === $.clsDerivedRelation) {
+         goal.bindings = goal.looseBindings;
+         continue;
+      }
+
+      goal.bindings = new Map(goal.looseBindings);
+
+      for (let [attr, val] of goal.firmBindings) {
+         let lvar = `var-${goal.rel.name}-${counter}`;
+         counter += 1;
+         
+         goal.bindings.set(attr, lvar);
+         firmVarBindings.set(lvar, val);
+      }
+   }
+   
+   return firmVarBindings;
 }

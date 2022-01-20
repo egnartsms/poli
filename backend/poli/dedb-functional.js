@@ -1,15 +1,14 @@
-dedb-goal
-   funcGoal
 -----
-functionalRelation ::= function ({name, attrs, instantiations}) {
+clsFuncRelation ::= ({
+   name: 'relation.func',
+   relation: true,
+   'relation.func': true
+})
+makeRelation ::= function ({name, attrs, instantiations}) {
    return {
-      type: $.RelationType.functional,
+      class: $.clsFuncRelation,
       name,
       attrs,
       instantiations,
-
-      at(attrs) {
-         return $.funcGoal(this, attrs);
-      }
    }
 }

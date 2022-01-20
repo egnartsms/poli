@@ -6,7 +6,7 @@ dedb-query
 	query
 	queryOne
 dedb-goal
-	join
+	use
 dedb-base
 	addFact
 	removeFact
@@ -87,19 +87,19 @@ city ::= ({
 	   {country: 'USA', name: 'Houston', population: 2.378},
 	]
 })
-continentCity ::= ({
+continentCity ::= () => ({
 	name: 'continentCity',
 	attrs: ['continent', 'city'],
 	potentialIndices: [
 	],
 	body: v => [
-	   $.join($.continent, {name: v`continent`}),
-	   $.join($.country, {continent: v`continent`, name: v`country`}),
-	   $.join($.city, {country: v`country`, name: v`city`}),
+	   $.use($.continent, {name: v`continent`}),
+	   $.use($.country, {continent: v`continent`, name: v`country`}),
+	   $.use($.city, {country: v`country`, name: v`city`}),
 	]
 })
 test_query_no_bindings ::= function () {
-	$.checkLike(
+   $.checkLike(
 		new Set($.query($.continentCity, {})),
 		[
 			{continent: 'Europe', city: 'Paris'},
