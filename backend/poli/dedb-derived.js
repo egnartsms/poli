@@ -82,7 +82,7 @@ clsDerivedRelation ::= ({
    'relation.derived': true
 })
 MAX_REL_ATTRS ::= 30
-makeRelation ::= function ({
+derivedRelation ::= function ({
    name: relname,
    isKeyed = false,
    attrs = [],

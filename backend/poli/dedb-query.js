@@ -6,8 +6,6 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection
-dedb-relation
-   toRelation
 dedb-base
    getUniqueRecord
    getRecords
@@ -24,9 +22,7 @@ dumpRecencyList ::= function () {
    console.log('Q rec list:', $.recencyHead);
    console.log('Q proj cache:', $.derivedProjectionCache);
 }
-valueAt ::= function (relInfo, recKey) {
-   let rel = $.toRelation(relInfo);
-
+valueAt ::= function (rel, recKey) {
    $.check(rel.isKeyed);
 
    if (rel.class === $.clsBaseRelation) {
@@ -41,9 +37,7 @@ valueAt ::= function (relInfo, recKey) {
 
    throw new Error;
 }
-queryOne ::= function (relInfo, bindings) {
-   let rel = $.toRelation(relInfo);
-      
+queryOne ::= function (rel, bindings) {
    if (rel.class === $.clsBaseRelation) {
       return $.getUniqueRecord(rel, bindings);
    }
@@ -60,9 +54,7 @@ queryOne ::= function (relInfo, bindings) {
    
    throw new Error;
 }
-query ::= function (relInfo, bindings) {
-   let rel = $.toRelation(relInfo);
-
+query ::= function (rel, bindings) {
    if (rel.class === $.clsBaseRelation) {
       return $.getRecords(rel, bindings);
    }
@@ -75,9 +67,7 @@ query ::= function (relInfo, bindings) {
 
    throw new Error;
 }
-getDerivedProjection ::= function (relInfo, bindings) {
-   let rel = $.toRelation(relInfo);
-
+getDerivedProjection ::= function (rel, bindings) {
    $.check(rel.class === $.clsDerivedRelation);
 
    return $.lookupDerivedProjection(rel, bindings);

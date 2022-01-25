@@ -2,7 +2,6 @@ common
    check
    all
 dedb-relation
-   toRelation
    accessorForAttr
 dedb-projection
    makeProjectionRegistry

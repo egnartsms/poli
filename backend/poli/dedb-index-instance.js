@@ -38,45 +38,6 @@ refIndexInstance ::= function (owner, desired) {
    // For other types of projection, it makes no sense to request index instances
    throw new Error;
 }
-makeReducedIndexInstance ::= function (rel, desired, filterBy) {
-   let found = null;
-
-   for (let inst of rel.myIndexInstances) {
-      let {index} = inst;
-
-      if ($.all(desired, a => index.includes(a)) &&
-            $.all(index, a => desired.includes(a) || filterBy.some(([A, V]) => A === a))) {
-         found = inst;
-         break;
-      }
-   }
-
-   $.check(found !== null,
-      `Could not find index '${desired}' on a relation '${rel.name}'`
-   );
-
-   filterBy = Array.from(filterBy);
-
-   let template = Array.from(found.index, a => {
-      if (desired.includes(a)) {
-         return undefined;
-      }
-
-      let i = filterBy.findIndex(([A, V]) => A === a);
-      let [, V] = filterBy[i];
-
-      filterBy.splice(i, 1);
-      
-      return V;
-   });
-
-   return {
-      class: $.clsReducedIndexInstance,
-      instance: found,
-      template,
-      filterBy
-   }
-}
 refDerivedInstance ::= function (proj, desired) {
    let inst = $.refDesiredIndexInstance(proj, desired);
 
@@ -115,6 +76,7 @@ releaseIndexInstance ::= function (inst) {
       inst.refCount -= 1;
 
       if (inst.refCount === 0) {
+         console.log("Deleting", inst.index, "from", inst.owner.name)
          let i = instances.indexOf(inst);
          $.assert(() => i !== -1);
          instances.splice(i, 1);

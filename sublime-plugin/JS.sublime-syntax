@@ -1,50 +1,57 @@
 %YAML 1.2
 ---
 name: Poli JS
+version: 2
 scope: source.poli.js
 hidden: true
 
 contexts:
-  prototype:
-    - match: ^\s*((//).*)$
-      captures:
-        1: comment.line
-        2: punctuation.definition.comment
-
   main:
     - match: ^-+$
       scope: punctuation.terminator.poli.end-of-imports
       set: contents
-    - match: ^.*$
+    - match: ^\S+(\s*?)$
       scope: meta.import.poli.module
+      captures:
+        1: invalid.illegal.space
       push: module-imports
 
   module-imports:
     - match: ^(?=\S)
       pop: true
-    - match: '^\s+(\*) (as:) (\S+)$'
+    - match: '^\s+(\*)(?=\s)'
       captures:
         1: meta.import.poli.asterisk
-        2: keyword.other
-        3: meta.import.poli.alias variable.other
-    - match: '^\s+(\S+)(?: (as:) (\S+))?$'
+      push: as
+    - match: '^\s+(\S+)'
       captures:
         1: meta.import.poli.entry variable.other
-        2: keyword.other
-        3: meta.import.poli.alias variable.other
-    - match: ^.+$
-      scope: invalid.illegal
+      push: as
+
+  as:
+    - match: '(?<=\s)as:(?=\s)'
+      scope: keyword.other
+      set: alias
+    - match: (?=\S)|$
+      pop: true
+
+  alias:
+    - match: '(?<=\s)\S+'
+      scope: meta.import.poli.alias variable.other
+      pop: true
+    - match: (?=\S)|$
+      pop: true
 
   contents:
-    - match: '^(\w+) ?(\s*)(::=) ?'
+    - match: '^(?:(box) +)?(\w.*?) +(::=) ?'
       captures:
-        1: entity.name.entry meta.entry.name
-        2: invalid.illegal.excessive-whitespace
+        1: punctuation.definition.keyword
+        2: entity.name.entry meta.entry.name
         3: punctuation.separator.poli.defined-as
-      embed: Packages/JavaScript/JavaScript.sublime-syntax
-      escape: '^(?=\w)'
+      embed: scope:source.js
+      escape: ^(?=\w)
       embed_scope: meta.entry.def
     - match: ^
-      embed: Packages/JavaScript/JavaScript.sublime-syntax
-      escape: '^(?=\w+\s*::=)'
+      embed: scope:source.js
+      escape: ^(?=\w.* ::=)
       embed_scope: meta.floating

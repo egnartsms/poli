@@ -49,7 +49,6 @@ dedb-projection
    invalidateProjections
    makeProjectionRegistry
 dedb-relation
-   toRelation
    rec2val
    rec2pair
 -----
@@ -58,15 +57,18 @@ clsBaseRelation ::= ({
    'relation.base': true,
    'relation': true,
 })
-makeRelation ::= function ({
+baseRelation ::= function ({
    name,
    isKeyed = false,
-   isEntity = false,
+   entityProto = null,
    attrs = [],
    indices: indexSpecs = [],
    records = []
 }) {
-   $.check(!isEntity || isKeyed);
+   if (entityProto !== null) {
+      isKeyed = true;
+   }
+
    $.check(isKeyed || attrs.length > 0);
 
    let rel = {
@@ -80,7 +82,7 @@ makeRelation ::= function ({
       myVer: null,
       records: new (isKeyed ? $.ExpRecords : $.ImpRecords)(records),
       validRevDeps: new Set,  // 'revdeps' here means projections
-      entityProto: false,  // initialized below if necessary
+      entityProto: entityProto,
    };
 
    let instances = [];
@@ -89,6 +91,8 @@ makeRelation ::= function ({
       let index = $.indexFromSpec(spec);
       let inst = $.makeIndexInstance(rel, index);
 
+      inst.refCount += 1;  // this guarantees that 'inst' will always be alive
+
       $.rebuildIndex(inst, rel.records);
 
       instances.push(inst);
@@ -96,8 +100,8 @@ makeRelation ::= function ({
 
    rel.myIndexInstances = instances;
 
-   if (isEntity) {
-      rel.entityProto = $.makeEntityPrototype(rel);
+   if (entityProto !== null) {
+      $.setupEntityPrototype(rel, entityProto);
    }
 
    return rel;
@@ -340,15 +344,13 @@ cloak ::= function () {
    //    if (removed && rel.entityProto !== false) {
    //       let entity = rkey;
 
-   //       entity[$.symEntityTuple] = null;
+   //       entity[$.symTuple] = null;
    //    }
 
    //    return removed;
    // }   
 }
-addFact ::= function (relInfo, rkey, rval=rkey) {
-   let rel = $.toRelation(relInfo);
-
+addFact ::= function (rel, rkey, rval=rkey) {
    $.check(rel.isKeyed || rkey === rval, `Keyed/non-keyed misuse`);
    $.check(!rel.records.hasAt(rkey), `Duplicate record`);
 
@@ -362,14 +364,13 @@ addFact ::= function (relInfo, rkey, rval=rkey) {
       $.indexAdd(inst, rkey, rval);
    }
    
-   if (rel.entityProto !== false) {
-      rkey[$.symEntityTuple] = rval;
+   if (rel.entityProto !== null) {
+      rkey[$.symTuple] = rval;
    }
 
    $.invalidate(rel);
 }
-removeFact ::= function (relInfo, rkey) {
-   let rel = $.toRelation(relInfo);
+removeFact ::= function (rel, rkey) {
    let rval = rel.records.valueAt(rkey);
 
    if (rval === undefined) {
@@ -390,13 +391,11 @@ doRemove ::= function (rel, rkey, rval) {
       $.indexRemove(inst, rkey, rval);
    }
 
-   if (rel.entityProto !== false) {
-      rkey[$.symEntityTuple] = null;
+   if (rel.entityProto !== null) {
+      rkey[$.symTuple] = null;
    }
 }
-removeIf ::= function (relInfo, pred) {
-   let rel = $.toRelation(relInfo);
-
+removeIf ::= function (rel, pred) {
    let toRemove = Array.from($.filter(rel.records, pred));
 
    for (let rec of toRemove) {
@@ -406,9 +405,7 @@ removeIf ::= function (relInfo, pred) {
 
    $.invalidate(rel);
 }
-changeFact ::= function (relInfo, rkey, rvalNew) {
-   let rel = $.toRelation(relInfo);
-
+changeFact ::= function (rel, rkey, rvalNew) {
    $.check(rel.isKeyed, `Cannot change fact in a non-keyed relation`);
    
    $.removeFact(rel, rkey);
@@ -418,42 +415,37 @@ invalidate ::= function (rel) {
    $.invalidateProjections(rel.validRevDeps);
    rel.validRevDeps.clear();
 }
-makeEntityPrototype ::= function (rel) {
-   let proto = {
-      [$.symEntityRelation]: rel
-   };
+symTuple ::= Symbol.for('poli.tuple')
+symRelation ::= Symbol.for('poli.relation')
+setupEntityPrototype ::= function (rel) {
+   rel.entityProto[$.symRelation] = rel;
 
    for (let attr of rel.attrs) {
-      Object.defineProperty(proto, attr, {
+      Object.defineProperty(rel.entityProto, attr, {
          configurable: true,
          enumerable: true,
          get() {
-            return this[$.symEntityTuple][attr];
+            return this[$.symTuple][attr];
          }
       });
    }
-
-   return proto;
 }
-symEntityTuple ::= Symbol.for('poli.entityTuple')
-symEntityRelation ::= Symbol.for('poli.entityRelation')
-makeEntity ::= function (relInfo, tuple) {
-   let rel = $.toRelation(relInfo);
+makeEntity ::= function (rel, tuple) {
    let entity = Object.create(rel.entityProto);
 
-   entity[$.symEntityTuple] = tuple;
+   entity[$.symTuple] = tuple;
    $.addFact(rel, entity, tuple);
 
    return entity;
 }
 removeEntity ::= function (entity) {
-   $.removeFact(entity[$.symEntityRelation], entity);
+   $.removeFact(entity[$.symRelation], entity);
 }
 setEntity ::= function (entity, newTuple) {
-   $.changeFact(entity[$.symEntityRelation], entity, newTuple);
+   $.changeFact(entity[$.symRelation], entity, newTuple);
 }
 patchEntity ::= function (entity, fn, ...args) {
-   let newTuple = fn(entity[$.symEntityTuple], ...args);
+   let newTuple = fn(entity[$.symTuple], ...args);
    $.setEntity(entity, newTuple);
 }
 revertTo ::= function (extVer) {
