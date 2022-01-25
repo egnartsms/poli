@@ -4,7 +4,7 @@ clsFuncRelation ::= ({
    relation: true,
    'relation.func': true
 })
-makeRelation ::= function ({name, attrs, instantiations}) {
+functionalRelation ::= function ({name, attrs, instantiations}) {
    return {
       class: $.clsFuncRelation,
       name,

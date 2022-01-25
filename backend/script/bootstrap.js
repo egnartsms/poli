@@ -3,7 +3,7 @@ var poli = (function () {
 
    function loadModules(rawModules) {
       function moduleEval(ns, entry, code) {
-         code = code.replace(/(?<=^ function\*? )(?=\()/, entry);
+         code = code.trim().replace(/(?<=^function\*? )(?= *\()/, entry);
          let fun = Function('$', `"use strict";\n   return (${code})`);
          return fun.call(null, ns);
       }
@@ -23,14 +23,23 @@ var poli = (function () {
             continue;
          }
 
-         for (let [entry, code] of minfo.body) {
+         for (let {isBox, name, def} of minfo.body) {
+            let value;
+
             try {
-               minfo.ns[entry] = moduleEval(minfo.ns, entry, code);
+               value = moduleEval(minfo.ns, name, def);
             }
             catch (e) {
-               console.error(`'${minfo.name}': failed to eval '${entry}'`);
+               console.error(`'${minfo.name}': failed to eval '${name}'`);
                throw e;
             }
+
+            Object.defineProperty(minfo.ns, name, isBox ? makeBoxDescriptor(value) : {
+               configurable: true,
+               enumerable: true,
+               value,
+               writable: true
+            });
          }
       }
 
@@ -58,7 +67,12 @@ var poli = (function () {
                   );
                }
 
-               recp.ns[asterisk] = donor.ns;
+               Object.defineProperty(recp.ns, asterisk, {
+                  configurable: true,
+                  enumerable: true,
+                  value: donor.ns,
+                  writable: false
+               });
             }
 
             for (let {entry, alias} of imports) {
@@ -78,7 +92,9 @@ var poli = (function () {
                   );
                }
 
-               recp.ns[importedAs] = donor.ns[entry];
+               Object.defineProperty(
+                  recp.ns, importedAs, Object.getOwnPropertyDescriptor(donor.ns, entry)
+               );
             }
          }
       }
@@ -89,11 +105,39 @@ var poli = (function () {
    }
 
 
+   function makeBoxDescriptor(initial) {
+      let value = initial;
+
+      return {
+         configurable: true,
+         enumerable: true,
+         get() {
+            return value;
+         },
+         set(newValue) {
+            value = newValue;
+         }
+      }
+   }
+
    function parseModules(rawModules) {
       let modules = [];
 
       for (let raw of rawModules) {
-         let {imports, body} = parseModule(raw.contents);
+         // TODO: remove this when you finally get to XS
+         if (raw.lang === 'xs') {
+            continue;
+         }
+
+         let imports, body;
+
+         try {
+            ({imports, body} = parseModule(raw.contents));
+         }
+         catch (e) {
+            console.error(`Could not parse module '${raw.name}'`);
+            throw e;
+         }
 
          modules.push({
             name: raw.name,
@@ -123,35 +167,53 @@ var poli = (function () {
    }
 
 
+   const reModuleName = /^[\w-]+$/;
+   const reImportLine = /^(?<entry>\S+?)(?:\s+as:\s+(?<alias>\S+?))?$/;  // it's trimmed
+
+
    function parseImports(str) {
       let res = [];
 
-      for (let [[,donor], rawImports] of matchAllHeaderBodyPairs(str, /^(\S.*?)\s*\n/gm)) {
-         let imports = Array.from(
-            rawImports.matchAll(/^\s+(?<entry>.*?)(?:\s+as:\s+(?<alias>.+?))?\s*$/gm)
-         );
-
-         if (imports.length === 0) {
-            // This should not normally happen but not an error
-            continue;
+      for (let [[,donor], rawImports] of headerSplit(str, /^(?=\S)(.+?)\n/gm)) {
+         if (!reModuleName.test(donor)) {
+            throw new Error(`Bad module name to import: '${donor}'`);
          }
 
+         let imports = [];
          let asterisk = null;
 
-         // TODO: check for asterisk at any index
+         for (let line of rawImports.split(/\n/)) {
+            line = line.trim();
 
-         if (imports[0].groups.entry === '*') {
-            asterisk = imports[0].groups.alias;
-            imports.shift();
+            if (!line) {
+               continue;
+            }
+
+            let mtch = reImportLine.exec(line);
+
+            if (mtch === null) {
+               throw new Error(`Invalid import line: '${line}'`);
+            }
+
+            if (mtch.groups.entry === '*') {
+               if (asterisk !== null) {
+                  throw new Error(`Multiple asterisk imports from module '${donor}'`)
+               }
+
+               asterisk = mtch.groups.alias;
+            }
+            else {
+               imports.push({
+                  entry: mtch.groups.entry,
+                  alias: mtch.groups.alias ?? null
+               });
+            }
          }
 
          res.push({
             donor,
             asterisk,
-            imports: Array.from(imports, imp => ({
-               entry: imp.groups.entry,
-               alias: imp.groups.alias || null,
-            }))
+            imports
          });
       }
 
@@ -159,11 +221,28 @@ var poli = (function () {
    }
 
 
+   const reEntryName = /^(box +)?([a-z][a-z0-9_$]*)$/i;
+
+
    function parseBody(str) {
-      const re = /^(\S+?)\s+::=(?=\s)/gm;
-      // Here we parse loosely but still require at least 1 space before and after '::='.
-      // (::= can actually be followed immediately by a newline which is a whitespace, too)
-      return Array.from(matchAllHeaderBodyPairs(str, re), ([mtch, def]) => [mtch[1], def]);
+      const re = /^(\w.*?) +::=/gm;
+      let entries = [];
+
+      for (let [[,entry], def] of headerSplit(str, re)) {
+         let mtch = reEntryName.exec(entry);
+
+         if (mtch === null) {
+            throw new Error(`Could not parse this as entry name: '${entry}'`);
+         }
+
+         entries.push({
+            isBox: mtch[1] !== undefined,
+            name: mtch[2],
+            def: def
+         });
+      }
+
+      return entries;
    }
 
 
@@ -176,7 +255,7 @@ var poli = (function () {
 
       Yield pairs [header_match, body]
    */
-   function* matchAllHeaderBodyPairs(str, reHeader) {
+   function* headerSplit(str, reHeader) {
       let prev_i = null, prev_mtch = null;
 
       for (let mtch of str.matchAll(reHeader)) {
@@ -197,12 +276,12 @@ var poli = (function () {
 
    function run(rawModules) {
       let minfos = loadModules_1(rawModules);
-      
+
       {
          let mTest = minfos.find(m => m.name === 'test-dedb');
          mTest.ns['runTests']();
       }
-      
+
       return;
    }
 

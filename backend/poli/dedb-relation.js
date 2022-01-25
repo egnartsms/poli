@@ -24,38 +24,6 @@ clsRelation ::= ({
 isStatefulRelation ::= function (rel) {
 	return $.isA(rel, $.clsBaseRelation, $.clsDerivedRelation);
 }
-info2rel ::= new WeakMap
-toRelation ::= function (relDescriptor) {
-	if (typeof relDescriptor.class === 'object' && $.isA(relDescriptor, $.clsRelation)) {
-		// $.toRelation is idempotent
-		return relDescriptor;
-	}
-
-	let relation = $.info2rel.get(relDescriptor);
-
-	if (relation !== undefined) {
-		return relation;
-	}
-
-	let relInfo = typeof relDescriptor === 'function' ? relDescriptor() : relDescriptor;
-
-	if (relInfo.body !== undefined) {
-		relation = $.derived.makeRelation(relInfo);
-	}
-	else if (relInfo.instantiations !== undefined) {
-		relation = $.functional.makeRelation(relInfo);
-	}
-	else {
-		relation = $.base.makeRelation(relInfo);
-	}
-
-	$.info2rel.set(relDescriptor, relation);
-
-	return relation;
-}
-clearRelationCache ::= function () {
-	$.info2rel = new WeakMap();
-}
 accessorForAttr ::= function (rel, attr) {
 	$.assert(() => rel.logAttrs.includes($.recVal));
 

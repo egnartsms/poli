@@ -11,6 +11,9 @@ dedb-base
    makeEntity
    removeEntity
    patchEntity
+   baseRelation
+dedb-derived
+   derivedRelation
 dedb-projection
    updateProjection
 dedb-query
@@ -20,47 +23,55 @@ dedb-query
 dedb-rec-key
    recKey
 -----
-dev ::= ({
-   name: 'dev',
-   isKeyed: true,
-   isEntity: true,
-   attrs: ['name', 'company'],
-   indices: [
-      ['company']
-   ]
-})
-company ::= ({
-   name: 'company',
-   isKeyed: false,
-   attrs: ['name', 'salary'],
-   indices: [
-      ['name', 1]
-   ],
-   records: [
-      {name: 'SoftServe', salary: 2500},
-      {name: 'GlobalLogic', salary: 2800},
-      {name: 'LuxSoft', salary: 3000},
-      {name: 'DataArt', salary: 3300},
-      {name: 'SiteCore', salary: 4000},
-      {name: 'Ciklum', salary: 4400}
-   ],
-})
-devSalary ::= () => ({
-   name: 'devSalary',
-   isKeyed: true,
-   body: v => [
-      $.use($.dev, v.key, {company: v`company`}),
-      $.use($.company, {name: v`company`, salary: v.value})
-   ]
-})
-devCompany ::= () => ({
-   name: 'devCompany',
-   isKeyed: true,
-   body: v => [
-      $.use($.dev, v.key, {company: v`company`}),
-      $.use($.company, v.value, {name: v`company`})
-   ]   
-})
+box dev ::= null
+box company ::= null
+box devSalary ::= null
+box devCompany ::= null
+setup ::= function () {
+   $.dev = $.baseRelation({
+      name: 'dev',
+      entityProto: {},
+      attrs: ['name', 'company'],
+      indices: [
+         ['company']
+      ]
+   });
+
+   $.company = $.baseRelation({
+      name: 'company',
+      isKeyed: false,
+      attrs: ['name', 'salary'],
+      indices: [
+         ['name', 1]
+      ],
+      records: [
+         {name: 'SoftServe', salary: 2500},
+         {name: 'GlobalLogic', salary: 2800},
+         {name: 'LuxSoft', salary: 3000},
+         {name: 'DataArt', salary: 3300},
+         {name: 'SiteCore', salary: 4000},
+         {name: 'Ciklum', salary: 4400}
+      ],
+   });
+
+   $.devSalary = $.derivedRelation({
+      name: 'devSalary',
+      isKeyed: true,
+      body: v => [
+         $.use($.dev, v.key, {company: v`company`}),
+         $.use($.company, {name: v`company`, salary: v.value})
+      ]
+   });
+
+   $.devCompany = $.derivedRelation({
+      name: 'devCompany',
+      isKeyed: true,
+      body: v => [
+         $.use($.dev, v.key, {company: v`company`}),
+         $.use($.company, v.value, {name: v`company`})
+      ]   
+   });
+}
 test_basic ::= function () {
    let joe = $.makeEntity($.dev, {name: 'Joe', company: 'DataArt'});
    $.check($.valueAt($.devSalary, joe) === 3300);

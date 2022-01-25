@@ -25,7 +25,6 @@ dedb-rec-key
    recVal
 dedb-relation
    clsRelation
-   toRelation
    isStatefulRelation
 dedb-base
    clsBaseRelation
@@ -106,9 +105,7 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-use ::= function (relDescriptor, rkey, bindings) {
-   let rel = $.toRelation(relDescriptor);
-
+use ::= function (rel, rkey, bindings) {
    $.check($.isA(rel, $.clsRelation), `Cannot join smth which is not a relation`);
 
    if (arguments.length === 2) {

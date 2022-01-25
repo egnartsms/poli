@@ -1,5 +1,5 @@
-dedb-relation
-   clearRelationCache
+world
+   unwrapDefers
 dedb-query
    clearProjectionCache
 test-dedb-base
@@ -20,7 +20,6 @@ runTests ::= function () {
    $.runTestsIn('keyed', $.keyed);
    $.runTestsIn('disjunction', $.disjunction);
    $.runTestsIn('functional', $.functional);
-   $.clearRelationCache();
    $.clearProjectionCache();
    console.log('--- DONE');
    console.timeEnd('tests')
@@ -28,9 +27,10 @@ runTests ::= function () {
 runTestsIn ::= function (moduleName, ns) {
    console.log('---', moduleName);
 
+   ns['setup']();
+
    for (let [k, v] of Object.entries(ns)) {
       if (k.startsWith('test_')) {
-         $.clearRelationCache();
          $.clearProjectionCache();
 
          let t0 = performance.now();
