@@ -10,11 +10,11 @@ function run(rawModules) {
       mTest.ns['runTests']();
    }
 
-   return;
-
    let Mworld = minfos.find(m => m.name === WORLD_MODULE);
    Mworld.ns['load'](minfos);
 
+   return;
+   
    let Mrun = minfos.find(m => m.name === RUN_MODULE);
 
    // That's our contract with RUN_MODULE:

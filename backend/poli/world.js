@@ -24,46 +24,47 @@ dedb-query
    dumpRecencyList
    queryOne
 -----
-box module ::= null
 protoModule ::= ({})
-module ::= function _poli_defer() {
-   return $.baseRelation({
+protoEntry ::= ({})
+box module ::= null
+box entry ::= null
+box import ::= null
+box starImport ::= null
+createRelations ::= function () {
+   $.module = $.baseRelation({
       name: 'module',
       entityProto: $.protoModule,
       attrs: ['name', 'lang', 'members'],
       indices: [
          ['name', 1]
       ]
-   })
-}
-protoEntry ::= ({
-})
-entry ::= function _poli_defer() {
-   return $.baseRelation({
+   });
+   
+   $.entry = $.baseRelation({
       name: 'entry',
       entityProto: $.protoEntry,
       attrs: ['name', 'def', 'module'],
       indices: [
          ['module', 'name', 1]
       ]
-   })
-}
-import ::= function _poli_defer() {
-   return $.baseRelation({
+   });
+
+   $.import = $.baseRelation({
       name: 'import',
       attrs: ['entry', 'recp', 'alias'],
       indices: []
-   })
-}
-starImport ::= function _poli_defer() {
-   return $.baseRelation({
+   });
+
+   $.starImport = $.baseRelation({
       name: 'starImport',
       attrs: ['donor', 'recp', 'alias'],
       indices: []
-   })
+   });
 }
 load ::= function (minfos) {
    console.time('load world');
+
+   $.createRelations();
 
    // Modules and entries
    for (let minfo of minfos) {
@@ -77,11 +78,10 @@ load ::= function (minfos) {
          nsDelta: null,
       });
 
-      let entries = Array.from(minfo.body, ([name, code]) => {
-         code = code.trim();
+      let entries = Array.from(minfo.body, ({isBox, name, def}) => {
          return $.makeEntity($.entry, {
             name: name,
-            def: code,
+            def: def,
             module: module
          });
       });
@@ -114,28 +114,4 @@ load ::= function (minfos) {
    console.timeEnd('load world');
 
    $.dumpRecencyList();
-}
-unwrapDefers ::= function (minfos) {
-   let map = new Map;
-
-   for (let minfo of minfos) {
-      for (let [entry, wrapper] of Object.entries(minfo.ns)) {
-         if ($.isDefer(wrapper)) {
-            let value;
-
-            if (map.has(wrapper)) {
-               value = map.get(wrapper);
-            }
-            else {
-               value = wrapper();
-               map.set(wrapper, value);
-            }
-
-            minfo.ns[entry] = value;
-         }
-      }
-   }
-}
-isDefer ::= function (val) {
-   return typeof val === 'function' && val.name === '_poli_defer';
 }

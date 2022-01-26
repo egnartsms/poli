@@ -1,5 +1,3 @@
-world
-   unwrapDefers
 dedb-query
    clearProjectionCache
 test-dedb-base
