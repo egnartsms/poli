@@ -1,10 +1,16 @@
 var poli = (function () {
    'use strict';
 
+   var _const = {
+      SRC_FOLDER: 'poli',
+      WORLD_MODULE: 'world',
+      RUN_MODULE: 'runner'
+   };
+
    function loadModules(rawModules) {
-      function moduleEval(ns, entry, code) {
-         code = code.trim().replace(/(?<=^function\*? )(?= *\()/, entry);
-         let fun = Function('$', `"use strict";\n   return (${code})`);
+      function moduleEval(ns, name, def) {
+         def = def.replace(/(?<=^function\*? )(?= *\()/, name);
+         let fun = Function('$', `"use strict";\n   return (${def})`);
          return fun.call(null, ns);
       }
 
@@ -225,10 +231,10 @@ var poli = (function () {
 
 
    function parseBody(str) {
-      const re = /^(\w.*?) +::=/gm;
+      const reEntryHeader = /^(\w.*?) +::=/gm;
       let entries = [];
 
-      for (let [[,entry], def] of headerSplit(str, re)) {
+      for (let [[,entry], def] of headerSplit(str, reEntryHeader)) {
          let mtch = reEntryName.exec(entry);
 
          if (mtch === null) {
@@ -238,7 +244,7 @@ var poli = (function () {
          entries.push({
             isBox: mtch[1] !== undefined,
             name: mtch[2],
-            def: def
+            def: def.trim()
          });
       }
 
@@ -274,6 +280,9 @@ var poli = (function () {
 
    var loadModules_1 = loadModules;
 
+   const {WORLD_MODULE, RUN_MODULE} = _const;
+
+
    function run(rawModules) {
       let minfos = loadModules_1(rawModules);
 
@@ -281,6 +290,9 @@ var poli = (function () {
          let mTest = minfos.find(m => m.name === 'test-dedb');
          mTest.ns['runTests']();
       }
+
+      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+      Mworld.ns['load'](minfos);
 
       return;
    }

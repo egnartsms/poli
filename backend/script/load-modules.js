@@ -2,9 +2,9 @@ const {SRC_FOLDER} = require('./const');
 
 
 function loadModules(rawModules) {
-   function moduleEval(ns, entry, code) {
-      code = code.trim().replace(/(?<=^function\*? )(?= *\()/, entry);
-      let fun = Function('$', `"use strict";\n   return (${code})`);
+   function moduleEval(ns, name, def) {
+      def = def.replace(/(?<=^function\*? )(?= *\()/, name);
+      let fun = Function('$', `"use strict";\n   return (${def})`);
       return fun.call(null, ns);
    }
 
@@ -225,10 +225,10 @@ const reEntryName = /^(box +)?([a-z][a-z0-9_$]*)$/i;
 
 
 function parseBody(str) {
-   const re = /^(\w.*?) +::=/gm;
+   const reEntryHeader = /^(\w.*?) +::=/gm;
    let entries = [];
 
-   for (let [[,entry], def] of headerSplit(str, re)) {
+   for (let [[,entry], def] of headerSplit(str, reEntryHeader)) {
       let mtch = reEntryName.exec(entry);
 
       if (mtch === null) {
@@ -238,7 +238,7 @@ function parseBody(str) {
       entries.push({
          isBox: mtch[1] !== undefined,
          name: mtch[2],
-         def: def
+         def: def.trim()
       })
    }
 
