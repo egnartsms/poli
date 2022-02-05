@@ -545,8 +545,8 @@ any ::= function (itbl, pred) {
 
    return false;
 }
-notAny ::= function (X, pred) {
-   for (let x of X) {
+notAny ::= function (xs, pred) {
+   for (let x of xs) {
       if (pred(x)) {
          return false;
       }

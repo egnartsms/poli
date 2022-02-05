@@ -8,7 +8,7 @@ ExpRecords ::= class KeyedRecords {
    }
 
    static fromKeyValPairs(kvpairs) {
-      return new $.KeyedRecords(kvpairs);
+      return new $.ExpRecords(kvpairs);
    }
 
    get size() {
@@ -39,6 +39,10 @@ ExpRecords ::= class KeyedRecords {
       return this.valueAt(rkey);
    }
 
+   recordAtX(rkey) {
+      return [rkey, this.valueAt(rkey)];
+   }
+
    addPair(rkey, rval) {
       $.assert(() => !this.hasAt(rkey));
 
@@ -62,7 +66,7 @@ ImpRecords ::= class Records {
    }
 
    static fromKeyValPairs(kvpairs) {
-      return new $.Records(
+      return new $.ImpRecords(
          $.filter(kvpairs, ([rkey, rval]) => {
             $.assert(() => rkey === rval);
             return rkey;
@@ -95,6 +99,10 @@ ImpRecords ::= class Records {
    }
 
    valueAtX(rkey) {
+      return rkey;
+   }
+
+   recordAtX(rkey) {
       return rkey;
    }
 

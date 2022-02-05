@@ -74,7 +74,8 @@ dedb-join-plan
    clsJoinEither
    makeConfig
 dedb-relation
-   recordCollection
+   rkeyX2pairFn
+   ownerSize
 -----
 clsDerivedRelation ::= ({
    name: 'relation.derived',
@@ -120,6 +121,7 @@ derivedRelation ::= function ({
    let {
       numDeps,
       firmVarBindings,
+      fictitiousVars,
       vars,
       nonEvaporatables
    } = $.initGoalTree(rootGoal, logAttrs);
@@ -145,6 +147,7 @@ derivedRelation ::= function ({
       numDeps,
       numPaths: path2goals.size,
       firmVarBindings,
+      fictitiousVars,
       vars,
       nonEvaporatables,
       path2goals,
@@ -183,7 +186,6 @@ taggedVarProducer ::= (function () {
 
    return vTagged;
 })()
-
 clsDerivedProjection ::= ({
    name: 'projection.derived',
    'projection.derived': true,
@@ -237,16 +239,16 @@ makeProjection ::= function (rel, bindings) {
       regPoint: null,   // initialized by the calling code
       isValid: false,
       validRevDeps: new Set,
-      config: config,
+      config,
       subs,
       subIndexInstances,
       myVer: null,
-      records: null,  // dry in the beginning
+      rkey2rval: rel.isKeyed ? new Map : null,  // if non-keyed, this is always null
       ns,
       // forward: rkey -> [subkey, subkey, ...]
-      recDeps: new Map,
+      rkey2subkeys: new Map,
       // backward: [ {subkey -> Set{rkey, rkey, ...}}, ...], numDeps in length
-      subrecDeps: $.produceArray(rel.numDeps, $.multimap),
+      Asubkey2rkeys: $.produceArray(rel.numDeps, $.multimap),
       myIndexInstances: [],
    };
 
@@ -258,7 +260,7 @@ makeSubBindings ::= function (subBindingRoutes, bindings) {
    let {firms, routes} = subBindingRoutes;
 
    // firms :: [Map{attr -> value}], becomes :: [{attr: value}]
-   firms = Array.from(firms, firm => Object.fromEntries(firm));
+   firms = Array.from(firms, Object.fromEntries);
 
    for (let [attr, val] of $.ownEntries(bindings)) {
       for (let [subNum, subAttr] of routes.get(attr) ?? []) {
@@ -344,7 +346,9 @@ rebuildProjection ::= function (proj) {
       sub.ver = newVer;
    }
 
-   proj.records = new ($.recordCollection(proj))();
+   if (proj.isKeyed) {
+      proj.rkey2rval.clear();
+   }
 
    let subkeys = new Array(rel.numDeps).fill(null);
 
@@ -352,8 +356,11 @@ rebuildProjection ::= function (proj) {
       if (jnode === null) {
          let [rkey, rval] = $.makeNewRecord(proj);
 
-         proj.records.addPair(rkey, rval);
-         $.recDep(proj, rkey, subkeys);
+         if (proj.isKeyed) {
+            proj.rkey2rval.set(rkey, rval);
+         }
+
+         $.depend(proj, rkey, subkeys);
 
          for (let inst of proj.myIndexInstances) {
             $.indexAdd(inst, rkey, rval);
@@ -414,7 +421,7 @@ rebuildProjection ::= function (proj) {
 
    $.withNsObjectCleanup(
       proj,
-      () => $.coverAllPaths(proj, subNum => join(config.plans[subNum]))
+      () => $.coverAllPaths(proj, subNum => join(config.fullJoinTree[subNum]))
    );
 
    $.markProjectionValid(proj);
@@ -426,8 +433,8 @@ coverAllPaths ::= function (proj, callback) {
    let subs = Array.from(proj.subs);
 
    subs.sort((A, B) => {
-      let capA = $.jnodeCapacity(proj, config.plans[A.num]);
-      let capB = $.jnodeCapacity(proj, config.plans[B.num]);
+      let capA = $.jnodeCapacity(proj, config.fullJoinTree[A.num]);
+      let capB = $.jnodeCapacity(proj, config.fullJoinTree[B.num]);
 
       return capB - capA;
    });
@@ -456,7 +463,7 @@ jnodeCapacity ::= function (proj, jnode) {
    if (cls === $.clsJoinAll) {
       let {owner} = proj.subs[jnode.subNum];
 
-      return owner.records.size;
+      return $.ownerSize(owner);
    }
 
    if (cls === $.clsJoinIndex) {
@@ -480,12 +487,18 @@ updateProjection ::= function (proj) {
    }
 
    function removeForSubkeyRemoval(depNum, subkey) {
-      let rkeys = $.subrecUndep(proj, depNum, subkey);
+      let rkeys = $.undependSub(proj, depNum, subkey);
 
       for (let rkey of rkeys) {
-         let rval = proj.records.valueAtX(rkey);
+         let rval;
 
-         proj.records.removeAt(rkey);
+         if (proj.isKeyed) {
+            rval = proj.rkey2rval.get(rkey);
+            proj.rkey2rval.delete(rkey);
+         }
+         else {
+            rval = rkey;
+         }
 
          if (proj.myVer !== null) {
             $.multiVersionRemoveKey(proj.myVer, rkey);
@@ -507,7 +520,7 @@ updateProjection ::= function (proj) {
 
    let {rel, config} = proj;
    
-   // Step 0: remove what needs to be removed & collect sub numvers that have added recs
+   // Step 0: remove what needs to be removed & collect subs that have added recs
    let addedSubs = [];
 
    for (let sub of proj.subs) {
@@ -544,8 +557,11 @@ updateProjection ::= function (proj) {
          if (jnode === null) {
             let [rkey, rval] = $.makeNewRecord(proj);
 
-            proj.records.addPair(rkey, rval);
-            $.recDep(proj, rkey, subkeys);
+            if (proj.isKeyed) {
+               proj.rkey2rval.set(rkey, rval);
+            }
+            
+            $.depend(proj, rkey, subkeys);
 
             for (let inst of proj.myIndexInstances) {
                $.indexAdd(inst, rkey, rval);
@@ -620,7 +636,7 @@ updateProjection ::= function (proj) {
             rec(jnode.next);
             subkeys[depNum] = null;
          }
-      })(config.plans[Dnum], Dpairs);
+      })(config.partialJoinTree[Dnum], Dpairs);
    }
 
    let subkeys = new Array(rel.numDeps).fill(null);
@@ -629,10 +645,7 @@ updateProjection ::= function (proj) {
       for (let sub of addedSubs) {
          let {ver, num, owner: subOwner} = sub;
 
-         join(num, $.map(
-            $.versionAddedKeys(ver),
-            subkey => [subkey, subOwner.records.valueAtX(subkey)]
-         ));
+         join(num, $.map($.versionAddedKeys(ver), $.rkeyX2pairFn(subOwner)));
       }
    });
 
@@ -700,32 +713,34 @@ makeNewRecord ::= function (proj) {
       return [rec, rec];
    }
 }
-recDep ::= function (proj, rkey, subkeys) {
+depend ::= function (proj, rkey, subkeys) {
    subkeys = Array.from(subkeys);
-   proj.recDeps.set(rkey, subkeys);
+   proj.rkey2subkeys.set(rkey, subkeys);
 
-   for (let [mmap, subkey] of $.zip(proj.subrecDeps, subkeys)) {
-      $.mmapAdd(mmap, subkey, rkey);
+   for (let [mmap, subkey] of $.zip(proj.Asubkey2rkeys, subkeys)) {
+      if (subkey !== null) {
+         $.mmapAdd(mmap, subkey, rkey);
+      }
    }
 }
-subrecUndep ::= function (proj, depNum, subkey) {
+undependSub ::= function (proj, depNum, subkey) {
    // We need to make a copy because this set is going to be modified inside the loop
-   let rkeys = Array.from(proj.subrecDeps[depNum].get(subkey) ?? []);
+   let rkeys = Array.from(proj.Asubkey2rkeys[depNum].get(subkey) ?? []);
 
    for (let rkey of rkeys) {
-      $.recUndep(proj, rkey);
+      $.undepend(proj, rkey);
    }
 
    return rkeys;
 }
-recUndep ::= function (proj, rkey) {
-   let subkeys = proj.recDeps.get(rkey);
+undepend ::= function (proj, rkey) {
+   let subkeys = proj.rkey2subkeys.get(rkey);
 
-   for (let [mmap, subkey] of $.zip(proj.subrecDeps, subkeys)) {
+   for (let [mmap, subkey] of $.zip(proj.Asubkey2rkeys, subkeys)) {
       if (subkey !== null) {
          $.mmapDelete(mmap, subkey, rkey);
       }
    }
 
-   proj.recDeps.delete(rkey);
+   proj.rkey2subkeys.delete(rkey);
 }

@@ -32,7 +32,7 @@ valueAt ::= function (rel, recKey) {
    if (rel.class === $.clsDerivedRelation) {
       let fullProj = $.lookupDerivedProjection(rel, {});
 
-      return fullProj.records.valueAt(recKey);
+      return fullProj.rkey2rval.get(recKey);
    }
 
    throw new Error;
@@ -44,12 +44,12 @@ queryOne ::= function (rel, bindings) {
 
    if (rel.class === $.clsDerivedRelation) {
       let proj = $.lookupDerivedProjection(rel, bindings);
-      
-      $.check(proj.records.size <= 1);
 
-      let [rec] = proj.records;
+      $.check(proj.rkey2subkeys.size <= 1);
 
-      return rec;
+      let [rkey] = proj.rkey2subkeys;
+
+      return proj.isKeyed ? [rkey, proj.rkey2rval.get(rkey)] : rkey;
    }
    
    throw new Error;
@@ -62,7 +62,7 @@ query ::= function (rel, bindings) {
    if (rel.class === $.clsDerivedRelation) {
       let proj = $.lookupDerivedProjection(rel, bindings);
 
-      return proj.records;
+      return proj.isKeyed ? proj.rkey2rval.entries() : proj.rkey2subkeys.keys();
    }
 
    throw new Error;

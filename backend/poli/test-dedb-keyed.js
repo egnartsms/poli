@@ -12,6 +12,8 @@ dedb-base
    removeEntity
    patchEntity
    baseRelation
+dedb-relation
+   ownerSize
 dedb-derived
    derivedRelation
 dedb-projection
@@ -90,13 +92,13 @@ test_partial ::= function () {
 
    let proj = $.getDerivedProjection($.devSalary, {[$.recKey]: jim});
 
-   $.check(proj.records.size === 1);
-   [[, val]] = proj.records;
+   $.check(proj.rkey2subkeys.size === 1);
+   [[, val]] = proj.rkey2rval;
    $.check(val === 2800);
 
    $.patchEntity(jim, val => ({...val, company: 'Ciklum'}));
    $.updateProjection(proj);
-   [[, val]] = proj.records;
+   [[, val]] = proj.rkey2rval;
    $.check(val === 4400);
 }
 test_grab_fact_identity ::= function () {

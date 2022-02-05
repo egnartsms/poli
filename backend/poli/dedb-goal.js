@@ -217,15 +217,16 @@ initGoalTree ::= function (rootGoal, logAttrs) {
    }
 
    let numDeps = $.setupDepNums(rootGoal);
-   let firmVarBindings = $.setupFirmVars(rootGoal);
+   let [firmVarBindings, fictitiousVars] = $.setupFirmVars(rootGoal);
    let vars = $.collectVars(rootGoal);
    let nonEvaporatables = $.collectNonEvaporatableVars(rootGoal);
 
-   $.intersect(nonEvaporatables, new Set(logAttrs));
+   $.intersect(nonEvaporatables, logAttrs);
 
    return {
       numDeps,
       firmVarBindings,
+      fictitiousVars,
       vars,
       nonEvaporatables
    }
@@ -349,24 +350,24 @@ collectNonEvaporatableVars ::= function (rootGoal) {
 }
 setupFirmVars ::= function (rootGoal) {
    let firmVarBindings = new Map;
+   let fictitiousVars = new Set;
    let counter = 0;
 
    for (let goal of $.relGoalsBeneath(rootGoal)) {
-      if (goal.rel.class === $.clsDerivedRelation) {
-         goal.bindings = goal.looseBindings;
-         continue;
-      }
+      let enlist = goal.rel.class === $.clsDerivedRelation ?
+         ((lvar, val) => fictitiousVars.add(lvar)) :
+         ((lvar, val) => firmVarBindings.set(lvar, val));
 
       goal.bindings = new Map(goal.looseBindings);
 
       for (let [attr, val] of goal.firmBindings) {
          let lvar = `var-${goal.rel.name}-${counter}`;
          counter += 1;
-         
+
          goal.bindings.set(attr, lvar);
-         firmVarBindings.set(lvar, val);
+         enlist(lvar, val);
       }
    }
    
-   return firmVarBindings;
+   return [firmVarBindings, fictitiousVars];
 }

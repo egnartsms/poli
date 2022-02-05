@@ -40,13 +40,13 @@ computeSubBindingRoutes ::= function (rootGoal, logAttrs) {
    for (let [n, goal] of $.enumerate($.statefulGoalsBeneath(rootGoal))) {
       let {looseBindings, firmBindings} = goal;
 
+      firms.push(firmBindings);
+
       for (let [attr, lvar] of looseBindings) {
          if (routes.has(lvar)) {
             routes.get(lvar).push([n, attr]);
          }
       }
-
-      firms.push(firmBindings);
    }
 
    return {firms, routes};
@@ -114,19 +114,7 @@ computeFulfillments ::= function (rootGoal) {
       let {rel} = goal;
 
       if ($.isStatefulRelation(rel)) {
-         let ffPairs;
-
-         if (rel.class === $.clsBaseRelation) {
-            ffPairs = $.baseRelGoalFulfillments(goal);
-         }
-         else if (rel.class === $.clsDerivedRelation) {
-            ffPairs = $.derivedRelGoalFulfillments(goal);
-         }
-         else {
-            throw new Error;
-         }
-
-         for (let [ff, vars] of ffPairs) {
+         for (let [ff, vars] of $.statefulRelGoalFulfillments(goal)) {
             registerFF(vars, {
                join: ff.join,
                fitness: ff.fitness,
@@ -135,8 +123,11 @@ computeFulfillments ::= function (rootGoal) {
                props: ff.props,
             });
          }
+
+         continue;
       }
-      else if (rel.class === $.clsFuncRelation) {
+      
+      if (rel.class === $.clsFuncRelation) {
          instantiation:
          for (let [icode, spec] of Object.entries(rel.instantiations)) {
             let inVars = [];
@@ -169,16 +160,17 @@ computeFulfillments ::= function (rootGoal) {
                }
             });
          }
+
+         continue;
       }
-      else {
-         throw new Error;
-      }
+
+      throw new Error;
    }
 
    return var2ff;
 }
-baseRelGoalFulfillments ::= function* (goal) {
-   let {rel, bindings, looseBindings} = goal;
+statefulRelGoalFulfillments ::= function* (goal) {
+   let {rel, bindings} = goal;
 
    if (bindings.has($.recKey)) {
       let lvar = bindings.get($.recKey);
@@ -186,40 +178,21 @@ baseRelGoalFulfillments ::= function* (goal) {
       yield [
          {
             join: $.clsJoinRecKey,
-            fitness: $.Fitness.uniqueHit,
+            fitness: $.Fitness.rkeyHit,
             props: {
                rkeyVar: lvar
             }
          },
          [lvar]
       ];
-      
-      if (!looseBindings.has($.recKey)) {
-         // lvar is a "firm var", which means we have a rigidly keyed goal, so no point in
-         // considering other fulfillments
-         return;
-      }
    }
 
-   let indices = Array.from(rel.myIndexInstances, ({index}) => index);
+   let indices = rel.class === $.clsBaseRelation ?
+      Array.from(rel.myIndexInstances, inst => inst.index) :
+      rel.indices;
 
    for (let index of indices) {
       let keys = [];
-      let freeVars = [];
-
-      function ffPair() {
-         return [
-            {
-               join: $.clsJoinIndex,
-               fitness: $.computeFitness(keys.length, index),
-               props: {
-                  index,
-                  keys: Array.from(keys),
-               }
-            },
-            freeVars
-         ]
-      }
 
       for (let attr of index) {
          if (!bindings.has(attr)) {
@@ -228,87 +201,19 @@ baseRelGoalFulfillments ::= function* (goal) {
 
          let lvar = bindings.get(attr);
 
-         if (looseBindings.has(attr)) {
-            if (keys.length > 0) {
-               yield ffPair();
-            }
-
-            freeVars.push(lvar);
-         }
-
          keys.push(lvar);
-      }
-
-      if (keys.length > 0) {
-         yield ffPair();
-      }
-   }
-}
-derivedRelGoalFulfillments ::= function* (goal) {
-   let {rel, firmBindings, looseBindings} = goal;
-
-   if (firmBindings.has($.recKey)) {
-      yield [
-         {
-            join: $.clsJoinAll,
-            fitness: $.Fitness.uniqueHit,
-         },
-         []
-      ];
-      return;
-   }
-
-   if (looseBindings.has($.recKey)) {
-      let lvar = looseBindings.get($.recKey);
-
-      yield [
-         {
-            join: $.clsJoinRecKey,
-            fitness: $.Fitness.uniqueHit,
-            props: {
-               rkeyVar: lvar
-            }
-         },
-         [lvar]
-      ];
-   }
-
-   let {indices} = rel;
-
-   for (let index of indices) {
-      index = $.reduceIndex(index, firmBindings.keys());
-
-      if (index.length === 0) {
-         yield [
-            {
-               join: $.clsJoinAll,
-               fitness: index.isUnique ? $.Fitness.uniqueHit : $.Fitness.hit,
-            },
-            []
-         ];
-         continue;
-      }
-
-      let vars = [];
-
-      for (let attr of index) {
-         if (!looseBindings.has(attr)) {
-            break;
-         }
-
-         vars.push(looseBindings.get(attr));
 
          yield [
             {
                join: $.clsJoinIndex,
-               fitness: $.computeFitness(vars.length, index),
+               fitness: $.computeFitness(keys.length, index),
                props: {
                   index,
-                  keys: Array.from(vars),
+                  keys: Array.from(keys),
                }
             },
-            vars
-         ]
+            keys
+         ];
       }
    }
 }

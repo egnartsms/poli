@@ -43,7 +43,7 @@ createRelations ::= function () {
    $.entry = $.baseRelation({
       name: 'entry',
       entityProto: $.protoEntry,
-      attrs: ['name', 'def', 'module'],
+      attrs: ['module', 'name', 'def'],
       indices: [
          ['module', 'name', 1]
       ]

@@ -126,9 +126,16 @@ makeConfig ::= function (rel, boundAttrs) {
 
    let idxReg = [];
    let vpool = new $.AnonymousVarPool();
-   let plans = Array.from(rel.subStateful, ({goal}) =>
-      $.computeJoinTreeFrom(rel, boundAttrs, goal, idxReg, vpool)
-   );
+   let fullJoinTree = [], partialJoinTree = [];
+
+   for (let {goal} of rel.subStateful) {
+      let [jnodeFull, jnodePartial] = $.computeJoinTreeFrom(
+         rel, boundAttrs, goal, idxReg, vpool
+      );
+
+      fullJoinTree.push(jnodeFull);
+      partialJoinTree.push(jnodePartial);
+   }
 
    let vars = rel.vars.filter(isNotBound).concat(vpool.vars);
 
@@ -138,7 +145,7 @@ makeConfig ::= function (rel, boundAttrs) {
 
    return {
       attrs: rel.attrs.filter(isNotBound),
-      // logAttrs that are both bound and non-evaporatable
+      // bound logAttrs that are non-evaporatable
       nonEvaporated: rel.logAttrs.filter(
          a => boundAttrs.includes(a) && rel.nonEvaporatables.has(a)
       ),
@@ -146,20 +153,21 @@ makeConfig ::= function (rel, boundAttrs) {
       // and firm vars
       vars: vars,
       idxReg,
-      plans: plans
+      fullJoinTree,
+      partialJoinTree,
    };
 }
 computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
    // Remember that here 'goal' is just a number
    let {path2goals, goal2paths, var2ff, subGoals} = rel;
-   let boundLvars = new Set;
-   let bindStack = [];
+   let boundVars = new Set;
+   let boundStack = [];
    
    function bind(lvar) {
-      $.assert(() => !boundLvars.has(lvar));
+      $.assert(() => !boundVars.has(lvar));
 
-      boundLvars.add(lvar);
-      bindStack.push(lvar);
+      boundVars.add(lvar);
+      boundStack.push(lvar);
 
       let becameReady = [];
 
@@ -177,11 +185,11 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
    }
 
    function unbind() {
-      let lvar = bindStack.pop();
+      let lvar = boundStack.pop();
       
-      $.assert(() => boundLvars.has(lvar));
+      $.assert(() => boundVars.has(lvar));
 
-      boundLvars.delete(lvar);
+      boundVars.delete(lvar);
 
       for (let ff of var2ff.get(lvar) ?? []) {
          ff.count += 1;
@@ -208,7 +216,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
 
             let lvar = bindings.get(attr);
 
-            if (fetched.includes(attr) && boundLvars.has(lvar)) {
+            if (fetched.includes(attr) && boundVars.has(lvar)) {
                let temp = vpool.getVar();
 
                args.push(temp);
@@ -220,7 +228,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
          }
 
          return {
-            class: cls,
+            class: $.clsJoinFunc,
             run,
             args,
             toCheck,
@@ -228,89 +236,129 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
          }
       }
 
-      let {subNum} = subGoals[goal];
+      let {subNum, rel: grel} = subGoals[goal];
 
       $.assert(() => subNum !== -1);
 
-      if (cls === $.clsJoinAll) {
-         return {
-            class: cls,
-            subNum,
-            ...propsForCheckExtract(goal),
-            next: null
-         }
-      }
-      else if (cls === $.clsJoinIndex) {
+      let isDerived = grel.class === $.clsDerivedRelation;
+
+      if (cls === $.clsJoinIndex) {
          let {index, keys} = ff.props;
 
+         if (isDerived) {
+            let rindex = [], rkeys = [];
+
+            for (let [attr, lvar] of $.zip(index, keys)) {
+               if (!isDeadBound(lvar)) {
+                  rindex.push(attr);
+                  rkeys.push(lvar);
+               }
+            }
+
+            if (rindex.length === 0) {
+               return {
+                  class: $.clsJoinAll,
+                  subNum,
+                  ...propsForCheckExtract(goal),
+                  next: null
+               }
+            }
+            
+            index = rindex;
+            keys = rkeys;
+         }
+
          return {
-            class: cls,
+            class: $.clsJoinIndex,
             subNum,
             indexNum: $.registerIndex(idxReg, subNum, index),
             indexKeys: keys,
-            ...propsForCheckExtract(goal, index),
+            ...propsForCheckExtract(goal, keys),
             next: null
-         }
-      }
-      else if (cls === $.clsJoinRecKey) {
-         let {rkeyVar} = ff.props;
-
-         return {
-            class: cls,
-            subNum,
-            rkeyVar: rkeyVar,
-            ...propsForCheckExtract(goal),
-            next: null
-         }
-      }
-      else {
-         throw new Error;
-      }
-   }
-
-   function propsForCheckExtract(goal, noCheck=[]) {
-      let {bindings} = subGoals[goal];
-
-      let res = {
-         toCheck:
-            Array.from($.filter(bindings, ([attr, lvar]) => {
-               return (
-                  boundLvars.has(lvar) && !noCheck.includes(attr) &&
-                  attr !== $.recKey && attr !== $.recVal
-               );
-            })),
-         toExtract:
-            Array.from($.filter(bindings, ([attr, lvar]) => {
-               return !boundLvars.has(lvar) && attr !== $.recKey && attr !== $.recVal;
-            })),
-         rkeyExtract: null,
-         rvalExtract: null,
-         rvalCheck: null,
-      };
-
-      if (bindings.has($.recKey)) {
-         let lvar = bindings.get($.recKey);
-         
-         if (boundLvars.has(lvar)) {
-            // Nothing to do here as bound recKey should've been handled as clsJoinRecKey
-         }
-         else {
-            res.rkeyExtract = lvar;
          }
       }
       
-      if (bindings.has($.recVal)) {
-         let lvar = bindings.get($.recVal);
+      if (cls === $.clsJoinRecKey) {
+         let {rkeyVar} = ff.props;
 
-         if (boundLvars.has(lvar)) {
-            res.rvalCheck = lvar;
+         if (isDerived && isDeadBound(rkeyVar)) {
+            return {
+               class: $.clsJoinAll,
+               subNum,
+               ...propsForCheckExtract(goal),
+               next: null
+            }
          }
          else {
-            res.rvalExtract = lvar;
+            return {
+               class: $.clsJoinRecKey,
+               subNum,
+               rkeyVar,
+               ...propsForCheckExtract(goal),
+               next: null
+            }
+         }
+      }
+      
+      throw new Error;
+   }
+
+   function isDeadBound(lvar) {
+      return (
+         rel.firmVarBindings.has(lvar) ||
+         rel.fictitiousVars.has(lvar) ||
+         boundAttrs.includes(lvar)
+      )
+   }
+
+   function propsForCheckExtract(goal, noCheck=[]) {
+      let {bindings, rel: grel} = subGoals[goal];
+      let isDerived = grel.class === $.clsDerivedRelation;
+
+      let toCheck = [];
+      let toExtract = [];
+      let rkeyExtract = null;
+      let rvalExtract = null;
+      let rvalCheck = null;
+
+      for (let [attr, lvar] of bindings) {
+         if (isDerived && isDeadBound(lvar)) {
+            continue;
+         }
+
+         if (attr === $.recKey) {
+            if (boundVars.has(lvar)) {
+               // Nothing to do here as bound recKey should've been used for clsJoinRecKey
+            }
+            else {
+               rkeyExtract = lvar;
+            }
+         }
+         else if (attr === $.recVal) {
+            if (boundVars.has(lvar)) {
+               rvalCheck = lvar;
+            }
+            else {
+               rvalExtract = lvar;
+            }
+         }
+         else if (boundVars.has(lvar)) {
+            if (!noCheck.includes(lvar)) {
+               toCheck.push([attr, lvar]);
+            }
+         }
+         else {
+            toExtract.push([attr, lvar]);
          }
       }
 
-      return res;
+      return {
+         rkeyExtract,
+         rvalExtract,
+         rvalCheck,
+         toCheck,
+         toExtract,
+      }
    }
 
    function forkToPaths(paths, goals, ffs) {
@@ -330,13 +378,13 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
    }
 
    function unwindingStack(callback) {
-      let n = bindStack.length;
+      let n = boundStack.length;
       
       try {
          return callback();
       }
       finally {
-         while (bindStack.length > n) {
+         while (boundStack.length > n) {
             unbind();
          }
       }
@@ -354,7 +402,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
 
    function joinGoal(goal, goals, readyFFs) {
       for (let lvar of subGoals[goal].bindings.values()) {
-         if (!boundLvars.has(lvar)) {
+         if (!boundVars.has(lvar)) {
             bindVar(lvar, goals, readyFFs);
          }
       }
@@ -381,17 +429,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
             else if (ff2.fitness > ff1.fitness) {
                return ff2;
             }
-            // else if (
-            //       ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
-            //       ff1.goal === ff2.goal) {
-            //    if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
-            //       return ff1;
-            //    }
-            //    else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
-            //       return ff2;
-            //    }
-            // }
-            
+
             if (isGoalFull(ff1.goal)) {
                return ff1;
             }
@@ -495,16 +533,18 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
 
    return unwindingStack(() => {
       // Bind firm variables and bound attrs
-      for (let lvar of $.concat([rel.firmVarBindings.keys(), boundAttrs])) {
+      for (let lvar of $.concat([
+               rel.firmVarBindings.keys(), 
+               rel.fictitiousVars,
+               boundAttrs])) {
          bindVar(lvar, goals, readyFFs);
       }
 
-      let {subNum: DsubNum} = subGoals[Dgoal];
-      let {rel: Drel} = rel.subStateful[DsubNum];
-      let Djnode;
+      let {subNum: DsubNum, rel: Drel} = subGoals[Dgoal];
+      let DjnodeFull, DjnodePartial;
 
       if (Drel.class === $.clsDerivedRelation) {
-         Djnode = {
+         DjnodeFull = DjnodePartial = {
             class: $.clsJoinAll,
             subNum: DsubNum,
             ...propsForCheckExtract(Dgoal),
@@ -512,11 +552,21 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
          };
       }
       else if (Drel.class === $.clsBaseRelation) {
+         DjnodePartial = {
+            class: $.clsJoinAll,
+            subNum: DsubNum,
+            ...propsForCheckExtract(Dgoal),
+            // projection has already taken care about filtering out these
+            toCheck: [],
+            rvalCheck: null,
+            next: null,
+         };
+
          let DreadyFFs = Array.from($.filter(readyFFs, ff => ff.goal === Dgoal));
 
          if (DreadyFFs.length === 0) {
             // Means we should take it fully
-            Djnode = {
+            DjnodeFull = {
                class: $.clsJoinAll,
                subNum: DsubNum,
                ...propsForCheckExtract(Dgoal),
@@ -526,7 +576,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
          else {
             let [ff] = $.greatestBy(DreadyFFs, ff => ff.fitness);
 
-            Djnode = makeJoinNode(ff);
+            DjnodeFull = makeJoinNode(ff);
          }
       }
       else {
@@ -534,9 +584,9 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
       }
 
       joinGoal(Dgoal, goals, readyFFs);
-      Djnode.next = buildTree(paths, goals, readyFFs);      
+      DjnodeFull.next = DjnodePartial.next = buildTree(paths, goals, readyFFs);      
 
-      return Djnode;
+      return [DjnodeFull, DjnodePartial];
    });
 }
 registerIndex ::= function (registry, subNum, index) {

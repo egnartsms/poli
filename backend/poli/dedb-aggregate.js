@@ -8,60 +8,41 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection
-dedb-version
+dedb-derived
+   derivedRelation
 -----
 clsAggregateRelation ::= ({
    name: 'relation.aggregate',
    'relation.aggregate': true,
    'relation': true
 })
-makeRelation ::= function ({
+aggregatedRelation ::= function ({
    name: relname,
-   groupBy: groupBySpec,
+   groupBy,
    aggregates,
    body: bodyCallback,
 }) {
-   let target = $.toRelation(getTargetRelInfo());
-   let groupBy = $.prepareGroupByPairs(relname, groupBySpec);
+   let aggVars = Object.values(aggregates).map(([agg, attr]) => attr);
 
-   $.check($.all(groupBy, ([attr, alias]) => target.logAttrs.includes(attr)));
+   $.check($.notAny(aggVars, a => groupBy.includes(a)), () =>
+      `Some of variables that are fed to aggregators are also used for grouping`
+   );
+
+   let targetRel = $.derivedRelation({
+      name: `agg:${relname}`,
+      isKeyed: false,
+      attrs: [...groupBy, ...aggVars],
+      body: bodyCallback
+   });
 
    return {
       class: $.clsAggregateRelation,
       name: relname,
-      target,
       groupBy,
       aggregates,
+      targetRel,
       projections: $.makeProjectionRegistry(),
    }
-}
-prepareGroupByPairs ::= function (relname, groupBySpec) {
-   let groupBy = [];
-
-   for (let thing of groupBySpec) {
-      if (typeof thing === 'string') {
-         groupBy.push([thing, thing]);
-      }
-      else if (typeof thing === 'symbol') {
-         throw new Error(
-            `Aggregate '${relname}': need to give a string name to '${String(thing)}'`
-         );
-      }
-      else if (Array.isArray(thing)) {
-         $.check(thing.length === 2);
-
-         let [attr, alias] = thing;
-         $.check(typeof attr === 'string' || typeof attr === 'symbol');
-         $.check(typeof alias === 'string');
-
-         groupBy.push(thing);
-      }
-      else {
-         throw new Error(`Invalid group by spec: '${thing}'`);
-      }
-   }
-
-   return groupBy;
 }
 clsAggregateProjection ::= ({
    name: 'projection.aggregate',
@@ -69,6 +50,8 @@ clsAggregateProjection ::= ({
    'projection': true,
 })
 makeProjection ::= function (rel, bindings) {
+   $.assert(() => $.isA(rel, $.clsAggregateRelation));
+
    let targetBindings = Object.fromEntries(
       $.mapfilter(rel.groupBy, ([attr, alias]) => {
          if ($.hasOwnDefinedProperty(bindings, alias)) {
@@ -95,10 +78,10 @@ makeProjection ::= function (rel, bindings) {
       refCount: 0,
       regPoint: null,
       isValid: false,
-      target,
+      validRevDeps: new Set,
+      pjcore,
       groupBy,
-      depVer: null,
-      records: new Map,
+      buckets: new Map,
    }
 }
 freeProjection ::= function (proj) {
