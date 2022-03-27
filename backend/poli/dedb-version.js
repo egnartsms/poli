@@ -11,8 +11,8 @@ dedb-base
    clsFullProjection
 dedb-derived
    clsDerivedProjection
-dedb-relation
-   rec2key
+dedb-owner
+   ownerKeyChecker
 set-map
    deleteIntersection
    greaterLesser
@@ -46,22 +46,14 @@ refCurrentState ::= function (owner) {
 
    throw new Error;
 }
-clsVersion ::= ({
-   name: 'version',
-   'version': true
-})
-clsUniqueHitVersion ::= ({
-   name: 'version.uniqueHit',
-   'version.uniqueHit': true,
-   'version': true
-})
 makeUniqueHitVersion ::= function (proj) {
    $.assert(() => proj.class === $.clsUniqueHitProjection);
 
    return {
       class: $.clsUniqueHitVersion,
       proj: proj,
-      rec: proj.rec
+      rkey: proj.rkey,
+      rval: proj.rval,
    }
 }
 clsRecKeyBoundVersion ::= ({
@@ -82,6 +74,17 @@ refFullProjectionVersion ::= function (proj) {
    $.assert(() => proj.class === $.clsFullProjection);
 
    return $.refCurrentState(proj.rel);
+}
+clsZeroVersion ::= ({
+   name: 'version.zero',
+   'version.zero': true,
+   'version': true
+})
+makeZeroVersion ::= function (dataHolder) {
+   return {
+      kind: 'zero',
+      dataHolder
+   }
 }
 clsMultiVersion ::= ({
    name: 'version.multi',
@@ -150,7 +153,7 @@ releaseVersion ::= function (ver) {
 nullifyMyVer ::= function (owner) {
    owner.myVer = null;
 
-   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
+   if (owner.class === $.clsPartialProjection) {
       $.assert(() => owner.depVer !== null);
       
       $.releaseVersion(owner.depVer);
@@ -290,7 +293,7 @@ multiVersionRemovePair ::= function (ver, rkey, rval) {
       $.removeOrAdd(rkey, ver.added, ver.removed);
    }
 }
-isVersionFresh ::= function (ver) {
+isVersionPristine ::= function (ver) {
    if (ver.class === $.clsRecKeyBoundVersion) {
       let {proj} = ver;
 
@@ -300,8 +303,7 @@ isVersionFresh ::= function (ver) {
    if (ver.class === $.clsUniqueHitVersion) {
       let {proj} = ver;
 
-      // proj.rec is fetched from unique index, so we can count on referential equality
-      return ver.rec === proj.rec;
+      return ver.rkey === proj.rkey && ver.rval === proj.rval;
    }
 
    if (ver.class === $.clsMultiVersion) {
@@ -328,16 +330,55 @@ versionAddedKeys ::= function (ver) {
    if (ver.class === $.clsUniqueHitVersion) {
       let {proj} = ver;
 
-      if (ver.rec !== proj.rec && proj.rec !== undefined) {
-         return [$.rec2key(proj, proj.rec)];
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
+         return [proj.rkey];
       }
       else {
          return [];
       }
    }
 
+   if (ver.class === $.clsZeroVersion) {
+      let {owner} = ver;
+
+      return $.ownerKeys(owner);
+   }
+
    if (ver.class === $.clsMultiVersion) {
       return ver.added;
+   }
+
+   throw new Error;
+}
+versionAddedKeyChecker ::= function (ver) {
+   if (ver.class === $.clsRecKeyBoundVersion) {
+      let {proj} = ver;
+
+      if (ver.rval !== proj.rval && proj.rval !== undefined) {
+         return rkey => rkey === proj.rkey;
+      }
+      else {
+         return rkey => false;
+      }
+   }
+
+   if (ver.class === $.clsUniqueHitVersion) {
+      let {proj} = ver;
+
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
+         return rkey => rkey === proj.rkey;
+      }
+      else {
+         return rkey => false;
+      }
+   }
+
+   if (ver.class === $.clsZeroVersion) {
+      return $.ownerKeyChecker(ver.owner);
+   }
+
+   if (ver.class === $.clsMultiVersion) {
+      return rkey => ver.added.has(rkey);
    }
 
    throw new Error;
@@ -360,12 +401,16 @@ versionRemovedKeys ::= function (ver) {
    if (ver.class === $.clsUniqueHitVersion) {
       let {proj} = ver;
 
-      if (ver.rec !== proj.rec && ver.rec !== undefined) {
-         return [proj.isKeyed ? ver.rec[0] : ver.rec];
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && ver.rkey !== undefined) {
+         return [ver.rkey];
       }
       else {
          return [];
       }
+   }
+
+   if (ver.class === $.clsZeroVersion) {
+      return [];
    }
 
    if (ver.class === $.clsMultiVersion) {

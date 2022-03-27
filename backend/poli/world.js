@@ -1,7 +1,7 @@
 common
    objId
    equal
-   concat
+   chain
    lessThan
    objLessThan
    map

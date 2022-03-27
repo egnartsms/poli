@@ -1,6 +1,9 @@
 common
+   assert
    check
    all
+   isA
+   notAny
 dedb-relation
    accessorForAttr
 dedb-projection
@@ -28,7 +31,7 @@ aggregatedRelation ::= function ({
       `Some of variables that are fed to aggregators are also used for grouping`
    );
 
-   let targetRel = $.derivedRelation({
+   let target = $.derivedRelation({
       name: `agg:${relname}`,
       isKeyed: false,
       attrs: [...groupBy, ...aggVars],
@@ -40,7 +43,7 @@ aggregatedRelation ::= function ({
       name: relname,
       groupBy,
       aggregates,
-      targetRel,
+      target,
       projections: $.makeProjectionRegistry(),
    }
 }
@@ -52,23 +55,9 @@ clsAggregateProjection ::= ({
 makeProjection ::= function (rel, bindings) {
    $.assert(() => $.isA(rel, $.clsAggregateRelation));
 
-   let targetBindings = Object.fromEntries(
-      $.mapfilter(rel.groupBy, ([attr, alias]) => {
-         if ($.hasOwnDefinedProperty(bindings, alias)) {
-            return [attr, bindings[alias]];
-         }
-      })
-   );
+   $.check(Object.keys(bindings).length === 0);
 
-   let groupBy = Array.from(
-      $.mapfilter(rel.groupBy, ([attr, alias]) => {
-         if (!$.hasOwnDefinedProperty(bindings, alias)) {
-            return [$.accessorForAttr(rel, attr), alias];
-         }
-      })
-   );
-
-   let target = $.projectionFor(rel.target, targetBindings);
+   let target = $.projectionFor(rel.target, bindings);
 
    target.refCount += 1;
 
@@ -79,22 +68,29 @@ makeProjection ::= function (rel, bindings) {
       regPoint: null,
       isValid: false,
       validRevDeps: new Set,
-      pjcore,
-      groupBy,
+      target,
+      depVer: null,
+      groupBy: rel.groupBy,
       buckets: new Map,
+      rkey2bucket: new Map,
+      myVer: null
    }
 }
 freeProjection ::= function (proj) {
    if (proj.depVer !== null) {
-      $.releaseExtVersion(proj.depVer);
+      $.releaseVersion(proj.depVer);
    }
-
    $.releaseProjection(proj.target);
 }
 rebuildProjection ::= function (proj) {
-   let {target, rel} = proj;
+   $.check(proj.myVer === null, `Cannot rebuild projection which is being referred to`);
+
+   let {target} = proj;
 
    $.updateProjection(target);
+   let newVer = $.refCurrentState(target);
+   $.releaseVersion(target.depVer);
+   
 
    for (let rec of $.projectionRecords(target)) {
       let map = proj.records;

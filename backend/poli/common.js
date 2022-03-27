@@ -231,6 +231,9 @@ arrayChain ::= function arrayChain(array, startFrom=0) {
 isChainEmpty ::= function (chain) {
    return chain === null;
 }
+pushAll ::= function (array, newItems) {
+   array.push.apply(array, ...newItems);
+}
 yreExec ::= function (re, offset, str) {
    $.check(re.sticky);
    re.lastIndex = offset;
@@ -583,7 +586,10 @@ mapfilter ::= function* (itbl, fn) {
       }
    }
 }
-concat ::= function* (Xs) {
+concat ::= function (...Xs) {
+   return $.chain(Xs);
+}
+chain ::= function* (Xs) {
    for (let X of Xs) {
       yield* X;
    }

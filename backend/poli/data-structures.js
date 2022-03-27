@@ -1,8 +1,11 @@
 common
    assert
    filter
+   multimap
+   mmapDelete
+   produceArray
 -----
-ExpRecords ::= class KeyedRecords {
+ExpRecords ::= class ExpRecords {
    constructor(kvpairs) {
       this.map = new Map(kvpairs);
    }
@@ -15,9 +18,13 @@ ExpRecords ::= class KeyedRecords {
       return this.map.size;
    }
 
-   [Symbol.iterator]() {
-      return this.map[Symbol.iterator]();
+   get rkey2pairFn() {
+      return rkey => [rkey, this.map.get(rkey)];
    }
+
+   // [Symbol.iterator]() {
+   //    return this.map[Symbol.iterator]();
+   // }
 
    pairs() {
       return this.map;
@@ -60,14 +67,14 @@ ExpRecords ::= class KeyedRecords {
       $.assert(() => didDelete);
    }
 }
-ImpRecords ::= class Records {
-   constructor(tuples) {
-      this.set = new Set(tuples);
+ImpRecords ::= class ImpRecords {
+   constructor(recs) {
+      this.set = new Set(recs);
    }
 
    static fromKeyValPairs(kvpairs) {
       return new $.ImpRecords(
-         $.filter(kvpairs, ([rkey, rval]) => {
+         $.map(kvpairs, ([rkey, rval]) => {
             $.assert(() => rkey === rval);
             return rkey;
          })
@@ -78,16 +85,20 @@ ImpRecords ::= class Records {
       return this.set.size;
    }
 
-   [Symbol.iterator]() {
-      return this.set[Symbol.iterator]();
+   get rkey2pairFn() {
+      return rkey => [rkey, rkey];
    }
+
+   // [Symbol.iterator]() {
+   //    return this.set[Symbol.iterator]();
+   // }
 
    pairs() {
       return this.set.entries();
    }
 
    keys() {
-      return this.set;
+      return this.set[Symbol.iterator]();
    }
 
    hasAt(rkey) {
@@ -123,6 +134,104 @@ ImpRecords ::= class Records {
       $.assert(() => didDelete);
    }
 }
+RecDependencies ::= class RecDependencies {
+   constructor(numDeps, isKeyed) {
+      this.rkey2rval = isKeyed ? new Map : null;
+      // forward: rkey -> [subkey, subkey, ...]
+      this.rkey2subkeys = new Map;
+      // backward: [ {subkey -> Set{rkey, rkey, ...}}, ...], numDeps in length
+      this.Asubkey2rkeys = $.produceArray(numDeps, $.multimap),
+   }
+
+   pairs() {
+      if (this.rkey2rval === null) {
+         return $.map(this.rkey2subkeys.keys(), rec => [rec, rec]);
+      }
+      else {
+         return this.rkey2rval.entries();
+      }
+   }
+
+   get size() {
+      return this.rkey2subkeys.size;
+   }
+
+   clear() {
+      this.rkey2subkeys.clear();
+      for (let mmap of this.Asubkey2rkeys) {
+         mmap.clear();
+      }
+
+      if (this.rkey2rval !== null) {
+         this.rkey2rval.clear();
+      }
+   }
+
+   hasAt(rkey) {
+      return this.rkey2subkeys.has(rkey);
+   }
+
+   valueAtX(rkey) {
+      return (this.rkey2rval === null) ? rkey : this.rkey2rval.get(rkey);
+   }
+
+   get rkey2pairFn() {
+      return (this.rkey2rval === null) ?
+         (rkey => [rkey, rkey]) :
+         (rkey => [rkey, this.key2rval.get(rkey)])
+   }
+
+   // [Symbol.iterator]() {
+   //    if (this.rkey2rval === null) {
+   //       return this.rkey2subkeys.keys();
+   //    }
+   //    else {
+   //       return this.rkey2rval[Symbol.iterator]();
+   //    }
+   // }
+
+   addDependency(rkey, subkeys, rval) {
+      subkeys = Array.from(subkeys);
+      this.rkey2subkeys.set(rkey, subkeys);
+
+      for (let [mmap, subkey] of $.zip(proj.Asubkey2rkeys, subkeys)) {
+         if (subkey !== null) {
+            $.mmapAdd(mmap, subkey, rkey);
+         }
+      }
+
+      if (this.rkey2rval !== null) {
+         this.rkey2rval.set(rkey, rval);
+      }
+   }
+
+   removeAtX(rkey) {
+      let subkeys = this.rkey2subkeys.get(rkey);
+
+      for (let [mmap, subkey] of $.zip(this.Asubkey2rkeys, subkeys)) {
+         if (subkey !== null) {
+            $.mmapDelete(mmap, subkey, rkey);
+         }
+      }
+
+      this.rkey2subkeys.delete(rkey);
+
+      if (this.rkey2rval !== null) {
+         this.rkey2rval.delete(rkey);
+      }
+   }
+
+   removeDependency(depNum, subkey) {
+      // We need to make a copy because this set is going to be modified inside the loop
+      let pairs = Array.from(this.Asubkey2rkeys[depNum].get(subkey), this.rkey2pairFn);
+
+      for (let [rkey] of pairs) {
+         this.removeAtX(rkey);
+      }
+
+      return pairs;
+   }
+}
 deleteIntersection ::= function (recsA, recsB) {
    let [G, L] = $.greaterLesser(recsA, recsB);
 
@@ -131,44 +240,5 @@ deleteIntersection ::= function (recsA, recsB) {
          G.removeAt(rkey);
          L.removeAt(rkey);
       }
-   }
-}
-BidiMap ::= class BidiMap extends Map {
-   // Not currently used anywhere
-   constructor(entries) {
-      super();
-
-      Object.defineProperty(this, 'val2key', {
-         configurable: true,
-         enumerable: false,
-         writable: false,
-         value: new Map()
-      });
-
-      entries = entries == null ? [] : entries;
-      
-      for (let [k, v] of entries) {
-         this.set(k, v);
-      }
-   }
-
-   getKey(val) {
-      return this.val2key.get(val);
-   }
-
-   delete(key) {
-      if (this.has(key)) {
-         let val = this.get(key);
-         this.val2key.delete(val);
-
-         return false;
-      }
-
-      return this.delete(key);
-   }
-
-   set(key, val) {
-      this.val2key.set(val, key);
-      return super.set(key, val);
    }
 }

@@ -23,43 +23,32 @@ dedb-relation
    pair2rec
    recordCollection
 -----
-refIndexInstance ::= function (owner, desired) {
-   if (owner.class === $.clsDerivedProjection) {
-      return $.refDerivedInstance(owner, desired);
-   }
+refBaseInstance ::= function (rel, desired) {
+   let inst = $.refExistingInstance(rel.myIndexInstances, desired);
 
-   if (owner.class === $.clsBaseRelation) {
-      let inst = $.refDesiredIndexInstance(owner, desired);
+   $.assert(() => inst !== null);
 
-      $.assert(() => inst !== null);
-
-      return inst;
-   }
-
-   // For other types of projection, it makes no sense to request index instances
-   throw new Error;
+   return inst;
 }
 refDerivedInstance ::= function (proj, desired) {
-   let inst = $.refDesiredIndexInstance(proj, desired);
+   $.assert(() => proj.kind === 'derived');
 
-   if (inst !== undefined) {
+   let inst = $.refExistingInstance(proj.myIndexInstances, desired);
+
+   if (inst !== null) {
       return inst;
    }
 
    inst = $.makeIndexInstance(proj, desired);
    inst.refCount += 1;
-   proj.myIndexInstances.push(inst);
+   proj.myIndexInstances.add(inst);
 
-   // For unfilled projections, we cannot build index right away. Will do that when the
-   // projection fills up.
-   if (proj.records !== null) {
-      $.rebuildIndex(inst, proj.records);
-   }
+   $.rebuildIndex(inst, proj.records.pairs());
 
    return inst;
 }
-refDesiredIndexInstance ::= function (owner, desired) {
-   for (let inst of owner.myIndexInstances) {
+refExistingInstance ::= function (indexInstances, desired) {
+   for (let inst of indexInstances) {
       if ($.arraysEqual(inst.index, desired)) {
          inst.refCount += 1;
          return inst;
@@ -74,58 +63,55 @@ releaseIndexInstance ::= function (inst) {
    inst.refCount -= 1;
 
    if (inst.refCount === 0) {
-      let instances = inst.owner.myIndexInstances;
-      let i = instances.indexOf(inst);
-      $.assert(() => i !== -1);
-      instances.splice(i, 1);
+      let deleted = inst.holder.myIndexInstances.delete(inst);
+
+      $.assert(() => deleted);
    }
 }
-makeIndexInstance ::= function (owner, index) {
-   $.assert(() => $.isA(owner, $.clsDerivedProjection, $.clsBaseRelation));
+makeIndexInstance ::= function (holder, index) {
+   $.assert(() => $.isA(holder, $.clsDerivedProjection, $.clsBaseRelation));
 
    return {
       refCount: 0,
-      owner,
+      holder,
       index,
-      records: new Map,
+      map: new Map,
    }
 }
 indexRef ::= function* (inst, keys) {
-   keys = keys[Symbol.iterator]();
-
    let {index} = inst;
 
    yield* (function* rec(map, lvl) {
-      if (lvl === 0) {
+      if (lvl === index.length) {
          index.isUnique ? (yield map) : (yield* map);
       }
       else {
-         let {value: key} = keys.next();
+         let key = keys[lvl];
 
          if (key === undefined) {
             for (let sub of map.values()) {
-               yield* rec(sub, lvl - 1);
+               yield* rec(sub, lvl + 1);
             }
          }
          else {
             map = map.get(key);
 
             if (map !== undefined) {
-               yield* rec(map, lvl - 1);
+               yield* rec(map, lvl + 1);
             }
          }
       }
-   }(inst.records, index.length));
+   }(inst.map, 0));
 }
 indexRefPairs ::= function (inst, keys) {
-   return $.map($.indexRef(inst, keys), $.rkeyX2pairFn(inst.owner));
+   return $.map($.indexRef(inst, keys), inst.holder.rkey2pairFn);
 }
 indexRefWithBindings ::= function (inst, bindings) {
    return $.indexRef(inst, $.indexKeys(inst.index, bindings));
 }
 indexRefSize ::= function (inst, keys) {
    // No special treatment of undefined keys
-   let {index, records: map} = inst;
+   let {index, map} = inst;
    let lvl = 0;
 
    for (let key of keys) {
@@ -148,23 +134,22 @@ indexRefSize ::= function (inst, keys) {
       return map.totalSize;
    }
 }
-rebuildIndex ::= function (inst, records) {
-   inst.records.clear();
+rebuildIndex ::= function (inst, pairs) {
+   inst.map.clear();
 
-   for (let rec of records) {
-      let [rkey, rval] = $.rec2pair(inst.owner, rec);
+   for (let [rkey, rval] of pairs) {
       $.indexAdd(inst, rkey, rval);
    }
 }
 indexAdd ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.owner.isKeyed || rkey === rval);
+   $.assert(() => inst.holder.isKeyed || rkey === rval);
 
-   let {index, owner} = inst;
+   let {index} = inst;
 
-   (function go(i, map) {
-      let key = rval[index[i]];
+   (function go(lvl, map) {
+      let key = rval[index[lvl]];
 
-      if (i + 1 === index.length) {
+      if (lvl + 1 === index.length) {
          if (index.isUnique) {
             if (map.has(key)) {
                throw new Error(`Unique index violation`);
@@ -193,25 +178,25 @@ indexAdd ::= function (inst, rkey, rval=rkey) {
             map.set(key, next);
          }
 
-         go(i + 1, next);
+         go(lvl + 1, next);
       }
 
       map.totalSize += 1;
-   })(0, inst.records);
+   })(0, inst.map);
 }
 indexRemove ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.owner.isKeyed || rkey === rval);
+   $.assert(() => inst.holder.isKeyed || rkey === rval);
 
    let {index} = inst;
 
-   (function go(i, map) {
-      let key = rval[index[i]];
+   (function go(lvl, map) {
+      let key = rval[index[lvl]];
 
       if (!map.has(key)) {
          throw new Error(`Index missing fact`);
       }  
 
-      if (i + 1 === index.length) {
+      if (lvl + 1 === index.length) {
          if (index.isUnique) {
             map.delete(key);
          }
@@ -228,7 +213,7 @@ indexRemove ::= function (inst, rkey, rval=rkey) {
       else {
          let next = map.get(key);
 
-         go(i + 1, next);
+         go(lvl + 1, next);
 
          if (next.size === 0) {
             map.delete(key);
@@ -236,5 +221,5 @@ indexRemove ::= function (inst, rkey, rval=rkey) {
       }
 
       map.totalSize -= 1;
-   })(0, inst.records);
+   })(0, inst.map);
 }

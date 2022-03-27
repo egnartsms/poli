@@ -49,17 +49,6 @@ accessorForAttr ::= function (rel, attr) {
       return (rec) => rec[attr];
    }
 }
-ownerSize ::= function (owner) {
-   if (owner.class === $.clsBaseRelation) {
-      return owner.records.size;
-   }
-
-   if (owner.class === $.clsDerivedProjection) {
-      return owner.rkey2subkeys.size;
-   }
-
-   throw new Error;
-}
 recordCollection ::= function (owner) {
    return owner.isKeyed ? $.ExpRecords : $.ImpRecords;
 }

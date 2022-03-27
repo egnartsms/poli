@@ -17,7 +17,7 @@ dedb-derived
 dedb-projection
    updateProjection
    releaseProjection
-dedb-relation
+dedb-owner
    ownerSize
 -----
 box continent ::= null
