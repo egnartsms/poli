@@ -50,8 +50,8 @@ contexts:
         3: punctuation.separator.poli.defined-as
       embed: scope:source.js
       escape: ^(?=\w)
-      embed_scope: meta.entry.def
+      embed_scope: source.js.embedded meta.entry.def
     - match: ^
       embed: scope:source.js
-      escape: ^(?=\w.* ::=)
+      escape: ^(?=\w.*? ::=)
       embed_scope: meta.floating

@@ -2,7 +2,7 @@ common
    check
    compare
    compareArrays
-   concat
+   chain
    dumpImportSection
    hasOwnProperty
    indexOf
@@ -464,7 +464,7 @@ referringsTo ::= function (mid, entryName) {
    let emap = $.rel.groupAt($.G.imports.from, mid, entryName);
    let smap = $.rel.groupAt($.G.imports.from, mid, '');
    
-   let recpids = new Set($.concat([$.trie.keys(emap), $.trie.keys(smap)]));
+   let recpids = new Set($.chain([$.trie.keys(emap), $.trie.keys(smap)]));
    
    return Array.from(recpids, recpid => ({
       eimp: $.trie.tryAt(emap, recpid),

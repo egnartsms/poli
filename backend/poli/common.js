@@ -545,8 +545,8 @@ any ::= function (itbl, pred) {
 
    return false;
 }
-notAny ::= function (X, pred) {
-   for (let x of X) {
+notAny ::= function (xs, pred) {
+   for (let x of xs) {
       if (pred(x)) {
          return false;
       }
@@ -583,9 +583,19 @@ mapfilter ::= function* (itbl, fn) {
       }
    }
 }
-concat ::= function* (Xs) {
+concat ::= function (...Xs) {
+   return $.chain(Xs);
+}
+chain ::= function* (Xs) {
    for (let X of Xs) {
       yield* X;
+   }
+}
+takeWhile ::= function* (xs, pred) {
+   for (let x of xs) {
+      if (pred(x)) {
+         yield x;
+      }
    }
 }
 reduce ::= function (xs, rfn) {

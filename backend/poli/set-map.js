@@ -59,28 +59,6 @@ setAll ::= function (map, entries) {
       map.set(k, v);
    }
 }
-intersection ::= function (X, Y) {
-   X = $.settify(X);
-
-   let res = new Set();
-
-   for (let y of Y) {
-      if (X.has(y)) {
-         res.add(y);
-      }
-   }
-
-   return res;
-}
-difference ::= function (X, Y) {
-   let R = new Set(X);
-
-   for (let y of Y) {
-      R.delete(y);
-   }
-
-   return R;
-}
 intersect ::= function (S, Si) {
    Si = $.settify(Si);
    
@@ -96,4 +74,47 @@ purgeSet ::= function (S, pred) {
          S.delete(s);
       }
    }
+}
+intersection ::= function (...Xs) {
+   if (Xs.length === 0) {
+      return new Set;
+   }
+
+   if (Xs.length === 1) {
+      return Xs[0];
+   }
+
+   let S = new Set(Xs[0]);
+
+   for (let i = 1; i < Xs.length; i += 1) {
+      $.intersect(S, Xs[i]);
+   }
+
+   return S;
+}
+difference ::= function (X, Y) {
+   let R = new Set(X);
+
+   for (let y of Y) {
+      R.delete(y);
+   }
+
+   return R;
+}
+union ::= function (...Xs) {
+   if (Xs.length === 0) {
+      return new Set;
+   }
+
+   if (Xs.length === 1) {
+      return Xs[0];
+   }
+
+   let S = new Set(Xs[0]);
+
+   for (let i = 1; i < Xs.length; i += 1) {
+      $.addAll(S, Xs[i]);
+   }
+
+   return S;
 }

@@ -13,37 +13,26 @@ dedb-base
    makeProjection as: makeBaseProjection
    freeProjection as: freeBaseProjection
    updateProjection as: updateBaseProjection
-   clsBaseRelation
-   clsBaseProjection
-   clsFullProjection
-   clsUniqueHitProjection
-   clsRecKeyBoundProjection
    suitsFilterBy
    predFilterBy
 dedb-derived
    makeProjection as: makeDerivedProjection
    freeProjection as: freeDerivedProjection
    updateProjection as: updateDerivedProjection
-   clsDerivedRelation
-   clsDerivedProjection
 dedb-rec-key
    recKey
    recVal
 -----
-clsProjection ::= ({
-   name: 'projection',
-   'projection': true
-})
 makeProjectionRegistry ::= function () {
    return Object.assign(new Map, {
       parent: null
    });
 }
 makeProjection ::= function (rel, bindings) {
-   if (rel.class === $.clsBaseRelation) {
+   if (rel.kind === 'base') {
       return $.makeBaseProjection(rel, bindings);
    }
-   else if (rel.class === $.clsDerivedRelation) {
+   else if (rel.kind === 'derived') {
       return $.makeDerivedProjection(rel, bindings);
    }
    else {
@@ -103,38 +92,31 @@ releaseProjection ::= function (proj) {
    }
 }
 genProjectionKey ::= function* (rel, bindings) {
-   if (rel.class === $.clsBaseRelation || rel.class === $.clsDerivedRelation) {
-      for (let attr of rel.logAttrs) {
-         yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
-      }
-
-      return;
+   for (let attr of rel.logAttrs) {
+      yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
    }
-
-   throw new Error;
 }
 freeProjection ::= function (proj) {
    let {rel} = proj;
 
-   if (rel.class === $.clsBaseRelation) {
+   if (rel.kind === 'base') {
       $.freeBaseProjection(proj);
    }
-   else if (rel.class === $.clsDerivedRelation) {
+   else if (rel.kind === 'derived') {
       $.freeDerivedProjection(proj);
    }
    else {
       throw new Error;
    }
 }
-invalidateProjections ::= function (rootProjs) {
-   let stack = Array.from(rootProjs);
+invalidate ::= function (root) {
+   // root is either a projection or a base relation
+   let stack = [root];
 
    while (stack.length > 0) {
       let proj = stack.pop();
 
-      for (let revdep of proj.validRevDeps) {
-         stack.push(revdep);
-      }
+      stack.push(...proj.validRevDeps);
 
       proj.validRevDeps.clear();
       proj.isValid = false;
@@ -145,13 +127,42 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if ($.isA(proj, $.clsBaseProjection)) {
-      $.updateBaseProjection(proj);
-   }
-   else if ($.isA(proj, $.clsDerivedProjection)) {
+   if (proj.kind === 'derived') {
       $.updateDerivedProjection(proj);
+   }
+   else if (proj.rel.kind === 'base') {
+      $.updateBaseProjection(proj);
    }
    else {
       throw new Error;
    }
+}
+referentialSize ::= function (proj) {
+   if (proj.kind === 'unique-hit' || proj.kind === 'rec-key-bound') {
+      return 1;
+   }
+
+   return proj.fullRecords.size;
+}
+projectionPairs ::= function (proj) {
+   if (proj.kind === 'derived') {
+      return proj.records.pairs();
+   }
+
+   if (proj.kind === 'full') {
+      return proj.rel.records.pairs();
+   }
+
+   if (proj.kind === 'unique-hit' || proj.kind === 'rec-key-bound') {
+      return [[proj.rkey, proj.rval]];
+   }
+
+   if (proj.kind === 'partial') {
+      return $.filter(
+         proj.rel.records.pairs(),
+         ([, rval]) => $.suitsFilterBy(rval, proj.filterBy)
+      )
+   }
+
+   throw new Error;   
 }

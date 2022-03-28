@@ -5,7 +5,7 @@ common
    arraysEqual
    arrayChain
    check
-   concat
+   chain
    enumerate
    find
    filter
@@ -27,6 +27,7 @@ common
    mmapAdd
    multimap
    reduce
+   takeWhile
 set-map
    intersection
    difference
@@ -36,180 +37,173 @@ dedb-rec-key
    recKey
    recVal
 dedb-goal
-   walkPaths
-   clsRelGoal
    relGoalsBeneath
 dedb-index
    Fitness
    superIndexOfAnother
    copyIndex
    isFullyCoveredBy
+   indexFitnessByBounds
    reduceIndex
-   computeFitness
-dedb-base
-   clsBaseRelation
-dedb-derived
-   clsDerivedRelation
 dedb-projection
    projectionFor
 -----
 visualizeIncrementalUpdateScheme ::= function* (rel) {
-   // function* gen(jnode) {
-   //    yield `D(${dconj.rel.name})`;
-   //    for (let link of jpath) {
-   //       yield ` -> ${link.conj.rel.name}(${link.index.join(', ')})`;
-   //       if (link.toCheck.length > 0) {
-   //          yield ` checking (${link.toCheck.join(', ')})`;
-   //       }
-   //       if (link.toExtract.length > 0) {
-   //          yield ` getting (${link.toExtract.join(', ')})`;
-   //       }
-   //    }
-   //    yield '\n';
-   // }
-
-   // for (let num = 0; num < rel.numProjs; num += 1) {
-   //    yield `D(${rel.subInfos[num].rel.name}):`;
-
-   //    yield* (function* rec(jnode) {
-   //       let subInfo = rel.subInfos[jnode.projNum];
-
-   //       if (jnode.class === $.clsJoinAll) {
-   //          yield ` <-> ${subInfo.rel.name}(*)`;
-   //       }
-   //       else if (jnode.class === $.clsJoinIndex) {
-   //          let {indexNum, indexKeys} = jnode;
-   //          let index = idxReg[indexNum];
-   //          yield ` <-> ${subInfo.rel.name}(${})`;
-   //       }
-   //    })();
-
-   //    for (let jnode of config.plans[num].)
-   //    let dconj = rel.config0.conjs[num];
-
-   //    console.log(Array.from(gen(dconj, jpath)).join(''));
-   // }
+   // tbd
 }
-clsJoin ::= ({
-   name: 'join',
-   'join': true
-})
-clsJoinAll ::= ({
-   name: 'join.all',
-   'join': true,
-   'join.all': true
-})
-clsJoinIndex ::= ({
-   name: 'join.index',
-   'join': true,
-   'join.index': true
-})
-clsJoinRecKey ::= ({
-   name: 'join.recKey',
-   'join': true,
-   'join.recKey': true
-})
-clsJoinEither ::= ({
-   name: 'join.either',
-   'join.either': true,
-   'join': true
-})
-clsJoinFunc ::= ({
-   name: 'join.func',
-   'join.func': true,
-   'join': true
-})
 makeConfig ::= function (rel, boundAttrs) {
    function isNotBound(v) {
       return !boundAttrs.includes(v);
    }
 
-   let idxReg = [];
-   let vpool = new $.AnonymousVarPool();
-   let plans = Array.from(rel.subStateful, ({goal}) =>
-      $.computeJoinTreeFrom(rel, boundAttrs, goal, idxReg, vpool)
-   );
+   function isDeadBound(v) {
+      return (
+         boundAttrs.includes(v) ||
+         rel.firmVarBindings.has(v) ||
+         rel.fictitiousVars.has(v)
+      )
+   }
 
-   let vars = rel.vars.filter(isNotBound).concat(vpool.vars);
+   let idxReg = [];
+   let vpool = $.makeAnonymousVarPool();
+   let fulfillments = new Map;
+   
+   for (let goal of rel.goals) {
+      let ffs;
+
+      if (goal.isStateful) {
+         ffs = $.statefulGoalFulfillments(goal);
+         ffs = goal.isDerived ?
+            Array.from(ffs, ff => $.reduceByDeadBound(ff, isDeadBound)) :
+            Array.from(ffs);
+      }
+      else {
+         ffs = Array.from($.funcGoalFulfillments(goal, vpool));
+      }
+
+      if (ffs.length === 0) {
+         throw new Error(`No fulfillments found!`);
+      }
+
+      fulfillments.set(goal, ffs);
+   }
+
+   let joinSpecs = Array.from(rel.statefulGoals, goal => {
+      return $.computeJoinSpec(rel, boundAttrs, fulfillments, goal, idxReg, vpool);
+   });
+
+   let vars = rel.vars.filter(v => !boundAttrs.includes(v)).concat(vpool.vars);
 
    if (vpool.dumbVarCreated) {
       vars.push($.dumbVar);
    }
 
    return {
-      attrs: rel.attrs.filter(isNotBound),
-      // logAttrs that are both bound and non-evaporatable
+      attrs: rel.attrs.filter(v => !boundAttrs.includes(v)),
+      // bound logAttrs that are non-evaporatable
       nonEvaporated: rel.logAttrs.filter(
-         a => boundAttrs.includes(a) && rel.nonEvaporatables.has(a)
+         a => boundAttrs.includes(a) && rel.varsNE.has(a)
       ),
-      // array of vars -- variables used in computations. Does not include non-evaporated
-      // and firm vars
-      vars: vars,
+      // array of variables used in computations. Does not include non-evaporated and firm
+      // vars
+      vars,
       idxReg,
-      plans: plans
+      joinSpecs
    };
 }
-computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
-   // Remember that here 'goal' is just a number
-   let {path2goals, goal2paths, var2ff, subGoals} = rel;
-   let boundLvars = new Set;
-   let bindStack = [];
-   
-   function bind(lvar) {
-      $.assert(() => !boundLvars.has(lvar));
+computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpool) {
+   let boundVars = [
+      ...rel.firmVarBindings.keys(),
+      ...rel.fictitiousVars,
+      ...boundAttrs
+   ];
+   let committedChoices = [];
 
-      boundLvars.add(lvar);
-      bindStack.push(lvar);
-
-      let becameReady = [];
-
-      for (let ff of var2ff.get(lvar) ?? []) {
-         $.assert(() => ff.count > 0);
-
-         ff.count -= 1;
-
-         if (ff.count === 0) {
-            becameReady.push(ff);
-         }
-      }
-
-      return becameReady;
+   function isBound(lvar) {
+      return boundVars.includes(lvar);
    }
 
-   function unbind() {
-      let lvar = bindStack.pop();
+   function isDeadBound(lvar) {
+      return (
+         rel.firmVarBindings.has(lvar) ||
+         rel.fictitiousVars.has(lvar) ||
+         boundAttrs.includes(lvar)
+      )
+   }
+
+   function topmostUncommittedChoice(goal) {
+      let topmost = null;
+      let choice = goal.parentGroup.parentChoice;
+
+      while (choice !== null && !committedChoices.includes(choice)) {
+         topmost = choice;
+         choice = choice.parentGroup.parentChoice;
+      }
+
+      return topmost;
+   }
+
+   function isUnderGroup(goal, ancestorGroup) {
+      let group = goal.parentGroup;
       
-      $.assert(() => boundLvars.has(lvar));
+      while (group !== ancestorGroup && group.parentChoice !== null) {
+         group = group.parentChoice.parentGroup;
+      }
 
-      boundLvars.delete(lvar);
+      return group === ancestorGroup;
+   }
 
-      for (let ff of var2ff.get(lvar) ?? []) {
-         ff.count += 1;
+   function isUnderChoice(goal, ancestorChoice) {
+      let choice = goal.parentGroup.parentChoice;
+
+      while (choice !== null && choice !== ancestorChoice) {
+         choice = choice.parentGroup.parentChoice;
+      }
+
+      return choice === ancestorChoice;
+   }
+
+   function branchGoals(goals, choice, alt) {
+      return new Set(
+         $.filter(goals, g => !isUnderChoice(g, choice) || isUnderGroup(g, alt))
+      );
+   }
+
+   function withStackRestored(callback) {
+      return (...args) => {
+         let nVars = boundVars.length;
+         let nChoices = committedChoices.length;
+
+         let result = callback(...args);
+
+         committedChoices.length = nChoices;
+         boundVars.length = nVars;
+
+         return result;
+      }
+   }
+
+   function bindGoalFreeVars(goal) {
+      for (let [, lvar] of goal.bindings) {
+         if (!isBound(lvar)) {
+            boundVars.push(lvar);
+         }
       }
    }
 
    function makeJoinNode(ff) {
-      let {join: cls, goal} = ff;
-
-      if (cls === $.clsJoinFunc) {
-         let {run, fetched} = ff.props;
-         let {rel, bindings} = subGoals[goal];
-
+      if (ff.join === 'func') {
          let args = [];
          let toCheck = [];
 
-         vpool.reset();
+         $.resetVarPool(vpool);
 
-         for (let attr of rel.attrs) {
-            if (!bindings.has(attr)) {
-               args.push(vpool.getDumbVar());
-               continue;
+         for (let [pm, lvar] of ff.args) {
+            if (pm === '+') {
+               args.push(lvar);
             }
-
-            let lvar = bindings.get(attr);
-
-            if (fetched.includes(attr) && boundLvars.has(lvar)) {
-               let temp = vpool.getVar();
+            else if (isBound(lvar)) {
+               let temp = $.getHelperVar(vpool);
 
                args.push(temp);
                toCheck.push([temp, lvar]);
@@ -220,324 +214,326 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, Dgoal, idxReg, vpool) {
          }
 
          return {
-            class: cls,
-            run,
+            kind: 'func',
+            run: ff.run,
             args,
             toCheck,
             next: null,
          }
       }
 
-      let {subNum} = subGoals[goal];
+      let {goal} = ff;
 
-      $.assert(() => subNum !== -1);
+      $.assert(() => goal.isStateful);
 
-      if (cls === $.clsJoinAll) {
+      if (ff.join === 'all') {
          return {
-            class: cls,
-            subNum,
-            ...propsForCheckExtract(goal),
+            kind: 'all',
+            subNum: goal.subNum,
+            ...propsForCheckExtract(goal.bindings),
             next: null
          }
       }
-      else if (cls === $.clsJoinIndex) {
-         let {index, keys} = ff.props;
+
+      if (ff.join === 'rec-key') {
+         return {
+            kind: 'rec-key',
+            subNum: goal.subNum,
+            rkeyVar: ff.rkeyVar,
+            ...propsForCheckExtract(goal.bindings),
+            next: null
+         }
+      }
+
+      if (ff.join === 'index') {
+         let keys = Array.from($.takeWhile(ff.keys, isBound));
+
+         $.assert(() => keys.length > 0);
 
          return {
-            class: cls,
-            subNum,
-            indexNum: $.registerIndex(idxReg, subNum, index),
+            kind: 'index',
+            subNum: goal.subNum,
+            indexNum: $.registerIndex(idxReg, goal.subNum, ff.index),
             indexKeys: keys,
-            ...propsForCheckExtract(goal, index),
+            ...propsForCheckExtract(goal.bindings, keys),
             next: null
          }
       }
-      else if (cls === $.clsJoinRecKey) {
-         let {rkeyVar} = ff.props;
-
-         return {
-            class: cls,
-            subNum,
-            rkeyVar: rkeyVar,
-            ...propsForCheckExtract(goal),
-            next: null
-         }
-      }
-      else {
-         throw new Error;
-      }
+   
+      throw new Error;
    }
 
-   function propsForCheckExtract(goal, noCheck=[]) {
-      let {bindings} = subGoals[goal];
+   function propsForCheckExtract(bindings, noCheck=[]) {
+      let toCheck = [];
+      let toExtract = [];
+      let rkeyExtract = null;
+      let rvalExtract = null;
+      let rvalCheck = null;
 
-      let res = {
-         toCheck:
-            Array.from($.filter(bindings, ([attr, lvar]) => {
-               return (
-                  boundLvars.has(lvar) && !noCheck.includes(attr) &&
-                  attr !== $.recKey && attr !== $.recVal
-               );
-            })),
-         toExtract:
-            Array.from($.filter(bindings, ([attr, lvar]) => {
-               return !boundLvars.has(lvar) && attr !== $.recKey && attr !== $.recVal;
-            })),
-         rkeyExtract: null,
-         rvalExtract: null,
-         rvalCheck: null,
-      };
-
-      if (bindings.has($.recKey)) {
-         let lvar = bindings.get($.recKey);
-         
-         if (boundLvars.has(lvar)) {
-            // Nothing to do here as bound recKey should've been handled as clsJoinRecKey
-         }
-         else {
-            res.rkeyExtract = lvar;
-         }
-      }
-      
-      if (bindings.has($.recVal)) {
-         let lvar = bindings.get($.recVal);
-
-         if (boundLvars.has(lvar)) {
-            res.rvalCheck = lvar;
-         }
-         else {
-            res.rvalExtract = lvar;
-         }
-      }
-
-      return res;
-   }
-
-   function forkToPaths(paths, goals, ffs) {
-      let goalsX = $.intersection(
-         goals,
-         $.concat($.map(paths, path => path2goals.get(path)))
-      );
-      let ffsX = new Set($.filter(ffs, ff => goalsX.has(ff.goal)));
-
-      return [goalsX, ffsX];
-   }
-
-   function pruneToPaths(paths, goals, ffs) {
-      // Same as 'forkToPaths' but modifies goals and ffs in-place
-      $.intersect(goals, $.concat($.map(paths, path => path2goals.get(path))));
-      $.purgeSet(ffs, ff => goals.has(ff.goal));
-   }
-
-   function unwindingStack(callback) {
-      let n = bindStack.length;
-      
-      try {
-         return callback();
-      }
-      finally {
-         while (bindStack.length > n) {
-            unbind();
-         }
-      }
-   }
-
-   function bindVar(lvar, goals, readyFFs) {
-      let becameReady = bind(lvar);
-
-      for (let ff of becameReady) {
-         if (goals.has(ff.goal)) {
-            readyFFs.add(ff);
-         }
-      }
-   }
-
-   function joinGoal(goal, goals, readyFFs) {
-      for (let lvar of subGoals[goal].bindings.values()) {
-         if (!boundLvars.has(lvar)) {
-            bindVar(lvar, goals, readyFFs);
-         }
-      }
-
-      goals.delete(goal);
-
-      for (let ff of readyFFs) {
-         if (ff.goal === goal) {
-            readyFFs.delete(ff);
-         }
-      }
-   }
-
-   function buildTree(paths, goals, readyFFs) {
-      function findBestFF() {
-         if (readyFFs.size === 0) {
-            return null;
+      for (let [attr, lvar] of bindings) {
+         if (isDeadBound(lvar)) {
+            continue;
          }
 
-         return $.reduce(readyFFs, (ff1, ff2) => {
-            if (ff1.fitness > ff2.fitness) {
-               return ff1;
-            }
-            else if (ff2.fitness > ff1.fitness) {
-               return ff2;
-            }
-            // else if (
-            //       ff1.type === $.JoinType.funcMany && ff2.type === $.JoinType.funcMany &&
-            //       ff1.goal === ff2.goal) {
-            //    if ($.isInstantiationCodeMoreSpecialized(ff1.icode, ff2.icode)) {
-            //       return ff1;
-            //    }
-            //    else if ($.isInstantiationCodeMoreSpecialized(ff2.icode, ff1.icode)) {
-            //       return ff2;
-            //    }
-            // }
-            
-            if (isGoalFull(ff1.goal)) {
-               return ff1;
-            }
-            else if (isGoalFull(ff2.goal)) {
-               return ff2;
+         if (attr === $.recKey) {
+            if (isBound(lvar)) {
+               // Nothing to do here as bound recKey should've been used in a 'rec-key'
+               // join node
             }
             else {
-               return ff1;
+               rkeyExtract = lvar;
             }
-         });
+         }
+         else if (attr === $.recVal) {
+            if (isBound(lvar)) {
+               rvalCheck = lvar;
+            }
+            else {
+               rvalExtract = lvar;
+            }
+         }
+         else if (isBound(lvar)) {
+            if (!noCheck.includes(lvar)) {
+               toCheck.push([attr, lvar]);
+            }
+         }
+         else {
+            toExtract.push([attr, lvar]);
+         }
       }
 
-      function isGoalFull(goal) {
-         return $.isSubset(paths, goal2paths.get(goal));
+      return {
+         rkeyExtract,
+         rvalExtract,
+         rvalCheck,
+         toCheck,
+         toExtract,
+      }
+   }
+
+   function ffFitness(ff) {
+      if (ff.join === 'all') {
+         return ff.fitness;
       }
 
-      let jnodeHead = null, jnodeTail = null;
-      let ffB = null;
+      if (ff.join === 'func') {
+         return $.all(ff.inVars, isBound) ? ff.fitness : $.Fitness.minimum;
+      }
 
-      while (goals.size > 0) {
-         let ff = findBestFF();
+      if (ff.join === 'rec-key') {
+         return isBound(ff.rkeyVar) ? $.Fitness.rkeyHit : $.Fitness.minimum;
+      }
 
-         if (ff === null) {
+      if (ff.join === 'index') {
+         return $.indexFitnessByBounds(ff.index, Array.from(ff.keys, isBound));
+      }
+
+      throw new Error;
+   }
+
+   function buildTree(goals, startGroup=null) {
+      function findBestFulfillment(group=null) {
+         let [ff, fitness] = $.greatestBy(
+            function* () {
+               for (let goal of goals) {
+                  if (group === null || isUnderGroup(goal, group)) {
+                     yield* fulfillments.get(goal);
+                  }
+               }
+            }(),
+            ffFitness
+         );
+
+         if (fitness === $.Fitness.minimum) {
             throw new Error(`Cannot join!`);
          }
 
-         let jGoal = ff.goal;
+         return ff;
+      }
 
-         if (!isGoalFull(jGoal)) {
-            ffB = ff;
+      let jhead = null;
+      let jtail = null;
+
+      function addTail(jnode) {
+         if (jhead === null) {
+            jhead = jtail = jnode;
+         }
+         else {
+            jtail.next = jnode;
+            jtail = jnode;
+         }
+      }
+
+      let ff = findBestFulfillment(startGroup);
+
+      for (;;) {
+         let choice = topmostUncommittedChoice(ff.goal);
+
+         if (choice !== null) {
+            let branches = Array.from(choice.alts, withStackRestored(alt => {
+               committedChoices.push(choice);
+               return buildTree(branchGoals(goals, choice, alt), alt);
+            }));
+
+            addTail({
+               kind: 'either',
+               choice,
+               branches
+            });
+
             break;
          }
 
-         let jnode = makeJoinNode(ff);
-
-         if (jnodeHead === null) {
-            jnodeHead = jnodeTail = jnode;
-         }
-         else {
-            jnodeTail.next = jnode;
-            jnodeTail = jnode;
-         }
-         
-         joinGoal(jGoal, goals, readyFFs);
-      }
-
-      if (ffB === null) {
-         // All have been processed in a single branch
-         return jnodeHead;
-      }
-
-      // Branching
-      let eitherNode = {
-         class: $.clsJoinEither,
-         branches: []
-      };
-
-      while (true) {
-         let goalB = ffB.goal;
-
-         let pathsB = $.intersection(paths, goal2paths.get(goalB));
-         let [goalsB, readyFFsB] = forkToPaths(pathsB, goals, readyFFs);
-
-         let nodeB = makeJoinNode(ffB);
-         nodeB.next = unwindingStack(() => {
-            joinGoal(goalB, goalsB, readyFFsB);
-            return buildTree(pathsB, goalsB, readyFFsB);
-         });
-         eitherNode.branches.push(nodeB);
-
-         paths = $.difference(paths, pathsB);
-         pruneToPaths(paths, goals, readyFFs);
+         addTail(makeJoinNode(ff));
+         bindGoalFreeVars(ff.goal);
+         goals.delete(ff.goal);
 
          if (goals.size === 0) {
             break;
          }
 
-         ffB = findBestFF();
+         ff = findBestFulfillment();
+      }
 
-         if (ffB === null) {
-            throw new Error(`Cannot join!`);
+      return jhead;
+   }
+
+   let {rkeyExtract, rvalExtract, toExtract} = propsForCheckExtract(Dgoal.bindings);
+
+   let goals;
+
+   if (Dgoal.parentGroup.parentChoice === null) {
+      goals = new Set(rel.goals);
+   }
+   else {
+      goals = branchGoals(rel.goals, Dgoal.parentGroup.parentChoice, Dgoal.parentGroup);
+      committedChoices.push(Dgoal.parentGroup.parentChoice);
+   }
+
+   goals.delete(Dgoal);
+   bindGoalFreeVars(Dgoal);
+
+   return {
+      jroot: buildTree(goals),
+      rkeyExtract,
+      rvalExtract,
+      toExtract,
+      depNum: Dgoal.depNum,
+   }
+}
+funcGoalFulfillments ::= function* (goal, vpool) {
+   $.assert(() => !goal.isStateful);
+
+   let {rel, bindings} = goal;
+
+   instantiation:
+   for (let [icode, spec] of Object.entries(rel.instantiations)) {
+      let args = [], inVars = [];
+
+      for (let [pm, attr] of $.zip(icode, rel.attrs)) {
+         let lvar = bindings.get(attr);
+
+         if (pm === '+') {
+            if (lvar === undefined) {
+               // It's not even mentioned in bindings, so skip to the next instantiation
+               continue instantiation;
+            }
+
+            inVars.push(lvar);
          }
+         else {
+            lvar ??= $.getDumbVar(vpool);
+         }
+
+         args.push([pm, lvar]);
       }
 
-      if (jnodeTail !== null) {
-         jnodeTail.next = eitherNode;
-
-         return jnodeHead;
+      yield {
+         goal,
+         join: 'func',
+         fitness: spec.fitness,
+         run: spec.run,
+         args,
+         inVars,
       }
-      else {
-         return eitherNode;
+   }
+}
+statefulGoalFulfillments ::= function* (goal) {
+   let {bindings, rel} = goal;
+
+   if (bindings.has($.recKey)) {
+      yield {
+         goal,
+         join: 'rec-key',
+         rkeyVar: bindings.get($.recKey)
       }
    }
 
-   // Prepare data structures for the start-off run
-   let paths = goal2paths.get(Dgoal);
-   let goals = new Set($.indexRange(subGoals));
-   let readyFFs = new Set(var2ff.get(true) ?? []);
+   let indices = goal.isDerived ? rel.indices :
+      Array.from(rel.myIndexInstances, inst => inst.index);
 
-   pruneToPaths(paths, goals, readyFFs);
+   for (let index of indices) {
+      let keys = [];
 
-   return unwindingStack(() => {
-      // Bind firm variables and bound attrs
-      for (let lvar of $.concat([rel.firmVarBindings.keys(), boundAttrs])) {
-         bindVar(lvar, goals, readyFFs);
-      }
-
-      let {subNum: DsubNum} = subGoals[Dgoal];
-      let {rel: Drel} = rel.subStateful[DsubNum];
-      let Djnode;
-
-      if (Drel.class === $.clsDerivedRelation) {
-         Djnode = {
-            class: $.clsJoinAll,
-            subNum: DsubNum,
-            ...propsForCheckExtract(Dgoal),
-            next: null
-         };
-      }
-      else if (Drel.class === $.clsBaseRelation) {
-         let DreadyFFs = Array.from($.filter(readyFFs, ff => ff.goal === Dgoal));
-
-         if (DreadyFFs.length === 0) {
-            // Means we should take it fully
-            Djnode = {
-               class: $.clsJoinAll,
-               subNum: DsubNum,
-               ...propsForCheckExtract(Dgoal),
-               next: null
-            };
+      for (let attr of index) {
+         if (!bindings.has(attr)) {
+            break;
          }
-         else {
-            let [ff] = $.greatestBy(DreadyFFs, ff => ff.fitness);
 
-            Djnode = makeJoinNode(ff);
+         keys.push(bindings.get(attr));
+      }
+
+      if (keys.length > 0) {
+         yield {
+            goal,
+            join: 'index',
+            index,
+            keys
+         }
+      }
+   }
+}
+reduceByDeadBound ::= function (ff, isDeadBound) {
+   $.assert(() => ff.goal.isStateful && ff.goal.isDerived);
+
+   if (ff.join === 'rec-key') {
+      if (isDeadBound(ff.rkeyVar)) {
+         return {
+            goal: ff.goal,
+            join: 'all',
+            fitness: $.Fitness.rkeyHit,
          }
       }
       else {
-         throw new Error;
+         return ff;
       }
+   }
 
-      joinGoal(Dgoal, goals, readyFFs);
-      Djnode.next = buildTree(paths, goals, readyFFs);      
+   if (ff.join === 'index') {
+      let {bindings} = goal;
 
-      return Djnode;
-   });
+      let rindex = $.reduceIndex(
+         ff.index, attr => bindings.has(attr) && isDeadBound(bindings.get(attr))
+      );
+
+      if (rindex.length === 0) {
+         return {
+            goal: ff.goal,
+            join: 'all',
+            fitness: ff.index.isUnique ? $.Fitness.uniqueHit : $.Fitness.hit,
+         }
+      }
+      else {
+         return {
+            goal: ff.goal,
+            join: 'index',
+            index: rindex,
+            keys: ff.keys.filter(lvar => !isDeadBound(lvar))
+         }
+      }
+   }
+
+   throw new Error;
 }
 registerIndex ::= function (registry, subNum, index) {
    let n = registry.findIndex(({subNum: xSubNum, index: xIndex}) => {
@@ -551,36 +547,32 @@ registerIndex ::= function (registry, subNum, index) {
    registry.push({subNum, index});
    return registry.length - 1;
 }
-AnonymousVarPool ::= class {
-   constructor() {
-      this.vars = [];
-      this.idx = 0;
-      this.dumbVarCreated = false;
+makeAnonymousVarPool ::= function () {
+   return Object.assign([], {
+      idx: 0,
+      dumbVarUsed: false
+   });
+}
+getHelperVar ::= function (vpool) {
+   let lvar;
+
+   if (vpool.idx < vpool.length) {
+      lvar = vpool[vpool.idx];
+   }
+   else {
+      lvar = `--anon-${vpool.length}`;
+      vpool.push(lvar);
    }
 
-   getVar() {
-      let lvar;
+   vpool.idx += 1;
 
-      if (this.idx < this.vars.length) {
-         lvar = this.vars[this.idx];
-      }
-      else {
-         lvar = `--anon-${this.idx}`;
-         this.vars.push(lvar);
-      }
-
-      this.idx += 1;
-
-      return lvar;      
-   }
-
-   getDumbVar() {
-      this.dumbVarCreated = true;
-      return $.dumbVar;
-   }
-
-   reset() {
-      this.idx = 0;
-   }
+   return lvar;      
+}
+resetVarPool ::= function (vpool) {
+   vpool.idx = 0;
+}
+getDumbVar ::= function (vpool) {
+   vpool.dumbVarUsed = true;
+   return $.dumbVar;
 }
 dumbVar ::= '--dumb'

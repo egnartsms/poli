@@ -37,51 +37,51 @@ superIndexOfAnother ::= function (index1, index2) {
 copyIndex ::= function (index) {
    return Object.assign(Array.from(index), {isUnique: index.isUnique});
 }
-reduceIndex ::= function (index, boundAttrs) {
-   let reduced = $.copyIndex(index);
-
-   for (let attr of boundAttrs) {
-      let i = reduced.indexOf(attr);
-      if (i !== -1) {
-         reduced.splice(i, 1);
-      }
-   }
-
-   return reduced;
+reduceIndex ::= function (index, weedOut) {
+   return Object.assign(index.filter(attr => !weedOut(attr)), {
+      isUnique: index.isUnique
+   })
 }
 isFullyCoveredBy ::= function (index, boundAttrs) {
    return $.all(index, attr => boundAttrs.includes(attr));
 }
 Fitness ::= ({
-   minimum: -10,  // unless we have that large indices
-   hit: 0,   // this must be 0 because of the way we computeFitness()
+   minimum: -100,  // unless we have that large indices (we don't)
+   hit: 0,         // this must be 0 because of the way we computeFitness()
    uniqueHit: 1,
+   // this is required to be > uniqueHit because if there are 2 ways to join a goal:
+   // unique index hit and rec key hit, we must use the latter since we refuse from
+   // introducing 'rkeyCheck' (we only have 'rkeyExtract')
+   rkeyHit: 2,
 })
-indexFitness ::= function (index, boundAttrs) {
+indexFitnessByBindings ::= function (index, bindings) {
+   return $.indexFitnessByBounds(
+      index,
+      Array.from(index, a => $.hasOwnProperty(bindings, a))
+   );
+}
+indexFitnessByBounds ::= function (index, bounds) {
+   let lim = Math.min(index.length, bounds.length);
    let i = 0;
 
-   while (i < index.length && boundAttrs.includes(index[i])) {
+   while (i < lim && bounds[i]) {
       i += 1;
-   }
-
-   if (i === 0) {
-      return $.Fitness.minimum;
    }
 
    return $.computeFitness(i, index);
 }
 computeFitness ::= function (len, index) {
+   // todo: inline that into indexFitness if not used on its own
+   if (len === 0) {
+      return $.Fitness.minimum;
+   }
+
    let diff = len - index.length;
 
-   if (diff === 0 && index.isUnique) {
-      return $.Fitness.uniqueHit;
-   }
-   else {
-      return diff;
-   }
+   return (diff === 0 && index.isUnique) ? $.Fitness.uniqueHit : diff;
 }
-uniqueIndexFullHit ::= function (index, boundAttrs) {
-   return $.indexFitness(index, boundAttrs) === $.Fitness.uniqueHit;
+isUniqueHitByBindings ::= function (index, bindings) {
+   return $.indexFitnessByBindings(index, bindings) === $.Fitness.uniqueHit;
 }
 indexKeys ::= function (index, bindings) {
    let keys = [];

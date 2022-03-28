@@ -101,3 +101,41 @@ module = {
    
    name2import: {name => <import fact>}
 }
+
+
+=====
+Future features
+
+--
+
+*
+
+name.property ::= <definition>
+
+
+*
+
+name ::= {
+   prop1: <code1>,
+   prop2: <code2>,
+   prop3: <code3>,
+} 
+
+
+?
+
+_ ::= methodFor(sizeOf, )
+
+def name as: function (...) {
+    ...
+}
+def height as: 0
+def width as: height / 2
+def square as: height * width
+
+def-method sizeOf for: ZeroVersion as: function () {
+    
+}
+
+
+* build-time (early) dependency

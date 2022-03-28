@@ -1,6 +1,9 @@
 common
+   assert
    check
    all
+   isA
+   notAny
 dedb-relation
    accessorForAttr
 dedb-projection
@@ -8,60 +11,41 @@ dedb-projection
    projectionFor
    releaseProjection
    updateProjection
-dedb-version
+dedb-derived
+   derivedRelation
 -----
 clsAggregateRelation ::= ({
    name: 'relation.aggregate',
    'relation.aggregate': true,
    'relation': true
 })
-makeRelation ::= function ({
+aggregatedRelation ::= function ({
    name: relname,
-   groupBy: groupBySpec,
+   groupBy,
    aggregates,
    body: bodyCallback,
 }) {
-   let target = $.toRelation(getTargetRelInfo());
-   let groupBy = $.prepareGroupByPairs(relname, groupBySpec);
+   let aggVars = Object.values(aggregates).map(([agg, attr]) => attr);
 
-   $.check($.all(groupBy, ([attr, alias]) => target.logAttrs.includes(attr)));
+   $.check($.notAny(aggVars, a => groupBy.includes(a)), () =>
+      `Some of variables that are fed to aggregators are also used for grouping`
+   );
+
+   let target = $.derivedRelation({
+      name: `agg:${relname}`,
+      isKeyed: false,
+      attrs: [...groupBy, ...aggVars],
+      body: bodyCallback
+   });
 
    return {
       class: $.clsAggregateRelation,
       name: relname,
-      target,
       groupBy,
       aggregates,
+      target,
       projections: $.makeProjectionRegistry(),
    }
-}
-prepareGroupByPairs ::= function (relname, groupBySpec) {
-   let groupBy = [];
-
-   for (let thing of groupBySpec) {
-      if (typeof thing === 'string') {
-         groupBy.push([thing, thing]);
-      }
-      else if (typeof thing === 'symbol') {
-         throw new Error(
-            `Aggregate '${relname}': need to give a string name to '${String(thing)}'`
-         );
-      }
-      else if (Array.isArray(thing)) {
-         $.check(thing.length === 2);
-
-         let [attr, alias] = thing;
-         $.check(typeof attr === 'string' || typeof attr === 'symbol');
-         $.check(typeof alias === 'string');
-
-         groupBy.push(thing);
-      }
-      else {
-         throw new Error(`Invalid group by spec: '${thing}'`);
-      }
-   }
-
-   return groupBy;
 }
 clsAggregateProjection ::= ({
    name: 'projection.aggregate',
@@ -69,23 +53,11 @@ clsAggregateProjection ::= ({
    'projection': true,
 })
 makeProjection ::= function (rel, bindings) {
-   let targetBindings = Object.fromEntries(
-      $.mapfilter(rel.groupBy, ([attr, alias]) => {
-         if ($.hasOwnDefinedProperty(bindings, alias)) {
-            return [attr, bindings[alias]];
-         }
-      })
-   );
+   $.assert(() => $.isA(rel, $.clsAggregateRelation));
 
-   let groupBy = Array.from(
-      $.mapfilter(rel.groupBy, ([attr, alias]) => {
-         if (!$.hasOwnDefinedProperty(bindings, alias)) {
-            return [$.accessorForAttr(rel, attr), alias];
-         }
-      })
-   );
+   $.check(Object.keys(bindings).length === 0);
 
-   let target = $.projectionFor(rel.target, targetBindings);
+   let target = $.projectionFor(rel.target, bindings);
 
    target.refCount += 1;
 
@@ -95,23 +67,30 @@ makeProjection ::= function (rel, bindings) {
       refCount: 0,
       regPoint: null,
       isValid: false,
+      validRevDeps: new Set,
       target,
-      groupBy,
       depVer: null,
-      records: new Map,
+      groupBy: rel.groupBy,
+      buckets: new Map,
+      rkey2bucket: new Map,
+      myVer: null
    }
 }
 freeProjection ::= function (proj) {
    if (proj.depVer !== null) {
-      $.releaseExtVersion(proj.depVer);
+      $.releaseVersion(proj.depVer);
    }
-
    $.releaseProjection(proj.target);
 }
 rebuildProjection ::= function (proj) {
-   let {target, rel} = proj;
+   $.check(proj.myVer === null, `Cannot rebuild projection which is being referred to`);
+
+   let {target} = proj;
 
    $.updateProjection(target);
+   let newVer = $.refCurrentState(target);
+   $.releaseVersion(target.depVer);
+   
 
    for (let rec of $.projectionRecords(target)) {
       let map = proj.records;

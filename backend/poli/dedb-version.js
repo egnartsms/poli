@@ -3,112 +3,94 @@ common
    check
    isA
    isIterableEmpty
-dedb-base
-   clsBaseRelation
-   clsRecKeyBoundProjection
-   clsUniqueHitProjection
-   clsPartialProjection
-   clsFullProjection
-dedb-derived
-   clsDerivedProjection
-dedb-relation
-   rec2key
 set-map
    deleteIntersection
    greaterLesser
    addAll
    setAll
 -----
-refCurrentState ::= function (owner) {
-   if (owner.class === $.clsBaseRelation || owner.class === $.clsDerivedProjection) {
-      return $.refMultiVersion(owner);
+refRelationState ::= function (rel) {
+   $.assert(() => rel.kind === 'base');
+
+   $.ensureTopmostFresh(rel);
+   rel.myVer.refCount += 1;
+
+   return rel.myVer;
+}
+refProjectionState ::= function (proj) {
+   if (proj.kind === 'derived') {
+      $.ensureTopmostFresh(proj);
+      proj.myVer.refCount += 1;
+
+      return proj.myVer;
    }
 
-   if (owner.class === $.clsPartialProjection) {
-      if (owner.depVer === null) {
-         owner.depVer = $.refCurrentState(owner.rel);
+   if (proj.kind === 'partial') {
+      if (proj.depVer === null) {
+         proj.depVer = $.refRelationState(proj.rel);
       }
 
-      return $.refMultiVersion(owner);
+      $.ensureTopmostFresh(proj);
+      proj.myVer.refCount += 1;
+
+      return proj.myVer;
    }
 
-   if (owner.class === $.clsRecKeyBoundProjection) {
-      return $.makeRecKeyBoundVersion(owner);
+   if (proj.kind === 'rec-key-bound') {
+      return $.makeRecKeyBoundVersion(proj);
    }
 
-   if (owner.class === $.clsUniqueHitProjection) {
-      return $.makeUniqueHitVersion(owner);
+   if (proj.kind === 'unique-hit') {
+      return $.makeUniqueHitVersion(proj);
    }
 
-   if (owner.class === $.clsFullProjection) {
-      return $.refFullProjectionVersion(owner);
+   if (proj.kind === 'full') {
+      return $.refRelationState(proj.rel);
    }
 
    throw new Error;
 }
-clsVersion ::= ({
-   name: 'version',
-   'version': true
-})
-clsUniqueHitVersion ::= ({
-   name: 'version.uniqueHit',
-   'version.uniqueHit': true,
-   'version': true
-})
-makeUniqueHitVersion ::= function (proj) {
-   $.assert(() => proj.class === $.clsUniqueHitProjection);
-
-   return {
-      class: $.clsUniqueHitVersion,
-      proj: proj,
-      rec: proj.rec
-   }
-}
-clsRecKeyBoundVersion ::= ({
-   name: 'version.recKeyBound',
-   'version.recKeyBound': true,
-   'version': true
-})
 makeRecKeyBoundVersion ::= function (proj) {
-   $.assert(() => proj.class === $.clsRecKeyBoundProjection);
+   $.assert(() => proj.kind === 'rec-key-bound');
 
    return {
-      class: $.clsRecKeyBoundVersion,
+      kind: 'rec-key-bound',
       proj: proj,
       rval: proj.rval
    }
 }
-refFullProjectionVersion ::= function (proj) {
-   $.assert(() => proj.class === $.clsFullProjection);
+makeUniqueHitVersion ::= function (proj) {
+   $.assert(() => proj.kind === 'unique-hit');
 
-   return $.refCurrentState(proj.rel);
+   return {
+      kind: 'unique-hit',
+      proj: proj,
+      rkey: proj.rkey,
+      rval: proj.rval,
+   }
 }
-clsMultiVersion ::= ({
-   name: 'version.multi',
-   'version.multi': true,
-   'version': true
-})
-refMultiVersion ::= function (owner) {
-   $.ensureTopmostFresh(owner);
-
-   owner.myVer.refCount += 1;
-
-   return owner.myVer;
+makeZeroVersion ::= function (owner) {
+   // Zero versions are not used yet. They will be needed when/if you implement the
+   // combined full + partial derived projection computation algorithm
+   return {
+      kind: 'zero',
+      owner
+   }
 }
-ensureTopmostFresh ::= function (owner) {
-   let prev = owner.myVer;
+ensureTopmostFresh ::= function (versionable) {
+   let prev = versionable.myVer;
    
    if (prev !== null && $.isMultiVersionFresh(prev)) {
       return;
    }
 
    let ver = {
-      class: $.clsMultiVersion,
-      owner,
+      kind: 'multi',
+      owner: versionable,
       num: 1 + (prev === null ? 0 : prev.num),
       refCount: prev === null ? 0 : 1,
-      added: new Set,
-      removed: new ($.requiresExtendedVersion(owner) ? Map : Set),
+      added: new (versionable.isKeyed ? Map : Set)(),
+      removed: new (versionable.isKeyed ? Map : Set)(),
       next: null,
    };
 
@@ -116,19 +98,13 @@ ensureTopmostFresh ::= function (owner) {
       prev.next = ver;
    }
 
-   owner.myVer = ver;
+   versionable.myVer = ver;
 }
 isMultiVersionFresh ::= function (ver) {
    return ver.added.size === 0 && ver.removed.size === 0;
 }
-requiresExtendedVersion ::= function (owner) {
-   return owner.class === $.clsBaseRelation && owner.isKeyed;
-}
-isMultiVersionExtended ::= function (ver) {
-   return $.requiresExtendedVersion(ver.owner);
-}
 releaseVersion ::= function (ver) {
-   if (ver.class !== $.clsMultiVersion) {
+   if (ver.kind !== 'multi') {
       return;
    }
 
@@ -142,23 +118,22 @@ releaseVersion ::= function (ver) {
    }
 
    if (ver.refCount === 0) {
-      $.assert(() => ver.owner.myVer === ver);
-      
-      $.nullifyMyVer(ver.owner);
-   }
-}
-nullifyMyVer ::= function (owner) {
-   owner.myVer = null;
+      let {owner} = ver;
 
-   if (owner.class === $.clsHitProjection || owner.class === $.clsNoHitProjection) {
-      $.assert(() => owner.depVer !== null);
-      
-      $.releaseVersion(owner.depVer);
-      owner.depVer = null;
+      $.assert(() => owner.myVer === ver);
+
+      owner.myVer = null;
+
+      if (owner.kind === 'partial') {
+         $.assert(() => owner.depVer !== null);
+         
+         $.releaseVersion(owner.depVer);
+         owner.depVer = null;
+      }
    }
 }
-unchainVersion ::= function (ver) {
-   if (ver.class !== $.clsMultiVersion) {
+prepareVersion ::= function (ver) {
+   if (ver.kind !== 'multi') {
       return;
    }
 
@@ -219,7 +194,6 @@ unchain1tupled ::= function (ver) {
 }
 unchain1keyed ::= function (ver) {
    let next = ver.next;
-   let isExtended = $.isMultiVersionExtended(ver);
    let isNextDone = next.refCount === 1;
 
    if (isNextDone) {
@@ -228,8 +202,8 @@ unchain1keyed ::= function (ver) {
       let [ga, la] = $.greaterLesser(ver.added, next.added);
       let [gr, lr] = $.greaterLesser(ver.removed, next.removed);
 
-      $.addAll(ga, la);
-      (isExtended ? $.setAll : $.addAll)(gr, lr);
+      $.setAll(ga, la);
+      $.setAll(gr, lr);
 
       ver.added = ga;
       ver.removed = gr;
@@ -238,8 +212,8 @@ unchain1keyed ::= function (ver) {
       next.removed = null;
    }
    else {
-      $.addAll(ver.added, next.added);
-      (isExtended ? $.mapSplitMerge : $.setSplitMerge)(next.removed, ver.added, ver.removed);
+      $.setAll(ver.added, next.added);
+      $.mapSplitMerge(next.removed, ver.added, ver.removed);
    }
 }
 setSplitMerge ::= function (source, toRemove, toAdd) {
@@ -268,21 +242,36 @@ removeOrSet ::= function (key, val, toRemove, toAdd) {
       toAdd.set(key, val);
    }
 }
-multiVersionAddKey ::= function (ver, rkey) {
+isVersionPristine ::= function (ver) {
+   if (ver.kind === 'rec-key-bound') {
+      let {proj} = ver;
+
+      return ver.rval === proj.rval;
+   }
+
+   if (ver.kind === 'unique-hit') {
+      let {proj} = ver;
+
+      return ver.rkey === proj.rkey && ver.rval === proj.rval;
+   }
+
+   if (ver.kind === 'multi') {
+      return $.isMultiVersionFresh(ver);
+   }
+
+   throw new Error;
+}
+versionAddPair ::= function (ver, rkey, rval) {
    if (ver.owner.isKeyed) {
-      ver.added.add(rkey);
+      ver.added.set(rkey, rval);
    }
    else {
+      $.assert(() => rkey === rval);
       $.removeOrAdd(rkey, ver.removed, ver.added);
    }
 }
-multiVersionRemoveKey ::= function (ver, rkey) {
-   $.assert(() => !$.isMultiVersionExtended(ver));
-
-   $.removeOrAdd(rkey, ver.added, ver.removed);
-}
-multiVersionRemovePair ::= function (ver, rkey, rval) {
-   if ($.isMultiVersionExtended(ver)) {
+versionRemovePair ::= function (ver, rkey, rval) {
+   if (ver.owner.isKeyed) {
       $.removeOrSet(rkey, rval, ver.added, ver.removed);
    }
    else {
@@ -290,86 +279,111 @@ multiVersionRemovePair ::= function (ver, rkey, rval) {
       $.removeOrAdd(rkey, ver.added, ver.removed);
    }
 }
-isVersionFresh ::= function (ver) {
-   if (ver.class === $.clsRecKeyBoundVersion) {
+hasVersionAdded ::= function (ver) {
+   if (ver.kind === 'rec-key-bound') {
       let {proj} = ver;
 
-      return ver.rval === proj.rval;
+      return ver.rval !== proj.rval && proj.rval !== undefined
    }
 
-   if (ver.class === $.clsUniqueHitVersion) {
+   if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
-      // proj.rec is fetched from unique index, so we can count on referential equality
-      return ver.rec === proj.rec;
+      return (
+         (ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined
+      )
    }
 
-   if (ver.class === $.clsMultiVersion) {
-      return $.isMultiVersionFresh(ver);
+   if (ver.kind === 'multi') {
+      return ver.added.size > 0;
    }
 
    throw new Error;
 }
-hasVersionAdded ::= function (ver) {
-   return !$.isIterableEmpty($.versionAddedKeys(ver));
-}
-versionAddedKeys ::= function (ver) {
-   if (ver.class === $.clsRecKeyBoundVersion) {
+versionAddedPairs ::= function (ver) {
+   if (ver.kind === 'rec-key-bound') {
       let {proj} = ver;
 
       if (ver.rval !== proj.rval && proj.rval !== undefined) {
-         return [proj.rkey];
+         return [[proj.rkey, proj.rval]];
       }
       else {
          return [];
       }
    }
 
-   if (ver.class === $.clsUniqueHitVersion) {
+   if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
-      if (ver.rec !== proj.rec && proj.rec !== undefined) {
-         return [$.rec2key(proj, proj.rec)];
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
+         return [[proj.rkey, proj.rval]];
       }
       else {
          return [];
       }
    }
 
-   if (ver.class === $.clsMultiVersion) {
-      return ver.added;
+   if (ver.kind === 'multi') {
+      return ver.added.entries();
    }
 
    throw new Error;
 }
-hasVersionRemoved ::= function (ver) {
-   return !$.isIterableEmpty($.versionRemovedKeys(ver));
-}
-versionRemovedKeys ::= function (ver) {
-   if (ver.class === $.clsRecKeyBoundVersion) {
+versionRemovedPairs ::= function (ver) {
+   if (ver.kind === 'rec-key-bound') {
       let {proj} = ver;
 
       if (ver.rval !== proj.rval && ver.rval !== undefined) {
-         return [proj.rkey];
+         return [[proj.rkey, ver.rval]];
       }
       else {
          return [];
       }
    }
 
-   if (ver.class === $.clsUniqueHitVersion) {
+   if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
-      if (ver.rec !== proj.rec && ver.rec !== undefined) {
-         return [proj.isKeyed ? ver.rec[0] : ver.rec];
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && ver.rkey !== undefined) {
+         return [[ver.rkey, ver.rval]];
       }
       else {
          return [];
       }
    }
 
-   if (ver.class === $.clsMultiVersion) {
-      return ver.removed.keys();
+   if (ver.kind === 'multi') {
+      return ver.removed.entries();
+   }
+
+   throw new Error;
+}
+versionAddedKeyCont ::= function (ver) {
+   // Similar to $.versionAddedPairs() but return a set/map of keys, not just iterable
+   if (ver.kind === 'rec-key-bound') {
+      let {proj} = ver;
+
+      if (ver.rval !== proj.rval && proj.rval !== undefined) {
+         return new Set([proj.rkey]);
+      }
+      else {
+         return new Set;
+      }
+   }
+
+   if (ver.kind === 'unique-hit') {
+      let {proj} = ver;
+
+      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
+         return new Set([proj.rkey]);
+      }
+      else {
+         return new Set;
+      }
+   }
+
+   if (ver.kind === 'multi') {
+      return ver.added;
    }
 
    throw new Error;

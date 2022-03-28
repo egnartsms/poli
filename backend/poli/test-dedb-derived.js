@@ -2,7 +2,7 @@ common
    checkLike
    check
 dedb-query
-   getDerivedProjection
+   lookupDerivedProjection
    query
    queryOne
 dedb-goal
@@ -101,8 +101,7 @@ setup ::= function () {
    $.continentCity = $.derivedRelation({
       name: 'continentCity',
       attrs: ['continent', 'city'],
-      potentialIndices: [
-      ],
+      indices: [],
       body: v => [
          $.use($.continent, {name: v`continent`}),
          $.use($.country, {continent: v`continent`, name: v`country`}),
@@ -145,7 +144,7 @@ test_query_no_bindings ::= function () {
 	);
 }
 test_full_projection_updates ::= function () {
-   let proj = $.getDerivedProjection($.continentCity, {});
+   let proj = $.lookupDerivedProjection($.continentCity, {});
 
    $.check(proj.records.size === 25);
 
@@ -153,7 +152,7 @@ test_full_projection_updates ::= function () {
    $.removeFact($.continent, f_europe);
    $.updateProjection(proj);
    $.check(proj.records.size === 16);
-   
+
    $.addFact($.city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
    $.addFact($.continent, f_europe);
    $.updateProjection(proj);
@@ -180,7 +179,7 @@ test_partial_projection ::= function () {
    );
 }
 test_partial_updates ::= function () {
-   let proj = $.getDerivedProjection($.continentCity, {continent: 'America'});
+   let proj = $.lookupDerivedProjection($.continentCity, {continent: 'America'});
 
    let f_canada = $.queryOne($.country, {name: 'Canada'});
    $.removeIf($.country, ({name}) => name === 'Canada');

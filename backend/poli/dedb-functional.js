@@ -6,7 +6,7 @@ clsFuncRelation ::= ({
 })
 functionalRelation ::= function ({name, attrs, instantiations}) {
    return {
-      class: $.clsFuncRelation,
+      kind: 'func',
       name,
       attrs,
       instantiations,
