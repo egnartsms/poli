@@ -1,6 +1,7 @@
 common
    arraysEqual
    assert
+   chain
    check
    commonArrayPrefixLength
    find
@@ -309,8 +310,8 @@ withNsObjectCleanup ::= function (proj, callback) {
    }
 }
 rebuildProjection ::= function (proj) {
-   for (let {proj: subProj} of proj.subs) {
-      $.updateGenericProjection(subProj);
+   for (let sub of proj.subs) {
+      $.updateGenericProjection(sub.proj);
    }
 
    let {subs} = (() => {
@@ -318,7 +319,11 @@ rebuildProjection ::= function (proj) {
 
       function groupRS(group) {
          let solutions = [
-            ...$.map(group.leaves, goal => {
+            ...$.mapfilter(group.leaves, goal => {
+               if (!goal.isStateful) {
+                  return;
+               }
+
                let sub = goal2sub.get(goal);
 
                return {

@@ -89,7 +89,7 @@ makeConfig ::= function (rel, boundAttrs) {
    }
 
    let joinSpecs = Array.from(rel.statefulGoals, goal => {
-      return $.computeJoinTreeFrom(rel, boundAttrs, fulfillments, goal, idxReg, vpool);
+      return $.computeJoinSpec(rel, boundAttrs, fulfillments, goal, idxReg, vpool);
    });
 
    let vars = rel.vars.filter(v => !boundAttrs.includes(v)).concat(vpool.vars);
@@ -111,7 +111,7 @@ makeConfig ::= function (rel, boundAttrs) {
       joinSpecs
    };
 }
-computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpool) {
+computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpool) {
    let boundVars = [
       ...rel.firmVarBindings.keys(),
       ...rel.fictitiousVars,
@@ -135,7 +135,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
       let topmost = null;
       let choice = goal.parentGroup.parentChoice;
 
-      while (choice !== null && committedChoices.includes(choice)) {
+      while (choice !== null && !committedChoices.includes(choice)) {
          topmost = choice;
          choice = choice.parentGroup.parentChoice;
       }
@@ -316,6 +316,10 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
          return ff.fitness;
       }
 
+      if (ff.join === 'func') {
+         return $.all(ff.inVars, isBound) ? ff.fitness : $.Fitness.minimum;
+      }
+
       if (ff.join === 'rec-key') {
          return isBound(ff.rkeyVar) ? $.Fitness.rkeyHit : $.Fitness.minimum;
       }
@@ -372,7 +376,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
             }));
 
             addTail({
-               join: 'either',
+               kind: 'either',
                choice,
                branches
             });

@@ -245,7 +245,15 @@ RecDependencies ::= class RecDependencies {
 
    removeDependency(depNum, subkey) {
       // We need to make a copy because this set is going to be modified inside the loop
-      let pairs = Array.from(this.Asubkey2rkeys[depNum].get(subkey), this.rkey2pairFn);
+      let pairs = Array.from(
+         // .get(subkey) might very well return undefined. Imagine this:
+         // 'rkey' depends on ['subkey1', 'subkey2', 'subkey3'].
+         // Then 'subkey1' and 'subkey2' are both removed from subprojections, so this
+         // function is called 2 times. But during the first call, 'rkey' will be entirely
+         // deleted, so the second call won't find anything. We should handle this.
+         this.Asubkey2rkeys[depNum].get(subkey) ?? [],
+         this.rkey2pairFn
+      );
 
       for (let [rkey] of pairs) {
          this.removeAt(rkey);
