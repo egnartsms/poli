@@ -8,8 +8,10 @@ test-dedb-keyed
    * as: keyed
 test-dedb-disjunction
    * as: disjunction
-test-dedb-functional
-   * as: functional
+test-dedb-func-1
+   * as: func1
+test-dedb-func-2
+   * as: func2
 -----
 runTests ::= function () {
    console.time('tests');
@@ -17,7 +19,8 @@ runTests ::= function () {
    $.runTestsIn('derived', $.derived);
    $.runTestsIn('keyed', $.keyed);
    $.runTestsIn('disjunction', $.disjunction);
-   $.runTestsIn('functional', $.functional);
+   $.runTestsIn('func-1', $.func1);
+   $.runTestsIn('func-2', $.func2);
    $.clearProjectionCache();
    console.log('--- DONE');
    console.timeEnd('tests')
