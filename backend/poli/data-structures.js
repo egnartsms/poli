@@ -4,6 +4,8 @@ common
    multimap
    mmapDelete
    produceArray
+   zip
+   mmapAdd
 -----
 ExpRecords ::= class ExpRecords {
    constructor(kvpairs) {
@@ -30,6 +32,10 @@ ExpRecords ::= class ExpRecords {
       return this.map;
    }
 
+   records() {
+      return this.map.entries();
+   }
+
    keys() {
       return this.map.keys();
    }
@@ -43,7 +49,7 @@ ExpRecords ::= class ExpRecords {
    }
 
    valueAtX(rkey) {
-      return this.valueAt(rkey);
+      return this.map.get(rkey);
    }
 
    recordAtX(rkey) {
@@ -97,6 +103,10 @@ ImpRecords ::= class ImpRecords {
       return this.set.entries();
    }
 
+   records() {
+      return this.set[Symbol.iterator]();
+   }
+
    keys() {
       return this.set[Symbol.iterator]();
    }
@@ -140,7 +150,7 @@ RecDependencies ::= class RecDependencies {
       // forward: rkey -> [subkey, subkey, ...]
       this.rkey2subkeys = new Map;
       // backward: [ {subkey -> Set{rkey, rkey, ...}}, ...], numDeps in length
-      this.Asubkey2rkeys = $.produceArray(numDeps, $.multimap),
+      this.Asubkey2rkeys = $.produceArray(numDeps, $.multimap);
    }
 
    pairs() {
@@ -150,6 +160,12 @@ RecDependencies ::= class RecDependencies {
       else {
          return this.rkey2rval.entries();
       }
+   }
+
+   records() {
+      return this.rkey2rval === null ?
+         this.rkey2subkeys.keys() :
+         this.rkey2rval.entries();
    }
 
    get size() {
@@ -171,6 +187,12 @@ RecDependencies ::= class RecDependencies {
       return this.rkey2subkeys.has(rkey);
    }
 
+   valueAt(rkey) {
+      return (this.rkey2rval === null) ?
+         (this.rkey2subkeys.has(rkey) ? rkey : undefined) :
+         this.rkey2rval.get(rkey);
+   }
+
    valueAtX(rkey) {
       return (this.rkey2rval === null) ? rkey : this.rkey2rval.get(rkey);
    }
@@ -178,7 +200,7 @@ RecDependencies ::= class RecDependencies {
    get rkey2pairFn() {
       return (this.rkey2rval === null) ?
          (rkey => [rkey, rkey]) :
-         (rkey => [rkey, this.key2rval.get(rkey)])
+         (rkey => [rkey, this.rkey2rval.get(rkey)])
    }
 
    // [Symbol.iterator]() {
@@ -194,7 +216,7 @@ RecDependencies ::= class RecDependencies {
       subkeys = Array.from(subkeys);
       this.rkey2subkeys.set(rkey, subkeys);
 
-      for (let [mmap, subkey] of $.zip(proj.Asubkey2rkeys, subkeys)) {
+      for (let [mmap, subkey] of $.zip(this.Asubkey2rkeys, subkeys)) {
          if (subkey !== null) {
             $.mmapAdd(mmap, subkey, rkey);
          }
@@ -205,7 +227,7 @@ RecDependencies ::= class RecDependencies {
       }
    }
 
-   removeAtX(rkey) {
+   removeAt(rkey) {
       let subkeys = this.rkey2subkeys.get(rkey);
 
       for (let [mmap, subkey] of $.zip(this.Asubkey2rkeys, subkeys)) {
@@ -226,7 +248,7 @@ RecDependencies ::= class RecDependencies {
       let pairs = Array.from(this.Asubkey2rkeys[depNum].get(subkey), this.rkey2pairFn);
 
       for (let [rkey] of pairs) {
-         this.removeAtX(rkey);
+         this.removeAt(rkey);
       }
 
       return pairs;

@@ -231,9 +231,6 @@ arrayChain ::= function arrayChain(array, startFrom=0) {
 isChainEmpty ::= function (chain) {
    return chain === null;
 }
-pushAll ::= function (array, newItems) {
-   array.push.apply(array, ...newItems);
-}
 yreExec ::= function (re, offset, str) {
    $.check(re.sticky);
    re.lastIndex = offset;
@@ -592,6 +589,13 @@ concat ::= function (...Xs) {
 chain ::= function* (Xs) {
    for (let X of Xs) {
       yield* X;
+   }
+}
+takeWhile ::= function* (xs, pred) {
+   for (let x of xs) {
+      if (pred(x)) {
+         yield x;
+      }
    }
 }
 reduce ::= function (xs, rfn) {

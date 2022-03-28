@@ -9,10 +9,8 @@ dedb-projection
 dedb-base
    getUniqueRecord
    getRecords
-   clsBaseRelation
 dedb-derived
    makeProjection as: makeDerivedProjection
-   clsDerivedRelation
 -----
 time ::= 0
 derivedProjectionCache ::= new Map
@@ -25,55 +23,50 @@ dumpRecencyList ::= function () {
 valueAt ::= function (rel, recKey) {
    $.check(rel.isKeyed);
 
-   if (rel.class === $.clsBaseRelation) {
+   if (rel.kind === 'base') {
       return rel.records.valueAt(recKey);
    }
 
-   if (rel.class === $.clsDerivedRelation) {
+   if (rel.kind === 'derived') {
       let fullProj = $.lookupDerivedProjection(rel, {});
 
-      return fullProj.rkey2rval.get(recKey);
+      return fullProj.records.valueAt(recKey);
    }
 
    throw new Error;
 }
 queryOne ::= function (rel, bindings) {
-   if (rel.class === $.clsBaseRelation) {
+   if (rel.kind === 'base') {
       return $.getUniqueRecord(rel, bindings);
    }
 
-   if (rel.class === $.clsDerivedRelation) {
+   if (rel.kind === 'derived') {
       let proj = $.lookupDerivedProjection(rel, bindings);
 
-      $.check(proj.rkey2subkeys.size <= 1);
+      $.check(proj.records.size <= 1);
 
-      let [rkey] = proj.rkey2subkeys;
+      let [rec] = proj.records.records();
 
-      return proj.isKeyed ? [rkey, proj.rkey2rval.get(rkey)] : rkey;
+      return rec;
    }
    
    throw new Error;
 }
 query ::= function (rel, bindings) {
-   if (rel.class === $.clsBaseRelation) {
+   if (rel.kind === 'base') {
       return $.getRecords(rel, bindings);
    }
 
-   if (rel.class === $.clsDerivedRelation) {
+   if (rel.kind === 'derived') {
       let proj = $.lookupDerivedProjection(rel, bindings);
 
-      return proj.isKeyed ? proj.rkey2rval.entries() : proj.rkey2subkeys.keys();
+      return proj.records.records();
    }
 
    throw new Error;
 }
-getDerivedProjection ::= function (rel, bindings) {
-   $.check(rel.class === $.clsDerivedRelation);
-
-   return $.lookupDerivedProjection(rel, bindings);
-}
 lookupDerivedProjection ::= function (rel, bindings) {
-   $.assert(() => rel.class === $.clsDerivedRelation);
+   $.assert(() => rel.kind === 'derived');
 
    let proj = $.projectionFor(rel, bindings);
    let rec = $.derivedProjectionCache.get(proj);

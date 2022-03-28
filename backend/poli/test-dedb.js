@@ -16,8 +16,8 @@ runTests ::= function () {
    $.runTestsIn('base', $.base);
    $.runTestsIn('derived', $.derived);
    $.runTestsIn('keyed', $.keyed);
-   $.runTestsIn('disjunction', $.disjunction);
-   $.runTestsIn('functional', $.functional);
+   // $.runTestsIn('disjunction', $.disjunction);
+   // $.runTestsIn('functional', $.functional);
    $.clearProjectionCache();
    console.log('--- DONE');
    console.timeEnd('tests')

@@ -25,17 +25,16 @@ dedb-rec-key
    recVal
    normalizeAttrs
 dedb-version
-   refCurrentState
+   refRelationState
    releaseVersion
-   multiVersionAddKey
-   multiVersionRemoveKey
-   multiVersionRemovePair
-   unchainVersion
+   versionAddPair
+   versionRemovePair
+   prepareVersion
 dedb-index
    unique
    indexKeys
-   uniqueIndexFullHit
-   indexFitness
+   isUniqueHitByBindings
+   indexFitnessByBindings
    indexFromSpec
    Fitness
 dedb-index-instance
@@ -46,7 +45,7 @@ dedb-index-instance
    indexRef
    indexRefWithBindings
 dedb-projection
-   invalidateProjections
+   invalidate
    makeProjectionRegistry
 dedb-relation
    rec2val
@@ -72,7 +71,7 @@ baseRelation ::= function ({
       attrs,
       logAttrs: [$.recKey, ...attrs],
       isKeyed,
-      myIndexInstances: new Set(),   // initialized below
+      myIndexInstances: new Set,   // initialized below
       projections: $.makeProjectionRegistry(),
       myVer: null,
       records: new (isKeyed ? $.ExpRecords : $.ImpRecords)(records),
@@ -143,11 +142,9 @@ getRecords ::= function (rel, bindings) {
    });
 }
 findUniqueIdxInst ::= function (rel, bindings) {
-   return (
-      rel
-      .myIndexInstances
-      .find(({index}) => $.isUniqueHitByBindings(index, bindings))
-   )
+   return $.find(
+      rel.myIndexInstances, ({index}) => $.isUniqueHitByBindings(index, bindings)
+   );
 }
 findSuitableIdxInst ::= function (rel, bindings) {
    let [inst, fitness] = $.greatestBy(
@@ -188,7 +185,7 @@ makeProjection ::= function (rel, bindings) {
       regPoint: null,   // initialized by the calling code
       isValid: false,
       validRevDeps: new Set,
-      dataHolder: rel
+      fullRecords: rel.records,
    };
 
    if ($.hasOwnProperty(bindings, $.recKey)) {
@@ -286,7 +283,7 @@ updateProjection ::= function (proj) {
       proj.rkey = rkey;
       proj.rval = rval;
    }
-   else if (cls === 'partial') {
+   else if (kind === 'partial') {
       $.assert(() => (proj.depVer === null) === (proj.myVer === null));
 
       if (proj.depVer !== null) {
@@ -294,19 +291,17 @@ updateProjection ::= function (proj) {
 
          for (let [rkey, rval] of proj.depVer.removed.entries()) {
             if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.multiVersionRemoveKey(proj.myVer, rkey);
+               $.versionRemovePair(proj.myVer, rkey, rval);
             }
          }
 
-         for (let rkey of proj.depVer.added) {
-            let rval = rel.records.valueAtX(rkey);
-
+         for (let [rkey, rval] of proj.depVer.added.entries()) {
             if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.multiVersionAddKey(proj.myVer, rkey);
+               $.versionAddPair(proj.myVer, rkey, rval);
             }
          }
 
-         let newDepVer = $.refCurrentState(rel);
+         let newDepVer = $.refRelationState(rel);
          $.releaseVersion(proj.depVer);
          proj.depVer = newDepVer;
       }
@@ -317,38 +312,6 @@ updateProjection ::= function (proj) {
 
    $.markAsValid(proj);
 }
-cloak ::= function () {
-   // removeRecByKey ::= function (parent, rkey) {
-   //    let rec = parent.recAt(rkey);
-
-   //    if (rec === undefined) {
-   //       return false;
-   //    }
-
-   //    parent.records.delete(rkey);
-
-   //    if (parent.myVer !== null) {
-   //       $.multiVersionRemoveKey(parent.myVer, rec);
-   //    }
-
-   //    for (let idxInst of parent.myIndexInstances) {
-   //       $.indexRemove(idxInst, rec);
-   //    }
-
-   //    return true;
-   // }
-   // removeRecByKeyFromRel ::= function (rel, rkey) {
-   //    let removed = $.removeRecByKey(rel, rkey);
-
-   //    if (removed && rel.entityProto !== false) {
-   //       let entity = rkey;
-
-   //       entity[$.symTuple] = null;
-   //    }
-
-   //    return removed;
-   // }   
-}
 addFact ::= function (rel, rkey, rval=rkey) {
    $.check(rel.isKeyed || rkey === rval, `Keyed/non-keyed misuse`);
    $.check(!rel.records.hasAt(rkey), `Duplicate record`);
@@ -356,7 +319,7 @@ addFact ::= function (rel, rkey, rval=rkey) {
    rel.records.addPair(rkey, rval);
 
    if (rel.myVer !== null) {
-      $.multiVersionAddKey(rel.myVer, rkey);
+      $.versionAddPair(rel.myVer, rkey, rval);
    }
 
    for (let inst of rel.myIndexInstances) {
@@ -379,11 +342,22 @@ removeFact ::= function (rel, rkey) {
    $.doRemove(rel, rkey, rval);
    $.invalidate(rel);
 }
+removeIf ::= function (rel, pred) {
+   let toRemove = Array.from($.filter(rel.records.records(), pred));
+
+   for (let rec of toRemove) {
+      let [rkey, rval] = rel.isKeyed ? rec : [rec, rec];
+
+      $.doRemove(rel, rkey, rval);
+   }
+
+   $.invalidate(rel);
+}
 doRemove ::= function (rel, rkey, rval) {
    rel.records.removeAt(rkey);
 
    if (rel.myVer !== null) {
-      $.multiVersionRemovePair(rel.myVer, rkey, rval);
+      $.versionRemovePair(rel.myVer, rkey, rval);
    }
 
    for (let inst of rel.myIndexInstances) {
@@ -394,25 +368,11 @@ doRemove ::= function (rel, rkey, rval) {
       rkey[$.symTuple] = null;
    }
 }
-removeIf ::= function (rel, pred) {
-   let toRemove = Array.from($.filter(rel.records, pred));
-
-   for (let rec of toRemove) {
-      let [rkey, rval] = $.rec2pair(rel, rec);
-      $.doRemove(rel, rkey, rval);
-   }
-
-   $.invalidate(rel);
-}
 changeFact ::= function (rel, rkey, rvalNew) {
    $.check(rel.isKeyed, `Cannot change fact in a non-keyed relation`);
    
    $.removeFact(rel, rkey);
    $.addFact(rel, rkey, rvalNew);
-}
-invalidate ::= function (rel) {
-   $.invalidateProjections(rel.validRevDeps);
-   rel.validRevDeps.clear();
 }
 symTuple ::= Symbol.for('poli.tuple')
 symRelation ::= Symbol.for('poli.relation')
@@ -432,7 +392,6 @@ setupEntityPrototype ::= function (rel) {
 makeEntity ::= function (rel, tuple) {
    let entity = Object.create(rel.entityProto);
 
-   entity[$.symTuple] = tuple;
    $.addFact(rel, entity, tuple);
 
    return entity;

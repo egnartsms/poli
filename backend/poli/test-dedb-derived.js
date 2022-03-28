@@ -2,7 +2,7 @@ common
    checkLike
    check
 dedb-query
-   getDerivedProjection
+   lookupDerivedProjection
    query
    queryOne
 dedb-goal
@@ -17,8 +17,6 @@ dedb-derived
 dedb-projection
    updateProjection
    releaseProjection
-dedb-owner
-   ownerSize
 -----
 box continent ::= null
 box country ::= null
@@ -103,8 +101,7 @@ setup ::= function () {
    $.continentCity = $.derivedRelation({
       name: 'continentCity',
       attrs: ['continent', 'city'],
-      potentialIndices: [
-      ],
+      indices: [],
       body: v => [
          $.use($.continent, {name: v`continent`}),
          $.use($.country, {continent: v`continent`, name: v`country`}),
@@ -147,25 +144,25 @@ test_query_no_bindings ::= function () {
 	);
 }
 test_full_projection_updates ::= function () {
-   let proj = $.getDerivedProjection($.continentCity, {});
+   let proj = $.lookupDerivedProjection($.continentCity, {});
 
-   $.check($.ownerSize(proj) === 25);
+   $.check(proj.records.size === 25);
 
    let f_europe = $.queryOne($.continent, {name: 'Europe'});
    $.removeFact($.continent, f_europe);
    $.updateProjection(proj);
-   $.check($.ownerSize(proj) === 16);
-   
+   $.check(proj.records.size === 16);
+
    $.addFact($.city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
    $.addFact($.continent, f_europe);
    $.updateProjection(proj);
 
-   $.check($.ownerSize(proj) === 26);
+   $.check(proj.records.size === 26);
 
    let f_china = $.queryOne($.country, {name: 'China'});
    $.removeFact($.country, f_china);
    $.updateProjection(proj);
-   $.check($.ownerSize(proj) === 23);
+   $.check(proj.records.size === 23);
 }
 test_partial_projection ::= function () {
    $.checkLike(
@@ -182,17 +179,17 @@ test_partial_projection ::= function () {
    );
 }
 test_partial_updates ::= function () {
-   let proj = $.getDerivedProjection($.continentCity, {continent: 'America'});
+   let proj = $.lookupDerivedProjection($.continentCity, {continent: 'America'});
 
    let f_canada = $.queryOne($.country, {name: 'Canada'});
    $.removeIf($.country, ({name}) => name === 'Canada');
    $.updateProjection(proj);
-   $.check($.ownerSize(proj) === 4);
+   $.check(proj.records.size === 4);
 
    $.addFact($.country, {name: 'Canada', continent: 'America'});
    $.addFact($.city, {country: 'USA', name: 'Seattle', population: 2.2});
    $.updateProjection(proj);
-   $.check($.ownerSize(proj) === 8);
+   $.check(proj.records.size === 8);
 }
 test_scalar_updates ::= function () {
    let rec = $.queryOne($.continentCity, {continent: 'Europe', city: 'Lviv'});

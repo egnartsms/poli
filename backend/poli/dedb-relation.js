@@ -6,23 +6,16 @@ data-structures
    ImpRecords
 dedb-base
    * as: base
-   clsBaseRelation
 dedb-derived
    * as: derived
-   clsDerivedRelation
-   clsDerivedProjection
 dedb-functional
    * as: functional
 dedb-rec-key
    recKey
    recVal
 -----
-clsRelation ::= ({
-   name: 'relation',
-   'relation': true
-})
 isStatefulRelation ::= function (rel) {
-   return $.isA(rel, $.clsBaseRelation, $.clsDerivedRelation);
+   return rel.kind === 'base' || rel.kind === 'derived';
 }
 accessorForAttr ::= function (rel, attr) {
    $.assert(() => rel.logAttrs.includes($.recVal));

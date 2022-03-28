@@ -27,7 +27,7 @@ common
    mmapAdd
    multimap
    reduce
-   pushAll
+   takeWhile
 set-map
    intersection
    difference
@@ -37,8 +37,6 @@ dedb-rec-key
    recKey
    recVal
 dedb-goal
-   walkPaths
-   clsRelGoal
    relGoalsBeneath
 dedb-index
    Fitness
@@ -47,10 +45,6 @@ dedb-index
    isFullyCoveredBy
    indexFitnessByBounds
    reduceIndex
-dedb-base
-   clsBaseRelation
-dedb-derived
-   clsDerivedRelation
 dedb-projection
    projectionFor
 -----
@@ -74,7 +68,7 @@ makeConfig ::= function (rel, boundAttrs) {
    let vpool = $.makeAnonymousVarPool();
    let fulfillments = new Map;
    
-   for (let goal of rel.subs) {
+   for (let goal of rel.goals) {
       let ffs;
 
       if (goal.isStateful) {
@@ -220,7 +214,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
          }
 
          return {
-            join: 'func',
+            kind: 'func',
             run: ff.run,
             args,
             toCheck,
@@ -234,7 +228,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
 
       if (ff.join === 'all') {
          return {
-            join: 'all',
+            kind: 'all',
             subNum: goal.subNum,
             ...propsForCheckExtract(goal.bindings),
             next: null
@@ -243,7 +237,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
 
       if (ff.join === 'rec-key') {
          return {
-            join: 'rec-key',
+            kind: 'rec-key',
             subNum: goal.subNum,
             rkeyVar: ff.rkeyVar,
             ...propsForCheckExtract(goal.bindings),
@@ -257,7 +251,7 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
          $.assert(() => keys.length > 0);
 
          return {
-            join: 'index',
+            kind: 'index',
             subNum: goal.subNum,
             indexNum: $.registerIndex(idxReg, goal.subNum, ff.index),
             indexKeys: keys,
@@ -400,6 +394,8 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
       return jhead;
    }
 
+   let {rkeyExtract, rvalExtract, toExtract} = propsForCheckExtract(Dgoal.bindings);
+
    let goals;
 
    if (Dgoal.parentGroup.parentChoice === null) {
@@ -415,9 +411,9 @@ computeJoinTreeFrom ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, 
 
    return {
       jroot: buildTree(goals),
-      toExtract: Array.from(
-         $.filter(Dgoal.bindings, ([attr, lvar]) => !isDeadBound(lvar))
-      ),
+      rkeyExtract,
+      rvalExtract,
+      toExtract,
       depNum: Dgoal.depNum,
    }
 }

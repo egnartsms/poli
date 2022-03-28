@@ -25,12 +25,7 @@ dedb-rec-key
    recKey
    recVal
 dedb-relation
-   clsRelation
    isStatefulRelation
-dedb-base
-   clsBaseRelation
-dedb-derived
-   clsDerivedRelation
 set-map
    deleteAll
    addAll
@@ -93,8 +88,6 @@ makeLvar ::= function (name) {
    }
 }
 use ::= function (rel, rkey, bindings) {
-   $.check($.isA(rel, $.clsRelation), `Cannot join smth which is not a relation`);
-
    if (arguments.length === 2) {
       bindings = rkey;
       rkey = undefined;
@@ -108,8 +101,7 @@ use ::= function (rel, rkey, bindings) {
 
    if ($.isLvar(bindings)) {
       $.check(
-         rel.class === $.clsBaseRelation && rel.isKeyed ||
-            rel.class === $.clsDerivedRelation && rel.isUnwrapped,
+         rel.kind === 'base' && rel.isKeyed || rel.kind === 'derived' && rel.isUnwrapped,
          () => `Cannot grab the rec val of relation '${rel.name}': makes no sense`
       )
    }
@@ -200,11 +192,11 @@ buildGoalTree ::= function (root0, logAttrs) {
       root: root2,
       firms,
       subRoutes
-   } = $.buildTree2(root1);
+   } = $.buildTree2(root1, logAttrs);
    let numDeps = $.setupDepNums(root2);
 
    return {
-      root: root2,
+      rootGroup: root2,
       goals: Array.from($.relGoalsBeneath(root2)),
       statefulGoals: Array.from($.filter($.relGoalsBeneath(root2), g => g.isStateful)),
       numDeps,
@@ -285,7 +277,7 @@ buildTree1 ::= function (root0) {
       }
    }
 
-   $.assert(root0.kind === 'and');
+   $.assert(() => root0.kind === 'and');
 
    return convertConj(root0);
 }
@@ -296,7 +288,7 @@ checkVarUsage ::= function (root1, logAttrs) {
       $.addOpenVar(open, closed, lvar);
    }
 
-   $.check(open.size > 0, () =>
+   $.check(open.size === 0, () =>
       `Variables mentioned only once: ${$.singleQuoteJoinComma(open)}`
    );
 }
@@ -383,7 +375,7 @@ collectNonEvaporatableVars ::= function (root1) {
    let varsNE = new Set([$.recKey, $.recVal]);
 
    for (let goal of $.relGoalsBeneath(root1)) {
-      if (goal.rel.class !== $.clsDerivedRelation) {
+      if (goal.rel.kind !== 'derived') {
          $.addAll(varsNE, goal.looseBindings.values());
       }
    }
@@ -403,7 +395,7 @@ buildTree2 ::= function (root1, logAttrs) {
    let subNum = 0;
 
    function convertRel(goal, parentGroup) {
-      let isDerived = goal.rel.class === $.clsDerivedRelation;
+      let isDerived = goal.rel.kind === 'derived';
       let bindings = new Map(goal.looseBindings);
 
       for (let [attr, val] of goal.firmBindings) {

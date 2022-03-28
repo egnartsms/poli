@@ -12,8 +12,6 @@ dedb-base
    removeEntity
    patchEntity
    baseRelation
-dedb-relation
-   ownerSize
 dedb-derived
    derivedRelation
 dedb-projection
@@ -21,7 +19,7 @@ dedb-projection
 dedb-query
    queryOne
    valueAt
-   getDerivedProjection
+   lookupDerivedProjection
 dedb-rec-key
    recKey
 -----
@@ -90,15 +88,15 @@ test_partial ::= function () {
    let jay = $.makeEntity($.dev, {name: 'Jay', company: 'SoftServe'});
    let val;
 
-   let proj = $.getDerivedProjection($.devSalary, {[$.recKey]: jim});
+   let proj = $.lookupDerivedProjection($.devSalary, {[$.recKey]: jim});
 
-   $.check(proj.rkey2subkeys.size === 1);
-   [[, val]] = proj.rkey2rval;
+   $.check(proj.records.size === 1);
+   [[, val]] = proj.records.records();
    $.check(val === 2800);
 
    $.patchEntity(jim, val => ({...val, company: 'Ciklum'}));
    $.updateProjection(proj);
-   [[, val]] = proj.rkey2rval;
+   [[, val]] = proj.records.records();
    $.check(val === 4400);
 }
 test_grab_fact_identity ::= function () {

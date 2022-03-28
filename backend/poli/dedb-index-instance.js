@@ -9,12 +9,9 @@ common
 dedb-base
    predFilterBy
    suitsFilterBy
-   clsBaseRelation
 dedb-index
    copyIndex
    indexKeys
-dedb-derived
-   clsDerivedProjection
 dedb-relation
    rkeyX2pairFn
    rec2pair
@@ -63,17 +60,15 @@ releaseIndexInstance ::= function (inst) {
    inst.refCount -= 1;
 
    if (inst.refCount === 0) {
-      let deleted = inst.holder.myIndexInstances.delete(inst);
+      let deleted = inst.owner.myIndexInstances.delete(inst);
 
       $.assert(() => deleted);
    }
 }
-makeIndexInstance ::= function (holder, index) {
-   $.assert(() => $.isA(holder, $.clsDerivedProjection, $.clsBaseRelation));
-
+makeIndexInstance ::= function (owner, index) {
    return {
       refCount: 0,
-      holder,
+      owner,
       index,
       map: new Map,
    }
@@ -104,7 +99,7 @@ indexRef ::= function* (inst, keys) {
    }(inst.map, 0));
 }
 indexRefPairs ::= function (inst, keys) {
-   return $.map($.indexRef(inst, keys), inst.holder.rkey2pairFn);
+   return $.map($.indexRef(inst, keys), inst.owner.records.rkey2pairFn);
 }
 indexRefWithBindings ::= function (inst, bindings) {
    return $.indexRef(inst, $.indexKeys(inst.index, bindings));
@@ -142,7 +137,7 @@ rebuildIndex ::= function (inst, pairs) {
    }
 }
 indexAdd ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.holder.isKeyed || rkey === rval);
+   $.assert(() => inst.owner.isKeyed || rkey === rval);
 
    let {index} = inst;
 
@@ -185,7 +180,7 @@ indexAdd ::= function (inst, rkey, rval=rkey) {
    })(0, inst.map);
 }
 indexRemove ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.holder.isKeyed || rkey === rval);
+   $.assert(() => inst.owner.isKeyed || rkey === rval);
 
    let {index} = inst;
 
