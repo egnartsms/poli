@@ -22,7 +22,7 @@ dedb-rec-key
 dedb-index
 dedb-query
    dumpRecencyList
-   queryOne
+   query1
 -----
 protoModule ::= ({})
 protoEntry ::= ({})
@@ -94,17 +94,17 @@ load ::= function (minfos) {
 
    // Imports
    for (let {name: recpName, imports} of minfos) {
-      let recp = $.queryOne($.module, {name: recpName});
+      let recp = $.query1($.module, {name: recpName});
       
       for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
-         let donor = $.queryOne($.module, {name: donorName});
+         let donor = $.query1($.module, {name: donorName});
 
          if (asterisk !== null) {
             $.addFact($.starImport, {donor, recp, alias: asterisk});
          }
 
          for (let {entry: entryName, alias} of entryImports) {
-            let entry = $.queryOne($.entry, {module: donor, name: entryName});
+            let entry = $.query1($.entry, {module: donor, name: entryName});
 
             $.addFact($.import, {entry, recp, alias});
          }

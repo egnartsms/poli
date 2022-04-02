@@ -12,7 +12,7 @@ dedb-query
 dedb-base
    addFact
    removeFact
-   changeFact
+   replaceWhere
    baseRelation
 dedb-derived
    derivedRelation
@@ -46,10 +46,17 @@ setup ::= function () {
 
    $.countryCities = $.baseRelation({
       name: 'countryCities',
-      isKeyed: true,
+      attrs: ['country', 'cities'],
+      indices: [['country', 1]],
       records: [
-         ['ruthenia', new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])],
-         ['poland', new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])]
+         {
+            country: 'ruthenia',
+            cities: new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])
+         },
+         {
+            country: 'poland',
+            cities: new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])
+         }
       ]
    });
 
@@ -57,7 +64,7 @@ setup ::= function () {
       name: 'countryCity',
       attrs: ['country', 'city'],
       body: v => [
-         $.use($.countryCities, v`country`, v`cities`),
+         $.use($.countryCities, {country: v`country`, cities: v`cities`}),
          $.use($.setItem, {set: v`cities`, item: v`city`})
       ]
    });
@@ -78,7 +85,10 @@ test_basic ::= function () {
    );
 }
 test_remove ::= function () {
-   $.changeFact($.countryCities, 'ruthenia', new Set(['kyiv', 'dnipro']));
+   $.replaceWhere($.countryCities, {country: 'ruthenia'}, rec => ({
+      ...rec,
+      cities: new Set(['kyiv', 'dnipro'])
+   }));
 
    $.checkLike(
       $.query($.countryCity, {country: 'ruthenia'}),
@@ -89,7 +99,10 @@ test_remove ::= function () {
    );
 }
 test_add ::= function () {
-   $.addFact($.countryCities, 'england', new Set(['london', 'manchester', 'sheffield']));
+   $.addFact($.countryCities, {
+      country: 'england',
+      cities: new Set(['london', 'manchester', 'sheffield'])
+   });
 
    $.checkLike($.query($.countryCity, {}), new Set([
       {country: 'poland', city: 'warsaw'},
@@ -98,11 +111,11 @@ test_add ::= function () {
       {country: 'poland', city: 'lodz'},
       {country: 'poland', city: 'poznan'},
 
-      {country: 'ukraine', city: 'kyiv'},
-      {country: 'ukraine', city: 'dnipro'},
-      {country: 'ukraine', city: 'lviv'},
-      {country: 'ukraine', city: 'odessa'},
-      {country: 'ukraine', city: 'kharkiv'},
+      {country: 'ruthenia', city: 'kyiv'},
+      {country: 'ruthenia', city: 'dnipro'},
+      {country: 'ruthenia', city: 'lviv'},
+      {country: 'ruthenia', city: 'odessa'},
+      {country: 'ruthenia', city: 'kharkiv'},
 
       {country: 'england', city: 'london'},
       {country: 'england', city: 'manchester'},

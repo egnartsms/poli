@@ -6,14 +6,10 @@ common
    filter
    isA
    map
-dedb-base
-   predFilterBy
-   suitsFilterBy
 dedb-index
    copyIndex
    indexKeys
 dedb-relation
-   rkeyX2pairFn
    rec2pair
    rec2pairFn
    rec2valFn
@@ -21,38 +17,37 @@ dedb-relation
    recordCollection
 -----
 refBaseInstance ::= function (rel, desired) {
-   let inst = $.refExistingInstance(rel.myIndexInstances, desired);
+   let inst = $.refExistingInstance(rel.myInsts, desired);
 
-   $.assert(() => inst !== null);
+   $.assert(() => inst !== undefined);
 
    return inst;
 }
 refDerivedInstance ::= function (proj, desired) {
    $.assert(() => proj.kind === 'derived');
 
-   let inst = $.refExistingInstance(proj.myIndexInstances, desired);
+   let inst = $.refExistingInstance(proj.myInsts, desired);
 
-   if (inst !== null) {
+   if (inst !== undefined) {
       return inst;
    }
 
    inst = $.makeIndexInstance(proj, desired);
    inst.refCount += 1;
-   proj.myIndexInstances.add(inst);
+   proj.myInsts.push(inst);
 
-   $.rebuildIndex(inst, proj.records.pairs());
+   $.rebuildIndex(inst, proj.records);
 
    return inst;
 }
-refExistingInstance ::= function (indexInstances, desired) {
-   for (let inst of indexInstances) {
-      if ($.arraysEqual(inst.index, desired)) {
-         inst.refCount += 1;
-         return inst;
-      }
+refExistingInstance ::= function (instances, desired) {
+   let inst = instances.find(({index}) => $.arraysEqual(index, desired));
+
+   if (inst !== undefined) {
+      inst.refCount += 1;
    }
 
-   return null;
+   return inst;
 }
 releaseIndexInstance ::= function (inst) {
    $.assert(() => inst.refCount > 0);
@@ -60,9 +55,12 @@ releaseIndexInstance ::= function (inst) {
    inst.refCount -= 1;
 
    if (inst.refCount === 0) {
-      let deleted = inst.owner.myIndexInstances.delete(inst);
+      let insts = inst.owner.myInsts;
+      let idx = insts.findIndex(inst);
 
-      $.assert(() => deleted);
+      $.assert(() => idx !== -1);
+
+      insts.splice(idx, 1);
    }
 }
 makeIndexInstance ::= function (owner, index) {
@@ -98,9 +96,6 @@ indexRef ::= function* (inst, keys) {
       }
    }(inst.map, 0));
 }
-indexRefPairs ::= function (inst, keys) {
-   return $.map($.indexRef(inst, keys), inst.owner.records.rkey2pairFn);
-}
 indexRefWithBindings ::= function (inst, bindings) {
    return $.indexRef(inst, $.indexKeys(inst.index, bindings));
 }
@@ -129,20 +124,18 @@ indexRefSize ::= function (inst, keys) {
       return map.totalSize;
    }
 }
-rebuildIndex ::= function (inst, pairs) {
+rebuildIndex ::= function (inst, records) {
    inst.map.clear();
 
-   for (let [rkey, rval] of pairs) {
-      $.indexAdd(inst, rkey, rval);
+   for (let rec of records) {
+      $.indexAdd(inst, rec);
    }
 }
-indexAdd ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.owner.isKeyed || rkey === rval);
-
+indexAdd ::= function (inst, rec) {
    let {index} = inst;
 
    (function go(lvl, map) {
-      let key = rval[index[lvl]];
+      let key = rec[index[lvl]];
 
       if (lvl + 1 === index.length) {
          if (index.isUnique) {
@@ -150,17 +143,20 @@ indexAdd ::= function (inst, rkey, rval=rkey) {
                throw new Error(`Unique index violation`);
             }
 
-            map.set(key, rkey);
+            map.set(key, rec);
          }
          else {
-            let bucket = map.get(key);
+            let bucket;
 
-            if (bucket === undefined) {
+            if (map.has(key)) {
+               bucket = map.get(key);
+            }
+            else {
                bucket = new Set;
                map.set(key, bucket);
             }
 
-            bucket.add(rkey);
+            bucket.add(rec);
          }
       }
       else {
@@ -179,13 +175,11 @@ indexAdd ::= function (inst, rkey, rval=rkey) {
       map.totalSize += 1;
    })(0, inst.map);
 }
-indexRemove ::= function (inst, rkey, rval=rkey) {
-   $.assert(() => inst.owner.isKeyed || rkey === rval);
-
+indexRemove ::= function (inst, rec) {
    let {index} = inst;
 
    (function go(lvl, map) {
-      let key = rval[index[lvl]];
+      let key = rec[index[lvl]];
 
       if (!map.has(key)) {
          throw new Error(`Index missing fact`);
@@ -198,7 +192,7 @@ indexRemove ::= function (inst, rkey, rval=rkey) {
          else {
             let bucket = map.get(key);
 
-            bucket.delete(rkey);
+            bucket.delete(rec);
 
             if (bucket.size === 0) {
                map.delete(key);
@@ -217,4 +211,9 @@ indexRemove ::= function (inst, rkey, rval=rkey) {
 
       map.totalSize -= 1;
    })(0, inst.map);
+}
+indexRemoveAll ::= function (inst, recs) {
+   for (let rec of recs) {
+      $.indexRemove(inst, rec);
+   }
 }

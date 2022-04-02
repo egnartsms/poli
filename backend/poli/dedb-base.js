@@ -27,8 +27,8 @@ dedb-rec-key
 dedb-version
    refRelationState
    releaseVersion
-   versionAddPair
-   versionRemovePair
+   versionAdd
+   versionRemove
    prepareVersion
 dedb-index
    unique
@@ -53,28 +53,19 @@ dedb-relation
 -----
 baseRelation ::= function ({
    name,
-   isKeyed = false,
    entityProto = null,
    attrs = [],
    indices: indexSpecs = [],
    records = []
 }) {
-   if (entityProto !== null) {
-      isKeyed = true;
-   }
-
-   $.check(isKeyed || attrs.length > 0);
-
    let rel = {
       kind: 'base',
       name,
       attrs,
-      logAttrs: [$.recKey, ...attrs],
-      isKeyed,
-      myIndexInstances: new Set,   // initialized below
+      myInsts: [],   // initialized below
       projections: $.makeProjectionRegistry(),
       myVer: null,
-      records: new (isKeyed ? $.ExpRecords : $.ImpRecords)(records),
+      records: new Set(records),
       validRevDeps: new Set,  // 'revdeps' here means projections
       entityProto: entityProto,
    };
@@ -85,9 +76,9 @@ baseRelation ::= function ({
 
       inst.refCount += 1;  // this guarantees that 'inst' will always be alive
 
-      $.rebuildIndex(inst, rel.records.pairs());
+      $.rebuildIndex(inst, rel.records);
 
-      rel.myIndexInstances.add(inst);
+      rel.myInsts.push(inst);
    }
 
    if (entityProto !== null) {
@@ -101,54 +92,44 @@ getUniqueRecord ::= function (rel, bindings) {
 
    $.check(inst !== undefined, `Could not find suitable unique index`);
 
-   let [rkey] = $.indexRefWithBindings(inst, bindings);
+   let [rec] = $.indexRefWithBindings(inst, bindings);
 
-   if (rkey === undefined) {
+   if (rec === undefined) {
       return undefined;
    }
 
    let boundAttrs = Object.keys(bindings);
 
    if (inst.index.length < boundAttrs.length) {
-      let rval = rel.records.valueAtX(rkey);
-
       for (let attr of boundAttrs) {
-         if (!inst.index.includes(attr) && rval[attr] !== bindings[attr]) {
+         if (!inst.index.includes(attr) && rec[attr] !== bindings[attr]) {
             return undefined;
          }
       }
    }
 
-   return rel.records.recordAtX(rkey);
+   return rec;
 }
 getRecords ::= function (rel, bindings) {
    let inst = $.findSuitableIdxInst(rel, bindings);
 
    $.check(inst !== undefined, `Could not find suitable index`);
 
-   let rkeys = $.indexRefWithBindings(inst, bindings);
+   let recs = $.indexRefWithBindings(inst, bindings);
    let filterBy = $.computeFilterBy(bindings, inst.index);
 
    if (filterBy.length === 0) {
-      return $.map(rkeys, rkey => rel.records.recordAtX(rkey));
+      return recs;
    }
 
-   return $.mapfilter(rkeys, rkey => {
-      let rval = rel.records.valueAtX(rkey);
-
-      if ($.suitsFilterBy(rval, filterBy)) {
-         return rel.records.recordAtX(rkey);
-      }
-   });
+   return $.filter(recs, rec => $.suitsFilterBy(rec, filterBy));
 }
 findUniqueIdxInst ::= function (rel, bindings) {
-   return $.find(
-      rel.myIndexInstances, ({index}) => $.isUniqueHitByBindings(index, bindings)
-   );
+   return rel.myInsts.find(({index}) => $.isUniqueHitByBindings(index, bindings))
 }
 findSuitableIdxInst ::= function (rel, bindings) {
    let [inst, fitness] = $.greatestBy(
-      rel.myIndexInstances,
+      rel.myInsts,
       ({index}) => $.indexFitnessByBindings(index, bindings)
    );
 
@@ -157,22 +138,14 @@ findSuitableIdxInst ::= function (rel, bindings) {
 computeFilterBy ::= function (bindings, exceptAttrs=[]) {
    return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
 }
-suitsFilterBy ::= function (rval, filterBy) {
+suitsFilterBy ::= function (rec, filterBy) {
    for (let [attr, val] of filterBy) {
-      if (rval[attr] !== val) {
+      if (rec[attr] !== val) {
          return false;
       }
    }
 
    return true;
-}
-predFilterBy ::= function (isKeyed, filterBy) {
-   if (isKeyed) {
-      return ([rkey, rval]) => $.suitsFilterBy(rval, filterBy);
-   }
-   else {
-      return rec => $.suitsFilterBy(rec, filterBy);
-   }
 }
 makeProjection ::= function (rel, bindings) {
    bindings = $.noUndefinedProps(bindings);
@@ -180,7 +153,6 @@ makeProjection ::= function (rel, bindings) {
    let proj = {
       kind: '',  // initialized below
       rel,
-      isKeyed: rel.isKeyed,
       refCount: 0,
       regPoint: null,   // initialized by the calling code
       isValid: false,
@@ -188,45 +160,33 @@ makeProjection ::= function (rel, bindings) {
       fullRecords: rel.records,
    };
 
-   if ($.hasOwnProperty(bindings, $.recKey)) {
-      let rkey = bindings[$.recKey];
+   let inst = $.findSuitableIdxInst(rel, bindings);
 
-      proj.kind = 'rec-key-bound';
-      proj.rkey = rkey;
-      proj.rval = undefined;
-      // 'recKey' won't be included in 'filterBy' because it excludes all symbols
-      proj.filterBy = $.computeFilterBy(bindings);
+   if (inst !== undefined && inst.index.isUnique) {
+      proj.kind = 'unique-hit';
+      proj.inst = inst;
+      proj.keys = $.indexKeys(inst.index, bindings);
+      proj.filterBy = $.computeFilterBy(bindings, inst.index);
+      proj.rec = undefined;
    }
    else {
-      let inst = $.findSuitableIdxInst(rel, bindings);
-
-      if (inst !== undefined && inst.index.isUnique) {
-         proj.kind = 'unique-hit';
-         proj.inst = inst;
-         proj.keys = $.indexKeys(inst.index, bindings);
-         proj.filterBy = $.computeFilterBy(bindings, inst.index);
-         proj.rkey = undefined;
-         proj.rval = undefined;
+      let filterBy = $.computeFilterBy(bindings);
+      
+      if (inst === undefined && filterBy.length === 0) {
+         proj.kind = 'full';
+         Object.defineProperty(proj, 'myVer', {
+            configurable: true,
+            enumerable: true,
+            get() {
+               return this.rel.myVer;
+            }
+         })
       }
       else {
-         let filterBy = $.computeFilterBy(bindings);
-         
-         if (inst === undefined && filterBy.length === 0) {
-            proj.kind = 'full';
-            Object.defineProperty(proj, 'myVer', {
-               configurable: true,
-               enumerable: true,
-               get() {
-                  return this.rel.myVer;
-               }
-            })
-         }
-         else {
-            proj.kind = 'partial';
-            proj.myVer = null;
-            proj.depVer = null;
-            proj.filterBy = filterBy;
-         }
+         proj.kind = 'partial';
+         proj.myVer = null;
+         proj.depVer = null;
+         proj.filterBy = filterBy;
       }
    }
 
@@ -246,42 +206,15 @@ updateProjection ::= function (proj) {
 
    if (kind === 'full')
       ;
-   else if (kind === 'rec-key-bound') {
-      let {rkey, filterBy} = proj;
-      
-      let newRval;
-
-      if (rel.records.hasAt(rkey)) {
-         newRval = rel.records.valueAtX(rkey);
-
-         if (!$.suitsFilterBy(newRval, filterBy)) {
-            newRval = undefined;
-         }
-      }
-      else {
-         newRval = undefined;
-      }
-
-      proj.rval = newRval;
-   }
    else if (kind === 'unique-hit') {
       let {inst, keys, filterBy} = proj;
-      let [rkey] = $.indexRef(inst, keys);
-      let rval;
+      let [rec] = $.indexRef(inst, keys);
 
-      if (rkey === undefined) {
-         rval = undefined;
+      if (rec !== undefined && !$.suitsFilterBy(rec, filterBy)) {
+         rec = undefined;
       }
-      else {
-         rval = rel.records.valueAtX(rkey);
-
-         if (rval !== proj.rval && !$.suitsFilterBy(rval, filterBy)) {
-            rkey = rval = undefined;
-         }
-      }
-
-      proj.rkey = rkey;
-      proj.rval = rval;
+      
+      proj.rec = rec;
    }
    else if (kind === 'partial') {
       $.assert(() => (proj.depVer === null) === (proj.myVer === null));
@@ -289,15 +222,15 @@ updateProjection ::= function (proj) {
       if (proj.depVer !== null) {
          $.prepareVersion(proj.depVer);
 
-         for (let [rkey, rval] of proj.depVer.removed.entries()) {
-            if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.versionRemovePair(proj.myVer, rkey, rval);
+         for (let rec of proj.depVer.removed) {
+            if ($.suitsFilterBy(rec, proj.filterBy)) {
+               $.versionRemove(proj.myVer, rec);
             }
          }
 
-         for (let [rkey, rval] of proj.depVer.added.entries()) {
-            if ($.suitsFilterBy(rval, proj.filterBy)) {
-               $.versionAddPair(proj.myVer, rkey, rval);
+         for (let rec of proj.depVer.added) {
+            if ($.suitsFilterBy(rec, proj.filterBy)) {
+               $.versionAdd(proj.myVer, rec);
             }
          }
 
@@ -312,67 +245,68 @@ updateProjection ::= function (proj) {
 
    $.markAsValid(proj);
 }
-addFact ::= function (rel, rkey, rval=rkey) {
-   $.check(rel.isKeyed || rkey === rval, `Keyed/non-keyed misuse`);
-   $.check(!rel.records.hasAt(rkey), `Duplicate record`);
+addFact ::= function (rel, rec) {
+   $.check(!rel.records.has(rec), `Duplicate record`);
 
-   rel.records.addPair(rkey, rval);
+   rel.records.add(rec);
 
    if (rel.myVer !== null) {
-      $.versionAddPair(rel.myVer, rkey, rval);
+      $.versionAdd(rel.myVer, rec);
    }
 
-   for (let inst of rel.myIndexInstances) {
-      $.indexAdd(inst, rkey, rval);
+   for (let inst of rel.myInsts) {
+      $.indexAdd(inst, rec);
    }
    
-   if (rel.entityProto !== null) {
-      rkey[$.symTuple] = rval;
-   }
+   // if (rel.entityProto !== null) {
+   //    rkey[$.symTuple] = rval;
+   // }
 
    $.invalidate(rel);
 }
-removeFact ::= function (rel, rkey) {
-   let rval = rel.records.valueAt(rkey);
-
-   if (rval === undefined) {
+removeFact ::= function (rel, rec) {
+   if (!rel.records.has(rec) === undefined) {
       throw new Error(`Missing record`);
    }
 
-   $.doRemove(rel, rkey, rval);
+   $.doRemove(rel, rec);
    $.invalidate(rel);
 }
 removeIf ::= function (rel, pred) {
-   let toRemove = Array.from($.filter(rel.records.records(), pred));
+   let toRemove = Array.from($.filter(rel.records, pred));
 
    for (let rec of toRemove) {
-      let [rkey, rval] = rel.isKeyed ? rec : [rec, rec];
-
-      $.doRemove(rel, rkey, rval);
+      $.doRemove(rel, rec);
    }
 
    $.invalidate(rel);
 }
-doRemove ::= function (rel, rkey, rval) {
-   rel.records.removeAt(rkey);
+replaceWhere ::= function (rel, bindings, replacer) {
+   let recs = Array.from($.getRecords(rel, bindings));
 
-   if (rel.myVer !== null) {
-      $.versionRemovePair(rel.myVer, rkey, rval);
-   }
+   for (let rec of recs) {
+      let newRec = replacer(rec);
 
-   for (let inst of rel.myIndexInstances) {
-      $.indexRemove(inst, rkey, rval);
-   }
-
-   if (rel.entityProto !== null) {
-      rkey[$.symTuple] = null;
+      if (newRec !== undefined) {
+         $.removeFact(rel, rec);
+         $.addFact(rel, newRec);
+      }
    }
 }
-changeFact ::= function (rel, rkey, rvalNew) {
-   $.check(rel.isKeyed, `Cannot change fact in a non-keyed relation`);
-   
-   $.removeFact(rel, rkey);
-   $.addFact(rel, rkey, rvalNew);
+doRemove ::= function (rel, rec) {
+   rel.records.delete(rec);
+
+   if (rel.myVer !== null) {
+      $.versionRemove(rel.myVer, rec);
+   }
+
+   for (let inst of rel.myInsts) {
+      $.indexRemove(inst, rec);
+   }
+
+   // if (rel.entityProto !== null) {
+   //    rkey[$.symTuple] = null;
+   // }
 }
 symTuple ::= Symbol.for('poli.tuple')
 symRelation ::= Symbol.for('poli.relation')

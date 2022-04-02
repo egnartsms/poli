@@ -87,27 +87,19 @@ makeLvar ::= function (name) {
       [$.lvarSym]: name
    }
 }
-use ::= function (rel, rkey, bindings) {
-   if (arguments.length === 2) {
-      bindings = rkey;
-      rkey = undefined;
-   }
-
-   if (rkey !== undefined) {
-      $.check($.isStatefulRelation(rel) && rel.logAttrs[0] === $.recKey, () =>
-         `Cannot grab the rec key of relation '${rel.name}': makes no sense`
-      );
-   }
-
-   if ($.isLvar(bindings)) {
-      $.check(
-         rel.kind === 'base' && rel.isKeyed || rel.kind === 'derived' && rel.isUnwrapped,
-         () => `Cannot grab the rec val of relation '${rel.name}': makes no sense`
-      )
-   }
-
-   let firmBindings = $.computeFirmBindings(rkey, bindings);
-   let looseBindings = $.computeLooseBindings(rkey, bindings);
+use ::= function (rel, bindings) {
+   let firmBindings = new Map(
+      $.filter($.ownEntries(bindings), ([a, val]) => {
+         return val !== undefined && !$.isLvar(val);
+      })
+   );
+   let looseBindings = new Map(
+      $.mapfilter($.ownEntries(bindings), ([a, lvar]) => {
+         if ($.isLvar(lvar)) {
+            return [a, lvar[$.lvarSym]];
+         }
+      })
+   );
    
    {
       let vars = Array.from(looseBindings.values());
@@ -125,45 +117,7 @@ use ::= function (rel, rkey, bindings) {
       looseBindings,
    }
 }
-computeFirmBindings ::= function (rkey, bindings) {
-   let firms = new Map(
-      $.isLvar(bindings) ? [] :
-         $.mapfilter(Object.entries(bindings), ([a, val]) => {
-            if (val !== undefined && !$.isLvar(val)) {
-               return [a, val];
-            }
-         })
-   );
-
-   if (rkey !== undefined && !$.isLvar(rkey)) {
-      firms.set($.recKey, rkey);
-   }
-
-   return firms;
-}
-computeLooseBindings ::= function (rkey, bindings) {
-   let loose;
-
-   if ($.isLvar(bindings)) {
-      loose = new Map([[$.recVal, bindings[$.lvarSym]]]);
-   }
-   else {
-      loose = new Map(
-         $.mapfilter(Object.entries(bindings), ([a, lvar]) => {
-            if ($.isLvar(lvar)) {
-               return [a, lvar[$.lvarSym]];
-            }
-         })
-      );
-   }
-
-   if ($.isLvar(rkey)) {
-      loose.set($.recKey, rkey[$.lvarSym]);
-   }
-   
-   return loose;
-}
-buildGoalTree ::= function (root0, logAttrs) {
+buildGoalTree ::= function (root0, attrs) {
    if (root0 instanceof Array) {
       root0 = {
          kind: 'and',
@@ -179,12 +133,12 @@ buildGoalTree ::= function (root0, logAttrs) {
 
    let root1 = $.buildTree1(root0);
 
-   $.checkVarUsage(root1, logAttrs);
+   $.checkVarUsage(root1, attrs);
 
    let vars = $.collectLooseVars(root1);
    let varsNE = $.collectNonEvaporatableVars(root1);
 
-   $.intersect(varsNE, logAttrs);
+   $.intersect(varsNE, attrs);
 
    let {
       firmVarBindings,
@@ -192,7 +146,7 @@ buildGoalTree ::= function (root0, logAttrs) {
       root: root2,
       firms,
       subRoutes
-   } = $.buildTree2(root1, logAttrs);
+   } = $.buildTree2(root1, attrs);
    let numDeps = $.setupDepNums(root2);
 
    return {
@@ -281,10 +235,10 @@ buildTree1 ::= function (root0) {
 
    return convertConj(root0);
 }
-checkVarUsage ::= function (root1, logAttrs) {
+checkVarUsage ::= function (root1, attrs) {
    let {open, closed} = $.openClosedVars(root1);
 
-   for (let lvar of logAttrs) {
+   for (let lvar of attrs) {
       $.addOpenVar(open, closed, lvar);
    }
 
@@ -382,7 +336,7 @@ collectNonEvaporatableVars ::= function (root1) {
 
    return varsNE;
 }
-buildTree2 ::= function (root1, logAttrs) {
+buildTree2 ::= function (root1, attrs) {
    // Goals and tree v2 differ from those v1 in the following:
    //   * we introduce firm vars and fictitious vars
    //   * rel goals have just 'bindings' (rather than 'firmBindings', 'looseBindings')
@@ -390,7 +344,7 @@ buildTree2 ::= function (root1, logAttrs) {
    let firmVarBindings = new Map;
    let fictitiousVars = new Set;
    let firms = [];
-   let subRoutes = new Map($.map(logAttrs, a => [a, []]));
+   let subRoutes = new Map($.map(attrs, a => [a, []]));
    let varNum = 0;
    let subNum = 0;
 

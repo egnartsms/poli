@@ -77,13 +77,13 @@ setup ::= function () {
 }
 test_basic ::= function () {
    $.checkLike(
-      new Set($.query($.relevantCountryPopulation, {})),
-      [
+      $.query($.relevantCountryPopulation, {}),
+      new Set([
          {country: 'canada', population: 35},
          {country: 'france', population: 67},
          {country: 'england', population: 56},
          {country: 'usa', population: 300},
          {country: 'china', population: 1398}
-      ]
+      ])
    );
 }
