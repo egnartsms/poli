@@ -145,121 +145,67 @@ ImpRecords ::= class ImpRecords {
    }
 }
 RecDependencies ::= class RecDependencies {
-   constructor(numDeps, isKeyed) {
-      this.rkey2rval = isKeyed ? new Map : null;
-      // forward: rkey -> [subkey, subkey, ...]
-      this.rkey2subkeys = new Map;
-      // backward: [ {subkey -> Set{rkey, rkey, ...}}, ...], numDeps in length
-      this.Asubkey2rkeys = $.produceArray(numDeps, $.multimap);
+   constructor(numDeps) {
+      // forward: rec -> [subrec, subrec, ...]
+      this.rec2subs = new Map;
+      // backward: [ {subrec -> Set{rec, rec, ...}}, ... ], numDeps in length
+      this.Asub2recs = $.produceArray(numDeps, () => new Map);
    }
 
-   pairs() {
-      if (this.rkey2rval === null) {
-         return $.map(this.rkey2subkeys.keys(), rec => [rec, rec]);
-      }
-      else {
-         return this.rkey2rval.entries();
-      }
-   }
-
-   records() {
-      return this.rkey2rval === null ?
-         this.rkey2subkeys.keys() :
-         this.rkey2rval.entries();
+   [Symbol.iterator]() {
+      return this.rec2subs.keys();
    }
 
    get size() {
-      return this.rkey2subkeys.size;
+      return this.rec2subs.size;
    }
 
    clear() {
-      this.rkey2subkeys.clear();
-      for (let mmap of this.Asubkey2rkeys) {
+      this.rec2subs.clear();
+      for (let mmap of this.Asub2recs) {
          mmap.clear();
       }
-
-      if (this.rkey2rval !== null) {
-         this.rkey2rval.clear();
-      }
    }
 
-   hasAt(rkey) {
-      return this.rkey2subkeys.has(rkey);
-   }
+   add(rec, subs) {
+      subs = Array.from(subs);
+      this.rec2subs.set(rec, subs);
 
-   valueAt(rkey) {
-      return (this.rkey2rval === null) ?
-         (this.rkey2subkeys.has(rkey) ? rkey : undefined) :
-         this.rkey2rval.get(rkey);
-   }
-
-   valueAtX(rkey) {
-      return (this.rkey2rval === null) ? rkey : this.rkey2rval.get(rkey);
-   }
-
-   get rkey2pairFn() {
-      return (this.rkey2rval === null) ?
-         (rkey => [rkey, rkey]) :
-         (rkey => [rkey, this.rkey2rval.get(rkey)])
-   }
-
-   // [Symbol.iterator]() {
-   //    if (this.rkey2rval === null) {
-   //       return this.rkey2subkeys.keys();
-   //    }
-   //    else {
-   //       return this.rkey2rval[Symbol.iterator]();
-   //    }
-   // }
-
-   addDependency(rkey, subkeys, rval) {
-      subkeys = Array.from(subkeys);
-      this.rkey2subkeys.set(rkey, subkeys);
-
-      for (let [mmap, subkey] of $.zip(this.Asubkey2rkeys, subkeys)) {
-         if (subkey !== null) {
-            $.mmapAdd(mmap, subkey, rkey);
+      for (let [mmap, sub] of $.zip(this.Asub2recs, subs)) {
+         if (sub !== null) {
+            $.mmapAdd(mmap, sub, rec);
          }
       }
-
-      if (this.rkey2rval !== null) {
-         this.rkey2rval.set(rkey, rval);
-      }
    }
 
-   removeAt(rkey) {
-      let subkeys = this.rkey2subkeys.get(rkey);
-
-      for (let [mmap, subkey] of $.zip(this.Asubkey2rkeys, subkeys)) {
-         if (subkey !== null) {
-            $.mmapDelete(mmap, subkey, rkey);
-         }
-      }
-
-      this.rkey2subkeys.delete(rkey);
-
-      if (this.rkey2rval !== null) {
-         this.rkey2rval.delete(rkey);
-      }
-   }
-
-   removeDependency(depNum, subkey) {
+   removeSub(depNum, sub) {
       // We need to make a copy because this set is going to be modified inside the loop
-      let pairs = Array.from(
-         // .get(subkey) might very well return undefined. Imagine this:
-         // 'rkey' depends on ['subkey1', 'subkey2', 'subkey3'].
-         // Then 'subkey1' and 'subkey2' are both removed from subprojections, so this
-         // function is called 2 times. But during the first call, 'rkey' will be entirely
+      let recs = Array.from(
+         // .get(sub) might very well return undefined. Imagine this:
+         // 'rec' depends on ['sub1', 'sub2', 'sub3'].
+         // Then 'sub1' and 'sub2' are both removed from subprojections, so this
+         // function is called 2 times. But during the first call, 'rec' will be entirely
          // deleted, so the second call won't find anything. We should handle this.
-         this.Asubkey2rkeys[depNum].get(subkey) ?? [],
-         this.rkey2pairFn
+         this.Asub2recs[depNum].get(sub) ?? []
       );
 
-      for (let [rkey] of pairs) {
-         this.removeAt(rkey);
+      for (let rec of recs) {
+         this.remove(rec);
       }
 
-      return pairs;
+      return recs;
+   }
+
+   remove(rec) {
+      let subs = this.rec2subs.get(rec);
+
+      for (let [sub2recs, sub] of $.zip(this.Asub2recs, subs)) {
+         if (sub !== null) {
+            $.mmapDelete(sub2recs, sub, rec);
+         }
+      }
+
+      this.rec2subs.delete(rec);
    }
 }
 deleteIntersection ::= function (recsA, recsB) {

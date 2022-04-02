@@ -4,8 +4,6 @@ test-dedb-base
    * as: base
 test-dedb-derived
    * as: derived
-test-dedb-keyed
-   * as: keyed
 test-dedb-disjunction
    * as: disjunction
 test-dedb-func-1
@@ -17,7 +15,6 @@ runTests ::= function () {
    console.time('tests');
    $.runTestsIn('base', $.base);
    $.runTestsIn('derived', $.derived);
-   $.runTestsIn('keyed', $.keyed);
    $.runTestsIn('disjunction', $.disjunction);
    $.runTestsIn('func-1', $.func1);
    $.runTestsIn('func-2', $.func2);
@@ -28,10 +25,9 @@ runTests ::= function () {
 runTestsIn ::= function (moduleName, ns) {
    console.log('---', moduleName);
 
-   ns['setup']();
-
    for (let [k, v] of Object.entries(ns)) {
       if (k.startsWith('test_')) {
+         ns['setup']();
          $.clearProjectionCache();
 
          let t0 = performance.now();

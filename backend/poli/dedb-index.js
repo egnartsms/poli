@@ -49,10 +49,6 @@ Fitness ::= ({
    minimum: -100,  // unless we have that large indices (we don't)
    hit: 0,         // this must be 0 because of the way we computeFitness()
    uniqueHit: 1,
-   // this is required to be > uniqueHit because if there are 2 ways to join a goal:
-   // unique index hit and rec key hit, we must use the latter since we refuse from
-   // introducing 'rkeyCheck' (we only have 'rkeyExtract')
-   rkeyHit: 2,
 })
 indexFitnessByBindings ::= function (index, bindings) {
    return $.indexFitnessByBounds(

@@ -72,10 +72,14 @@ makeConfig ::= function (rel, boundAttrs) {
       let ffs;
 
       if (goal.isStateful) {
-         ffs = $.statefulGoalFulfillments(goal);
-         ffs = goal.isDerived ?
-            Array.from(ffs, ff => $.reduceByDeadBound(ff, isDeadBound)) :
-            Array.from(ffs);
+         if (goal.isDerived) {
+            ffs = $.derivedGoalFulfillments(goal, isDeadBound);
+         }
+         else {
+            ffs = $.baseGoalFulfillments(goal);
+         }
+
+         ffs = Array.from(ffs);
       }
       else {
          ffs = Array.from($.funcGoalFulfillments(goal, vpool));
@@ -100,10 +104,8 @@ makeConfig ::= function (rel, boundAttrs) {
 
    return {
       attrs: rel.attrs.filter(v => !boundAttrs.includes(v)),
-      // bound logAttrs that are non-evaporatable
-      nonEvaporated: rel.logAttrs.filter(
-         a => boundAttrs.includes(a) && rel.varsNE.has(a)
-      ),
+      // bound attrs that are non-evaporatable
+      nonEvaporated: rel.attrs.filter(a => boundAttrs.includes(a) && rel.varsNE.has(a)),
       // array of variables used in computations. Does not include non-evaporated and firm
       // vars
       vars,
@@ -235,16 +237,6 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
          }
       }
 
-      if (ff.join === 'rec-key') {
-         return {
-            kind: 'rec-key',
-            subNum: goal.subNum,
-            rkeyVar: ff.rkeyVar,
-            ...propsForCheckExtract(goal.bindings),
-            next: null
-         }
-      }
-
       if (ff.join === 'index') {
          let keys = Array.from($.takeWhile(ff.keys, isBound));
 
@@ -266,33 +258,13 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
    function propsForCheckExtract(bindings, noCheck=[]) {
       let toCheck = [];
       let toExtract = [];
-      let rkeyExtract = null;
-      let rvalExtract = null;
-      let rvalCheck = null;
 
       for (let [attr, lvar] of bindings) {
          if (isDeadBound(lvar)) {
             continue;
          }
 
-         if (attr === $.recKey) {
-            if (isBound(lvar)) {
-               // Nothing to do here as bound recKey should've been used in a 'rec-key'
-               // join node
-            }
-            else {
-               rkeyExtract = lvar;
-            }
-         }
-         else if (attr === $.recVal) {
-            if (isBound(lvar)) {
-               rvalCheck = lvar;
-            }
-            else {
-               rvalExtract = lvar;
-            }
-         }
-         else if (isBound(lvar)) {
+         if (isBound(lvar)) {
             if (!noCheck.includes(lvar)) {
                toCheck.push([attr, lvar]);
             }
@@ -303,9 +275,6 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
       }
 
       return {
-         rkeyExtract,
-         rvalExtract,
-         rvalCheck,
          toCheck,
          toExtract,
       }
@@ -318,10 +287,6 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
 
       if (ff.join === 'func') {
          return $.all(ff.inVars, isBound) ? ff.fitness : $.Fitness.minimum;
-      }
-
-      if (ff.join === 'rec-key') {
-         return isBound(ff.rkeyVar) ? $.Fitness.rkeyHit : $.Fitness.minimum;
       }
 
       if (ff.join === 'index') {
@@ -398,7 +363,7 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
       return jhead;
    }
 
-   let {rkeyExtract, rvalExtract, toExtract} = propsForCheckExtract(Dgoal.bindings);
+   let {toExtract} = propsForCheckExtract(Dgoal.bindings);
 
    let goals;
 
@@ -415,8 +380,6 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
 
    return {
       jroot: buildTree(goals),
-      rkeyExtract,
-      rvalExtract,
       toExtract,
       depNum: Dgoal.depNum,
    }
@@ -458,21 +421,10 @@ funcGoalFulfillments ::= function* (goal, vpool) {
       }
    }
 }
-statefulGoalFulfillments ::= function* (goal) {
+baseGoalFulfillments ::= function* (goal) {
    let {bindings, rel} = goal;
 
-   if (bindings.has($.recKey)) {
-      yield {
-         goal,
-         join: 'rec-key',
-         rkeyVar: bindings.get($.recKey)
-      }
-   }
-
-   let indices = goal.isDerived ? rel.indices :
-      Array.from(rel.myIndexInstances, inst => inst.index);
-
-   for (let index of indices) {
+   for (let {index} of rel.myInsts) {
       let keys = [];
 
       for (let attr of index) {
@@ -493,47 +445,51 @@ statefulGoalFulfillments ::= function* (goal) {
       }
    }
 }
-reduceByDeadBound ::= function (ff, isDeadBound) {
-   $.assert(() => ff.goal.isStateful && ff.goal.isDerived);
+derivedGoalFulfillments ::= function* (goal, isDeadBound) {
+   let {bindings, rel} = goal;
 
-   if (ff.join === 'rec-key') {
-      if (isDeadBound(ff.rkeyVar)) {
-         return {
-            goal: ff.goal,
+   for (let sourceIndex of rel.indices) {
+      let index = [];
+      let keys = [];
+      let worked = false;
+
+      for (let attr of sourceIndex) {
+         if (!bindings.has(attr)) {
+            break;
+         }
+
+         let lvar = bindings.get(attr);
+
+         if (!isDeadBound(lvar)) {
+            index.push(attr);
+            keys.push(lvar);
+         }
+
+         worked = true;
+      }
+
+      if (!worked) {
+         continue;
+      }
+
+      if (index.length === 0) {
+         yield {
+            goal,
             join: 'all',
-            fitness: $.Fitness.rkeyHit,
+            fitness: sourceIndex.isUnique ? $.Fitness.uniqueHit : $.Fitness.hit,
          }
       }
       else {
-         return ff;
-      }
-   }
+         index.isUnique = sourceIndex.isUnique;
 
-   if (ff.join === 'index') {
-      let {bindings} = goal;
-
-      let rindex = $.reduceIndex(
-         ff.index, attr => bindings.has(attr) && isDeadBound(bindings.get(attr))
-      );
-
-      if (rindex.length === 0) {
-         return {
-            goal: ff.goal,
-            join: 'all',
-            fitness: ff.index.isUnique ? $.Fitness.uniqueHit : $.Fitness.hit,
-         }
-      }
-      else {
-         return {
-            goal: ff.goal,
+         yield {
+            goal,
             join: 'index',
-            index: rindex,
-            keys: ff.keys.filter(lvar => !isDeadBound(lvar))
+            index,
+            keys
          }
       }
    }
-
-   throw new Error;
 }
 registerIndex ::= function (registry, subNum, index) {
    let n = registry.findIndex(({subNum: xSubNum, index: xIndex}) => {

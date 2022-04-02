@@ -36,10 +36,6 @@ refProjectionState ::= function (proj) {
       return proj.myVer;
    }
 
-   if (proj.kind === 'rec-key-bound') {
-      return $.makeRecKeyBoundVersion(proj);
-   }
-
    if (proj.kind === 'unique-hit') {
       return $.makeUniqueHitVersion(proj);
    }
@@ -50,23 +46,13 @@ refProjectionState ::= function (proj) {
 
    throw new Error;
 }
-makeRecKeyBoundVersion ::= function (proj) {
-   $.assert(() => proj.kind === 'rec-key-bound');
-
-   return {
-      kind: 'rec-key-bound',
-      proj: proj,
-      rval: proj.rval
-   }
-}
 makeUniqueHitVersion ::= function (proj) {
    $.assert(() => proj.kind === 'unique-hit');
 
    return {
       kind: 'unique-hit',
       proj: proj,
-      rkey: proj.rkey,
-      rval: proj.rval,
+      rec: proj.rec,
    }
 }
 makeZeroVersion ::= function (owner) {
@@ -89,8 +75,8 @@ ensureTopmostFresh ::= function (versionable) {
       owner: versionable,
       num: 1 + (prev === null ? 0 : prev.num),
       refCount: prev === null ? 0 : 1,
-      added: new (versionable.isKeyed ? Map : Set)(),
-      removed: new (versionable.isKeyed ? Map : Set)(),
+      added: new Set,
+      removed: new Set,
       next: null,
    };
 
@@ -155,104 +141,38 @@ prepareVersion ::= function (ver) {
 
    chain.reverse();
 
-   let proc = owner.isKeyed ? $.unchain1keyed : $.unchain1tupled;
-
    for (let ver of chain) {
       let next = ver.next;
 
-      proc(ver);
+      if (next.refCount === 1) {
+         $.deleteIntersection(ver.added, next.removed);
+         $.deleteIntersection(ver.removed, next.added);
+
+         let [ga, la] = $.greaterLesser(ver.added, next.added);
+         let [gr, lr] = $.greaterLesser(ver.removed, next.removed);
+
+         $.addAll(ga, la);
+         $.addAll(gr, lr);
+
+         ver.added = ga;
+         ver.removed = gr;
+
+         next.added = null;
+         next.removed = null;
+      }
+      else {
+         $.versionAddAll(next.added, ver);
+         $.versionRemoveAll(next.removed, ver);
+      }
 
       ver.next = topmost;
       topmost.refCount += 1;
       $.releaseVersion(next);
    }
 }
-unchain1tupled ::= function (ver) {
-   let next = ver.next;
-   let isNextDone = next.refCount === 1;
-
-   if (isNextDone) {
-      $.deleteIntersection(ver.added, next.removed);
-      $.deleteIntersection(ver.removed, next.added);
-
-      let [ga, la] = $.greaterLesser(ver.added, next.added);
-      let [gr, lr] = $.greaterLesser(ver.removed, next.removed);
-
-      $.addAll(ga, la);
-      $.addAll(gr, lr);
-
-      ver.added = ga;
-      ver.removed = gr;
-
-      next.added = null;
-      next.removed = null;
-   }
-   else {
-      $.setSplitMerge(next.added, ver.removed, ver.added);
-      $.setSplitMerge(next.removed, ver.added, ver.removed);
-   }
-}
-unchain1keyed ::= function (ver) {
-   let next = ver.next;
-   let isNextDone = next.refCount === 1;
-
-   if (isNextDone) {
-      $.deleteIntersection(ver.added, next.removed);
-
-      let [ga, la] = $.greaterLesser(ver.added, next.added);
-      let [gr, lr] = $.greaterLesser(ver.removed, next.removed);
-
-      $.setAll(ga, la);
-      $.setAll(gr, lr);
-
-      ver.added = ga;
-      ver.removed = gr;
-
-      next.added = null;
-      next.removed = null;
-   }
-   else {
-      $.setAll(ver.added, next.added);
-      $.mapSplitMerge(next.removed, ver.added, ver.removed);
-   }
-}
-setSplitMerge ::= function (source, toRemove, toAdd) {
-   for (let x of source) {
-      $.removeOrAdd(x, toRemove, toAdd);
-   }
-}
-removeOrAdd ::= function (item, toRemove, toAdd) {
-   if (toRemove.has(item)) {
-      toRemove.delete(item);
-   }
-   else {
-      toAdd.add(item);
-   }
-}
-mapSplitMerge ::= function (source, toRemove, toAdd) {
-   for (let [key, val] of source) {
-      $.removeOrSet(key, val, toRemove, toAdd);
-   }
-}
-removeOrSet ::= function (key, val, toRemove, toAdd) {
-   if (toRemove.has(key)) {
-      toRemove.delete(key);
-   }
-   else {
-      toAdd.set(key, val);
-   }
-}
 isVersionPristine ::= function (ver) {
-   if (ver.kind === 'rec-key-bound') {
-      let {proj} = ver;
-
-      return ver.rval === proj.rval;
-   }
-
    if (ver.kind === 'unique-hit') {
-      let {proj} = ver;
-
-      return ver.rkey === proj.rkey && ver.rval === proj.rval;
+      return ver.rec === vec.proj.rec
    }
 
    if (ver.kind === 'multi') {
@@ -261,37 +181,37 @@ isVersionPristine ::= function (ver) {
 
    throw new Error;
 }
-versionAddPair ::= function (ver, rkey, rval) {
-   if (ver.owner.isKeyed) {
-      ver.added.set(rkey, rval);
+versionAdd ::= function (ver, rec) {
+   if (ver.removed.has(rec)) {
+      ver.removed.delete(rec);
    }
    else {
-      $.assert(() => rkey === rval);
-      $.removeOrAdd(rkey, ver.removed, ver.added);
+      ver.added.add(rec);
    }
 }
-versionRemovePair ::= function (ver, rkey, rval) {
-   if (ver.owner.isKeyed) {
-      $.removeOrSet(rkey, rval, ver.added, ver.removed);
+versionAddAll ::= function (vec, recs) {
+   for (let rec of recs) {
+      $.versionAdd(ver, rec);
+   }
+}
+versionRemove ::= function (ver, rec) {
+   if (ver.added.has(rec)) {
+      ver.added.delete(rec);
    }
    else {
-      $.assert(() => rkey === rval);
-      $.removeOrAdd(rkey, ver.added, ver.removed);
+      ver.removed.add(rec);
+   }
+}
+versionRemoveAll ::= function (ver, rec) {
+   for (let rec of recs) {
+      $.versionRemove(ver, rec);
    }
 }
 hasVersionAdded ::= function (ver) {
-   if (ver.kind === 'rec-key-bound') {
-      let {proj} = ver;
-
-      return ver.rval !== proj.rval && proj.rval !== undefined
-   }
-
    if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
-      return (
-         (ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined
-      )
+      return ver.rec !== proj.rec && proj.rec !== undefined
    }
 
    if (ver.kind === 'multi') {
@@ -300,82 +220,12 @@ hasVersionAdded ::= function (ver) {
 
    throw new Error;
 }
-versionAddedPairs ::= function (ver) {
-   if (ver.kind === 'rec-key-bound') {
-      let {proj} = ver;
-
-      if (ver.rval !== proj.rval && proj.rval !== undefined) {
-         return [[proj.rkey, proj.rval]];
-      }
-      else {
-         return [];
-      }
-   }
-
+versionAddedRecords ::= function (ver) {
    if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
-      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
-         return [[proj.rkey, proj.rval]];
-      }
-      else {
-         return [];
-      }
-   }
-
-   if (ver.kind === 'multi') {
-      return ver.added.entries();
-   }
-
-   throw new Error;
-}
-versionRemovedPairs ::= function (ver) {
-   if (ver.kind === 'rec-key-bound') {
-      let {proj} = ver;
-
-      if (ver.rval !== proj.rval && ver.rval !== undefined) {
-         return [[proj.rkey, ver.rval]];
-      }
-      else {
-         return [];
-      }
-   }
-
-   if (ver.kind === 'unique-hit') {
-      let {proj} = ver;
-
-      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && ver.rkey !== undefined) {
-         return [[ver.rkey, ver.rval]];
-      }
-      else {
-         return [];
-      }
-   }
-
-   if (ver.kind === 'multi') {
-      return ver.removed.entries();
-   }
-
-   throw new Error;
-}
-versionAddedKeyCont ::= function (ver) {
-   // Similar to $.versionAddedPairs() but return a set/map of keys, not just iterable
-   if (ver.kind === 'rec-key-bound') {
-      let {proj} = ver;
-
-      if (ver.rval !== proj.rval && proj.rval !== undefined) {
-         return new Set([proj.rkey]);
-      }
-      else {
-         return new Set;
-      }
-   }
-
-   if (ver.kind === 'unique-hit') {
-      let {proj} = ver;
-
-      if ((ver.rkey !== proj.rkey || ver.rval !== proj.rval) && proj.rkey !== undefined) {
-         return new Set([proj.rkey]);
+      if (ver.rec !== proj.rec && proj.rec !== undefined) {
+         return new Set([proj.rec]);
       }
       else {
          return new Set;
@@ -384,6 +234,24 @@ versionAddedKeyCont ::= function (ver) {
 
    if (ver.kind === 'multi') {
       return ver.added;
+   }
+
+   throw new Error;
+}
+versionRemovedRecords ::= function (ver) {
+   if (ver.kind === 'unique-hit') {
+      let {proj} = ver;
+
+      if (proj.rec !== ver.rec && ver.rec !== undefined) {
+         return new Set([ver.rec]);
+      }
+      else {
+         return new Set;
+      }
+   }
+
+   if (ver.kind === 'multi') {
+      return ver.removed;
    }
 
    throw new Error;

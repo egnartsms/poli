@@ -35,7 +35,7 @@ valueAt ::= function (rel, recKey) {
 
    throw new Error;
 }
-queryOne ::= function (rel, bindings) {
+query1 ::= function (rel, bindings) {
    if (rel.kind === 'base') {
       return $.getUniqueRecord(rel, bindings);
    }
@@ -45,7 +45,7 @@ queryOne ::= function (rel, bindings) {
 
       $.check(proj.records.size <= 1);
 
-      let [rec] = proj.records.records();
+      let [rec] = proj.records;
 
       return rec;
    }
@@ -60,7 +60,7 @@ query ::= function (rel, bindings) {
    if (rel.kind === 'derived') {
       let proj = $.lookupDerivedProjection(rel, bindings);
 
-      return proj.records.records();
+      return proj.records;
    }
 
    throw new Error;

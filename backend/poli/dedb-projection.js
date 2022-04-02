@@ -5,16 +5,11 @@ common
    trackingFinal
    filter
    isA
-dedb-index-instance
-   indexRef
-   indexRefSize
-   indexRefPairs
 dedb-base
    makeProjection as: makeBaseProjection
    freeProjection as: freeBaseProjection
    updateProjection as: updateBaseProjection
    suitsFilterBy
-   predFilterBy
 dedb-derived
    makeProjection as: makeDerivedProjection
    freeProjection as: freeDerivedProjection
@@ -92,7 +87,7 @@ releaseProjection ::= function (proj) {
    }
 }
 genProjectionKey ::= function* (rel, bindings) {
-   for (let attr of rel.logAttrs) {
+   for (let attr of rel.attrs) {
       yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
    }
 }
@@ -138,30 +133,27 @@ updateProjection ::= function (proj) {
    }
 }
 referentialSize ::= function (proj) {
-   if (proj.kind === 'unique-hit' || proj.kind === 'rec-key-bound') {
+   if (proj.kind === 'unique-hit') {
       return 1;
    }
 
    return proj.fullRecords.size;
 }
-projectionPairs ::= function (proj) {
+projectionRecords ::= function (proj) {
    if (proj.kind === 'derived') {
-      return proj.records.pairs();
+      return proj.records;
    }
 
    if (proj.kind === 'full') {
-      return proj.rel.records.pairs();
+      return proj.rel.records;
    }
 
-   if (proj.kind === 'unique-hit' || proj.kind === 'rec-key-bound') {
-      return [[proj.rkey, proj.rval]];
+   if (proj.kind === 'unique-hit') {
+      return proj.rec === undefined ? [] : [proj.rec];
    }
 
    if (proj.kind === 'partial') {
-      return $.filter(
-         proj.rel.records.pairs(),
-         ([, rval]) => $.suitsFilterBy(rval, proj.filterBy)
-      )
+      return $.filter(proj.rel.records, rec => $.suitsFilterBy(rec, proj.filterBy));
    }
 
    throw new Error;   

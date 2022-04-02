@@ -417,8 +417,9 @@ isLike ::= function isLike(A, B) {
    if (A === B) {
       return true;
    }
-   if (A instanceof Array) {
-      if (!(B instanceof Array) || A.length !== B.length) {
+
+   if (B instanceof Array) {
+      if (!(A instanceof Array) || A.length !== B.length) {
          return false;
       }
       for (let i = 0; i < A.length; i += 1) {
@@ -429,36 +430,30 @@ isLike ::= function isLike(A, B) {
       return true;
    }
 
-   if (A instanceof Set) {
-      if (!(B instanceof Array)) {
-         return false;
-      }
-
-      B = new Set(B);
+   if (B instanceof Set) {
+      A = new Set(A);
 
       if (A.size !== B.size) {
          return false;
       }
 
       loop:
-      for (let a of A) {
-         for (let b of B) {
+      for (let b of B) {
+         for (let a of A) {
             if (isLike(a, b)) {
-               B.delete(b);
+               A.delete(a);
                continue loop;
             }
          }
          return false;
       }
 
-      if (B.size > 0) {
-         return false;
-      }
-
       return true;
    }
 
-   if (A instanceof Map) {
+   if (B instanceof Map) {
+      throw new Error(`Not implemented`);
+
       if (!(B instanceof Array)) {
          return false;
       }
@@ -490,8 +485,8 @@ isLike ::= function isLike(A, B) {
       return true;
    }
    
-   if (typeof A === 'object') {
-      if (typeof B !== 'object') {
+   if (typeof B === 'object') {
+      if (typeof A !== 'object') {
          return false;
       }
 
