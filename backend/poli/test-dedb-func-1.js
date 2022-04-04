@@ -8,7 +8,6 @@ dedb-goal
    use
 dedb-query
    query
-   valueAt
 dedb-base
    addFact
    removeFact

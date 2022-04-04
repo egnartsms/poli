@@ -10,6 +10,8 @@ test-dedb-func-1
    * as: func1
 test-dedb-func-2
    * as: func2
+test-dedb-agg-1
+   * as: agg1
 -----
 runTests ::= function () {
    console.time('tests');
@@ -18,6 +20,7 @@ runTests ::= function () {
    $.runTestsIn('disjunction', $.disjunction);
    $.runTestsIn('func-1', $.func1);
    $.runTestsIn('func-2', $.func2);
+   $.runTestsIn('agg-1', $.agg1);
    $.clearProjectionCache();
    console.log('--- DONE');
    console.timeEnd('tests')

@@ -8,6 +8,8 @@ set-map
    greaterLesser
    addAll
    setAll
+dedb-projection
+   projectionRecords
 -----
 refRelationState ::= function (rel) {
    $.assert(() => rel.kind === 'base');
@@ -56,8 +58,9 @@ makeUniqueHitVersion ::= function (proj) {
    }
 }
 makeZeroVersion ::= function (owner) {
-   // Zero versions are not used yet. They will be needed when/if you implement the
-   // combined full + partial derived projection computation algorithm
+   // Zero versions are used for aggregate relations. For derived relations they are not
+   // used yet. They will be needed when/if you implement the combined full + partial
+   // derived projection computation algorithm
    return {
       kind: 'zero',
       owner
@@ -207,33 +210,24 @@ versionRemoveAll ::= function (ver, rec) {
       $.versionRemove(ver, rec);
    }
 }
-hasVersionAdded ::= function (ver) {
-   if (ver.kind === 'unique-hit') {
-      let {proj} = ver;
-
-      return ver.rec !== proj.rec && proj.rec !== undefined
-   }
-
-   if (ver.kind === 'multi') {
-      return ver.added.size > 0;
-   }
-
-   throw new Error;
-}
 versionAddedRecords ::= function (ver) {
    if (ver.kind === 'unique-hit') {
       let {proj} = ver;
 
       if (ver.rec !== proj.rec && proj.rec !== undefined) {
-         return new Set([proj.rec]);
+         return [proj.rec];
       }
       else {
-         return new Set;
+         return [];
       }
    }
 
    if (ver.kind === 'multi') {
       return ver.added;
+   }
+
+   if (ver.kind === 'zero') {
+      return $.projectionRecords(ver.owner);
    }
 
    throw new Error;
@@ -243,15 +237,19 @@ versionRemovedRecords ::= function (ver) {
       let {proj} = ver;
 
       if (proj.rec !== ver.rec && ver.rec !== undefined) {
-         return new Set([ver.rec]);
+         return [ver.rec];
       }
       else {
-         return new Set;
+         return [];
       }
    }
 
    if (ver.kind === 'multi') {
       return ver.removed;
+   }
+
+   if (ver.kind === 'zero') {
+      return [];
    }
 
    throw new Error;

@@ -4,6 +4,7 @@ common
    chain
    check
    commonArrayPrefixLength
+   concat
    find
    isObjectWithOwnProperty
    indexRange
@@ -47,7 +48,6 @@ dedb-goal
    makeLvar
    buildGoalTree
 dedb-version
-   hasVersionAdded
    refProjectionState
    releaseVersion
    isVersionPristine
@@ -81,7 +81,7 @@ derivedRelation ::= function ({
 }) {
    $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
 
-   let root0 = bodyCallback($.taggedVarProducer);
+   let root0 = bodyCallback($.vTagged);
 
    let {
       rootGroup,
@@ -115,32 +115,15 @@ derivedRelation ::= function ({
       projections: $.makeProjectionRegistry(),
    };
 }
-taggedVarProducer ::= (function () {
-   function vTagged(strings) {
-      if (strings.length !== 1) {
-         throw new Error(`Variable names don't support inline expressions`);
-      }
-
-      let [name] = strings;
-
-      return $.makeLvar(name);
+vTagged ::= function (strings) {
+   if (strings.length !== 1) {
+      throw new Error(`Variable names don't support inline expressions`);
    }
 
-   Object.defineProperties(vTagged, {
-      key: {
-         get() {
-            return $.makeLvar($.recKey)
-         }
-      },
-      value: {
-         get() {
-            return $.makeLvar($.recVal)
-         }
-      }
-   });
+   let [name] = strings;
 
-   return vTagged;
-})()
+   return $.makeLvar(name);
+}
 makeProjection ::= function (rel, bindings) {
    bindings = $.noUndefinedProps(bindings);
 
@@ -206,7 +189,10 @@ makeProjection ::= function (rel, bindings) {
       subInsts,
       records: new $.RecDependencies(rel.numDeps),
       fullRecords: null,  // will be set to the same object as .records
+      // 'ns' and 'subRecs' are data structures needed to carry out the job of updating.
+      // It's possible to just create them on each update
       ns,
+      subrecs: new Array(rel.numDeps).fill(null),
       myVer: null,
       myInsts: [],
    };
@@ -278,14 +264,18 @@ withNsObjectCleanup ::= function (proj, callback) {
       return callback();
    }
    finally {
-      let {ns, config: {vars}} = proj;
+      let {ns, config: {vars}, subrecs} = proj;
 
       for (let lvar of vars) {
          ns[lvar] = undefined;
       }
+
+      subrecs.fill(null);
    }
 }
 rebuildProjection ::= function (proj) {
+   $.check(proj.myVer === null, `Cannot rebuild projection which is being referred to`);
+
    for (let sub of proj.subs) {
       $.updateGenericProjection(sub.proj);
    }
@@ -378,11 +368,9 @@ updateProjection ::= function (proj) {
 
    $.withNsObjectCleanup(proj, () => {
       for (let sub of proj.subs) {
-         if ($.hasVersionAdded(sub.ver)) {
-            $.run(
-               proj, config.joinSpecs[sub.num], $.versionAddedRecords(sub.ver), sub.num
-            );
-         }
+         $.run(
+            proj, config.joinSpecs[sub.num], $.versionAddedRecords(sub.ver), sub.num
+         );
       }
    });
 
@@ -434,9 +422,14 @@ run ::= function (proj, spec, recs0, Lnum) {
       let toExclude;
 
       if (subNum < Lnum) {
-         let {ver} = proj.subs[subNum];
+         toExclude = exclusion.get(subNum);
 
-         toExclude = $.versionAddedRecords(ver);
+         if (toExclude === undefined) {
+            let {ver} = proj.subs[subNum];
+
+            toExclude = $.settify($.versionAddedRecords(ver));
+            exclusion.set(subNum, toExclude);
+         }
       }
       else {
          toExclude = new Set;
@@ -464,8 +457,8 @@ run ::= function (proj, spec, recs0, Lnum) {
       }
    }
 
-   let subrecs = new Array(proj.rel.numDeps).fill(null);   
-   let {ns} = proj;
+   let exclusion = new Map;  // subNum -> Set{rec, ...}
+   let {ns, subrecs} = proj;
    let {jroot, depNum, toExtract} = spec;
 
    for (let rec of recs0) {

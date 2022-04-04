@@ -1,9 +1,6 @@
 common
    assert
    isA
-data-structures
-   ExpRecords
-   ImpRecords
 dedb-base
    * as: base
 dedb-derived

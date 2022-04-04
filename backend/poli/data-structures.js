@@ -7,143 +7,6 @@ common
    zip
    mmapAdd
 -----
-ExpRecords ::= class ExpRecords {
-   constructor(kvpairs) {
-      this.map = new Map(kvpairs);
-   }
-
-   static fromKeyValPairs(kvpairs) {
-      return new $.ExpRecords(kvpairs);
-   }
-
-   get size() {
-      return this.map.size;
-   }
-
-   get rkey2pairFn() {
-      return rkey => [rkey, this.map.get(rkey)];
-   }
-
-   // [Symbol.iterator]() {
-   //    return this.map[Symbol.iterator]();
-   // }
-
-   pairs() {
-      return this.map;
-   }
-
-   records() {
-      return this.map.entries();
-   }
-
-   keys() {
-      return this.map.keys();
-   }
-
-   hasAt(rkey) {
-      return this.map.has(rkey);
-   }
-
-   valueAt(rkey) {
-      return this.map.get(rkey);
-   }
-
-   valueAtX(rkey) {
-      return this.map.get(rkey);
-   }
-
-   recordAtX(rkey) {
-      return [rkey, this.valueAt(rkey)];
-   }
-
-   addPair(rkey, rval) {
-      $.assert(() => !this.hasAt(rkey));
-
-      this.map.set(rkey, rval);
-   }
-
-   addPairs(recs) {
-      for (let [rkey, rval] of recs) {
-         this.addPair(rkey, rval);
-      }
-   }
-
-   removeAt(rkey) {
-      let didDelete = this.map.delete(rkey);
-      $.assert(() => didDelete);
-   }
-}
-ImpRecords ::= class ImpRecords {
-   constructor(recs) {
-      this.set = new Set(recs);
-   }
-
-   static fromKeyValPairs(kvpairs) {
-      return new $.ImpRecords(
-         $.map(kvpairs, ([rkey, rval]) => {
-            $.assert(() => rkey === rval);
-            return rkey;
-         })
-      );
-   }
-
-   get size() {
-      return this.set.size;
-   }
-
-   get rkey2pairFn() {
-      return rkey => [rkey, rkey];
-   }
-
-   // [Symbol.iterator]() {
-   //    return this.set[Symbol.iterator]();
-   // }
-
-   pairs() {
-      return this.set.entries();
-   }
-
-   records() {
-      return this.set[Symbol.iterator]();
-   }
-
-   keys() {
-      return this.set[Symbol.iterator]();
-   }
-
-   hasAt(rkey) {
-      return this.set.has(rkey);
-   }
-
-   valueAt(rkey) {
-      return this.hasAt(rkey) ? rkey : undefined;
-   }
-
-   valueAtX(rkey) {
-      return rkey;
-   }
-
-   recordAtX(rkey) {
-      return rkey;
-   }
-
-   addPair(rkey, rval) {
-      $.assert(() => rkey === rval && !this.hasAt(rkey));
-
-      this.set.add(rkey);
-   }
-
-   addPairs(recs) {
-      for (let [rkey, rval] of recs) {
-         this.addPair(rkey, rval);
-      }
-   }
-
-   removeAt(rkey) {
-      let didDelete = this.set.delete(rkey);
-      $.assert(() => didDelete);
-   }
-}
 RecDependencies ::= class RecDependencies {
    constructor(numDeps) {
       // forward: rec -> [subrec, subrec, ...]
@@ -158,6 +21,10 @@ RecDependencies ::= class RecDependencies {
 
    get size() {
       return this.rec2subs.size;
+   }
+
+   has(rec) {
+      return this.rec2subs.has(rec);
    }
 
    clear() {

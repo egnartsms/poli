@@ -2,6 +2,7 @@ common
    assert
    check
    isA
+   hasOwnProperty
 dedb-projection
    projectionFor
    releaseProjection
@@ -20,22 +21,7 @@ dumpRecencyList ::= function () {
    console.log('Q rec list:', $.recencyHead);
    console.log('Q proj cache:', $.derivedProjectionCache);
 }
-valueAt ::= function (rel, recKey) {
-   $.check(rel.isKeyed);
-
-   if (rel.kind === 'base') {
-      return rel.records.valueAt(recKey);
-   }
-
-   if (rel.kind === 'derived') {
-      let fullProj = $.lookupDerivedProjection(rel, {});
-
-      return fullProj.records.valueAt(recKey);
-   }
-
-   throw new Error;
-}
-query1 ::= function (rel, bindings) {
+query1 ::= function (rel, bindings, groupKeys=null) {
    if (rel.kind === 'base') {
       return $.getUniqueRecord(rel, bindings);
    }
@@ -48,6 +34,27 @@ query1 ::= function (rel, bindings) {
       let [rec] = proj.records;
 
       return rec;
+   }
+
+   if (rel.kind === 'aggregate') {
+      let proj = $.lookupDerivedProjection(rel, bindings);
+
+      if (groupKeys !== null) {
+         let group = proj.recordMap;
+
+         for (let key of proj.groupBy) {
+            if ($.hasOwnProperty(groupKeys, key)) {
+               group = group.get(groupKeys[key]);
+            }
+            else {
+               throw new Error(
+                  `Refer to '${rel.name}': group keys don't contain '${key}'`
+               );
+            }
+         }
+
+         return group;
+      }
    }
    
    throw new Error;
@@ -66,7 +73,7 @@ query ::= function (rel, bindings) {
    throw new Error;
 }
 lookupDerivedProjection ::= function (rel, bindings) {
-   $.assert(() => rel.kind === 'derived');
+   $.assert(() => rel.kind === 'derived' || rel.kind === 'aggregate');
 
    let proj = $.projectionFor(rel, bindings);
    let rec = $.derivedProjectionCache.get(proj);

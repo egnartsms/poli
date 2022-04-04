@@ -17,9 +17,6 @@ common
    noUndefinedProps
    selectProps
    trackingFinal
-data-structures
-   ExpRecords
-   ImpRecords
 dedb-rec-key
    recKey
    recVal
@@ -287,8 +284,13 @@ replaceWhere ::= function (rel, bindings, replacer) {
    for (let rec of recs) {
       let newRec = replacer(rec);
 
-      if (newRec !== undefined) {
-         $.removeFact(rel, rec);
+      if (newRec === undefined) {
+         continue;
+      }
+
+      $.removeFact(rel, rec);
+
+      if (newRec !== null) {
          $.addFact(rel, newRec);
       }
    }

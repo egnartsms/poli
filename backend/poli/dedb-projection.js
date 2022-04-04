@@ -6,14 +6,12 @@ common
    filter
    isA
 dedb-base
-   makeProjection as: makeBaseProjection
-   freeProjection as: freeBaseProjection
-   updateProjection as: updateBaseProjection
+   * as: base
    suitsFilterBy
 dedb-derived
-   makeProjection as: makeDerivedProjection
-   freeProjection as: freeDerivedProjection
-   updateProjection as: updateDerivedProjection
+   * as: derived
+dedb-aggregate
+   * as: agg
 dedb-rec-key
    recKey
    recVal
@@ -25,10 +23,13 @@ makeProjectionRegistry ::= function () {
 }
 makeProjection ::= function (rel, bindings) {
    if (rel.kind === 'base') {
-      return $.makeBaseProjection(rel, bindings);
+      return $.base.makeProjection(rel, bindings);
    }
    else if (rel.kind === 'derived') {
-      return $.makeDerivedProjection(rel, bindings);
+      return $.derived.makeProjection(rel, bindings);
+   }
+   else if (rel.kind === 'aggregate') {
+      return $.agg.makeProjection(rel, bindings);
    }
    else {
       throw new Error(`Cannot make projection of a relation of type '${rel.type}'`);
@@ -95,10 +96,13 @@ freeProjection ::= function (proj) {
    let {rel} = proj;
 
    if (rel.kind === 'base') {
-      $.freeBaseProjection(proj);
+      $.base.freeProjection(proj);
    }
    else if (rel.kind === 'derived') {
-      $.freeDerivedProjection(proj);
+      $.derived.freeProjection(proj);
+   }
+   else if (rel.kind === 'aggregate') {
+      $.agg.freeProjection(proj);
    }
    else {
       throw new Error;
@@ -122,11 +126,14 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if (proj.kind === 'derived') {
-      $.updateDerivedProjection(proj);
+   if (proj.rel.kind === 'base') {
+      $.base.updateProjection(proj);
    }
-   else if (proj.rel.kind === 'base') {
-      $.updateBaseProjection(proj);
+   else if (proj.kind === 'derived') {
+      $.derived.updateProjection(proj);
+   }
+   else if (proj.kind === 'aggregate') {
+      $.agg.updateProjection(proj);
    }
    else {
       throw new Error;
@@ -137,11 +144,29 @@ referentialSize ::= function (proj) {
       return 1;
    }
 
-   return proj.fullRecords.size;
+   if (proj.kind === 'derived') {
+      return proj.records.size;
+   }
+
+   if (proj.kind === 'aggregate') {
+      return proj.size;
+   }
+
+   if (proj.kind === 'partial' || proj.kind === 'full') {
+      return proj.rel.records.size;
+   }
+
+   throw new Error;
 }
 projectionRecords ::= function (proj) {
    if (proj.kind === 'derived') {
       return proj.records;
+   }
+
+   if (proj.kind === 'aggregate') {
+      let [group2agg] = proj.Agroup2agg;
+      
+      return group2agg.keys();
    }
 
    if (proj.kind === 'full') {
