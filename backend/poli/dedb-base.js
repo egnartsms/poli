@@ -342,7 +342,7 @@ removeEntity ::= function (rel, entity) {
    $.removeFact(rel, entity[rel.symRec]);
    entity[rel.symRec] = null;
 }
-setEntity ::= function (rel, newRec) {
+addEntity ::= function (rel, newRec) {
    let entity = newRec[$.symEntity];
    let oldRec = entity[rel.symRec];
 
@@ -358,7 +358,7 @@ setEntity ::= function (rel, newRec) {
 patchEntity ::= function (rel, entity, fn, ...args) {
    let newRec = fn(entity[rel.symRec], ...args);
    $.check(newRec[$.symEntity] === entity, `Invalid patchEntity logic`);
-   $.setEntity(rel, newRec);
+   $.addEntity(rel, newRec);
 }
 revertTo ::= function (ver) {
    let rel = ver.owner;
