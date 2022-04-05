@@ -4,17 +4,21 @@ common
    hasOwnProperty
    trackingFinal
    filter
+   greatestBy
    isA
 dedb-base
    * as: base
-   suitsFilterBy
 dedb-derived
    * as: derived
 dedb-aggregate
    * as: agg
-dedb-rec-key
-   recKey
-   recVal
+dedb-query
+   suitsFilterBy
+   computeFilterBy
+dedb-index
+   indexFitnessByBindings
+dedb-index-instance
+   indexRefWithBindings
 -----
 makeProjectionRegistry ::= function () {
    return Object.assign(new Map, {

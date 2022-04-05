@@ -64,15 +64,11 @@ indexFitnessByBounds ::= function (index, bounds) {
       i += 1;
    }
 
-   return $.computeFitness(i, index);
-}
-computeFitness ::= function (len, index) {
-   // todo: inline that into indexFitness if not used on its own
-   if (len === 0) {
+   if (i === 0) {
       return $.Fitness.minimum;
    }
 
-   let diff = len - index.length;
+   let diff = i - index.length;
 
    return (diff === 0 && index.isUnique) ? $.Fitness.uniqueHit : diff;
 }

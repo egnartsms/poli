@@ -10,7 +10,7 @@ vector
    * as: vec
    at
 xs-printer
-   dumpComment
+   dumpComment as: fuck
 -----
 callHim ::= function () {
    return $.exc.detour() + '!';

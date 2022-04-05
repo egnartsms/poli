@@ -47,6 +47,11 @@ dedb-projection
 dedb-relation
    rec2val
    rec2pair
+dedb-query
+   computeFilterBy
+   suitsFilterBy
+   getRecords
+   findSuitableIdxInst
 -----
 baseRelation ::= function ({
    name,
@@ -79,6 +84,8 @@ baseRelation ::= function ({
    }
 
    if (entityProto !== null) {
+      $.check(rel.attrs.includes($.symEntity));
+
       let symRec = Symbol(name);
 
       $.populateEntityProto(rel, symRec, entityProto);
@@ -94,66 +101,6 @@ invalidateRelation ::= function (rel) {
 
    rel.validRevDeps.clear();
 }
-getUniqueRecord ::= function (rel, bindings) {
-   let inst = $.findUniqueIdxInst(rel, bindings);
-
-   $.check(inst !== undefined, `Could not find suitable unique index`);
-
-   let [rec] = $.indexRefWithBindings(inst, bindings);
-
-   if (rec === undefined) {
-      return undefined;
-   }
-
-   let boundAttrs = Object.keys(bindings);
-
-   if (inst.index.length < boundAttrs.length) {
-      for (let attr of boundAttrs) {
-         if (!inst.index.includes(attr) && rec[attr] !== bindings[attr]) {
-            return undefined;
-         }
-      }
-   }
-
-   return rec;
-}
-getRecords ::= function (rel, bindings) {
-   let inst = $.findSuitableIdxInst(rel, bindings);
-
-   $.check(inst !== undefined, `Could not find suitable index`);
-
-   let recs = $.indexRefWithBindings(inst, bindings);
-   let filterBy = $.computeFilterBy(bindings, inst.index);
-
-   if (filterBy.length === 0) {
-      return recs;
-   }
-
-   return $.filter(recs, rec => $.suitsFilterBy(rec, filterBy));
-}
-findUniqueIdxInst ::= function (rel, bindings) {
-   return rel.myInsts.find(({index}) => $.isUniqueHitByBindings(index, bindings))
-}
-findSuitableIdxInst ::= function (rel, bindings) {
-   let [inst, fitness] = $.greatestBy(
-      rel.myInsts,
-      ({index}) => $.indexFitnessByBindings(index, bindings)
-   );
-
-   return (fitness > $.Fitness.minimum) ? inst : undefined;
-}
-computeFilterBy ::= function (bindings, exceptAttrs=[]) {
-   return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
-}
-suitsFilterBy ::= function (rec, filterBy) {
-   for (let [attr, val] of filterBy) {
-      if (rec[attr] !== val) {
-         return false;
-      }
-   }
-
-   return true;
-}
 makeProjection ::= function (rel, bindings) {
    bindings = $.noUndefinedProps(bindings);
 
@@ -167,9 +114,9 @@ makeProjection ::= function (rel, bindings) {
       fullRecords: rel.records,
    };
 
-   let inst = $.findSuitableIdxInst(rel, bindings);
+   let [inst, fitness] = $.findSuitableIdxInst(rel.myInsts, bindings);
 
-   if (inst !== undefined && inst.index.isUnique) {
+   if (fitness === $.Fitness.uniqueHit) {
       proj.kind = 'unique-hit';
       proj.inst = inst;
       proj.keys = $.indexKeys(inst.index, bindings);
@@ -179,7 +126,7 @@ makeProjection ::= function (rel, bindings) {
    else {
       let filterBy = $.computeFilterBy(bindings);
       
-      if (inst === undefined && filterBy.length === 0) {
+      if (filterBy.length === 0) {
          proj.kind = 'full';
          Object.defineProperty(proj, 'myVer', {
             configurable: true,
@@ -285,7 +232,7 @@ doRemove ::= function (rel, rec) {
    }
 }
 removeWhere ::= function (rel, bindings) {
-   let toRemove = Array.from($.getRecords(rel, bindings));
+   let toRemove = Array.from($.getRecords(rel.myInsts, bindings));
 
    for (let rec of toRemove) {
       $.doRemove(rel, rec);
@@ -294,7 +241,7 @@ removeWhere ::= function (rel, bindings) {
    $.invalidateRelation(rel);
 }
 replaceWhere ::= function (rel, bindings, replacer) {
-   let recs = Array.from($.getRecords(rel, bindings));
+   let recs = Array.from($.getRecords(rel.myInsts, bindings));
 
    for (let rec of recs) {
       let newRec = replacer(rec);
@@ -310,7 +257,7 @@ replaceWhere ::= function (rel, bindings, replacer) {
       }
    }
 }
-symEntity ::= Symbol.for('poli.entity')
+symEntity ::= 'entity'
 symAssocRels ::= Symbol.for('poli.assoc-rels')
 populateEntityProto ::= function (rel, symRec, entityProto) {
    for (let attr of rel.attrs) {

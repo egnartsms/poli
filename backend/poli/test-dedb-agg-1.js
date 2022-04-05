@@ -7,7 +7,7 @@ dedb-base
 dedb-aggregate
    aggregatedRelation
 dedb-query
-   query1
+   queryAtMostOne
 dedb-aggregators
    concatenate
    sum
@@ -47,7 +47,7 @@ setup ::= function () {
 box countryCity ::= null
 box countryData ::= null
 test_basic ::= function () {
-   let {cityList, population, minCity} = $.query1(
+   let {cityList, population, minCity} = $.queryAtMostOne(
       $.countryData, {}, {country: 'ruthenia'}
    );
 
@@ -59,7 +59,7 @@ test_add_remove ::= function () {
    $.addFact($.countryCity, {country: 'ruthenia', city: 'lutsk', population: 350});
    $.replaceWhere($.countryCity, {country: 'ruthenia', city: 'odessa'}, () => null);
 
-   let {cityList, population, minCity} = $.query1(
+   let {cityList, population, minCity} = $.queryAtMostOne(
       $.countryData, {}, {country: 'ruthenia'}
    );
 

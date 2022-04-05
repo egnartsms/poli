@@ -9,12 +9,12 @@ var poli = (function () {
 
    function loadModules(rawModules) {
       function moduleEval(ns, name, def) {
-         def = def.replace(/(?<=^function\*? )(?= *\()/, name);
+         // def = def.replace(/(?<=^function\*? )(?= *\()/, name);
          let fun = Function('$', `"use strict";\n   return (${def})`);
          return fun.call(null, ns);
       }
 
-      console.time('load');
+      console.time('bootstrap');
       
       let minfos = Array.from(
          parseModules(rawModules), minfo => ({
@@ -105,7 +105,7 @@ var poli = (function () {
          }
       }
 
-      console.timeEnd('load');
+      console.timeEnd('bootstrap');
       
       return minfos;
    }

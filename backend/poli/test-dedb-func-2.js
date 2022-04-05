@@ -15,7 +15,7 @@ dedb-functional
    functionalRelation
 dedb-query
    query
-   query1
+   queryAtMostOne
 dedb-goal
    use
 -----
@@ -81,7 +81,7 @@ test_arithmetics ::= function () {
    );
 }
 test_arithmetics_changes ::= function () {
-   let growth = $.query1($.growth, {country: 'ruthenia'}).growth;
+   let growth = $.queryAtMostOne($.growth, {country: 'ruthenia'}).growth;
 
    $.replaceWhere($.born, {country: 'ruthenia'}, rec => ({
       ...rec,
@@ -92,5 +92,5 @@ test_arithmetics_changes ::= function () {
       died: rec.died + 5
    }));
 
-   $.check($.query1($.growth, {country: 'ruthenia'}).growth === growth + 5);
+   $.check($.queryAtMostOne($.growth, {country: 'ruthenia'}).growth === growth + 5);
 }

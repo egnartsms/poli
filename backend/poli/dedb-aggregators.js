@@ -1,3 +1,5 @@
+common
+   check
 -----
 sortedIndex ::= function (array, newKey, fnkey) {
    let lo = 0;
@@ -101,4 +103,34 @@ min ::= function (tvar, by) {
 
       vars: [tvar, by]
    }
+}
+mutableSetOfUnique ::= function (tvar) {
+   let proto = {
+      add(rec) {
+         $.check(!this.set.has(rec[tvar]));
+
+         this.set.add(rec[tvar]);
+      },
+
+      remove(rec) {
+         $.check(this.set.has(rec[tvar]));
+
+         this.set.remove(rec[tvar]);
+      },
+
+      value() {
+         return this.set;
+      }
+   }
+
+   return {
+      make() {
+         return {
+            __proto__: proto,
+            set: new Set
+         }
+      },
+
+      vars: [tvar]
+   }   
 }

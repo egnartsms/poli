@@ -59,6 +59,7 @@ dedb-version
 dedb-index
    copyIndex
    indexFromSpec
+   reduceIndex
 dedb-index-instance
    refBaseInstance
    refDerivedInstance
@@ -67,6 +68,7 @@ dedb-index-instance
    indexRemove
    indexRef
    indexRefSize
+   makeIndexInstance
 dedb-join-plan
    makeConfig
 dedb-relation
@@ -77,6 +79,7 @@ derivedRelation ::= function ({
    name: relname,
    attrs,
    potentialIndices = [],
+   hardIndices = [],
    body: bodyCallback
 }) {
    $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
@@ -101,6 +104,7 @@ derivedRelation ::= function ({
       name: relname,
       attrs,
       indices: Array.from(potentialIndices, $.indexFromSpec),
+      hardIndices: Array.from(hardIndices, $.indexFromSpec),
       rootGroup,
       goals,
       statefulGoals,
@@ -110,7 +114,7 @@ derivedRelation ::= function ({
       firms,
       subRoutes,
       vars,
-      varsNE,      
+      varsNE,
       configs: new Map,  // cfgkey -> config object
       projections: $.makeProjectionRegistry(),
    };
@@ -199,15 +203,26 @@ makeProjection ::= function (rel, bindings) {
 
    proj.fullRecords = proj.records;
 
+   for (let index of rel.hardIndices) {
+      index = $.reduceIndex(index, a => $.hasOwnProperty(bindings, a));
+
+      if (index.length > 0) {
+         let inst = $.makeIndexInstance(proj, index);
+         inst.refCount += 1;
+         proj.myInsts.push(inst);
+      }
+   }
+
+   proj.myInsts.pastHardIndex = proj.myInsts.length;
+
    $.rebuildProjection(proj);
 
    return proj;
 }
 makeSubBindings ::= function (firms, subRoutes, bindings) {
-   // firms :: [Map{attr -> value}], subBindings :: [{attr: value}]
    let subBindings = Array.from(firms, Object.fromEntries);
 
-   for (let [attr, val] of $.ownEntries(bindings)) {
+   for (let [attr, val] of Object.entries(bindings)) {
       for (let [subNum, subAttr] of subRoutes.get(attr) ?? []) {
          subBindings[subNum][subAttr] = val;
       }
@@ -237,7 +252,7 @@ bindings2cfgkey ::= function (attrs, bindings) {
    return cfgkey;
 }
 freeProjection ::= function (proj) {
-   $.check(proj.myInsts.length === 0);
+   $.check(proj.myInsts.length === proj.myInsts.pastHardIndex);
 
    for (let inst of proj.subInsts) {
       $.releaseIndexInstance(inst);
@@ -300,6 +315,13 @@ rebuildProjection ::= function (proj) {
 
             ...$.map(group.choices, choiceRS)
          ];
+
+         if (solutions.length === 0) {
+            return {
+               subs: [],
+               minRS: Infinity
+            }
+         }
 
          let [{subs: bestSubs}, minRS] = $.leastBy(solutions, sol => sol.rs);
 
@@ -409,7 +431,7 @@ run ::= function (proj, spec, recs0, Lnum) {
       }
 
       if (jnode.kind === 'func') {
-         for (let _ of $.joinFunc(proj, jnode)) {
+         for (let dumb of $.joinFunc(proj, jnode)) {
             join(jnode.next);
          }
 
@@ -476,14 +498,14 @@ joinFunc ::= function* (proj, jnode) {
    let {run, args, toCheck} = jnode;
 
    outer:
-   for (let _ of run(ns, ...args)) {
+   for (let dumb of run(ns, ...args)) {
       for (let [v1, v2] of toCheck) {
          if (ns[v1] !== ns[v2]) {
             continue outer;
          }
       }
 
-      yield;
+      yield dumb;
    }
 }
 joinRecords ::= function (proj, jnode) {

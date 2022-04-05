@@ -68,7 +68,7 @@ makeIndexInstance ::= function (owner, index) {
       refCount: 0,
       owner,
       index,
-      map: new Map,
+      map: Object.assign(new Map, {totalSize: 0}),
    }
 }
 indexRef ::= function* (inst, keys) {

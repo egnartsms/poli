@@ -7,7 +7,7 @@ common
    sortedArray
 dedb-query
    query
-   query1
+   queryAtMostOne
 dedb-projection
    projectionFor
    releaseProjection
@@ -62,7 +62,7 @@ setup ::= function () {
 }
 test_query_unique_record ::= function () {
    $.checkLike(
-      $.query1($.cityInfo, {country: 'Ruthenia', big: 1}),
+      $.queryAtMostOne($.cityInfo, {country: 'Ruthenia', big: 1}),
       {
          country: 'Ruthenia',
          city: 'Kyiv',
@@ -71,7 +71,7 @@ test_query_unique_record ::= function () {
    );
 
    $.checkLike(
-      $.query1($.cityInfo, {country: 'Canada', big: 2}),
+      $.queryAtMostOne($.cityInfo, {country: 'Canada', big: 2}),
       {
          country: 'Canada',
          city: 'Montreal',

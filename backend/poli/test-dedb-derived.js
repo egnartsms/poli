@@ -4,7 +4,7 @@ common
 dedb-query
    lookupDerivedProjection
    query
-   query1
+   queryAtMostOne
 dedb-goal
    use
 dedb-base
@@ -147,7 +147,7 @@ test_full_projection_updates ::= function () {
    let proj = $.lookupDerivedProjection($.continentCity, {});
    $.check(proj.records.size === 25);
 
-   let f_europe = $.query1($.continent, {name: 'Europe'});
+   let f_europe = $.queryAtMostOne($.continent, {name: 'Europe'});
    $.removeFact($.continent, f_europe);
    $.updateProjection(proj);
    $.check(proj.records.size === 16);
@@ -158,7 +158,7 @@ test_full_projection_updates ::= function () {
 
    $.check(proj.records.size === 26);
 
-   let f_china = $.query1($.country, {name: 'China'});
+   let f_china = $.queryAtMostOne($.country, {name: 'China'});
    $.removeFact($.country, f_china);
    $.updateProjection(proj);
    $.check(proj.records.size === 23);
@@ -180,7 +180,7 @@ test_partial_projection ::= function () {
 test_partial_updates ::= function () {
    let proj = $.lookupDerivedProjection($.continentCity, {continent: 'America'});
 
-   let f_canada = $.query1($.country, {name: 'Canada'});
+   let f_canada = $.queryAtMostOne($.country, {name: 'Canada'});
    $.removeWhere($.country, {name: 'Canada'});
    $.updateProjection(proj);
    $.check(proj.records.size === 4);
@@ -191,20 +191,20 @@ test_partial_updates ::= function () {
    $.check(proj.records.size === 8);
 }
 test_scalar_updates ::= function () {
-   let rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   let rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec !== undefined);
 
    $.removeWhere($.country, {name: 'Ruthenia'});
 
-   rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec === undefined);
 
    $.addFact($.country, {name: 'Ruthenia', continent: 'Asia'});
-   rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec === undefined);   
 
    $.removeWhere($.country, {name: 'Ruthenia'});
    $.addFact($.country, {name: 'Ruthenia', continent: 'Europe'});
-   rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
+   rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec !== undefined);
 }

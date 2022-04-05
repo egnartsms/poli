@@ -96,7 +96,7 @@ makeConfig ::= function (rel, boundAttrs) {
       return $.computeJoinSpec(rel, boundAttrs, fulfillments, goal, idxReg, vpool);
    });
 
-   let vars = rel.vars.filter(v => !boundAttrs.includes(v)).concat(vpool.vars);
+   let vars = rel.vars.filter(v => !boundAttrs.includes(v)).concat(vpool);
 
    if (vpool.dumbVarCreated) {
       vars.push($.dumbVar);
@@ -171,17 +171,48 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
       );
    }
 
+   function branchGoalsMulti(goals, choice2alt) {
+      return new Set(
+         $.filter(goals, g => {
+            let group = g.parentGroup;
+            let choice = group.parentChoice;
+
+            while (choice !== null && !choice2alt.has(choice)) {
+               group = choice.parentGroup;
+               choice = group.parentChoice;
+            }
+
+            return choice === null || group === choice2alt.get(choice)
+         })
+      );
+   }
+
+   function choiceMap(goal) {
+      let group = goal.parentGroup;
+      let choice = group.parentChoice;
+      let choice2alt = new Map;
+
+      while (choice !== null) {
+         choice2alt.set(choice, group);
+         group = choice.parentGroup;
+         choice = group.parentChoice;
+      }
+
+      return choice2alt;
+   }
+
    function withStackRestored(callback) {
       return (...args) => {
          let nVars = boundVars.length;
          let nChoices = committedChoices.length;
 
-         let result = callback(...args);
-
-         committedChoices.length = nChoices;
-         boundVars.length = nVars;
-
-         return result;
+         try {
+            return callback(...args);
+         }
+         finally {
+            committedChoices.length = nChoices;
+            boundVars.length = nVars;
+         }
       }
    }
 
@@ -298,22 +329,43 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
 
    function buildTree(goals, startGroup=null) {
       function findBestFulfillment(group=null) {
-         let [ff, fitness] = $.greatestBy(
-            function* () {
-               for (let goal of goals) {
-                  if (group === null || isUnderGroup(goal, group)) {
-                     yield* fulfillments.get(goal);
+         let nFit = $.Fitness.minimum;
+         let nFF = null;
+         let bFit = $.Fitness.minimum;
+         let bFF = null;
+
+         for (let goal of goals) {
+            if (group !== null && !isUnderGroup(goal, group)) {
+               continue;
+            }
+
+            let impliesBranching = 
+               (goal.parentGroup.parentChoice !== null) &&
+               !committedChoices.includes(goal.parentGroup.parentChoice);
+
+            for (let ff of fulfillments.get(goal)) {
+               let fit = ffFitness(ff);
+
+               if (fit === $.Fitness.minimum) {
+                  continue;
+               }
+
+               if (impliesBranching) {
+                  if (fit > bFit) {
+                     bFit = fit;
+                     bFF = ff;
                   }
                }
-            }(),
-            ffFitness
-         );
-
-         if (fitness === $.Fitness.minimum) {
-            throw new Error(`Cannot join!`);
+               else {
+                  if (fit > nFit) {
+                     nFit = fit;
+                     nFF = ff;
+                  }
+               }
+            }
          }
-
-         return ff;
+         
+         return {nFit, nFF, bFit, bFF}
       }
 
       let jhead = null;
@@ -329,35 +381,51 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
          }
       }
 
-      let ff = findBestFulfillment(startGroup);
+      let {nFit, nFF, bFit, bFF} = findBestFulfillment(startGroup);
 
       for (;;) {
-         let choice = topmostUncommittedChoice(ff.goal);
-
-         if (choice !== null) {
-            let branches = Array.from(choice.alts, withStackRestored(alt => {
-               committedChoices.push(choice);
-               return buildTree(branchGoals(goals, choice, alt), alt);
-            }));
-
-            addTail({
-               kind: 'either',
-               choice,
-               branches
-            });
-
-            break;
+         if (nFF === null && bFF === null) {
+            throw new $.CannotJoinError;
          }
 
-         addTail(makeJoinNode(ff));
-         bindGoalFreeVars(ff.goal);
-         goals.delete(ff.goal);
+         if (bFit > nFit) {
+            let choice = topmostUncommittedChoice(bFF.goal);
+            let branches = null;
+
+            try {
+               branches = Array.from(choice.alts, withStackRestored(alt => {
+                  committedChoices.push(choice);
+                  return buildTree(branchGoals(goals, choice, alt), alt);
+               }));
+            }
+            catch (e) {
+               if (!(e instanceof $.CannotJoinError) || nFF === null) {
+                  throw e;
+               }
+
+               // Try the no-branching (nFF) fulfillment
+            }
+
+            if (branches !== null) {
+               addTail({
+                  kind: 'either',
+                  choice,
+                  branches
+               });
+
+               break;
+            }
+         }
+
+         addTail(makeJoinNode(nFF));
+         bindGoalFreeVars(nFF.goal);
+         goals.delete(nFF.goal);
 
          if (goals.size === 0) {
             break;
          }
 
-         ff = findBestFulfillment();
+         ({nFit, nFF, bFit, bFF} = findBestFulfillment());
       }
 
       return jhead;
@@ -365,16 +433,10 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
 
    let {toExtract} = propsForCheckExtract(Dgoal.bindings);
 
-   let goals;
+   let choice2alt = choiceMap(Dgoal);
+   let goals = branchGoalsMulti(rel.goals, choice2alt);
 
-   if (Dgoal.parentGroup.parentChoice === null) {
-      goals = new Set(rel.goals);
-   }
-   else {
-      goals = branchGoals(rel.goals, Dgoal.parentGroup.parentChoice, Dgoal.parentGroup);
-      committedChoices.push(Dgoal.parentGroup.parentChoice);
-   }
-
+   committedChoices.push(...choice2alt.keys());
    goals.delete(Dgoal);
    bindGoalFreeVars(Dgoal);
 
@@ -384,6 +446,7 @@ computeJoinSpec ::= function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpoo
       depNum: Dgoal.depNum,
    }
 }
+CannotJoinError ::= class CannotJoinError extends Error {}
 funcGoalFulfillments ::= function* (goal, vpool) {
    $.assert(() => !goal.isStateful);
 

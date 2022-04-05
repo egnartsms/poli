@@ -3,16 +3,51 @@ common
    check
    isA
    hasOwnProperty
+   filter
+   greatestBy
 dedb-projection
    projectionFor
    releaseProjection
    updateProjection
 dedb-base
-   getUniqueRecord
-   getRecords
+   symEntity
+dedb-index
+   Fitness
+   indexFitnessByBindings
+dedb-index-instance
+   indexRefWithBindings
 dedb-derived
    makeProjection as: makeDerivedProjection
 -----
+getRecords ::= function (insts, bindings) {
+   let [inst, fitness] = $.findSuitableIdxInst(insts, bindings);
+
+   $.check(fitness !== $.Fitness.minimum, `Could not find suitable index`);
+
+   let recs = $.indexRefWithBindings(inst, bindings);
+   let filterBy = $.computeFilterBy(bindings, inst.index);
+
+   return (filterBy.length === 0) ? recs :
+      $.filter(recs, rec => $.suitsFilterBy(rec, filterBy));
+}
+findSuitableIdxInst ::= function (insts, bindings) {
+   return $.greatestBy(
+      insts,
+      ({index}) => $.indexFitnessByBindings(index, bindings)
+   );
+}
+computeFilterBy ::= function (bindings, exceptAttrs=[]) {
+   return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
+}
+suitsFilterBy ::= function (rec, filterBy) {
+   for (let [attr, val] of filterBy) {
+      if (rec[attr] !== val) {
+         return false;
+      }
+   }
+
+   return true;
+}
 time ::= 0
 derivedProjectionCache ::= new Map
 recencyHead ::= null
@@ -21,56 +56,52 @@ dumpRecencyList ::= function () {
    console.log('Q rec list:', $.recencyHead);
    console.log('Q proj cache:', $.derivedProjectionCache);
 }
-query1 ::= function (rel, bindings, groupKeys=null) {
+query ::= function (rel, hardBindings, softBindings) {
    if (rel.kind === 'base') {
-      return $.getUniqueRecord(rel, bindings);
+      $.check(softBindings === undefined);
+
+      softBindings = hardBindings;
+
+      return softBindings == null ? rel.records :
+         $.getRecords(rel.myInsts, softBindings);
    }
 
    if (rel.kind === 'derived') {
-      let proj = $.lookupDerivedProjection(rel, bindings);
+      let proj = $.lookupDerivedProjection(rel, hardBindings);
 
-      $.check(proj.records.size <= 1);
-
-      let [rec] = proj.records;
-
-      return rec;
+      return softBindings === undefined ? proj.records :
+         $.getRecords(proj.myInsts, softBindings);
    }
 
+   throw new Error;
+}
+queryAtMostOne ::= function (rel, hardBindings, softBindings) {
    if (rel.kind === 'aggregate') {
-      let proj = $.lookupDerivedProjection(rel, bindings);
+      let proj = $.lookupDerivedProjection(rel, hardBindings);
+      let group = proj.recordMap;
 
-      if (groupKeys !== null) {
-         let group = proj.recordMap;
+      for (let key of proj.groupBy) {
+         group = group.get(softBindings[key]);
 
-         for (let key of proj.groupBy) {
-            if ($.hasOwnProperty(groupKeys, key)) {
-               group = group.get(groupKeys[key]);
-            }
-            else {
-               throw new Error(
-                  `Refer to '${rel.name}': group keys don't contain '${key}'`
-               );
-            }
+         if (group === undefined) {
+            return undefined;
          }
-
-         return group;
       }
+
+      return group;
    }
-   
-   throw new Error;
+
+   let [rec] = $.query(rel, hardBindings, softBindings);
+   return rec;
 }
-query ::= function (rel, bindings) {
-   if (rel.kind === 'base') {
-      return $.getRecords(rel, bindings);
-   }
-
-   if (rel.kind === 'derived') {
-      let proj = $.lookupDerivedProjection(rel, bindings);
-
-      return proj.records;
-   }
-
-   throw new Error;
+queryOne ::= function (rel, hardBindings, softBindings) {
+   let rec = $.queryAtMostOne(rel, hardBindings, softBindings);
+   $.check(rec !== undefined);
+   return rec;
+}
+queryEntity ::= function (rel, bindings) {
+   let [rec] = $.getRecords(rel.myInsts, bindings);
+   return rec[$.symEntity];
 }
 lookupDerivedProjection ::= function (rel, bindings) {
    $.assert(() => rel.kind === 'derived' || rel.kind === 'aggregate');

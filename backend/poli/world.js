@@ -19,13 +19,28 @@ dedb-base
    baseRelation
    symAssocRels
    symEntity
+dedb-derived
+   derivedRelation
 dedb-rec-key
    recKey
    recVal
 dedb-index
+   Fitness
 dedb-query
    dumpRecencyList
-   query1
+   query
+   queryOne
+   queryEntity
+dedb-goal
+   use
+   and
+   or
+dedb-functional
+   functionalRelation
+dedb-aggregate
+   aggregatedRelation
+dedb-aggregators
+   mutableSetOfUnique
 -----
 protoModule ::= ({})
 protoEntry ::= ({})
@@ -33,6 +48,8 @@ box module ::= null
 box entry ::= null
 box import ::= null
 box starImport ::= null
+referrings ::= null
+knownNames ::= null
 createRelations ::= function () {
    $.protoModule[$.symAssocRels] = new Set;
    $.protoEntry[$.symAssocRels] = new Set;
@@ -40,8 +57,9 @@ createRelations ::= function () {
    $.module = $.baseRelation({
       name: 'module',
       entityProto: $.protoModule,
-      attrs: ['name', 'lang', 'members'],
+      attrs: ['entity', 'name', 'lang', 'members'],
       indices: [
+         ['entity', 1],
          ['name', 1]
       ]
    });
@@ -49,23 +67,159 @@ createRelations ::= function () {
    $.entry = $.baseRelation({
       name: 'entry',
       entityProto: $.protoEntry,
-      attrs: ['module', 'name', 'def', 'isBox'],
+      attrs: ['entity', 'module', 'name', 'def', 'isBox'],
       indices: [
-         ['module', 'name', 1]
+         ['entity', 1],
+         ['module', 'name', 1],
       ]
    });
 
    $.import = $.baseRelation({
       name: 'import',
       attrs: ['entry', 'recp', 'alias'],
-      indices: []
+      indices: [
+         ['recp'],
+         ['entry']
+      ]
    });
 
    $.starImport = $.baseRelation({
       name: 'starImport',
       attrs: ['donor', 'recp', 'alias'],
-      indices: []
+      indices: [
+         ['recp']
+      ]
    });
+
+   // Trying out: derived/aggregated relations
+   let equal = $.functionalRelation({
+      name: 'equal',
+      attrs: ['left', 'right'],
+      instantiations: {
+         '++': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vLeft, vRight) {
+               if (ns[vLeft] === ns[vRight]) {
+                  yield;
+               }
+            }
+         },
+         '+-': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vLeft, vRight) {
+               ns[vRight] = ns[vLeft];
+               yield;
+            }
+         },
+         '-+': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vLeft, vRight) {
+               ns[vLeft] = ns[vRight];
+               yield;
+            }
+         },
+      }
+   })
+
+   let nonNull = $.functionalRelation({
+      name: 'nonNull',
+      attrs: ['value'],
+      instantiations: {
+         '+': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vValue) {
+               if (ns[vValue] !== null) {
+                  yield;
+               }
+            }
+         }
+      }
+   })
+
+   let isNull = $.functionalRelation({
+      name: 'isNull',
+      attrs: ['value'],
+      instantiations: {
+         '+': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vValue) {
+               if (ns[vValue] === null) {
+                  yield;
+               }
+            }
+         },
+         '-': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vValue) {
+               ns[vValue] = null;
+               yield;
+            }
+         }
+      }
+   })
+
+   let definitionReferrings = $.functionalRelation({
+      name: 'definitionReferrings',
+      attrs: ['def', 'referrings'],
+      instantiations: {
+         '+-': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vDef, vReferrings) {
+               let re = /(?<![\w$])(?<=\$\.)(\w+(?:\.\w+)?)\b/g;
+
+               ns[vReferrings] = new Set(
+                  $.map(ns[vDef].matchAll(re), ([match]) => match)
+               );
+
+               yield;
+            }
+         },
+      }
+   });
+
+   $.referrings = $.derivedRelation({
+      name: 'referrings',
+      attrs: ['module', 'entry', 'referrings'],
+      hardIndices: [['entry', 1]],
+      body: v => [
+         $.use($.entry, {[$.symEntity]: v`entry`, module: v`module`, def: v`def`}),
+         $.use(definitionReferrings, {def: v`def`, referrings: v`referrings`})
+      ]
+   })
+
+   $.knownNames = $.aggregatedRelation({
+      name: 'knownNames',
+      groupBy: ['module'],
+      aggregates: {
+         names: $.mutableSetOfUnique('name')
+      },
+      source: v => [
+         $.use($.module, {entity: v`module`}),
+         $.or(
+            // own entries
+            $.use($.entry, {module: v`module`, name: v`name`}),
+            // entry imports
+            $.and(
+               $.use($.import, {recp: v`module`, entry: v`entry`, alias: v`alias`}),
+               // either aliased or not
+               $.or(
+                  // aliased
+                  $.and(
+                     $.use(nonNull, {value: v`alias`}),
+                     $.use(equal, {left: v`alias`, right: v`name`})
+                  ),
+                  // not aliased
+                  $.and(
+                     $.use(isNull, {value: v`alias`}),
+                     $.use($.entry, {entity: v`entry`, name: v`name`})
+                  )
+               )
+            ),
+            // star imports
+            $.use($.starImport, {recp: v`module`, alias: v`name`})
+         )
+      ]
+   })
 }
 load ::= function (minfos) {
    console.time('load world');
@@ -78,7 +232,7 @@ load ::= function (minfos) {
       let module = $.makeEntity($.protoModule);
 
       $.addEntity($.module, {
-         [$.symEntity]: module,
+         entity: module,
          name: minfo.name,
          lang: minfo.lang,
          members: null,
@@ -91,7 +245,7 @@ load ::= function (minfos) {
          let entry = $.makeEntity($.protoEntry);
 
          $.addEntity($.entry, {
-            [$.symEntity]: entry,
+            entity: entry,
             name,
             def,
             isBox,
@@ -109,24 +263,35 @@ load ::= function (minfos) {
 
    // Imports
    for (let {name: recpName, imports} of minfos) {
-      let recp = $.query1($.module, {name: recpName});
+      let recp = $.queryEntity($.module, {name: recpName});
       
       for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
-         let donor = $.query1($.module, {name: donorName});
+         let donor = $.queryEntity($.module, {name: donorName});
 
          if (asterisk !== null) {
             $.addFact($.starImport, {donor, recp, alias: asterisk});
          }
 
          for (let {entry: entryName, alias} of entryImports) {
-            let entry = $.query1($.entry, {module: donor, name: entryName});
+            let entry = $.queryEntity($.entry, {module: donor, name: entryName});
 
             $.addFact($.import, {entry, recp, alias});
          }
       }
    }
 
+   $.playOut();
+
    console.timeEnd('load world');
 
    $.dumpRecencyList();
+}
+playOut ::= function () {
+   let module = $.queryEntity($.module, {name: 'exp'});
+
+   console.log(Array.from($.query($.import, {recp: module})));
+
+   let {names} = $.queryOne($.knownNames, {}, {module});
+   console.log(names);
+   console.log($.knownNames);
 }

@@ -89,12 +89,12 @@ makeLvar ::= function (name) {
 }
 use ::= function (rel, bindings) {
    let firmBindings = new Map(
-      $.filter($.ownEntries(bindings), ([a, val]) => {
+      $.filter(Object.entries(bindings), ([a, val]) => {
          return val !== undefined && !$.isLvar(val);
       })
    );
    let looseBindings = new Map(
-      $.mapfilter($.ownEntries(bindings), ([a, lvar]) => {
+      $.mapfilter(Object.entries(bindings), ([a, lvar]) => {
          if ($.isLvar(lvar)) {
             return [a, lvar[$.lvarSym]];
          }
@@ -326,7 +326,7 @@ collectLooseVars ::= function (root1) {
    );
 }
 collectNonEvaporatableVars ::= function (root1) {
-   let varsNE = new Set([$.recKey, $.recVal]);
+   let varsNE = new Set;
 
    for (let goal of $.relGoalsBeneath(root1)) {
       if (goal.rel.kind !== 'derived') {
