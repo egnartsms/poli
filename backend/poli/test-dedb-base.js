@@ -15,7 +15,11 @@ dedb-projection
 dedb-base
    addFact
    removeFact
+   removeWhere
    baseRelation
+   revertTo
+dedb-version
+   refRelationState
 -----
 box cityInfo ::= null
 setup ::= function () {
@@ -107,4 +111,23 @@ test_query_no_index_hit_results_in_exc ::= function () {
    $.checkThrows(() => {
       $.query($.cityInfo, {city: 'Paris'});
    });
+}
+test_revert_to ::= function () {
+   let ver0 = $.refRelationState($.cityInfo);
+
+   $.removeWhere($.cityInfo, {country: 'China'});
+   $.removeWhere($.cityInfo, {country: 'India'});
+   $.check($.cityInfo.records.size === 15);
+
+   let ver1 = $.refRelationState($.cityInfo);
+
+   $.removeWhere($.cityInfo, {country: 'Turkey'});
+   $.removeWhere($.cityInfo, {country: 'Poland'});
+   $.check($.cityInfo.records.size === 9);
+
+   $.revertTo(ver1);
+   $.check($.cityInfo.records.size === 15);
+
+   $.revertTo(ver0);
+   $.check($.cityInfo.records.size === 21);
 }
