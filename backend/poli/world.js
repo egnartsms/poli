@@ -14,8 +14,11 @@ vector
 dedb-base
    addFact
    makeEntity
+   addEntity
    patchEntity
    baseRelation
+   symAssocRels
+   symEntity
 dedb-rec-key
    recKey
    recVal
@@ -31,6 +34,9 @@ box entry ::= null
 box import ::= null
 box starImport ::= null
 createRelations ::= function () {
+   $.protoModule[$.symAssocRels] = new Set;
+   $.protoEntry[$.symAssocRels] = new Set;
+
    $.module = $.baseRelation({
       name: 'module',
       entityProto: $.protoModule,
@@ -43,7 +49,7 @@ createRelations ::= function () {
    $.entry = $.baseRelation({
       name: 'entry',
       entityProto: $.protoEntry,
-      attrs: ['module', 'name', 'def'],
+      attrs: ['module', 'name', 'def', 'isBox'],
       indices: [
          ['module', 'name', 1]
       ]
@@ -69,7 +75,10 @@ load ::= function (minfos) {
    // Modules and entries
    for (let minfo of minfos) {
       // minfo :: [{name, lang, imports, body, ns}]
-      let module = $.makeEntity($.module, {
+      let module = $.makeEntity($.protoModule);
+
+      $.addEntity($.module, {
+         [$.symEntity]: module,
          name: minfo.name,
          lang: minfo.lang,
          members: null,
@@ -79,14 +88,20 @@ load ::= function (minfos) {
       });
 
       let entries = Array.from(minfo.body, ({isBox, name, def}) => {
-         return $.makeEntity($.entry, {
-            name: name,
-            def: def,
-            module: module
-         });
+         let entry = $.makeEntity($.protoEntry);
+
+         $.addEntity($.entry, {
+            [$.symEntity]: entry,
+            name,
+            def,
+            isBox,
+            module
+         })
+
+         return entry;
       });
 
-      $.patchEntity(module, m => ({
+      $.patchEntity($.module, module, m => ({
          ...m,
          members: $.Vector(entries)
       }));

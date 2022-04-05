@@ -108,8 +108,11 @@ freeProjection ::= function (proj) {
       throw new Error;
    }
 }
-invalidate ::= function (root) {
-   // root is either a projection or a base relation
+invalidateProjection ::= function (root) {
+   if (!root.isValid) {
+      return;
+   }
+
    let stack = [root];
 
    while (stack.length > 0) {

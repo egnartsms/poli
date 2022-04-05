@@ -10,7 +10,7 @@ dedb-goal
 dedb-base
    addFact
    removeFact
-   removeIf
+   removeWhere
    baseRelation
 dedb-derived
    derivedRelation
@@ -152,21 +152,21 @@ test_full_projection_updates ::= function () {
    $.updateProjection(proj);
    $.check(proj.records.size === 16);
 
-   // $.addFact($.city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
-   // $.addFact($.continent, f_europe);
-   // $.updateProjection(proj);
+   $.addFact($.city, {country: 'Ruthenia', name: 'Chernivtsi', population: 0.400})
+   $.addFact($.continent, f_europe);
+   $.updateProjection(proj);
 
-   // $.check(proj.records.size === 26);
+   $.check(proj.records.size === 26);
 
-   // let f_china = $.query1($.country, {name: 'China'});
-   // $.removeFact($.country, f_china);
-   // $.updateProjection(proj);
-   // $.check(proj.records.size === 23);
+   let f_china = $.query1($.country, {name: 'China'});
+   $.removeFact($.country, f_china);
+   $.updateProjection(proj);
+   $.check(proj.records.size === 23);
 }
-xtest_partial_projection ::= function () {
+test_partial_projection ::= function () {
    $.checkLike(
-      new Set($.query($.continentCity, {continent: 'America'})),
-      [
+      $.query($.continentCity, {continent: 'America'}),
+      new Set([
          {city: 'Toronto'},
          {city: 'Montreal'},
          {city: 'Vancouver'},
@@ -174,14 +174,14 @@ xtest_partial_projection ::= function () {
          {city: 'Los Angeles'},
          {city: 'Chicago'},
          {city: 'Houston'},
-      ]
+      ])
    );
 }
-xtest_partial_updates ::= function () {
+test_partial_updates ::= function () {
    let proj = $.lookupDerivedProjection($.continentCity, {continent: 'America'});
 
    let f_canada = $.query1($.country, {name: 'Canada'});
-   $.removeIf($.country, ({name}) => name === 'Canada');
+   $.removeWhere($.country, {name: 'Canada'});
    $.updateProjection(proj);
    $.check(proj.records.size === 4);
 
@@ -190,11 +190,11 @@ xtest_partial_updates ::= function () {
    $.updateProjection(proj);
    $.check(proj.records.size === 8);
 }
-xtest_scalar_updates ::= function () {
+test_scalar_updates ::= function () {
    let rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec !== undefined);
 
-   $.removeIf($.country, ({name}) => name === 'Ruthenia');
+   $.removeWhere($.country, {name: 'Ruthenia'});
 
    rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec === undefined);
@@ -203,7 +203,7 @@ xtest_scalar_updates ::= function () {
    rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec === undefined);   
 
-   $.removeIf($.country, ({name}) => name === 'Ruthenia');
+   $.removeWhere($.country, {name: 'Ruthenia'});
    $.addFact($.country, {name: 'Ruthenia', continent: 'Europe'});
    rec = $.query1($.continentCity, {continent: 'Europe', city: 'Lviv'});
    $.check(rec !== undefined);

@@ -42,7 +42,7 @@ dedb-index-instance
    indexRef
    indexRefWithBindings
 dedb-projection
-   invalidate
+   invalidateProjection
    makeProjectionRegistry
 dedb-relation
    rec2val
@@ -64,7 +64,7 @@ baseRelation ::= function ({
       myVer: null,
       records: new Set(records),
       validRevDeps: new Set,  // 'revdeps' here means projections
-      entityProto: entityProto,
+      symRec: null,  // if non-null, then 'entity[rel.symRec] === rec'
    };
 
    for (let spec of indexSpecs) {
@@ -79,10 +79,20 @@ baseRelation ::= function ({
    }
 
    if (entityProto !== null) {
-      $.setupEntityPrototype(rel, entityProto);
+      let symRec = Symbol(name);
+
+      $.populateEntityProto(rel, symRec, entityProto);
+      rel.symRec = symRec;
    }
 
    return rel;
+}
+invalidateRelation ::= function (rel) {
+   for (let proj of rel.validRevDeps) {
+      $.invalidateProjection(proj);
+   }
+
+   rel.validRevDeps.clear();
 }
 getUniqueRecord ::= function (rel, bindings) {
    let inst = $.findUniqueIdxInst(rel, bindings);
@@ -244,7 +254,10 @@ updateProjection ::= function (proj) {
 }
 addFact ::= function (rel, rec) {
    $.check(!rel.records.has(rec), `Duplicate record`);
-
+   $.doAdd(rel, rec);
+   $.invalidateRelation(rel);
+}
+doAdd ::= function (rel, rec) {
    rel.records.add(rec);
 
    if (rel.myVer !== null) {
@@ -254,29 +267,31 @@ addFact ::= function (rel, rec) {
    for (let inst of rel.myInsts) {
       $.indexAdd(inst, rec);
    }
-   
-   // if (rel.entityProto !== null) {
-   //    rkey[$.symTuple] = rval;
-   // }
-
-   $.invalidate(rel);
 }
 removeFact ::= function (rel, rec) {
-   if (!rel.records.has(rec) === undefined) {
-      throw new Error(`Missing record`);
+   $.check(rel.records.has(rec), `Missing record`);
+   $.doRemove(rel, rec);
+   $.invalidateRelation(rel);
+}
+doRemove ::= function (rel, rec) {
+   rel.records.delete(rec);
+
+   if (rel.myVer !== null) {
+      $.versionRemove(rel.myVer, rec);
    }
 
-   $.doRemove(rel, rec);
-   $.invalidate(rel);
+   for (let inst of rel.myInsts) {
+      $.indexRemove(inst, rec);
+   }
 }
-removeIf ::= function (rel, pred) {
-   let toRemove = Array.from($.filter(rel.records, pred));
+removeWhere ::= function (rel, bindings) {
+   let toRemove = Array.from($.getRecords(rel, bindings));
 
    for (let rec of toRemove) {
       $.doRemove(rel, rec);
    }
 
-   $.invalidate(rel);
+   $.invalidateRelation(rel);
 }
 replaceWhere ::= function (rel, bindings, replacer) {
    let recs = Array.from($.getRecords(rel, bindings));
@@ -295,74 +310,70 @@ replaceWhere ::= function (rel, bindings, replacer) {
       }
    }
 }
-doRemove ::= function (rel, rec) {
-   rel.records.delete(rec);
-
-   if (rel.myVer !== null) {
-      $.versionRemove(rel.myVer, rec);
-   }
-
-   for (let inst of rel.myInsts) {
-      $.indexRemove(inst, rec);
-   }
-
-   // if (rel.entityProto !== null) {
-   //    rkey[$.symTuple] = null;
-   // }
-}
-symTuple ::= Symbol.for('poli.tuple')
-symRelation ::= Symbol.for('poli.relation')
-setupEntityPrototype ::= function (rel) {
-   rel.entityProto[$.symRelation] = rel;
-
+symEntity ::= Symbol.for('poli.entity')
+symAssocRels ::= Symbol.for('poli.assoc-rels')
+populateEntityProto ::= function (rel, symRec, entityProto) {
    for (let attr of rel.attrs) {
-      Object.defineProperty(rel.entityProto, attr, {
+      $.check(!$.hasOwnProperty(entityProto, attr), () =>
+         `Relation '${rel.name}': property '${attr}' already defined on the prototype`
+      );
+
+      Object.defineProperty(entityProto, attr, {
          configurable: true,
          enumerable: true,
          get() {
-            return this[$.symTuple][attr];
+            return this[symRec][attr];
          }
       });
    }
-}
-makeEntity ::= function (rel, tuple) {
-   let entity = Object.create(rel.entityProto);
 
-   $.addFact(rel, entity, tuple);
+   entityProto[$.symAssocRels].add(rel);
+}
+makeEntity ::= function (entityProto) {
+   let entity = Object.create(entityProto);
+
+   for (let rel of entityProto[$.symAssocRels]) {
+      entity[rel.symRec] = null;
+   }
 
    return entity;
 }
-removeEntity ::= function (entity) {
-   $.removeFact(entity[$.symRelation], entity);
+removeEntity ::= function (rel, entity) {
+   $.removeFact(rel, entity[rel.symRec]);
+   entity[rel.symRec] = null;
 }
-setEntity ::= function (entity, newTuple) {
-   $.changeFact(entity[$.symRelation], entity, newTuple);
-}
-patchEntity ::= function (entity, fn, ...args) {
-   let newTuple = fn(entity[$.symTuple], ...args);
-   $.setEntity(entity, newTuple);
-}
-revertTo ::= function (extVer) {
-   throw new Error;
+addEntity ::= function (rel, newRec) {
+   let entity = newRec[$.symEntity];
+   let oldRec = entity[rel.symRec];
 
-   let baserel = extVer.owner;
-
-   if (baserel.isKeyed) {
-      for (let rkey of extVer.added.keys()) {
-         $.removeRecByKeyFromRel(baserel, rkey);
-      }
-
-      for (let rec of extVer.removed) {
-         $.addRecToRel(baserel, rec);
-      }
+   if (oldRec !== null) {
+      $.doRemove(rel, oldRec);
    }
-   else {
-      for (let rec of extVer.added) {
-         $.removeRecByKeyFromRel(baserel, rec);
-      }
 
-      for (let rec of extVer.removed) {
-         $.addRecToRel(baserel, rec);
-      }
+   $.doAdd(rel, newRec);
+   entity[rel.symRec] = newRec;
+
+   $.invalidateRelation(rel);
+}
+patchEntity ::= function (rel, entity, fn, ...args) {
+   let newRec = fn(entity[rel.symRec], ...args);
+   $.check(newRec[$.symEntity] === entity, `Invalid patchEntity logic`);
+   $.addEntity(rel, newRec);
+}
+revertTo ::= function (ver) {
+   let rel = ver.owner;
+
+   $.assert(() => rel.kind === 'base');
+
+   $.prepareVersion(ver);
+
+   for (let rec of ver.added) {
+      $.doRemove(rel, rec);
    }
+
+   for (let rec of ver.removed) {
+      $.doAdd(rel, rec);
+   }
+
+   $.invalidateRelation(rel);
 }
