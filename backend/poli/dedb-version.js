@@ -20,7 +20,7 @@ refRelationState ::= function (rel) {
    return rel.myVer;
 }
 refProjectionState ::= function (proj) {
-   if (proj.kind === 'derived') {
+   if (proj.kind === 'derived' || proj.kind === 'aggregate') {
       $.ensureTopmostFresh(proj);
       proj.myVer.refCount += 1;
 
@@ -38,8 +38,8 @@ refProjectionState ::= function (proj) {
       return proj.myVer;
    }
 
-   if (proj.kind === 'unique-hit') {
-      return $.makeUniqueHitVersion(proj);
+   if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
+      return $.makeScalarVersion(proj);
    }
 
    if (proj.kind === 'full') {
@@ -48,11 +48,9 @@ refProjectionState ::= function (proj) {
 
    throw new Error;
 }
-makeUniqueHitVersion ::= function (proj) {
-   $.assert(() => proj.kind === 'unique-hit');
-
+makeScalarVersion ::= function (proj) {
    return {
-      kind: 'unique-hit',
+      kind: 'scalar',
       proj: proj,
       rec: proj.rec,
    }
@@ -174,7 +172,7 @@ prepareVersion ::= function (ver) {
    }
 }
 isVersionPristine ::= function (ver) {
-   if (ver.kind === 'unique-hit') {
+   if (ver.kind === 'scalar') {
       return ver.rec === vec.proj.rec
    }
 
@@ -211,10 +209,10 @@ versionRemoveAll ::= function (ver, rec) {
    }
 }
 versionAddedRecords ::= function (ver) {
-   if (ver.kind === 'unique-hit') {
+   if (ver.kind === 'scalar') {
       let {proj} = ver;
 
-      if (ver.rec !== proj.rec && proj.rec !== undefined) {
+      if (ver.rec !== proj.rec && proj.rec !== null) {
          return [proj.rec];
       }
       else {
@@ -233,10 +231,10 @@ versionAddedRecords ::= function (ver) {
    throw new Error;
 }
 versionRemovedRecords ::= function (ver) {
-   if (ver.kind === 'unique-hit') {
+   if (ver.kind === 'scalar') {
       let {proj} = ver;
 
-      if (proj.rec !== ver.rec && ver.rec !== undefined) {
+      if (proj.rec !== ver.rec && ver.rec !== null) {
          return [ver.rec];
       }
       else {

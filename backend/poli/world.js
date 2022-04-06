@@ -286,11 +286,26 @@ load ::= function (minfos) {
    $.dumpRecencyList();
 }
 playOut ::= function () {
-   let module = $.queryEntity($.module, {name: 'exp'});
+   let names;
+   let exp = $.queryEntity($.module, {name: 'exp'});
 
-   console.log(Array.from($.query($.import, {recp: module})));
+   console.time('PROJ');
+   ({names} = $.queryOne($.knownNames, {module: exp}));
+   console.log(Array.from(names));
+   console.timeEnd('PROJ');
 
-   let {names} = $.queryOne($.knownNames, {}, {module});
-   console.log(names);
-   console.log($.knownNames);
+   console.time('PROJ');
+   let world = $.queryEntity($.module, {name: 'world'})
+   let playOut = $.queryEntity($.entry, {module: world, name: 'playOut'})
+
+   $.addFact($.import, {
+      entry: playOut,
+      recp: exp,
+      alias: null
+   });
+
+   ({names} = $.queryOne($.knownNames, {module: exp}));
+
+   console.log(Array.from(names));
+   console.timeEnd('PROJ');
 }

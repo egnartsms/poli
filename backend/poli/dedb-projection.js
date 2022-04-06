@@ -133,13 +133,15 @@ updateProjection ::= function (proj) {
       return;
    }
 
-   if (proj.rel.kind === 'base') {
+   let {rel} = proj;
+
+   if (rel.kind === 'base') {
       $.base.updateProjection(proj);
    }
-   else if (proj.kind === 'derived') {
+   else if (rel.kind === 'derived') {
       $.derived.updateProjection(proj);
    }
-   else if (proj.kind === 'aggregate') {
+   else if (rel.kind === 'aggregate') {
       $.agg.updateProjection(proj);
    }
    else {
@@ -147,7 +149,7 @@ updateProjection ::= function (proj) {
    }
 }
 referentialSize ::= function (proj) {
-   if (proj.kind === 'unique-hit') {
+   if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
       return 1;
    }
 

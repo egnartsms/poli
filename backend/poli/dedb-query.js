@@ -78,13 +78,21 @@ query ::= function (rel, hardBindings, softBindings) {
 queryAtMostOne ::= function (rel, hardBindings, softBindings) {
    if (rel.kind === 'aggregate') {
       let proj = $.lookupDerivedProjection(rel, hardBindings);
+      
+      if (proj.kind === 'aggregate-0-dim') {
+         $.check(softBindings === undefined);
+         return proj.rec;
+      }
+
+      $.assert(() => proj.kind === 'aggregate');
+
       let group = proj.recordMap;
 
       for (let key of proj.groupBy) {
          group = group.get(softBindings[key]);
 
          if (group === undefined) {
-            return undefined;
+            return null;
          }
       }
 
@@ -92,11 +100,11 @@ queryAtMostOne ::= function (rel, hardBindings, softBindings) {
    }
 
    let [rec] = $.query(rel, hardBindings, softBindings);
-   return rec;
+   return rec ?? null;
 }
 queryOne ::= function (rel, hardBindings, softBindings) {
    let rec = $.queryAtMostOne(rel, hardBindings, softBindings);
-   $.check(rec !== undefined);
+   $.check(rec !== null);
    return rec;
 }
 queryEntity ::= function (rel, bindings) {

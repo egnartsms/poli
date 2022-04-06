@@ -192,19 +192,19 @@ test_partial_updates ::= function () {
 }
 test_scalar_updates ::= function () {
    let rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
-   $.check(rec !== undefined);
+   $.check(rec !== null);
 
    $.removeWhere($.country, {name: 'Ruthenia'});
 
    rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
-   $.check(rec === undefined);
+   $.check(rec === null);
 
    $.addFact($.country, {name: 'Ruthenia', continent: 'Asia'});
    rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
-   $.check(rec === undefined);   
+   $.check(rec === null);   
 
    $.removeWhere($.country, {name: 'Ruthenia'});
    $.addFact($.country, {name: 'Ruthenia', continent: 'Europe'});
    rec = $.queryAtMostOne($.continentCity, {continent: 'Europe', city: 'Lviv'});
-   $.check(rec !== undefined);
+   $.check(rec !== null);
 }

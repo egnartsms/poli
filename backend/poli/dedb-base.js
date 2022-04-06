@@ -121,7 +121,7 @@ makeProjection ::= function (rel, bindings) {
       proj.inst = inst;
       proj.keys = $.indexKeys(inst.index, bindings);
       proj.filterBy = $.computeFilterBy(bindings, inst.index);
-      proj.rec = undefined;
+      proj.rec = null;
    }
    else {
       let filterBy = $.computeFilterBy(bindings);
@@ -164,8 +164,8 @@ updateProjection ::= function (proj) {
       let {inst, keys, filterBy} = proj;
       let [rec] = $.indexRef(inst, keys);
 
-      if (rec !== undefined && !$.suitsFilterBy(rec, filterBy)) {
-         rec = undefined;
+      if (rec !== null && !$.suitsFilterBy(rec, filterBy)) {
+         rec = null;
       }
       
       proj.rec = rec;
