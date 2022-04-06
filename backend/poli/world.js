@@ -18,7 +18,6 @@ dedb-base
    patchEntity
    baseRelation
    symAssocRels
-   symEntity
 dedb-derived
    derivedRelation
 dedb-rec-key
@@ -57,9 +56,9 @@ createRelations ::= function () {
    $.module = $.baseRelation({
       name: 'module',
       entityProto: $.protoModule,
-      attrs: ['entity', 'name', 'lang', 'members'],
+      attrs: ['idty', 'name', 'lang', 'members'],
       indices: [
-         ['entity', 1],
+         ['idty', 1],
          ['name', 1]
       ]
    });
@@ -67,9 +66,9 @@ createRelations ::= function () {
    $.entry = $.baseRelation({
       name: 'entry',
       entityProto: $.protoEntry,
-      attrs: ['entity', 'module', 'name', 'def', 'isBox'],
+      attrs: ['idty', 'module', 'name', 'def', 'isBox'],
       indices: [
-         ['entity', 1],
+         ['idty', 1],
          ['module', 'name', 1],
       ]
    });
@@ -182,7 +181,7 @@ createRelations ::= function () {
       attrs: ['module', 'entry', 'referrings'],
       hardIndices: [['entry', 1]],
       body: v => [
-         $.use($.entry, {[$.symEntity]: v`entry`, module: v`module`, def: v`def`}),
+         $.use($.entry, {idty: v`entry`, module: v`module`, def: v`def`}),
          $.use(definitionReferrings, {def: v`def`, referrings: v`referrings`})
       ]
    })
@@ -194,7 +193,7 @@ createRelations ::= function () {
          names: $.mutableSetOfUnique('name')
       },
       source: v => [
-         $.use($.module, {entity: v`module`}),
+         $.use($.module, {idty: v`module`}),
          $.or(
             // own entries
             $.use($.entry, {module: v`module`, name: v`name`}),
@@ -211,7 +210,7 @@ createRelations ::= function () {
                   // not aliased
                   $.and(
                      $.use(isNull, {value: v`alias`}),
-                     $.use($.entry, {entity: v`entry`, name: v`name`})
+                     $.use($.entry, {idty: v`entry`, name: v`name`})
                   )
                )
             ),
@@ -232,7 +231,7 @@ load ::= function (minfos) {
       let module = $.makeEntity($.protoModule);
 
       $.addEntity($.module, {
-         entity: module,
+         idty: module,
          name: minfo.name,
          lang: minfo.lang,
          members: null,
@@ -245,7 +244,7 @@ load ::= function (minfos) {
          let entry = $.makeEntity($.protoEntry);
 
          $.addEntity($.entry, {
-            entity: entry,
+            idty: entry,
             name,
             def,
             isBox,

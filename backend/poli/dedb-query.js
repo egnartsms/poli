@@ -10,7 +10,7 @@ dedb-projection
    releaseProjection
    updateProjection
 dedb-base
-   symEntity
+   idty
 dedb-index
    Fitness
    indexFitnessByBindings
@@ -101,7 +101,7 @@ queryOne ::= function (rel, hardBindings, softBindings) {
 }
 queryEntity ::= function (rel, bindings) {
    let [rec] = $.getRecords(rel.myInsts, bindings);
-   return rec[$.symEntity];
+   return rec[$.idty];
 }
 lookupDerivedProjection ::= function (rel, bindings) {
    $.assert(() => rel.kind === 'derived' || rel.kind === 'aggregate');

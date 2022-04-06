@@ -84,7 +84,7 @@ baseRelation ::= function ({
    }
 
    if (entityProto !== null) {
-      $.check(rel.attrs.includes($.symEntity));
+      $.check(rel.attrs.includes($.idty));
 
       let symRec = Symbol(name);
 
@@ -257,7 +257,7 @@ replaceWhere ::= function (rel, bindings, replacer) {
       }
    }
 }
-symEntity ::= 'entity'
+idty ::= 'idty'
 symAssocRels ::= Symbol.for('poli.assoc-rels')
 populateEntityProto ::= function (rel, symRec, entityProto) {
    for (let attr of rel.attrs) {
@@ -290,7 +290,7 @@ removeEntity ::= function (rel, entity) {
    entity[rel.symRec] = null;
 }
 addEntity ::= function (rel, newRec) {
-   let entity = newRec[$.symEntity];
+   let entity = newRec[$.idty];
    let oldRec = entity[rel.symRec];
 
    if (oldRec !== null) {
@@ -304,7 +304,7 @@ addEntity ::= function (rel, newRec) {
 }
 patchEntity ::= function (rel, entity, fn, ...args) {
    let newRec = fn(entity[rel.symRec], ...args);
-   $.check(newRec[$.symEntity] === entity, `Invalid patchEntity logic`);
+   $.check(newRec[$.idty] === entity, `Invalid patchEntity logic`);
    $.addEntity(rel, newRec);
 }
 revertTo ::= function (ver) {
