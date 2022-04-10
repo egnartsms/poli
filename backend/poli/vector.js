@@ -18,7 +18,10 @@ Vector ::= function (items=null) {
       $.makeNode(root, false);
    }
 
-   return $.newObj($.protoVector, {root});
+   return {
+      __proto__: $.protoVector,
+      root
+   }
 }
 size ::= function (vec) {
    return vec.root.size;

@@ -5,16 +5,18 @@ const {WORLD_MODULE, RUN_MODULE} = require('./const');
 function run(rawModules) {
    let minfos = loadModules(rawModules);
 
+   // Tests
    {
       let mTest = minfos.find(m => m.name === 'test-dedb');
       mTest.ns['runTests']();
    }
 
-   let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-   Mworld.ns['load'](minfos);
+   // Load the world
+   {
+      let Mworld = minfos.find(m => m.name === WORLD_MODULE);
+      Mworld.ns['load'](minfos);
+   }
 
-   return;
-   
    let Mrun = minfos.find(m => m.name === RUN_MODULE);
 
    // That's our contract with RUN_MODULE:
@@ -29,6 +31,12 @@ function run(rawModules) {
    websocket.addEventListener('message', ev => {
       handleMessage(JSON.parse(ev.data));
    });
+
+   // Special hack
+   {
+      let Mexp = minfos.find(m => m.name === 'exp');
+      window.exp = Mexp.ns;
+   }
 
    return;
 }

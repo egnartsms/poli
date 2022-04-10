@@ -55,7 +55,7 @@ dedb-query
 -----
 baseRelation ::= function ({
    name,
-   entityProto = null,
+   protoIdentity = null,
    attrs = [],
    indices: indexSpecs = [],
    records = []
@@ -83,12 +83,12 @@ baseRelation ::= function ({
       rel.myInsts.push(inst);
    }
 
-   if (entityProto !== null) {
+   if (protoIdentity !== null) {
       $.check(rel.attrs.includes($.idty));
 
       let symRec = Symbol(name);
 
-      $.populateEntityProto(rel, symRec, entityProto);
+      $.populateProtoIdentity(rel, symRec, protoIdentity);
       rel.symRec = symRec;
    }
 
@@ -259,13 +259,13 @@ replaceWhere ::= function (rel, bindings, replacer) {
 }
 idty ::= 'idty'
 symAssocRels ::= Symbol.for('poli.assoc-rels')
-populateEntityProto ::= function (rel, symRec, entityProto) {
+populateProtoIdentity ::= function (rel, symRec, protoIdentity) {
    for (let attr of rel.attrs) {
-      $.check(!$.hasOwnProperty(entityProto, attr), () =>
+      $.check(!$.hasOwnProperty(protoIdentity, attr), () =>
          `Relation '${rel.name}': property '${attr}' already defined on the prototype`
       );
 
-      Object.defineProperty(entityProto, attr, {
+      Object.defineProperty(protoIdentity, attr, {
          configurable: true,
          enumerable: true,
          get() {
@@ -274,38 +274,38 @@ populateEntityProto ::= function (rel, symRec, entityProto) {
       });
    }
 
-   entityProto[$.symAssocRels].add(rel);
+   protoIdentity[$.symAssocRels].add(rel);
 }
-makeEntity ::= function (entityProto) {
-   let entity = Object.create(entityProto);
+makeIdentity ::= function (protoIdentity) {
+   let identity = Object.create(protoIdentity);
 
-   for (let rel of entityProto[$.symAssocRels]) {
-      entity[rel.symRec] = null;
+   for (let rel of protoIdentity[$.symAssocRels]) {
+      identity[rel.symRec] = null;
    }
 
-   return entity;
+   return identity;
 }
-removeEntity ::= function (rel, entity) {
-   $.removeFact(rel, entity[rel.symRec]);
-   entity[rel.symRec] = null;
+removeIdentity ::= function (rel, identity) {
+   $.removeFact(rel, identity[rel.symRec]);
+   identity[rel.symRec] = null;
 }
-addEntity ::= function (rel, newRec) {
-   let entity = newRec[$.idty];
-   let oldRec = entity[rel.symRec];
+addIdentity ::= function (rel, newRec) {
+   let identity = newRec[$.idty];
+   let oldRec = identity[rel.symRec];
 
    if (oldRec !== null) {
       $.doRemove(rel, oldRec);
    }
 
    $.doAdd(rel, newRec);
-   entity[rel.symRec] = newRec;
+   identity[rel.symRec] = newRec;
 
    $.invalidateRelation(rel);
 }
-patchEntity ::= function (rel, entity, fn, ...args) {
-   let newRec = fn(entity[rel.symRec], ...args);
-   $.check(newRec[$.idty] === entity, `Invalid patchEntity logic`);
-   $.addEntity(rel, newRec);
+patchIdentity ::= function (rel, identity, fn, ...args) {
+   let newRec = fn(identity[rel.symRec], ...args);
+   $.check(newRec[$.idty] === identity, `patchIdentity: changed identity`);
+   $.addIdentity(rel, newRec);
 }
 revertTo ::= function (ver) {
    let rel = ver.owner;

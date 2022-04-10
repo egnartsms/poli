@@ -107,7 +107,7 @@ queryOne ::= function (rel, hardBindings, softBindings) {
    $.check(rec !== null);
    return rec;
 }
-queryEntity ::= function (rel, bindings) {
+queryIdentity ::= function (rel, bindings) {
    let [rec] = $.getRecords(rel.myInsts, bindings);
    return rec[$.idty];
 }

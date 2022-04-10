@@ -13,9 +13,9 @@ vector
    Vector
 dedb-base
    addFact
-   makeEntity
-   addEntity
-   patchEntity
+   addIdentity
+   makeIdentity
+   patchIdentity
    baseRelation
    symAssocRels
 dedb-derived
@@ -29,7 +29,7 @@ dedb-query
    dumpRecencyList
    query
    queryOne
-   queryEntity
+   queryIdentity
 dedb-goal
    use
    and
@@ -55,8 +55,8 @@ createRelations ::= function () {
 
    $.module = $.baseRelation({
       name: 'module',
-      entityProto: $.protoModule,
-      attrs: ['idty', 'name', 'lang', 'members'],
+      protoIdentity: $.protoModule,
+      attrs: ['idty', 'name', 'lang', 'members', 'ns', 'nsDelta'],
       indices: [
          ['idty', 1],
          ['name', 1]
@@ -65,7 +65,7 @@ createRelations ::= function () {
    
    $.entry = $.baseRelation({
       name: 'entry',
-      entityProto: $.protoEntry,
+      protoIdentity: $.protoEntry,
       attrs: ['idty', 'module', 'name', 'def', 'isBox'],
       indices: [
          ['idty', 1],
@@ -228,22 +228,22 @@ load ::= function (minfos) {
    // Modules and entries
    for (let minfo of minfos) {
       // minfo :: [{name, lang, imports, body, ns}]
-      let module = $.makeEntity($.protoModule);
+      let module = $.makeIdentity($.protoModule);
 
-      $.addEntity($.module, {
+      $.addIdentity($.module, {
          idty: module,
          name: minfo.name,
          lang: minfo.lang,
          members: null,
-         // These are not visible to the DEDB (transient)
+         // These are mutable
          ns: minfo.ns,
-         nsDelta: null,
+         nsDelta: Object.create(null),
       });
 
       let entries = Array.from(minfo.body, ({isBox, name, def}) => {
-         let entry = $.makeEntity($.protoEntry);
+         let entry = $.makeIdentity($.protoEntry);
 
-         $.addEntity($.entry, {
+         $.addIdentity($.entry, {
             idty: entry,
             name,
             def,
@@ -254,7 +254,7 @@ load ::= function (minfos) {
          return entry;
       });
 
-      $.patchEntity($.module, module, m => ({
+      $.patchIdentity($.module, module, m => ({
          ...m,
          members: $.Vector(entries)
       }));
@@ -262,50 +262,24 @@ load ::= function (minfos) {
 
    // Imports
    for (let {name: recpName, imports} of minfos) {
-      let recp = $.queryEntity($.module, {name: recpName});
+      let recp = $.queryIdentity($.module, {name: recpName});
       
       for (let {donor: donorName, asterisk, imports: entryImports} of imports) {
-         let donor = $.queryEntity($.module, {name: donorName});
+         let donor = $.queryIdentity($.module, {name: donorName});
 
          if (asterisk !== null) {
             $.addFact($.starImport, {donor, recp, alias: asterisk});
          }
 
          for (let {entry: entryName, alias} of entryImports) {
-            let entry = $.queryEntity($.entry, {module: donor, name: entryName});
+            let entry = $.queryIdentity($.entry, {module: donor, name: entryName});
 
             $.addFact($.import, {entry, recp, alias});
          }
       }
    }
 
-   $.playOut();
-
    console.timeEnd('load world');
 
    $.dumpRecencyList();
-}
-playOut ::= function () {
-   let names;
-   let exp = $.queryEntity($.module, {name: 'exp'});
-
-   console.time('PROJ');
-   ({names} = $.queryOne($.knownNames, {module: exp}));
-   console.log(Array.from(names));
-   console.timeEnd('PROJ');
-
-   console.time('PROJ');
-   let world = $.queryEntity($.module, {name: 'world'})
-   let playOut = $.queryEntity($.entry, {module: world, name: 'playOut'})
-
-   $.addFact($.import, {
-      entry: playOut,
-      recp: exp,
-      alias: null
-   });
-
-   ({names} = $.queryOne($.knownNames, {module: exp}));
-
-   console.log(Array.from(names));
-   console.timeEnd('PROJ');
 }

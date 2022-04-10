@@ -6,6 +6,4 @@ if poli_package not in sys.path:
     sys.path.append(poli_package)
 
 
-import sublime
-
 from poli.main import *  # noqa
