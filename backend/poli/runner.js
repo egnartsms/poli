@@ -9,7 +9,11 @@ common
    joindot
    map
 code-modify
-   globalCodeModifications
+   makeSnapshot
+   releaseSnapshot
+   computeModificationsSince
+   commitSnapshot
+   rollbackToSnapshot
 exc
    ApiError
    genericError
@@ -17,97 +21,51 @@ trie
    * as: trie
 vector
    * as: vec
-world
-dedb-rec-key
-   recKey
-   recVal
+dedb-base
+   patchIdentity
 dedb-query
+   queryIdentity
+   query
+world
+   module
+   entry
+   import
 -----
 delmark ::= Object.create(null)
-RentryFromModuleNamed ::= null
 main ::= function (sendMessage) {
-   $.RentryFromModuleNamed = $.derivedRelation({
-      name: 'entry_from_module_named',
-      recType: $.RecordType.tuple,
-      attrs: ['entry', 'entryName', 'moduleName'],
-      body: v => [
-         $.rel.entry.at({
-            [$.recKey]: v`entry`,
-            name: v`entryName`,
-            module: v`module`
-         }),
-         $.rel.module.at({
-            [$.recKey]: v`module`,
-            name: v`moduleName`
-         })
-      ]
-   });
-
    return msg => $.handleMessage(msg, sendMessage);
 }
-pendingCodeModifications ::= false
-commitPendingCodeModifications ::= function (msg) {
-   $.check($.pendingCodeModifications);
-
+snapshot ::= null
+commitPendingTransaction ::= function (msg) {
    if (msg['type'] !== 'modify-code-result') {
       throw new Error(`Expected 'modify-code-result' message, got: ${msg['type']}`);
    }
 
    if (msg['success']) {
-      for (let {v: mval} of $.delta['module'].changed) {
-         if (mval.nsDelta !== null) {
-            for (let [key, val] of Object.entries(mval.nsDelta)) {
-               if (val === $.delmark) {
-                  delete mval.ns[key];
-               }
-               else {
-                  mval.ns[key] = val;
-               }
-            }
-            
-            mval.nsDelta = null;
-         }
-      }
-
-      $.commit();
+      $.commitSnapshot($.snapshot);
    }
    else {
-      $.rollback();
+      $.rollbackToSnapshot($.snapshot);
    }
 
-   $.pendingCodeModifications = false;
+   $.snapshot = null;
 }
 handleMessage ::= function (msg, sendMessage) {
-   if ($.pendingCodeModifications) {
-      $.commitPendingCodeModifications(msg);
+   if ($.snapshot !== null) {
+      $.commitPendingTransaction(msg);
       return;
    }
 
    let stopwatch = (() => {
       let start = new Date;
-      return () => {
-         let elapsed = new Date - start;
-         return `${elapsed} ms`;
-      };
+      return () => new Date - start;
    })();
 
+   let snapshot = $.makeSnapshot();
+   let result;
+
    try {      
-      let result = $.operationHandlers[msg['op']](msg['args']);
-      // let codeModifications = $.globalCodeModifications();
-
-      // if (codeModifications.length > 0) {
-      //    console.log("Code modifications:", codeModifications);
-      //    $.pendingCodeModifications = true;
-      // }
-
-      sendMessage({
-         type: 'api-call-result',
-         success: true,
-         result: result ?? null,
-         modifyCode: [] // codeModifications
-      });
-
-      console.log(msg['op'], `SUCCESS`, `(${stopwatch()})`);
+      result = $.operationHandlers[msg['op']](msg['args']);
    }
    catch (e) {
       let error, message, info;
@@ -132,28 +90,34 @@ handleMessage ::= function (msg, sendMessage) {
       });
 
       console.error(e);
-      console.log(msg['op'], `FAILURE`, `(${stopwatch()})`);
+      console.log(msg['op'], `FAILURE`, `(${stopwatch()} ms)`);
+
+      $.releaseSnapshot(snapshot);
+      return;
    }
-}
-moduleByName ::= function (name) {
-   return $.trie.at($.groups['module.name'].v, name, () => {
-      throw $.genericError(`Unknown module name: '${name}'`);
+
+   let codeModifications = $.computeModificationsSince(snapshot);
+
+   if (codeModifications.length > 0) {
+      console.log("Code modifications:", codeModifications);
+      $.snapshot = snapshot;
+   }
+   else {
+      $.releaseSnapshot(snapshot);
+   }
+
+   sendMessage({
+      type: 'api-call-result',
+      success: true,
+      result: result ?? null,
+      modifyCode: codeModifications
    });
-}
-entryByName ::= function (module, name) {
-   return $.trie.at(module.entries.v, name, () => {
-      throw $.genericError(`Module '${module.v.name}': not found entry '${name}'`);
-   });
+
+   console.log(msg['op'], `SUCCESS`, `(${stopwatch()} ms)`);
 }
 moduleEval ::= function (ns, code) {
    let fun = Function('$', `"use strict";\n   return (${code})`);
    return fun.call(null, ns);
-}
-isStarEntry ::= function (entry) {
-   return entry.v.name === null;
-}
-isStarImport ::= function (imp) {
-   return $.isStarEntry(imp.entry);
 }
 operationHandlers ::= ({
    getEntries: function () {
@@ -181,12 +145,10 @@ operationHandlers ::= ({
    },
    
    getDefinition: function ({module: moduleName, name}) {
-      let [{entry}] = $.query($.RentryFromModuleNamed, {
-         moduleName: moduleName,
-         entryName: name,
-      });
+      let module = $.queryIdentity($.module, {name: moduleName});
+      let entry = $.queryIdentity($.entry, {module, name});
 
-      return entry.strDef;
+      return entry.def;
    },
    
    getCompletions: function ({module: moduleName, star, prefix}) {
@@ -248,8 +210,8 @@ operationHandlers ::= ({
    },
    
    editEntry: function ({module: moduleName, name, newDef}) {
-      let module = $.moduleByName(moduleName);
-      let entry = $.entryByName(module, name);
+      let module = $.queryIdentity($.module, {name: moduleName});
+      let entry = $.queryIdentity($.entry, {module, name});
       
       $.setEntryDef(entry, newDef.trim());
    },
@@ -473,25 +435,20 @@ referringsTo ::= function (mid, entryName) {
    }));
 }
 setEntryDef ::= function (entry, newDef) {
-   let newVal = $.moduleEval(entry.v.module.v.ns, newDef);
+   let newVal = $.moduleEval(entry.module.ns, newDef);
    
-   $.patchBox(entry, {
-      strDef: newDef,
+   $.patchIdentity($.entry, entry, rec => ({
+      ...rec,
       def: newDef
-   });
-   $.updateBox(entry.v.module, $.patchModule, {
-      nsDelta: {
-         [entry.v.name]: newVal
-      }
-   });
+   }));
+
+   entry.module.nsDelta[entry.name] = newVal;
   
    // Propagate newVal to recipients
-   for (let imp of $.trie.ivalues(entry.imports.v)) {
-      $.updateBox(imp.recp, $.patchModule, {
-         nsDelta: {
-            [imp.as]: newVal
-         }
-      });
+   for (let imp of $.query($.import, {entry})) {
+      imp.recp.nsDelta[imp.alias || entry.name] = newVal;
+      // TODO: implement this by having special registry in '$.snapshot'
+      $.patchIdentity($.module, imp.recp, rec => ({...rec}));
    }
 }
 offendingModulesOnRename ::= function (entry, newName) {

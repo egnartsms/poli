@@ -30,5 +30,6 @@ combox ::= function (name) {
 }
 callHer ::= function () {
    let v = $.vec.Vector(['a', 'b', 'c']);
-   return $.vec.at(v, 2);
+   // return $.vec.at(v, 0);
+   return 'Jane'
 }
