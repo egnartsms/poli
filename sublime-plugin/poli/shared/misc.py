@@ -13,7 +13,7 @@ class Kind:
 
 
 LANG_SUBLIME_SYNTAX = {
-    'js': 'Packages/Poli/JS.sublime-syntax',
+    'js': 'Packages/Poli/Poli.sublime-syntax',
     'xs': 'Packages/Poli/XS.sublime-syntax',
 }
 

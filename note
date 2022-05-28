@@ -82,60 +82,31 @@ Syntax objects
 
 
 
-========
-per module relation: {name, def, ...}
+=======
 
-imports relation: {donorid, entryName, recpid, alias}
-modules relation: {id, name, lang, entries, ...}
-   modules.byName: {name => <module fact>}
-   modules.byId: {moduleid => <module fact>}
+Smart modes:
 
+- strict: don't allow to introduce more build-time broken things (imports of non-existent
+  entries, entries that throw at evaluation). It's allowed though to create functions
+  that refer to non-existent entries. Rename of entry or import entails changes of all
+  usages of this name (smart rename). If smart rename is impossible (e.g. name
+  collision), we abort the whole operation.
 
-module = {
-   id,
-   name,
-   lang,
+- tolerant: allow to introduce more broken things but also try to smart rename. If smart
+  rename is impossible, then do it partially (wherever possible).
 
-   entries: [name],
-      entries.byName: {name => <entry fact>},
-   
-   name2import: {name => <import fact>}
-}
+- off: allow to introduce more broken things and don't smart rename. This is almost
+  equivalent of plain text editing.
 
 
-=====
-Future features
+"Smart rename" implies:
 
---
+  - on entry rename, fix all its usages within the same module, all its imports and all
+    the usages of the imports in other modules;
 
-*
+  - on import rename (or alias rename), fix all all the usages of the imported name;
 
-name.property ::= <definition>
+  - cannot delete an entry if something depends on it at build time;
 
+  - cannot add an entry with non-existent build-time dependencies.
 
-*
-
-name ::= {
-   prop1: <code1>,
-   prop2: <code2>,
-   prop3: <code3>,
-} 
-
-
-?
-
-_ ::= methodFor(sizeOf, )
-
-def name as: function (...) {
-    ...
-}
-def height as: 0
-def width as: height / 2
-def square as: height * width
-
-def-method sizeOf for: ZeroVersion as: function () {
-    
-}
-
-
-* build-time (early) dependency

@@ -1,0 +1,257 @@
+%YAML 1.2
+---
+name: Poli
+version: 2
+scope: source.poli
+hidden: true
+
+variables:
+  first_line_of_definition: '^(?=.*\s:.*?:=\s)'
+
+contexts:
+  prototype:
+    - match: ^_.*\n
+      scope: comment.line.for-tests
+
+  main:
+    - match: ^-+$
+      scope: punctuation.terminator.end-of-imports
+      set: module-body
+    - match: ^\S.*$
+      scope: meta.import.module
+      push: module-imports
+
+  module-imports:
+    - match: ^(?=\S)
+      pop: true
+    - match: '^ +(\*)(?=\s)'
+      captures:
+        1: meta.import.asterisk
+      push: as
+    - match: '^ +(\S+)(?=\s)'
+      captures:
+        1: meta.import.entry variable.other
+      push: as
+
+  as:
+    - match: '(?<= )as:(?=\s)'
+      scope: keyword.other
+      set: alias
+    - match: $
+      pop: true
+
+  alias:
+    - match: '(?<= )\S+'
+      scope: meta.import.alias variable.other
+      pop: true
+    - match: $
+      pop: true
+
+  module-body:
+    - match: '{{first_line_of_definition}}'
+      push: [entry, target]
+    - match: ^
+      push: interspace
+
+  interspace:
+    - meta_content_scope: meta.interspace comment.block.interspace
+    - match: '{{first_line_of_definition}}'
+      pop: true
+
+  entry:
+    - meta_content_scope: meta.entry
+    # - include: pop-at-starting-line
+    - match: (?<=\s)(:(stmt):=)(?:\s*$)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.stmt
+      push: [exit, body-*, exit, def/stmt, maybe-docstring]
+    - match: (?<=\s)(:(stmt):=)(?:\s+)(?=\S)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.stmt
+      push: [exit, definition-1, embedded-1/stmt]
+    - match: (?<=\s)(:(css):=)(?:\s*$)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.css
+      push: [exit, body-*, exit, def/css, maybe-docstring]
+    - match: (?<=\s)(:(css):=)(?:\s+)(?=\S)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.css
+      push: [exit, definition-1, embedded-1/css]
+    - match: (?<=\s)(:(.*?):=)(?:\s*$)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.js
+      push: [exit, body-*, exit, def/js, maybe-docstring]
+    - match: (?<=\s)(:(.*?):=)(?:\s+)(?=\S)
+      captures:
+        1: punctuation.separator.defined-as
+        2: meta.defkind.js
+      push: [exit, definition-1, embedded-1/js]
+
+  target:
+    - meta_scope: meta.target
+    - include: pop-at-defined-as
+    - match: \w+
+      scope: meta.name-binding variable.other
+      pop: true
+    - match: (?=\$)
+      push: effect
+
+  effect:
+    - include: pop-at-defined-as
+    - match: (\$)(\.)(\w+)\b
+      captures:
+        1: punctuation.dollar.$effect variable.other.dollar.only
+        2: punctuation.accessor.$effect
+        3: meta.$func
+      push:
+        - meta_content_scope: meta.$args
+        - match: \)
+          scope: punctuation.section.group.end.js
+          pop: true
+        - include: Packages/JavaScript/JavaScript.sublime-syntax#expression-list
+      with_prototype:
+        - include: pop-at-defined-as
+
+  pop-at-defined-as:
+    - match: (?=\s:.*?:=\s)
+      pop: true
+
+  exit:
+    - match: ''
+      pop: 2
+
+  definition-1:
+    - meta_content_scope: meta.body.oneline meta.definition
+    - match: ^
+      pop: true
+
+  body-*:
+    - meta_content_scope: meta.body.multiline
+
+  maybe-docstring:
+    - match: '^ {3}(:) ?'
+      captures:
+        1: punctuation.definition.docstring
+      set: docstring
+    - match: ^
+      pop: true
+
+  docstring:
+    - meta_content_scope: meta.docstring comment.block.docstring
+    - include: smart-empty-lines-in-docstring
+    - match: '^(?= {,3}\S)'
+      pop: true
+
+  definition-*:
+    - meta_content_scope: meta.definition
+    - include: pop-at-starting-line
+    - include: smart-empty-lines
+
+  pop-at-starting-line:
+    - match: ^(?=\S)
+      pop: true
+
+  smart-empty-lines:
+    - match: ^(?=\s*$)
+      branch_point: empty-lines
+      branch:
+        - 
+          # part of definition => discard branching & continue at the state we were
+          # at the beginning of the first empty line
+          - match: ^(?=\s+\S)
+            pop: true
+          # definition terminated => all these empty lines were not a part of it, so
+          # return to the state at the first empty line and evacuate from JavaScript
+          - match: ^(?=\S)
+            fail: empty-lines
+        -
+          # evacuate from: [<whatever>, branch]
+          - match: ''
+            pop: 2
+
+  smart-empty-lines-in-docstring:
+    - match: ^(?=\s*$)
+      branch_point: empty-lines-docstring
+      branch:
+        - 
+          # part of docstring => discard branching, continue
+          - match: '^(?= {4,}\S)'
+            pop: true
+          # not a docstring any more => all these empty lines were not a part of it
+          - match: '^(?= {,3}\S)'
+            fail: empty-lines-docstring
+        -
+          # evacuate from: [<whatever>, branch]
+          - match: ''
+            pop: 2
+
+  # For each defkind KIND, there should be these contexts:
+  #   def/KIND
+  #   embedded-1/KIND
+  #   embedded-*/KIND
+  #
+
+  def/js:
+    - match: ''
+      set:
+        - definition-*
+        - embedded-*/js
+
+  embedded-1/js:
+    - match: ''
+      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      with_prototype:
+        - match: ^
+          pop: true
+
+  embedded-*/js:
+    - match: ''
+      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      with_prototype:
+        - include: pop-at-starting-line
+        - include: smart-empty-lines
+
+  def/stmt:
+    - match: ''
+      set:
+        - definition-*
+        - embedded-*/stmt
+
+  embedded-1/stmt:
+    - match: ''
+      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
+      with_prototype:
+        - match: ^
+          pop: true
+
+  embedded-*/stmt:
+    - match: ''
+      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
+      with_prototype:
+        - include: pop-at-starting-line
+        - include: smart-empty-lines
+
+  def/css:
+    - match: ''
+      set:
+        - definition-*
+        - embedded-*/css
+
+  embedded-1/css:
+    - match: ''
+      set: Packages/Sass/Syntaxes/SCSS.sublime-syntax
+      with_prototype:
+        - match: ^
+          pop: true
+
+  embedded-*/css:
+    - match: ''
+      set: Packages/Sass/Syntaxes/SCSS.sublime-syntax
+      with_prototype:
+        - include: pop-at-starting-line
+        - include: smart-empty-lines
