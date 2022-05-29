@@ -1,136 +1,147 @@
 common
    check
 -----
-sortedIndex ::= function (array, newKey, fnkey) {
-   let lo = 0;
-   let hi = array.length - 1;
 
-   while (lo <= hi) {
-      let mi = Math.floor((lo + hi) / 2);
-      let miKey = fnkey(array[mi]);
+sortedIndex ::=
+   function (array, newKey, fnkey) {
+      let lo = 0;
+      let hi = array.length - 1;
 
-      if (newKey < miKey) {
-         hi = mi - 1;
-      }
-      else {
-         lo = mi + 1;
-      }
-   }
+      while (lo <= hi) {
+         let mi = Math.floor((lo + hi) / 2);
+         let miKey = fnkey(array[mi]);
 
-   return lo;
-}
-concatenate ::= function (tvar, {with: separator, sortBy}) {
-   // Sort records and concatenate values with a given separator.
-   // The implementation is O(n) so not intended for too many values inside 1 group.
-   let proto = {
-      add(rec) {
-         this.recs.splice(
-            $.sortedIndex(this.recs, rec[sortBy], rec => rec[sortBy]), 0, rec
-         );
-      },
-
-      remove(rec) {
-         this.recs.splice(this.recs.indexOf(rec), 1);
-      },
-
-      value() {
-         return Array.from(this.recs, rec => rec[tvar]).join(separator);
-      }
-   }
-
-   return {
-      make() {
-         return {
-            __proto__: proto,
-            recs: []
+         if (newKey < miKey) {
+            hi = mi - 1;
          }
-      },
+         else {
+            lo = mi + 1;
+         }
+      }
 
-      vars: [tvar, sortBy]
+      return lo;
    }
-}
-sum ::= function (tvar) {
-   let proto = {
-      add(rec) {
-         this.sum += rec[tvar];
-      },
 
-      remove(rec) {
-         this.sum -= rec[tvar];
-      },
+concatenate ::=
+   function (tvar, {with: separator, sortBy}) {
+      // Sort records and concatenate values with a given separator.
+      // The implementation is O(n) so not intended for too many values inside 1 group.
+      let proto = {
+         add(rec) {
+            this.recs.splice(
+               $.sortedIndex(this.recs, rec[sortBy], rec => rec[sortBy]), 0, rec
+            );
+         },
 
-      value() {
-         return this.sum;
+         remove(rec) {
+            this.recs.splice(this.recs.indexOf(rec), 1);
+         },
+
+         value() {
+            return Array.from(this.recs, rec => rec[tvar]).join(separator);
+         }
+      }
+
+      return {
+         make() {
+            return {
+               __proto__: proto,
+               recs: []
+            }
+         },
+
+         vars: [tvar, sortBy]
       }
    }
 
-   return {
-      make() {
-         return {
-            __proto__: proto,
-            sum: 0
+sum ::=
+   function (tvar) {
+      let proto = {
+         add(rec) {
+            this.sum += rec[tvar];
+         },
+
+         remove(rec) {
+            this.sum -= rec[tvar];
+         },
+
+         value() {
+            return this.sum;
          }
-      },
+      }
 
-      vars: [tvar]
-   }
-}
-min ::= function (tvar, by) {
-   // Heap-based implementation
-   let proto = {
-      add(rec) {
-         this.recs.splice(
-            $.sortedIndex(this.recs, rec[by], rec => rec[by]), 0, rec
-         );
-      },
+      return {
+         make() {
+            return {
+               __proto__: proto,
+               sum: 0
+            }
+         },
 
-      remove(rec) {
-         this.recs.splice(this.recs.indexOf(rec), 1);
-      },
-
-      value() {
-         return this.recs[0][tvar];
+         vars: [tvar]
       }
    }
 
-   return {
-      make() {
-         return {
-            __proto__: proto,
-            recs: []
+min ::=
+   function (tvar, by) {
+      // Heap-based implementation
+      let proto = {
+         add(rec) {
+            this.recs.splice(
+               $.sortedIndex(this.recs, rec[by], rec => rec[by]), 0, rec
+            );
+         },
+
+         remove(rec) {
+            this.recs.splice(this.recs.indexOf(rec), 1);
+         },
+
+         value() {
+            return this.recs[0][tvar];
          }
-      },
+      }
 
-      vars: [tvar, by]
-   }
-}
-mutableSetOfUnique ::= function (tvar) {
-   let proto = {
-      add(rec) {
-         $.check(!this.set.has(rec[tvar]));
+      return {
+         make() {
+            return {
+               __proto__: proto,
+               recs: []
+            }
+         },
 
-         this.set.add(rec[tvar]);
-      },
-
-      remove(rec) {
-         $.check(this.set.has(rec[tvar]));
-
-         this.set.remove(rec[tvar]);
-      },
-
-      value() {
-         return this.set;
+         vars: [tvar, by]
       }
    }
 
-   return {
-      make() {
-         return {
-            __proto__: proto,
-            set: new Set
-         }
-      },
+mutableSetOfUnique ::=
+   function (tvar) {
+      let proto = {
+         add(rec) {
+            $.check(!this.set.has(rec[tvar]));
 
-      vars: [tvar]
-   }   
-}
+            this.set.add(rec[tvar]);
+         },
+
+         remove(rec) {
+            $.check(this.set.has(rec[tvar]));
+
+            this.set.remove(rec[tvar]);
+         },
+
+         value() {
+            return this.set;
+         }
+      }
+
+      return {
+         make() {
+            return {
+               __proto__: proto,
+               set: new Set
+            }
+         },
+
+         vars: [tvar]
+      }   
+   }
+   
