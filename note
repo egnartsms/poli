@@ -104,9 +104,27 @@ Smart modes:
   - on entry rename, fix all its usages within the same module, all its imports and all
     the usages of the imports in other modules;
 
-  - on import rename (or alias rename), fix all all the usages of the imported name;
+  - on import rename (or alias rename), fix all the usages of the imported name;
 
   - cannot delete an entry if something depends on it at build time;
 
   - cannot add an entry with non-existent build-time dependencies.
 
+
+=======
+Bootload reactivity
+
+
+def cell
+binding cell
+
+
+def cell:
+  - syntactically broken
+  - depends on unset binding
+  - computed
+
+
+binding cell:
+  - unset
+  - 

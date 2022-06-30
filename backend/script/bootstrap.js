@@ -1,163 +1,733 @@
-var poli = (function () {
+(function () {
    'use strict';
 
-   var _const = {
-      SRC_FOLDER: 'poli',
-      WORLD_MODULE: 'world',
-      RUN_MODULE: 'runner'
-   };
-
-   function loadModules(rawModules) {
-      function moduleEval(ns, name, def) {
-         def = def.replace(/(?<=^function\*? )(?= *\()/, name);
-         let fun = Function('$', `"use strict";\n   return (${def})`);
-         return fun.call(null, ns);
+   class Queue {
+      constructor() {
+         this.front = [];
+         this.rear = [];
       }
 
-      console.time('bootstrap');
-      
-      let minfos = Array.from(
-         parseModules(rawModules), minfo => ({
-            ...minfo,
-            ns: Object.create(null)
-         })
-      );
+      enqueue(item) {
+         this.rear.push(item);
+      }
 
-      // Evaluate bodies
-      for (let minfo of minfos) {
-         if (minfo.lang !== 'js') {
+      enqueueFirst(item) {
+         this.front.push(item);
+      }
+
+      dequeue() {
+         if (this.front.length === 0) {
+            rearToFront(this);
+         }
+
+         return this.front.pop();
+      }
+
+      get isEmpty() {
+         return this.front.length === 0 && this.rear.length === 0;
+      }
+   }
+
+
+   function rearToFront(queue) {
+      while (queue.rear.length > 0) {
+         queue.front.push(queue.rear.pop());
+      }
+   }
+
+   let invq = new Queue;
+   let blockedCells = new Map;   // cell -> blockedBy
+   // either a Cell or Stage object that's currently being computed
+   let beingComputed = null;
+
+
+   function rigidCell(value) {
+      let cell = () => {
+         connectCells(beingComputed, cell);
+
+         return cell.val;
+      };
+
+      cell.val = value;
+      cell.revdeps = new Set;
+
+      Object.assign(cell, rigidCellProps);
+
+      return cell;
+   }
+
+
+   const rigidCellProps = {
+      setValue(value) {
+         this.val = value;
+         this.invalidate();
+      },
+
+      invalidate() {
+         for (let rdep of this.revdeps) {
+            rdep.invalidate();
+         }
+      },
+
+      mutate(callback) {
+         callback(this.val);
+         this.invalidate();
+      }
+   };
+
+
+   function computableCell(computer) {
+      let cell = () => {
+         connectCells(beingComputed, cell);
+
+         return cell.val.get(cell);
+      };
+
+      cell.invalidate = invalidateCell;
+      cell.val = invalidValue;
+      cell.stage = null;
+      cell.computer = computer;
+      cell.revdeps = new Set;
+      cell.deps = new Set;
+
+      invq.enqueue(cell);
+
+      return cell;
+   }
+
+
+   function invalidateCell() {
+      invalidateCellValue(this);
+
+      if (this.stage !== null) {
+         killStage(this.stage);
+         this.stage = null;
+      }
+
+      disconnectFromDeps(this);   
+   }
+
+
+   class Stage {
+      constructor(cell, prev, computer) {
+         this.cell = cell;
+         this.prev = prev;
+         this.next = null;
+         this.computer = computer;
+         this.deps = new Set;
+      }
+
+      invalidate() {
+         invalidateCellValue(this.cell);
+
+         if (this.next !== null) {
+            killStage(this.next);
+
+            this.next = null;
+            this.cell.stage = this;
+         }
+
+         disconnectFromDeps(this);
+      }
+   }
+
+
+   function killStage(stage) {
+      if (stage.next !== null) {
+         killStage(stage.next);
+      }
+
+      stage.prev = null;
+      stage.next = null;
+
+      disconnectFromDeps(stage);
+   }
+
+
+   function invalidateCellValue(cell) {
+      if (!cell.val.isValid) {
+         return;
+      }
+
+      cell.val = invalidValue;
+      invq.enqueue(cell);
+
+      if (blockedCells.has(cell)) {
+         // When a blocked invalid cell becomes a plain invalid cell, we don't transitively
+         // follow its 'revdeps' because the cell's actual state is not changed.
+         blockedCells.delete(cell);
+      }
+      else {
+         for (let rdep of cell.revdeps) {
+            rdep.invalidate();
+         }
+      }
+   }
+
+
+   function disconnectFromDeps(comp) {
+      for (let dep of comp.deps) {
+         dep.revdeps.delete(comp);
+      }
+
+      comp.deps.clear();
+   }
+
+
+   function connectCells(cell, dependency) {
+      cell.deps.add(dependency);
+      dependency.revdeps.add(cell);
+   }
+
+
+   function digest() {
+      let n = 0;
+
+      while (!invq.isEmpty) {
+         n += 1;
+         if (n >= 5000) {
+            debugger;
+         }
+
+         let cell = invq.dequeue();
+         
+         let value = null;
+         let exc = null;
+         let blockedBy = null;
+
+         beingComputed = cell.stage ?? cell;
+
+         try {
+            value = beingComputed.computer.call(null);
+         }
+         catch (e) {
+            if (e instanceof InvalidCell) {
+               blockedBy = e.cell;
+            }
+            else {
+               exc = e;
+            }
+         }
+         finally {
+            beingComputed = null;
+         }
+
+         // The following 2 cases do not make 'cell' valid.
+         if (blockedBy !== null) {
+            blockedCells.set(cell, blockedBy);
+            cell.val = blockedValue;
+            continue;
+         }
+         
+         if (value instanceof Restart) {
+            appendNewStage(cell, value.computer);
+            invq.enqueueFirst(cell);
             continue;
          }
 
-         for (let {isBox, name, def} of minfo.body) {
-            let value;
+         // So 'cell' is going to be made valid now. But a blocked cell may depend on(at most
+         // 1) invalidated cell. When the latter becomes valid, those blocked cells should
+         // be made invalidated again.
+         for (let rdep of cell.revdeps) {
+            rdep.invalidate();
+         }
 
-            try {
-               value = moduleEval(minfo.ns, name, def);
-            }
-            catch (e) {
-               console.error(`'${minfo.name}': failed to eval '${name}'`);
-               throw e;
+         if (exc !== null) {
+            cell.val = exceptionValue(exc);
+         }
+         else if (value instanceof Getter) {
+            cell.val = getterValue(value.getter);
+         }
+         else {
+            cell.val = plainValue(value);
+         }
+      }
+
+      // At this point, the invalid queue is exhausted. All the cells we have in
+      // blockedCells are blocked because of circular dependencies.
+      while (blockedCells.size > 0) {
+         console.log('circle');
+         let {value: [cell, ncell]} = blockedCells[Symbol.iterator]().next();
+         let chain = [cell];
+         let k = -1;
+
+         for (;;) {
+            k = chain.indexOf(ncell);
+
+            if (k !== -1) {
+               break;
             }
 
-            Object.defineProperty(minfo.ns, name, isBox ? makeBoxDescriptor(value) : {
+            chain.push(ncell);
+            [cell, ncell] = [ncell, blockedCells.get(ncell)];
+         }
+
+         for (let i = 0; i < chain.length; i += 1) {
+            chain[i].val = circularValue(dependencyCircle(chain, k, i));
+         }
+
+         for (let cell of chain) {
+            blockedCells.delete(cell);
+         }
+      }
+   }
+
+
+   function appendNewStage(cell, computer) {
+      let newStage = new Stage(cell, cell.stage, computer);
+
+      if (cell.stage !== null) {
+         cell.stage.next = newStage;
+         newStage.prev = cell.stage;
+      }
+
+      cell.stage = newStage;
+   }
+
+
+   function dependencyCircle(chain, k, i) {
+      return [
+         ...chain.slice(i, k),
+         ...chain.slice(Math.max(i, k)),
+         ...chain.slice(k, i)
+      ];
+   }
+
+
+   const invalidValue = {
+      isValid: false,
+      get(cell) {
+         throw new InvalidCell(cell);
+      }
+   };
+
+
+   const blockedValue = {
+      // blocked cell is considered valid for the purpose of invalidation algorithm, but it
+      // throws InvalidCell in exactly the same way as an ordinary invalidated cell.
+      isValid: true,
+      get(cell) {
+         throw new InvalidCell(cell);
+      }
+   };
+
+
+   const protoExceptionValue = {
+      isValid: true,
+      get(cell) {
+         throw this.exc;
+      },
+      descriptor() {
+         return {
+            get: () => {
+               throw this.exc;
+            }
+         }
+      }
+   };
+
+
+   function exceptionValue(exc) {
+      return {
+         __proto__: protoExceptionValue,
+         exc
+      }
+   }
+
+
+   const protoPlainValue = {
+      isValid: true,
+      get(cell) {
+         return this.value;
+      },
+      descriptor() {
+         return {
+            value: this.value,
+            writable: true
+         }
+      }
+   };
+
+
+   function plainValue(value) {
+      return {
+         __proto__: protoPlainValue,
+         value
+      }
+   }
+
+
+   function getterValue(getter) {
+      return {
+         isValid: true,
+         get(cell) {
+            return getter();
+         },
+         descriptor() {
+            return {
+               get: getter
+            }
+         }
+      }
+   }
+
+
+   const protoCircularValue = {
+      isValid: true,
+      get(cell) {
+         throw new CircularDependency(this.circle);
+      },
+      descriptor() {
+         let circle = this.circle;
+
+         return {
+            get() {
+               throw new CircularDependency(circle);
+            }
+         }
+      }
+   };
+
+
+   function circularValue(circle) {
+      return {
+         __proto__: protoCircularValue,
+         circle
+      }
+   }
+
+
+   class InvalidCell extends Error {
+      constructor(cell) {
+         super();
+         this.cell = cell;
+      }
+   }
+
+
+   class CircularDependency extends Error {
+      constructor(circle) {
+         super();
+         this.circle = circle;
+      }
+   }
+
+
+   class Getter {
+      constructor(func) {
+         this.getter = func;
+      }
+   }
+
+
+   function getter(func) {
+      return new Getter(func);
+   }
+
+
+   class Restart {
+      constructor(func) {
+         this.computer = func;
+      }
+   }
+
+
+   function restart(func) {
+      return new Restart(func);
+   }
+
+   class Binding {
+      constructor(module, name) {
+         this.module = module;
+         this.name = name;
+         this.inputs = rigidCell([]);
+         this.state = computableCell(this.computeState.bind(this));
+         this.value = computableCell(this.computeValue.bind(this));
+      }
+
+      defineAsTarget(def) {
+         this.inputs.mutate(arr => arr.push({def}));
+      }
+
+      defineAsImport(donorBinding) {
+         this.inputs.mutate(arr => arr.push({donorBinding}));
+      }
+
+      defineAsAsterisk(donorModule) {
+         this.inputs.mutate(arr => arr.push({donorModule}));
+      }
+
+      computeState() {
+         if (this.inputs().length === 0) {
+            return {
+               isDefined: false,
+               reason: 'undefined'
+            };
+         }
+
+         if (this.inputs().length > 1) {
+            return {
+               isDefined: false,
+               reason: 'duplicate'
+            };
+         }
+
+         let [input] = this.inputs();
+
+         if (input.hasOwnProperty('def')) {
+            let {def} = input;
+
+            return {
+               isDefined: true,
+               source: def
+            }
+         }
+         else if (input.hasOwnProperty('donorBinding')) {
+            let {donorBinding} = input;
+
+            if (donorBinding.state().isDefined) {
+               return {
+                  isDefined: true,
+                  source: donorBinding.value
+               }
+            }
+            else {
+               return {
+                  isDefined: false,
+                  reason: 'import-of-broken',
+               }
+            }
+         }
+         else if (input.hasOwnProperty('donorModule')) {
+            let {donorModule} = input;
+
+            return {
+               isDefined: true,
+               source: () => donorModule.ns
+            }
+         }
+         else
+            throw new Error(`Logic error`);
+      }
+
+      computeValue() {
+         if (this.state().isDefined) {
+            let {source} = this.state();
+
+            return source();
+         }
+         else {
+            let {reason} = this.state();
+
+            if (reason === 'undefined') {
+               return getter(() => {
+                  throw new Error(`Referenced undefined binding '$.${this.name}'`);
+               });
+            }
+            else if (reason === 'duplicate') {
+               return getter(() => {
+                  throw new Error(`Referenced duplicated binding '$.${this.name}'`);
+               });
+            }
+            else if (reason === 'import-of-broken') {
+               return getter(() => {
+                  throw new Error(`Referenced broken import '$.${this.name}'`);
+               })
+            }
+            else
+               throw new Error(`Logic error`);
+         }
+      }
+   }
+
+   class Module {
+      constructor(name) {
+         this.name = name;
+         this.exist = false;
+         this.bindings = new Map;
+         this.defs = [];
+         this.ns = Object.create(null);
+      }
+
+      youExist() {
+         this.exist = true;
+      }
+
+      getBinding(name) {
+         let binding = this.bindings.get(name);
+
+         if (binding === undefined) {
+            binding = new Binding(this, name);
+            this.bindings.set(name, binding);
+         }
+
+         return binding;
+      }
+
+      addEntry(target, source) {
+         let targetBinding = this.getBinding(target);
+         let defCell = computableCell(() => this.compileDefinition(source));
+
+         targetBinding.defineAsTarget(defCell);
+         this.defs.push(defCell);
+      }
+
+      addImport(donorBinding, importUnder) {
+         let targetBinding = this.getBinding(importUnder);
+
+         targetBinding.defineAsImport(donorBinding);
+      }
+
+      addAsterisk(donor, alias) {
+         let targetBinding = this.getBinding(alias);
+
+         targetBinding.defineAsAsterisk(donor);
+      }
+
+      compileDefinition(source) {
+         let factory = Function('$ns, $proxy', factoryFuncSource(source));
+
+         // this is to avoid re-creating 'factory' when we need to re-evaluate the
+         // definition
+         return restart(() => factory.call(null, this.ns, new Proxy(this.ns, {
+            get: (target, prop, receiver) => this.getBinding(prop).value()
+         })));
+      }
+
+      populateNamespace() {
+         for (let binding of this.bindings.values()) {
+            Object.defineProperty(this.ns, binding.name, {
                configurable: true,
                enumerable: true,
-               value,
-               writable: true
+               ...binding.value.val.descriptor()
             });
          }
       }
-
-      // Perform the imports
-      for (let recp of minfos) {
-         if (recp.lang !== 'js') {
-            continue;
-         }
-
-         for (let {donor: donorName, asterisk, imports} of recp.imports) {
-            let donor = minfos.find(m => m.name === donorName);
-
-            if (donor === undefined) {
-               throw new Error(
-                  `Module '${recp.name}': cannot import from '${donorName}:' ` +
-                  `no such module`
-               );
-            }
-
-            if (asterisk !== null) {
-               if (asterisk in recp.ns) {
-                  throw new Error(
-                     `Module '${recp.name}': cannot import '* as ${asterisk}' from ` +
-                     `'${donor.name}': collides with another name`
-                  );
-               }
-
-               Object.defineProperty(recp.ns, asterisk, {
-                  configurable: true,
-                  enumerable: true,
-                  value: donor.ns,
-                  writable: false
-               });
-            }
-
-            for (let {entry, alias} of imports) {
-               if (!(entry in donor.ns)) {
-                  throw new Error(
-                     `Module '${recp.name}': cannot import '${entry}' from ` +
-                     `'${donor.name}': no such definition`
-                  );
-               }
-
-               let importedAs = alias || entry;
-
-               if (importedAs in recp.ns) {
-                  throw new Error(
-                     `Module '${recp.name}': cannot import '${importedAs}' from ` +
-                     `'${donor.name}': collides with another name`
-                  );
-               }
-
-               Object.defineProperty(
-                  recp.ns, importedAs, Object.getOwnPropertyDescriptor(donor.ns, entry)
-               );
-            }
-         }
-      }
-
-      console.timeEnd('bootstrap');
-      
-      return minfos;
    }
 
 
-   function makeBoxDescriptor(initial) {
-      let value = initial;
+   // params are: $ns, $proxy
+   const factoryFuncSource = (source) => `
+   "use strict";
+   let $ = $proxy;
+   let $res = (${source});
+   $ = $ns;
+   return $res;
+`;
+
+   class Registry {
+      constructor() {
+         this.modules = new Map;
+         this.nExisting = 0;
+      }
+
+      getModule(name, {exists} = {exists: false}) {
+         let module = this.modules.get(name);
+
+         if (module === undefined) {
+            module = new Module(name);
+            this.modules.set(name, module);
+
+            if (exists) {
+               module.youExist();
+               this.nExisting += 1;
+            }
+         }
+
+         return module;
+      }
+
+      loadModuleData(mdata) {
+         let module = this.getModule(mdata.name, {exists: true});
+
+         // Imports
+         for (let {donor, imports} of mdata.imports) {
+            let donorM = this.getModule(donor);
+
+            for (let {name, alias} of imports) {
+               if (name === null) {
+                  module.addAsterisk(donorM, alias);
+               }
+               else {
+                  module.addImport(donorM.getBinding(name), alias ?? name);
+               }
+            }
+         }
+
+         // Definitions
+         for (let {target, definition} of mdata.body) {
+            module.addEntry(target, definition);
+         }
+      }
+
+      populateModuleNamespaces() {
+         for (let module of this.modules.values()) {
+            module.populateNamespace();
+         }
+      }
+
+      moduleNsMap() {
+         return new Map(
+            Array.from(this.modules.values(), module => [module.name, module.ns])
+         );
+      }
+   }
+
+   /**
+    * @param modulesData: [{
+    *    name,
+    *    lang,
+    *    imports: [{donor, imports: [{name, alias}]}],
+    *    body: [{target, definition}]
+    * }]
+    * return: Map { module name -> namespace object }
+    */
+   function loadModulesData(modulesData) {
+      let reg = new Registry();
+
+      for (let mdata of modulesData) {
+         reg.loadModuleData(mdata);
+      }
+
+      digest();
+
+      reg.populateModuleNamespaces();
+      return reg.moduleNsMap();
+   }
+
+
+   // const reIdentifier = /^([a-z][a-z0-9_$]*)$/i;
+
+   /**
+    * @param raw: {type, lang, name, contents}
+    * @return: {
+    *    name,
+    *    lang,
+    *    imports: [{donor, imports: [{name, alias}]}],
+    *    body: [{target, definition}]
+    * }
+    */
+   function parseRawModule(raw) {
+      let imports, body;
+
+      try {
+         ({imports, body} = parseModuleContents(raw.contents));
+      }
+      catch (e) {
+         console.error(`Could not parse module '${raw.name}'`);
+         throw e;
+      }
 
       return {
-         configurable: true,
-         enumerable: true,
-         get() {
-            return value;
-         },
-         set(newValue) {
-            value = newValue;
-         }
+         name: raw.name,
+         lang: raw.lang,
+         imports: imports,
+         body: body
       }
    }
 
-   function parseModules(rawModules) {
-      let modules = [];
 
-      for (let raw of rawModules) {
-         // TODO: remove this when you finally get to XS
-         if (raw.lang === 'xs') {
-            continue;
-         }
-
-         let imports, body;
-
-         try {
-            ({imports, body} = parseModule(raw.contents));
-         }
-         catch (e) {
-            console.error(`Could not parse module '${raw.name}'`);
-            throw e;
-         }
-
-         modules.push({
-            name: raw.name,
-            lang: raw.lang,
-            imports: imports,
-            body: body
-         });
-      }
-
-      return modules;
-   }
-
-
-   function parseModule(str) {
+   function parseModuleContents(str) {
       let mtch = str.match(/^-+\n/m);
       if (!mtch) {
          throw new Error(`Bad module: not found the ----- separator`);
@@ -166,8 +736,8 @@ var poli = (function () {
       let rawImports = str.slice(0, mtch.index);
       let rawBody = str.slice(mtch.index + mtch[0].length);
 
-      let imports = parseImports(rawImports);
-      let body = parseBody(rawBody);
+      let imports = parseModuleImports(rawImports);
+      let body = parseModuleBody(rawBody);
 
       return {imports, body};
    }
@@ -177,7 +747,7 @@ var poli = (function () {
    const reImportLine = /^(?<entry>\S+?)(?:\s+as:\s+(?<alias>\S+?))?$/;  // it's trimmed
 
 
-   function parseImports(str) {
+   function parseModuleImports(str) {
       let res = [];
 
       for (let [[,donor], rawImports] of headerSplit(str, /^(?=\S)(.+?)\n/gm)) {
@@ -186,12 +756,11 @@ var poli = (function () {
          }
 
          let imports = [];
-         let asterisk = null;
 
          for (let line of rawImports.split(/\n/)) {
             line = line.trim();
 
-            if (!line) {
+            if (line === '') {
                continue;
             }
 
@@ -201,24 +770,14 @@ var poli = (function () {
                throw new Error(`Invalid import line: '${line}'`);
             }
 
-            if (mtch.groups.entry === '*') {
-               if (asterisk !== null) {
-                  throw new Error(`Multiple asterisk imports from module '${donor}'`)
-               }
-
-               asterisk = mtch.groups.alias;
-            }
-            else {
-               imports.push({
-                  entry: mtch.groups.entry,
-                  alias: mtch.groups.alias ?? null
-               });
-            }
+            imports.push({
+               name: mtch.groups.entry === '*' ? null : mtch.groups.entry,
+               alias: mtch.groups.alias ?? null
+            });
          }
 
          res.push({
             donor,
-            asterisk,
             imports
          });
       }
@@ -227,24 +786,28 @@ var poli = (function () {
    }
 
 
-   const reEntryName = /^(box +)?([a-z][a-z0-9_$]*)$/i;
+   const reDocstring = ` {3}:.*\\n(?:(?: *\\n)* {4,}\\S.*\\n)*`;
+   const reDef = `(?:(?: *\\n)* .*\\n)*`;
+   const reBody = `(?<docstring>${reDocstring})?(?<def>${reDef})`;
+
+   const reEntry = new RegExp(
+      `^(?<target>\\S.*?) +::=(?: *\\n(?<body>${reBody})| +(?<oneliner>.+)\\n)`,
+      'gm'
+   );
 
 
-   function parseBody(str) {
-      const reEntryHeader = /^(\w.*?) +::=/gm;
+   function parseModuleBody(str) {
       let entries = [];
 
-      for (let [[,entry], def] of headerSplit(str, reEntryHeader)) {
-         let mtch = reEntryName.exec(entry);
-
+      for (let [mtch, interspace] of headerSplit(str, reEntry)) {
          if (mtch === null) {
-            throw new Error(`Could not parse this as entry name: '${entry}'`);
+            // Leading interspace is skipped
+            continue;
          }
-
+         
          entries.push({
-            isBox: mtch[1] !== undefined,
-            name: mtch[2],
-            def: def.trim()
+            target: mtch.groups.target,
+            definition: mtch.groups.oneliner ?? mtch.groups.def
          });
       }
 
@@ -254,20 +817,22 @@ var poli = (function () {
 
    /**
     * Parse any kind of text separated with headers into header/body pairs:
-         HEADER ... HEADER ... HEADER ...
+         ... HEADER ... HEADER ... HEADER ...
 
       Everything following a header before the next header or the end of string is considered
       a body that belongs to that header.
 
-      Yield pairs [header_match, body]
+      Yield pairs [header_match, body]. For the first header, if something precedes it, we
+      yield [null, body0].
    */
    function* headerSplit(str, reHeader) {
-      let prev_i = null, prev_mtch = null;
+      let prev_i = 0, prev_mtch = null;
 
       for (let mtch of str.matchAll(reHeader)) {
-         if (prev_mtch !== null) {
+         if (mtch.index > 0) {
             yield [prev_mtch, str.slice(prev_i, mtch.index)];
          }
+
          prev_i = mtch.index + mtch[0].length;
          prev_mtch = mtch;
       }
@@ -277,65 +842,21 @@ var poli = (function () {
       }
    }
 
-
-   var loadModules_1 = loadModules;
-
-   const {WORLD_MODULE, RUN_MODULE} = _const;
+   // const loadModules = require('./load-modules');
 
 
    function run(rawModules) {
-      let minfos = loadModules_1(rawModules);
+      console.time('mini');
+      let modulesData = Array.from(rawModules, parseRawModule);
+      let namespaces = loadModulesData(modulesData);
+      window.x = namespaces.get('fucker-a');
+      console.timeEnd('mini');
 
-      // Tests
-      {
-         let mTest = minfos.find(m => m.name === 'test-dedb');
-         mTest.ns['runTests']();
-      }
-
-      // Load the world
-      {
-         let Mworld = minfos.find(m => m.name === WORLD_MODULE);
-         Mworld.ns['load'](minfos);
-      }
-
-      let Mrun = minfos.find(m => m.name === RUN_MODULE);
-
-      // That's our contract with RUN_MODULE:
-      //   * we give it the way to send a message over the wire
-      //   * it gives us operation handler which we call on incoming operation request
-      let websocket = makeWebsocket();
-
-      let handleMessage = Mrun.ns['main'](
-         message => websocket.send(JSON.stringify(message))
-      );
-
-      websocket.addEventListener('message', ev => {
-         handleMessage(JSON.parse(ev.data));
-      });
-
-      // Special hack
-      {
-         let Mexp = minfos.find(m => m.name === 'exp');
-         window.exp = Mexp.ns;
-      }
-
+      console.log(namespaces);
       return;
    }
 
 
-   function makeWebsocket() {
-      let url = new URL('/browser', window.location.href);
-      url.protocol = 'ws';
-      return new WebSocket(url);
-   }
-
-
    run(/*RAW_MODULES*/);
-
-   var bootstrap_template = {
-
-   };
-
-   return bootstrap_template;
 
 }());
