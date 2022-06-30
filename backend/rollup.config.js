@@ -6,9 +6,9 @@ import commonjs from 'rollup-plugin-commonjs';
 
 export default [
    {
-      input: 'js/bootstrap.js',
+      input: 'js/bootloader.js',
       output: {
-         file: 'script/bootstrap.js',
+         file: 'script/bootloader.js',
          format: 'iife',
          name: 'poli'
       },
@@ -18,9 +18,9 @@ export default [
       ]
    },
    {
-      input: 'js/lib.js',
+      input: 'js/node-lib.js',
       output: {
-         file: 'script/lib.js',
+         file: 'script/node-lib.js',
          format: 'cjs',
          exports: null
       },

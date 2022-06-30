@@ -3,9 +3,7 @@ const fs = require('fs');
 const WebSocket = require('ws');
 
 
-const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const loadModules = require('./load-modules');
-const readRawModules = require('./read-raw-modules');
+const {SRC_FOLDER, RUN_MODULE, loadModules, readRawModules} = require('./node-lib');
 
 
 function run() {

@@ -849,7 +849,6 @@
       console.time('mini');
       let modulesData = Array.from(rawModules, parseRawModule);
       let namespaces = loadModulesData(modulesData);
-      window.x = namespaces.get('fucker-a');
       console.timeEnd('mini');
 
       console.log(namespaces);

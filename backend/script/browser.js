@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 const url = require('url');
 
 
-const {SRC_FOLDER, RUN_MODULE, readRawModules} = require('./lib');
+const {SRC_FOLDER, RUN_MODULE, readRawModules} = require('./node-lib');
 
 
 function run() {
@@ -120,16 +120,16 @@ function run() {
          });
          resp.end(fs.readFileSync('index.html', 'utf8'));
       }
-      else if (pathname === '/bootstrap.js') {
+      else if (pathname === '/bootloader.js') {
          let rawModules = readRawModules();
-         let bootstrap = fs
-            .readFileSync('./script/bootstrap.js', 'utf8')
+         let bootloader = fs
+            .readFileSync('./script/bootloader.js', 'utf8')
             .replace(/\/\*RAW_MODULES\*\//, () => JSON.stringify(rawModules, null, 2));
 
          resp.writeHead(200, {
             'content-type': 'text/javascript'
          });
-         resp.end(bootstrap);
+         resp.end(bootloader);
       }
       else {
          resp.writeHead(404);
