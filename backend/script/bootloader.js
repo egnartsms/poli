@@ -246,7 +246,6 @@
       // At this point, the invalid queue is exhausted. All the cells we have in
       // blockedCells are blocked because of circular dependencies.
       while (blockedCells.size > 0) {
-         console.log('circle');
          let {value: [cell, ncell]} = blockedCells[Symbol.iterator]().next();
          let chain = [cell];
          let k = -1;
