@@ -42,6 +42,20 @@ const rigidCellProps = {
 };
 
 
+rigidCell.exc = function (exc) {
+   let cell = () => {
+      connectCells(beingComputed, cell);
+
+      throw cell.exc;
+   };
+
+   cell.exc = exc;
+   cell.revdeps = new Set;
+
+   return cell;
+}
+
+
 export function computableCell(computer) {
    let cell = () => {
       connectCells(beingComputed, cell);
@@ -147,13 +161,10 @@ function connectCells(cell, dependency) {
 
 
 export function digest() {
-   let n = 0;
+   let ncycles = 0;
 
    while (!invq.isEmpty) {
-      n += 1;
-      if (n >= 5000) {
-         debugger;
-      }
+      ncycles += 1;
 
       let cell = invq.dequeue();
       
@@ -208,6 +219,8 @@ export function digest() {
          cell.val = plainValue(value);
       }
    }
+
+   console.log("Digest cycles:", ncycles);
 
    // At this point, the invalid queue is exhausted. All the cells we have in
    // blockedCells are blocked because of circular dependencies.

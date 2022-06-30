@@ -20,7 +20,7 @@ export function loadModulesData(modulesData) {
 
    digest();
 
-   reg.populateModuleNamespaces();
+   reg.switchToRuntime();
    return reg.moduleNsMap();
 }
 

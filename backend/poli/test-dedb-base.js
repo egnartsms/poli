@@ -13,7 +13,10 @@ dedb-projection
    releaseProjection
    updateProjection
 dedb-base
+   empty
    addFact
+   addFacts
+   resetFacts
    removeFact
    removeWhere
    baseRelation
@@ -21,45 +24,46 @@ dedb-base
 dedb-version
    refRelationState
 -----
-box cityInfo ::= null
+cityInfo ::=
+   $.baseRelation({
+      name: 'cityInfo',
+      attrs: ['city', 'country', 'big'],
+      indices: [
+         ['country', 'big', 1]
+      ]
+   })
+
 setup ::=
    function () {
-      $.cityInfo = $.baseRelation({
-         name: 'cityInfo',
-         attrs: ['city', 'country', 'big'],
-         indices: [
-            ['country', 'big', 1]
-         ],
-         records: [
-            {city: 'Paris', country: 'France', big: 1},
-            {city: 'Marseille', country: 'France', big: 3},
-            {city: 'Lyon', country: 'France', big: 2},
+      $.resetFacts($.cityInfo, [
+         {city: 'Paris', country: 'France', big: 1},
+         {city: 'Marseille', country: 'France', big: 3},
+         {city: 'Lyon', country: 'France', big: 2},
 
-            {city: 'Warsaw', country: 'Poland', big: 1},
-            {city: 'Wroclaw', country: 'Poland', big: 3},
-            {city: 'Krakow', country: 'Poland', big: 2},
+         {city: 'Warsaw', country: 'Poland', big: 1},
+         {city: 'Wroclaw', country: 'Poland', big: 3},
+         {city: 'Krakow', country: 'Poland', big: 2},
 
-            {city: 'Kyiv', country: 'Ruthenia', big: 1},
-            {city: 'Lviv', country: 'Ruthenia', big: 3},
-            {city: 'Dnipro', country: 'Ruthenia', big: 2},
+         {city: 'Kyiv', country: 'Ruthenia', big: 1},
+         {city: 'Lviv', country: 'Ruthenia', big: 3},
+         {city: 'Dnipro', country: 'Ruthenia', big: 2},
 
-            {city: 'Beijing', country: 'China', big: 3},
-            {city: 'Chongqing', country: 'China', big: 1},
-            {city: 'Shanghai', country: 'China', big: 2},
+         {city: 'Beijing', country: 'China', big: 3},
+         {city: 'Chongqing', country: 'China', big: 1},
+         {city: 'Shanghai', country: 'China', big: 2},
 
-            {city: 'Delhi', country: 'India', big: 1},
-            {city: 'Mumbai', country: 'India', big: 2},
-            {city: 'Bangalore', country: 'India', big: 3},
+         {city: 'Delhi', country: 'India', big: 1},
+         {city: 'Mumbai', country: 'India', big: 2},
+         {city: 'Bangalore', country: 'India', big: 3},
 
-            {city: 'Istanbul', country: 'Turkey', big: 1},
-            {city: 'Ankara', country: 'Turkey', big: 2},
-            {city: 'Izmir', country: 'Turkey', big: 3},
+         {city: 'Istanbul', country: 'Turkey', big: 1},
+         {city: 'Ankara', country: 'Turkey', big: 2},
+         {city: 'Izmir', country: 'Turkey', big: 3},
 
-            {city: 'Toronto', country: 'Canada', big: 1},
-            {city: 'Montreal', country: 'Canada', big: 2},
-            {city: 'Vancouver', country: 'Canada', big: 3},
-         ]
-      });
+         {city: 'Toronto', country: 'Canada', big: 1},
+         {city: 'Montreal', country: 'Canada', big: 2},
+         {city: 'Vancouver', country: 'Canada', big: 3},
+      ]);
    }
 
 test_query_unique_record ::=

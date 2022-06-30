@@ -1,5 +1,5 @@
 import {Binding} from './binding';
-import {computableCell, restart} from './engine';
+import {computableCell, restart, rigidCell} from './engine';
 
 
 export class Module {
@@ -7,7 +7,7 @@ export class Module {
       this.name = name;
       this.exist = false;
       this.bindings = new Map;
-      this.defs = [];
+      this.setters$ = [];
       this.ns = Object.create(null);
    }
 
@@ -27,11 +27,27 @@ export class Module {
    }
 
    addEntry(target, source) {
-      let targetBinding = this.getBinding(target);
-      let defCell = computableCell(() => this.compileDefinition(source));
+      let factory, set$;
 
-      targetBinding.defineAsTarget(defCell);
-      this.defs.push(defCell);
+      try {
+         [factory, set$] = Function(factorySource(source))();
+      }
+      catch (e) {
+         console.error(source);
+         targetBinding.defineAsTarget(rigidCell.exc(e));
+         return;
+      }
+
+      set$(new Proxy(this.ns, {
+         get: (target, prop, receiver) => this.getBinding(prop).value()
+      }));
+
+      let cell = computableCell(factory);
+      let targetBinding = this.getBinding(target);
+
+      targetBinding.defineAsTarget(cell);
+
+      this.setters$.push(set$);
    }
 
    addImport(donorBinding, importUnder) {
@@ -46,17 +62,7 @@ export class Module {
       targetBinding.defineAsAsterisk(donor);
    }
 
-   compileDefinition(source) {
-      let factory = Function('$ns, $proxy', factoryFuncSource(source));
-
-      // this is to avoid re-creating 'factory' when we need to re-evaluate the
-      // definition
-      return restart(() => factory.call(null, this.ns, new Proxy(this.ns, {
-         get: (target, prop, receiver) => this.getBinding(prop).value()
-      })));
-   }
-
-   populateNamespace() {
+   switchToRuntime() {
       for (let binding of this.bindings.values()) {
          Object.defineProperty(this.ns, binding.name, {
             configurable: true,
@@ -64,15 +70,21 @@ export class Module {
             ...binding.value.val.descriptor()
          })
       }
+
+      for (let set$ of this.setters$) {
+         set$(this.ns);
+      }
    }
 }
 
 
 // params are: $ns, $proxy
-const factoryFuncSource = (source) => `
+const factorySource = (source) => `
    "use strict";
-   let $ = $proxy;
-   let $res = (${source});
-   $ = $ns;
-   return $res;
+   let $;
+
+   return [
+      () => (${source}),
+      (new$) => { $ = new$ }
+   ]
 `;

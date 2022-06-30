@@ -5,19 +5,17 @@ import {parseRawModule} from './parse';
 
 
 function run(rawModules) {
-   console.time('mini');
+   console.time('bootload');
    let modulesData = Array.from(rawModules, parseRawModule);
    let namespaces = loadModulesData(modulesData);
-   console.timeEnd('mini');
-
-   console.log(namespaces);
-   return;
+   console.timeEnd('bootload');
 
    // Tests
    {
-      let mTest = minfos.find(m => m.name === 'test-dedb');
-      mTest.ns['runTests']();
+      namespaces.get('test-dedb')['runTests']();
    }
+
+   return;
 
    // Load the world
    {

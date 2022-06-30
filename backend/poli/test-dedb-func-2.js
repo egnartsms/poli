@@ -5,6 +5,7 @@ common
 dedb-index
    Fitness
 dedb-base
+   resetFacts
    addFact
    removeFact
    baseRelation
@@ -20,59 +21,60 @@ dedb-goal
    use
 -----
 
-setup ::=
-   function () {
-      $.diff = $.functionalRelation({
-         name: 'diff',
-         attrs: ['op1', 'op2', 'diff'],
-         instantiations: {
-            '++-': {
-               fitness: $.Fitness.uniqueHit,
-               *run(ns, vop1, vop2, vdiff) {
-                  ns[vdiff] = ns[vop1] - ns[vop2];
-                  yield;
-               }
+born ::=
+   $.baseRelation({
+      name: 'born',
+      attrs: ['country', 'born'],
+      indices: [['country', 1]]
+   })
+
+died ::=
+   $.baseRelation({
+      name: 'died',
+      attrs: ['country', 'died'],
+      indices: [['country', 1]]
+   })
+
+growth ::=
+   $.derivedRelation({
+      name: 'growth',
+      attrs: ['country', 'growth'],
+      body: v => [
+         $.use($.born, {country: v`country`, born: v`born`}),
+         $.use($.died, {country: v`country`, died: v`died`}),
+         $.use($.diff, {op1: v`born`, op2: v`died`, diff: v`growth`})
+      ]
+   })
+
+diff ::=
+   $.functionalRelation({
+      name: 'diff',
+      attrs: ['op1', 'op2', 'diff'],
+      instantiations: {
+         '++-': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vop1, vop2, vdiff) {
+               ns[vdiff] = ns[vop1] - ns[vop2];
+               yield;
             }
          }
-      });
+      }
+   })
 
-      $.born = $.baseRelation({
-         name: 'born',
-         attrs: ['country', 'born'],
-         indices: [['country', 1]],
-         records: [
-            {country: 'ruthenia', born: 120},
-            {country: 'poland', born: 150},
-            {country: 'germany', born: 220},
-         ]
-      });
+setup ::=
+   function () {
+      $.resetFacts($.born, [
+         {country: 'ruthenia', born: 120},
+         {country: 'poland', born: 150},
+         {country: 'germany', born: 220},
+      ]);
 
-      $.died = $.baseRelation({
-         name: 'died',
-         attrs: ['country', 'died'],
-         indices: [['country', 1]],
-         records: [
-            {country: 'ruthenia', died: 135},
-            {country: 'poland', died: 155},
-            {country: 'germany', died: 205},
-         ]
-      });
-
-      $.growth = $.derivedRelation({
-       name: 'growth',
-       attrs: ['country', 'growth'],
-       body: v => [
-          $.use($.born, {country: v`country`, born: v`born`}),
-          $.use($.died, {country: v`country`, died: v`died`}),
-          $.use($.diff, {op1: v`born`, op2: v`died`, diff: v`growth`})
-       ]
-      });
+      $.resetFacts($.died, [
+         {country: 'ruthenia', died: 135},
+         {country: 'poland', died: 155},
+         {country: 'germany', died: 205},
+      ]);
    }
-
-box born ::= null
-box died ::= null
-box growth ::= null
-box diff ::= null
 
 test_arithmetics ::=
    function () {
