@@ -4,8 +4,8 @@
   "description": "Interactive programming environment on top of JavaScript",
   "main": "poli.js",
   "scripts": {
-    "nd": "node script/ndrun.js",
-    "bw": "node script/bwrun.js"
+    "node": "node script/node.js",
+    "browser": "node script/browser.js"
   },
   "repository": {
     "type": "git",

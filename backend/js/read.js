@@ -1,14 +1,20 @@
+import {SRC_FOLDER} from './const';
+
+
 const fs = require('fs');
-const {SRC_FOLDER} = require('./const');
 
 
-function readRawModules() {
+/**
+ * Read plain textual contents of all Poli modules.
+ * 
+ * @return [{type, lang, name, contents}]
+ * */
+export function readRawModules() {
    let modules = [];
 
    for (let filename of fs.readdirSync(SRC_FOLDER)) {
       let res = parseModuleFilename(filename);
       if (res === null) {
-         console.warn(`Encountered file "${filename}" which is not Poli module. Ignored`);
          continue;
       }
 
@@ -25,7 +31,7 @@ function readRawModules() {
 
 
 function parseModuleFilename(filename) {
-   let mtch = /^(?<name>.+)\.(?<lang>js|xs)$/.exec(filename);
+   let mtch = /^(?<name>.+)\.(?<lang>js)$/.exec(filename);
    if (!mtch) {
       return null;
    }
@@ -35,6 +41,3 @@ function parseModuleFilename(filename) {
       lang: mtch.groups.lang,
    };
 }
-
-
-module.exports = readRawModules;

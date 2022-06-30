@@ -1,9 +1,17 @@
-const loadModules = require('./load-modules');
-const {WORLD_MODULE, RUN_MODULE} = require('./const');
+// const loadModules = require('./load-modules');
+import {WORLD_MODULE, RUN_MODULE} from './const';
+import {loadModulesData} from './load';
+import {parseRawModule} from './parse';
 
 
 function run(rawModules) {
-   let minfos = loadModules(rawModules);
+   console.time('mini');
+   let modulesData = Array.from(rawModules, parseRawModule);
+   let namespaces = loadModulesData(modulesData);
+   console.timeEnd('mini');
+
+   console.log(namespaces);
+   return;
 
    // Tests
    {

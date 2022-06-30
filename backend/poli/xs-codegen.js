@@ -3,164 +3,190 @@ common
 -----
 result ::= ({val: null})
 indent ::= ({val: 0})
-emit ::= function (s) {
-   $.result.val.push(s);
-}
-emitIndent ::= function () {
-   $.emit('\x20'.repeat(3).repeat($.indent.val));
-}
-genCodeByFintree ::= function (fintree) {
-   return $.parameterize([$.result, []], () => {
-      $.cgenExpr(fintree);
-      return $.result.val.join('');
-   });
-}
-cgenExpr ::= function (node) {
-   switch (node.type) {
-      case 'literal':
-         $.cgenLiteral(node);
-         break;
-      
-      case 'ref':
-         $.cgenRef(node);
-         break;
-      
-      case 'funcall':
-         $.cgenFuncall(node);
-         break;
-      
-      case 'func':
-         $.cgenFunc(node);
-         break;
-      
+
+emit ::=
+   function (s) {
+      $.result.val.push(s);
    }
-}
-cgenLiteral ::= function (node) {
-   if (node.str !== undefined) {
-      $.emit(JSON.stringify(node.str));
+
+emitIndent ::=
+   function () {
+      $.emit('\x20'.repeat(3).repeat($.indent.val));
    }
-   else if (node.num !== undefined) {
-      $.emit(node.num);
+
+genCodeByFintree ::=
+   function (fintree) {
+      return $.parameterize([$.result, []], () => {
+         $.cgenExpr(fintree);
+         return $.result.val.join('');
+      });
    }
-   else {
-      throw new Error;
+
+cgenExpr ::=
+   function (node) {
+      switch (node.type) {
+         case 'literal':
+            $.cgenLiteral(node);
+            break;
+         
+         case 'ref':
+            $.cgenRef(node);
+            break;
+         
+         case 'funcall':
+            $.cgenFuncall(node);
+            break;
+         
+         case 'func':
+            $.cgenFunc(node);
+            break;
+         
+      }
    }
-}
-cgenRef ::= function (node) {
-   if (node.refkind === 'module') {
-      $.emit('$.');
-   }
-   $.emit(node.name);
-}
-cgenFuncall ::= function (node) {
-   $.cgenExpr(node.fun);
-   $.emit('(');
-   
-   let needComma = false;
-   for (let arg of node.args) {
-      if (needComma) {
-         $.emit(', ');
+
+cgenLiteral ::=
+   function (node) {
+      if (node.str !== undefined) {
+         $.emit(JSON.stringify(node.str));
+      }
+      else if (node.num !== undefined) {
+         $.emit(node.num);
       }
       else {
-         needComma = true;
+         throw new Error;
       }
-      $.cgenExpr(arg);
    }
-   
-   $.emit(')');
-}
-cgenFunc ::= function (node) {
-   $.emit('function (');
-   
-   let needComma = false;
-   for (let arg of node.args) {
-      if (needComma) {
-         $.emit(', ');
+
+cgenRef ::=
+   function (node) {
+      if (node.refkind === 'module') {
+         $.emit('$.');
       }
-      else {
-         needComma = true;
+      $.emit(node.name);
+   }
+
+cgenFuncall ::=
+   function (node) {
+      $.cgenExpr(node.fun);
+      $.emit('(');
+      
+      let needComma = false;
+      for (let arg of node.args) {
+         if (needComma) {
+            $.emit(', ');
+         }
+         else {
+            needComma = true;
+         }
+         $.cgenExpr(arg);
       }
       
-      $.emit(arg);
+      $.emit(')');
    }
-   
-   $.emit(') ');
-   
-   if (node.body.length === 0) {
-      $.emit('{}');
-      return;
-   }
-   
-   $.emit('{');
-   
-   $.parameterize([$.indent, $.indent.val + 1], () => {
-      for (let stmt of node.body) {
-         $.emit('\n');
-         $.emitIndent();
-         $.cgenStmt(stmt);
-         $.emit(';');
+
+cgenFunc ::=
+   function (node) {
+      $.emit('function (');
+      
+      let needComma = false;
+      for (let arg of node.args) {
+         if (needComma) {
+            $.emit(', ');
+         }
+         else {
+            needComma = true;
+         }
+         
+         $.emit(arg);
       }
-   });
-   
-   $.emit('\n');
-   $.emitIndent();
-   $.emit('}');
-}
-cgenStmt ::= function (node) {
-   switch (node.type) {
-      case 'expr-stmt':
+      
+      $.emit(') ');
+      
+      if (node.body.length === 0) {
+         $.emit('{}');
+         return;
+      }
+      
+      $.emit('{');
+      
+      $.parameterize([$.indent, $.indent.val + 1], () => {
+         for (let stmt of node.body) {
+            $.emit('\n');
+            $.emitIndent();
+            $.cgenStmt(stmt);
+            $.emit(';');
+         }
+      });
+      
+      $.emit('\n');
+      $.emitIndent();
+      $.emit('}');
+   }
+
+cgenStmt ::=
+   function (node) {
+      switch (node.type) {
+         case 'expr-stmt':
+            $.cgenExpr(node.expr);
+            break;
+         
+         case 'let':
+            $.cgenLet(node);
+            break;
+         
+         case 'return':
+            $.cgenReturn(node);
+            break;
+         
+         case 'assignment':
+            $.cgenAssignment(node);
+            break;
+         
+         default:
+            throw new Error;
+      }
+   }
+
+cgenLet ::=
+   function (node) {
+      $.emit('let ');
+      $.emit(node.var);
+      if (node.expr !== null) {
+         $.emit(' = ');
          $.cgenExpr(node.expr);
-         break;
-      
-      case 'let':
-         $.cgenLet(node);
-         break;
-      
-      case 'return':
-         $.cgenReturn(node);
-         break;
-      
-      case 'assignment':
-         $.cgenAssignment(node);
-         break;
-      
-      default:
-         throw new Error;
+      }
    }
-}
-cgenLet ::= function (node) {
-   $.emit('let ');
-   $.emit(node.var);
-   if (node.expr !== null) {
+
+cgenReturn ::=
+   function (node) {
+      $.emit('return');
+      if (node.expr !== null) {
+         $.emit(' ');
+         $.cgenExpr(node.expr);
+      }
+   }
+
+cgenAssignment ::=
+   function (node) {
+      $.cgenAssignmentTarget(node.lhs);
       $.emit(' = ');
-      $.cgenExpr(node.expr);
+      $.cgenExpr(node.rhs);
    }
-}
-cgenReturn ::= function (node) {
-   $.emit('return');
-   if (node.expr !== null) {
-      $.emit(' ');
-      $.cgenExpr(node.expr);
+
+cgenAssignmentTarget ::=
+   function (target) {
+      switch (target.type) {
+         case 'ref':
+            $.emit(target.name);
+            break;
+         
+         case '.':
+            $.cgenAssignmentTarget(target.target)
+            $.emit('.');
+            $.emit(target.prop);
+            break;
+         
+         default:
+            throw new Error;
+      }
    }
-}
-cgenAssignment ::= function (node) {
-   $.cgenAssignmentTarget(node.lhs);
-   $.emit(' = ');
-   $.cgenExpr(node.rhs);
-}
-cgenAssignmentTarget ::= function (target) {
-   switch (target.type) {
-      case 'ref':
-         $.emit(target.name);
-         break;
-      
-      case '.':
-         $.cgenAssignmentTarget(target.target)
-         $.emit('.');
-         $.emit(target.prop);
-         break;
-      
-      default:
-         throw new Error;
-   }
-}

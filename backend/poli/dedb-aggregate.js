@@ -34,367 +34,382 @@ dedb-index-instance
    indexAdd
    indexRemove
 -----
-aggregatedRelation ::= function ({
-   name: relname,
-   groupBy,
-   aggregates,
-   source
-}) {
-   if ($.intersection(groupBy, Object.keys(aggregates)).size > 0) {
-      throw new Error(`'${relname}': groupBy and aggregates intersect`);
-   }
 
-   let usedVars = Array.from(
-      new Set(
-         [...groupBy, ...$.chain($.map(Object.values(aggregates), ({vars}) => vars))]
-      )
-   )
-
-   if (typeof source === 'function') {
-      source = $.derivedRelation({
-         name: `agg:${relname}`,
-         attrs: usedVars,
-         body: source
-      });
-   }
-   else {
-      // Check that 'source' has all requested attributes
-      $.check($.all(usedVars, attr => source.attrs.includes(attr)), () =>
-         `'${relname}': '${source.name}' does not have some of requested attrs`
-      )
-   }
-
-   return {
-      kind: 'aggregate',
+aggregatedRelation ::=
+   function ({
       name: relname,
-      attrs: [...groupBy, ...Object.keys(aggregates)],
       groupBy,
-      aggNames: Object.keys(aggregates),
-      aggFactories: Object.values(aggregates).map(({make}) => make),
-      sourceRel: source,
-      projections: $.makeProjectionRegistry(),
-   }
-}
-makeProjection ::= function (rel, bindings) {
-   let groupBy = Array.from(rel.groupBy);
+      aggregates,
+      source
+   }) {
+      if ($.intersection(groupBy, Object.keys(aggregates)).size > 0) {
+         throw new Error(`'${relname}': groupBy and aggregates intersect`);
+      }
 
-   for (let [attr, val] of Object.entries(bindings)) {
-      let idx = groupBy.indexOf(attr);
+      let usedVars = Array.from(
+         new Set(
+            [...groupBy, ...$.chain($.map(Object.values(aggregates), ({vars}) => vars))]
+         )
+      )
 
-      if (idx !== -1) {
-         groupBy.splice(idx, 1);
+      if (typeof source === 'function') {
+         source = $.derivedRelation({
+            name: `agg:${relname}`,
+            attrs: usedVars,
+            body: source
+         });
       }
       else {
-         throw new Error(`Cannot bind '${attr}' in aggregation '${rel.name}'`);
+         // Check that 'source' has all requested attributes
+         $.check($.all(usedVars, attr => source.attrs.includes(attr)), () =>
+            `'${relname}': '${source.name}' does not have some of requested attrs`
+         )
       }
-   }
 
-   let sourceProj = $.projectionFor(rel.sourceRel, bindings);
-
-   sourceProj.refCount += 1;
-
-   let proj;
-
-   if (groupBy.length === 0) {
-      proj = {
-         kind: 'aggregate-0-dim',
-         rel,
-         refCount: 0,
-         regPoint: null,  // initialized by the calling code
-         isValid: false,
-         validRevDeps: new Set,
-         sourceProj,
-         depVer: $.makeZeroVersion(sourceProj),
-         rec: null,
-         aggs: Array.from(rel.aggNames, () => null),
-      }
-   }
-   else {
-      proj = {
+      return {
          kind: 'aggregate',
-         rel,
-         refCount: 0,
-         regPoint: null,  // initialized by the calling code
-         isValid: false,
-         validRevDeps: new Set,
-         sourceProj,
-         depVer: $.makeZeroVersion(sourceProj),
+         name: relname,
+         attrs: [...groupBy, ...Object.keys(aggregates)],
          groupBy,
-         recordMap: groupBy.length === 0 ? null : new Map,
-         size: 0,
-         Agroup2agg: groupBy.length === 0 ? 
-            Array.from(rel.aggNames, () => null) :
-            Array.from(rel.aggNames, () => new Map),
-         myVer: null,
-         myInsts: []
-      };
+         aggNames: Object.keys(aggregates),
+         aggFactories: Object.values(aggregates).map(({make}) => make),
+         sourceRel: source,
+         projections: $.makeProjectionRegistry(),
+      }
    }
 
-   $.updateProjection(proj);
+makeProjection ::=
+   function (rel, bindings) {
+      let groupBy = Array.from(rel.groupBy);
 
-   return proj;
-}
-freeProjection ::= function (proj) {
-   $.releaseVersion(proj.depVer);
-   $.releaseProjection(proj.sourceProj);
-}
-markAsValid ::= function (proj) {
-   proj.sourceProj.validRevDeps.add(proj);
-   proj.isValid = true;
-}
-updateProjection ::= function (proj) {
-   $.updateGenericProjection(proj.sourceProj);
+      for (let [attr, val] of Object.entries(bindings)) {
+         let idx = groupBy.indexOf(attr);
 
-   if (proj.kind === 'aggregate') {
-      $.updateNdim(proj);
-   }
-   else if (proj.kind === 'aggregate-0-dim') {
-      $.update0dim(proj);
-   }
-   else {
-      throw new Error;
-   }
-
-   let newVer = $.refProjectionState(proj.sourceProj);
-   $.releaseVersion(proj.depVer);
-   proj.depVer = newVer;
-
-   $.markAsValid(proj);
-}
-updateNdim ::= function (proj) {
-   let {rel} = proj;
-
-   let newGroups = new Set;
-   let dirtyGroups = new Set;
-
-   // Remove
-   for (let rec of $.versionRemovedRecords(proj.depVer)) {
-      let map = proj.recordMap;
-
-      for (let attr of proj.groupBy) {
-         map = map.get(rec[attr]);
+         if (idx !== -1) {
+            groupBy.splice(idx, 1);
+         }
+         else {
+            throw new Error(`Cannot bind '${attr}' in aggregation '${rel.name}'`);
+         }
       }
 
-      let group = map;
+      let sourceProj = $.projectionFor(rel.sourceRel, bindings);
 
-      for (let group2agg of proj.Agroup2agg) {
-         group2agg.get(group).remove(rec);
+      sourceProj.refCount += 1;
+
+      let proj;
+
+      if (groupBy.length === 0) {
+         proj = {
+            kind: 'aggregate-0-dim',
+            rel,
+            refCount: 0,
+            regPoint: null,  // initialized by the calling code
+            isValid: false,
+            validRevDeps: new Set,
+            sourceProj,
+            depVer: $.makeZeroVersion(sourceProj),
+            rec: null,
+            aggs: Array.from(rel.aggNames, () => null),
+         }
+      }
+      else {
+         proj = {
+            kind: 'aggregate',
+            rel,
+            refCount: 0,
+            regPoint: null,  // initialized by the calling code
+            isValid: false,
+            validRevDeps: new Set,
+            sourceProj,
+            depVer: $.makeZeroVersion(sourceProj),
+            groupBy,
+            recordMap: groupBy.length === 0 ? null : new Map,
+            size: 0,
+            Agroup2agg: groupBy.length === 0 ? 
+               Array.from(rel.aggNames, () => null) :
+               Array.from(rel.aggNames, () => new Map),
+            myVer: null,
+            myInsts: []
+         };
       }
 
-      group[$.symCount] -= 1;
-      dirtyGroups.add(group);
+      $.updateProjection(proj);
+
+      return proj;
    }
 
-   // Add
-   for (let rec of $.versionAddedRecords(proj.depVer)) {
-      let map = proj.recordMap;
-      
-      for (let [attr, isFinal] of $.trackingFinal(proj.groupBy)) {
-         let next = map.get(rec[attr]);
-
-         if (next === undefined) {
-            if (isFinal) {
-               // Create a new group
-               let group = Object.fromEntries([
-                  [$.symCount, 0],
-                  [$.symParent, map],
-                  ...$.map(proj.groupBy, attr => [attr, rec[attr]]),
-                  ...$.map(rel.aggNames, name => [name, undefined])
-               ]);
-
-               for (let [fnmake, group2agg] of $.zip(rel.aggFactories, proj.Agroup2agg)) {
-                  group2agg.set(group, fnmake());
-               }
-
-               next = group;
-               newGroups.add(group);
-            }
-            else {
-               next = Object.assign(new Map, {
-                  parent: map,
-                  key: rec[attr]
-               });
-            }
-
-            map.set(rec[attr], next);
-         }
-
-         map = next;
-      }
-
-      let group = map;
-
-      for (let group2agg of proj.Agroup2agg) {
-         let agg = group2agg.get(group);
-         agg.add(rec);
-      }
-
-      group[$.symCount] += 1;
-      dirtyGroups.add(group);
+freeProjection ::=
+   function (proj) {
+      $.releaseVersion(proj.depVer);
+      $.releaseProjection(proj.sourceProj);
    }
 
-   // Process dirty groups
-   let newValues = [];
+markAsValid ::=
+   function (proj) {
+      proj.sourceProj.validRevDeps.add(proj);
+      proj.isValid = true;
+   }
 
-   for (let group of dirtyGroups) {
-      if (newGroups.has(group)) {
-         for (let [aggName, group2agg] of $.zip(rel.aggNames, proj.Agroup2agg)) {
-            group[aggName] = group2agg.get(group).value();
-         }
+updateProjection ::=
+   function (proj) {
+      $.updateGenericProjection(proj.sourceProj);
 
-         if (proj.myVer !== null) {
-            $.versionAdd(proj.myVer, group);
-         }
-
-         for (let inst of proj.myInsts) {
-            $.indexAdd(inst, group);
-         }
-
-         proj.size += 1;
+      if (proj.kind === 'aggregate') {
+         $.updateNdim(proj);
       }
-      else if (group[$.symCount] === 0) {
-         let map = group[$.symParent];
+      else if (proj.kind === 'aggregate-0-dim') {
+         $.update0dim(proj);
+      }
+      else {
+         throw new Error;
+      }
 
-         map.delete(group[proj.groupBy.at(-1)]);
+      let newVer = $.refProjectionState(proj.sourceProj);
+      $.releaseVersion(proj.depVer);
+      proj.depVer = newVer;
 
-         while (map.size === 0 && map.parent !== null) {
-            map.parent.delete(map.key);
-            map = map.parent;
+      $.markAsValid(proj);
+   }
+
+updateNdim ::=
+   function (proj) {
+      let {rel} = proj;
+
+      let newGroups = new Set;
+      let dirtyGroups = new Set;
+
+      // Remove
+      for (let rec of $.versionRemovedRecords(proj.depVer)) {
+         let map = proj.recordMap;
+
+         for (let attr of proj.groupBy) {
+            map = map.get(rec[attr]);
          }
+
+         let group = map;
 
          for (let group2agg of proj.Agroup2agg) {
-            group2agg.delete(group);
+            group2agg.get(group).remove(rec);
          }
 
-         if (proj.myVer !== null) {
-            $.versionRemove(proj.myVer, group);
-         }
-
-         for (let inst of proj.myInsts) {
-            $.indexRemove(inst, group);
-         }
-
-         proj.size -= 1;
+         group[$.symCount] -= 1;
+         dirtyGroups.add(group);
       }
-      else {
-         newValues.length = 0;
 
-         let changed = false;
+      // Add
+      for (let rec of $.versionAddedRecords(proj.depVer)) {
+         let map = proj.recordMap;
+         
+         for (let [attr, isFinal] of $.trackingFinal(proj.groupBy)) {
+            let next = map.get(rec[attr]);
 
-         for (let [aggName, group2agg] of $.zip(rel.aggNames, proj.Agroup2agg)) {
-            let agg = group2agg.get(group);
-            let oldValue = group[aggName];
-            let newValue = agg.value();
+            if (next === undefined) {
+               if (isFinal) {
+                  // Create a new group
+                  let group = Object.fromEntries([
+                     [$.symCount, 0],
+                     [$.symParent, map],
+                     ...$.map(proj.groupBy, attr => [attr, rec[attr]]),
+                     ...$.map(rel.aggNames, name => [name, undefined])
+                  ]);
 
-            newValues.push(newValue);
+                  for (let [fnmake, group2agg] of $.zip(rel.aggFactories, proj.Agroup2agg)) {
+                     group2agg.set(group, fnmake());
+                  }
 
-            if (oldValue !== newValue) {
-               changed = true;
+                  next = group;
+                  newGroups.add(group);
+               }
+               else {
+                  next = Object.assign(new Map, {
+                     parent: map,
+                     key: rec[attr]
+                  });
+               }
+
+               map.set(rec[attr], next);
             }
+
+            map = next;
          }
 
-         if (changed) {
-            let newGroup = {...group};
+         let group = map;
 
-            for (let [aggName, newValue] of $.zip(rel.aggNames, newValues)) {
-               newGroup[aggName] = newValue;
+         for (let group2agg of proj.Agroup2agg) {
+            let agg = group2agg.get(group);
+            agg.add(rec);
+         }
+
+         group[$.symCount] += 1;
+         dirtyGroups.add(group);
+      }
+
+      // Process dirty groups
+      let newValues = [];
+
+      for (let group of dirtyGroups) {
+         if (newGroups.has(group)) {
+            for (let [aggName, group2agg] of $.zip(rel.aggNames, proj.Agroup2agg)) {
+               group[aggName] = group2agg.get(group).value();
             }
 
-            group[$.symParent].set(group[proj.groupBy.at(-1)], newGroup);
+            if (proj.myVer !== null) {
+               $.versionAdd(proj.myVer, group);
+            }
+
+            for (let inst of proj.myInsts) {
+               $.indexAdd(inst, group);
+            }
+
+            proj.size += 1;
+         }
+         else if (group[$.symCount] === 0) {
+            let map = group[$.symParent];
+
+            map.delete(group[proj.groupBy.at(-1)]);
+
+            while (map.size === 0 && map.parent !== null) {
+               map.parent.delete(map.key);
+               map = map.parent;
+            }
 
             for (let group2agg of proj.Agroup2agg) {
-               group2agg.set(newGroup, group2agg.get(group));
                group2agg.delete(group);
             }
 
             if (proj.myVer !== null) {
                $.versionRemove(proj.myVer, group);
-               $.versionAdd(proj.myVer, newGroup);
             }
 
             for (let inst of proj.myInsts) {
                $.indexRemove(inst, group);
-               $.indexAdd(inst, newGroup);
+            }
+
+            proj.size -= 1;
+         }
+         else {
+            newValues.length = 0;
+
+            let changed = false;
+
+            for (let [aggName, group2agg] of $.zip(rel.aggNames, proj.Agroup2agg)) {
+               let agg = group2agg.get(group);
+               let oldValue = group[aggName];
+               let newValue = agg.value();
+
+               newValues.push(newValue);
+
+               if (oldValue !== newValue) {
+                  changed = true;
+               }
+            }
+
+            if (changed) {
+               let newGroup = {...group};
+
+               for (let [aggName, newValue] of $.zip(rel.aggNames, newValues)) {
+                  newGroup[aggName] = newValue;
+               }
+
+               group[$.symParent].set(group[proj.groupBy.at(-1)], newGroup);
+
+               for (let group2agg of proj.Agroup2agg) {
+                  group2agg.set(newGroup, group2agg.get(group));
+                  group2agg.delete(group);
+               }
+
+               if (proj.myVer !== null) {
+                  $.versionRemove(proj.myVer, group);
+                  $.versionAdd(proj.myVer, newGroup);
+               }
+
+               for (let inst of proj.myInsts) {
+                  $.indexRemove(inst, group);
+                  $.indexAdd(inst, newGroup);
+               }
             }
          }
       }
    }
-}
-update0dim ::= function (proj) {
-   let {rel} = proj;
 
-   let isNew = false;
-   let isDirty = false;
+update0dim ::=
+   function (proj) {
+      let {rel} = proj;
 
-   // Remove
-   for (let rec of $.versionRemovedRecords(proj.depVer)) {
-      for (let agg of proj.aggs) {
-         agg.remove(rec);
-      }
+      let isNew = false;
+      let isDirty = false;
 
-      proj.rec[$.symCount] -= 1;
-      isDirty = true;
-   }
-
-   // Add
-   for (let rec of $.versionAddedRecords(proj.depVer)) {
-      if (proj.rec === null) {
-         // Create a new group
-         proj.rec = Object.fromEntries([
-            [$.symCount, 0],
-            ...$.map(rel.aggNames, name => [name, undefined])
-         ]);
-
-         for (let [i, fnmake] of $.enumerate(rel.aggFactories)) {
-            proj.aggs[i] = fnmake();
+      // Remove
+      for (let rec of $.versionRemovedRecords(proj.depVer)) {
+         for (let agg of proj.aggs) {
+            agg.remove(rec);
          }
 
-         isNew = true;
+         proj.rec[$.symCount] -= 1;
+         isDirty = true;
       }
 
-      for (let agg of proj.aggs) {
-         agg.add(rec);
-      }
+      // Add
+      for (let rec of $.versionAddedRecords(proj.depVer)) {
+         if (proj.rec === null) {
+            // Create a new group
+            proj.rec = Object.fromEntries([
+               [$.symCount, 0],
+               ...$.map(rel.aggNames, name => [name, undefined])
+            ]);
 
-      proj.rec[$.symCount] += 1;
-      isDirty = true;
-   }
+            for (let [i, fnmake] of $.enumerate(rel.aggFactories)) {
+               proj.aggs[i] = fnmake();
+            }
 
-   // Process if dirty
-   if (isNew) {
-      for (let [name, agg] of $.zip(rel.aggNames, proj.aggs)) {
-         proj.rec[name] = agg.value();
-      }
-   }
-   else if (proj.rec[$.symCount] === 0) {
-      proj.rec = null;
-      proj.aggs.fill(null);
-   }
-   else {
-      let newValues = [];
-      let isChanged = false;
-
-      for (let [name, agg] of $.zip(rel.aggNames, proj.aggs)) {
-         let oldValue = proj.rec[name];
-         let newValue = agg.value();
-
-         newValues.push(newValue);
-
-         if (oldValue !== newValue) {
-            isChanged = true;
-         }
-      }
-
-      if (isChanged) {
-         let newRec = {...proj.rec};
-
-         for (let [name, newValue] of $.zip(rel.aggNames, newValues)) {
-            newRec[name] = newValue;
+            isNew = true;
          }
 
-         proj.rec = newRec;
+         for (let agg of proj.aggs) {
+            agg.add(rec);
+         }
+
+         proj.rec[$.symCount] += 1;
+         isDirty = true;
+      }
+
+      // Process if dirty
+      if (isNew) {
+         for (let [name, agg] of $.zip(rel.aggNames, proj.aggs)) {
+            proj.rec[name] = agg.value();
+         }
+      }
+      else if (proj.rec[$.symCount] === 0) {
+         proj.rec = null;
+         proj.aggs.fill(null);
+      }
+      else {
+         let newValues = [];
+         let isChanged = false;
+
+         for (let [name, agg] of $.zip(rel.aggNames, proj.aggs)) {
+            let oldValue = proj.rec[name];
+            let newValue = agg.value();
+
+            newValues.push(newValue);
+
+            if (oldValue !== newValue) {
+               isChanged = true;
+            }
+         }
+
+         if (isChanged) {
+            let newRec = {...proj.rec};
+
+            for (let [name, newValue] of $.zip(rel.aggNames, newValues)) {
+               newRec[name] = newValue;
+            }
+
+            proj.rec = newRec;
+         }
       }
    }
-}
+   
 symCount ::= Symbol.for('poli.count')
 symParent ::= Symbol.for('poli.parent')

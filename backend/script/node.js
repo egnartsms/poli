@@ -3,13 +3,12 @@ const fs = require('fs');
 const WebSocket = require('ws');
 
 
-const {SRC_FOLDER, RUN_MODULE} = require('./const');
-const loadModules = require('./load-modules');
-const readRawModules = require('./read-raw-modules');
+const {SRC_FOLDER, RUN_MODULE, loadModulesData, readRawModules, parseRawModule} = require('./node-lib');
 
 
 function run() {
-   let modules = loadModules(readRawModules());
+   let modulesData = Array.from(readRawModules(), parseRawModule);
+   let namespaces = loadModulesData(modulesData);
 
    let handleOperation;
    let websocket = null;
@@ -53,7 +52,7 @@ function run() {
    // That's our protocol with RUN_MODULE:
    //   * we give it the way to send a message over the wire
    //   * it gives us operation handler which we call on incoming operation request
-   handleOperation = modules[RUN_MODULE].rtobj['main'](
+   handleOperation = namespaces.get(RUN_MODULE)['main'](
       message => websocket.send(JSON.stringify(message))
    );
    
