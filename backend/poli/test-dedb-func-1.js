@@ -9,6 +9,7 @@ dedb-goal
 dedb-query
    query
 dedb-base
+   resetFacts
    addFact
    removeFact
    replaceWhere
@@ -19,61 +20,61 @@ dedb-functional
    functionalRelation
 -----
 
-setup ::=
-   function () {
-      $.setItem = $.functionalRelation({
-         name: 'setItem',
-         attrs: ['set', 'item'],
-         instantiations: {
-            '++': {
-               fitness: $.Fitness.uniqueHit,
-               *run(ns, vset, vitem) {
-                  if (ns[vset].has(ns[vitem])) {
-                     yield;
-                  }
+setItem ::=
+   $.functionalRelation({
+      name: 'setItem',
+      attrs: ['set', 'item'],
+      instantiations: {
+         '++': {
+            fitness: $.Fitness.uniqueHit,
+            *run(ns, vset, vitem) {
+               if (ns[vset].has(ns[vitem])) {
+                  yield;
                }
-            },
-            '+-': {
-               fitness: $.Fitness.hit,
-               *run(ns, vset, vitem) {
-                  for (let x of ns[vset]) {
-                     ns[vitem] = x;
-                     yield;
-                  }
+            }
+         },
+         '+-': {
+            fitness: $.Fitness.hit,
+            *run(ns, vset, vitem) {
+               for (let x of ns[vset]) {
+                  ns[vitem] = x;
+                  yield;
                }
             }
          }
-      });
+      }
+   })
 
-      $.countryCities = $.baseRelation({
-         name: 'countryCities',
-         attrs: ['country', 'cities'],
-         indices: [['country', 1]],
-         records: [
-            {
-               country: 'ruthenia',
-               cities: new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])
-            },
-            {
-               country: 'poland',
-               cities: new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])
-            }
-         ]
-      });
+countryCities ::=
+   $.baseRelation({
+      name: 'countryCities',
+      attrs: ['country', 'cities'],
+      indices: [['country', 1]]
+   })
 
-      $.countryCity = $.derivedRelation({
-         name: 'countryCity',
-         attrs: ['country', 'city'],
-         body: v => [
-            $.use($.countryCities, {country: v`country`, cities: v`cities`}),
-            $.use($.setItem, {set: v`cities`, item: v`city`})
-         ]
-      });
+countryCity ::=
+   $.derivedRelation({
+      name: 'countryCity',
+      attrs: ['country', 'city'],
+      body: v => [
+         $.use($.countryCities, {country: v`country`, cities: v`cities`}),
+         $.use($.setItem, {set: v`cities`, item: v`city`})
+      ]
+   })
+
+setup ::=
+   function () {
+      $.resetFacts($.countryCities, [
+         {
+            country: 'ruthenia',
+            cities: new Set(['kyiv', 'dnipro', 'lviv', 'odessa', 'kharkiv'])
+         },
+         {
+            country: 'poland',
+            cities: new Set(['warsaw', 'wroclaw', 'gdansk', 'lodz', 'poznan'])
+         }
+      ]);
    }
-
-box setItem ::= null
-box countryCities ::= null
-box countryCity ::= null
 
 test_basic ::=
    function () {

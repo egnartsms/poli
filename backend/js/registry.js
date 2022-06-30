@@ -46,9 +46,9 @@ export class Registry {
       }
    }
 
-   populateModuleNamespaces() {
+   switchToRuntime() {
       for (let module of this.modules.values()) {
-         module.populateNamespace();
+         module.switchToRuntime();
       }
    }
 

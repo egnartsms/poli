@@ -1,6 +1,7 @@
 common
    checkLike
 dedb-base
+   resetFacts
    baseRelation
    addFact
    replaceWhere
@@ -14,41 +15,42 @@ dedb-aggregators
    min
 -----
 
+countryCity ::=
+   $.baseRelation({
+      name: 'countryCity',
+      attrs: ['country', 'city', 'big', 'population'],
+      indices: [['country', 'city']]
+   })
+
+countryData ::=
+   $.aggregatedRelation({
+      name: 'countryData',
+      groupBy: ['country'],
+      aggregates: {
+         cityList: $.concatenate('city', {with: ', ', sortBy: 'big'}),
+         population: $.sum('population'),
+         minCity: $.min('city', 'population'),
+      },
+      source: $.countryCity
+   })
+
 setup ::=
    function () {
-      $.countryCity = $.baseRelation({
-         name: 'countryCity',
-         attrs: ['country', 'city', 'big', 'population'],
-         indices: [['country', 'city']],
-         records: [
-            {country: 'ruthenia', city: 'kyiv', big: 1, population: 3000},
-            {country: 'ruthenia', city: 'kharkiv', big: 2, population: 1500},
-            {country: 'ruthenia', city: 'odessa', big: 3, population: 1070},
-            {country: 'ruthenia', city: 'dnipro', big: 4, population: 1030},
-            {country: 'ruthenia', city: 'lviv', big: 5, population: 720},
+      $.resetFacts($.countryCity, [
+         {country: 'ruthenia', city: 'kyiv', big: 1, population: 3000},
+         {country: 'ruthenia', city: 'kharkiv', big: 2, population: 1500},
+         {country: 'ruthenia', city: 'odessa', big: 3, population: 1070},
+         {country: 'ruthenia', city: 'dnipro', big: 4, population: 1030},
+         {country: 'ruthenia', city: 'lviv', big: 5, population: 720},
 
-            {country: 'poland', city: 'warsaw', big: 1, population: 3100},
-            {country: 'poland', city: 'wroclaw', big: 2, population: 1250},
-            {country: 'poland', city: 'gdansk', big: 3, population: 900},
-            {country: 'poland', city: 'lodz', big: 4, population: 600},
-            {country: 'poland', city: 'poznan', big: 5, population: 500},
-         ]
-      });
-
-      $.countryData = $.aggregatedRelation({
-         name: 'countryData',
-         groupBy: ['country'],
-         aggregates: {
-            cityList: $.concatenate('city', {with: ', ', sortBy: 'big'}),
-            population: $.sum('population'),
-            minCity: $.min('city', 'population'),
-         },
-         source: $.countryCity
-      });
+         {country: 'poland', city: 'warsaw', big: 1, population: 3100},
+         {country: 'poland', city: 'wroclaw', big: 2, population: 1250},
+         {country: 'poland', city: 'gdansk', big: 3, population: 900},
+         {country: 'poland', city: 'lodz', big: 4, population: 600},
+         {country: 'poland', city: 'poznan', big: 5, population: 500},
+      ]);
    }
 
-box countryCity ::= null
-box countryData ::= null
 
 test_basic ::=
    function () {

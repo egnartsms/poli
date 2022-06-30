@@ -219,6 +219,19 @@ addFact ::=
       $.invalidateRelation(rel);
    }
 
+addFacts ::=
+   function (rel, recs) {
+      for (let rec of recs) {
+         $.addFact(rel, rec);
+      }
+   }
+
+resetFacts ::=
+   function (rel, recs) {
+      $.empty(rel);
+      $.addFacts(rel, recs);
+   }
+
 doAdd ::=
    function (rel, rec) {
       rel.records.add(rec);
@@ -250,6 +263,15 @@ doRemove ::=
       for (let inst of rel.myInsts) {
          $.indexRemove(inst, rec);
       }
+   }
+
+empty ::=
+   function (rel) {
+      for (let rec of rel.records) {
+         $.doRemove(rel, rec);
+      }
+
+      $.invalidateRelation(rel);
    }
 
 removeWhere ::=

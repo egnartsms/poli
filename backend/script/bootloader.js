@@ -76,6 +76,20 @@
    };
 
 
+   rigidCell.exc = function (exc) {
+      let cell = () => {
+         connectCells(beingComputed, cell);
+
+         throw cell.exc;
+      };
+
+      cell.exc = exc;
+      cell.revdeps = new Set;
+
+      return cell;
+   };
+
+
    function computableCell(computer) {
       let cell = () => {
          connectCells(beingComputed, cell);
@@ -181,13 +195,10 @@
 
 
    function digest() {
-      let n = 0;
+      let ncycles = 0;
 
       while (!invq.isEmpty) {
-         n += 1;
-         if (n >= 5000) {
-            debugger;
-         }
+         ncycles += 1;
 
          let cell = invq.dequeue();
          
@@ -242,6 +253,8 @@
             cell.val = plainValue(value);
          }
       }
+
+      console.log("Digest cycles:", ncycles);
 
       // At this point, the invalid queue is exhausted. All the cells we have in
       // blockedCells are blocked because of circular dependencies.
@@ -430,11 +443,6 @@
       }
    }
 
-
-   function restart(func) {
-      return new Restart(func);
-   }
-
    class Binding {
       constructor(module, name) {
          this.module = module;
@@ -544,7 +552,7 @@
          this.name = name;
          this.exist = false;
          this.bindings = new Map;
-         this.defs = [];
+         this.setters$ = [];
          this.ns = Object.create(null);
       }
 
@@ -564,11 +572,27 @@
       }
 
       addEntry(target, source) {
-         let targetBinding = this.getBinding(target);
-         let defCell = computableCell(() => this.compileDefinition(source));
+         let factory, set$;
 
-         targetBinding.defineAsTarget(defCell);
-         this.defs.push(defCell);
+         try {
+            [factory, set$] = Function(factorySource(source))();
+         }
+         catch (e) {
+            console.error(source);
+            targetBinding.defineAsTarget(rigidCell.exc(e));
+            return;
+         }
+
+         set$(new Proxy(this.ns, {
+            get: (target, prop, receiver) => this.getBinding(prop).value()
+         }));
+
+         let cell = computableCell(factory);
+         let targetBinding = this.getBinding(target);
+
+         targetBinding.defineAsTarget(cell);
+
+         this.setters$.push(set$);
       }
 
       addImport(donorBinding, importUnder) {
@@ -583,17 +607,7 @@
          targetBinding.defineAsAsterisk(donor);
       }
 
-      compileDefinition(source) {
-         let factory = Function('$ns, $proxy', factoryFuncSource(source));
-
-         // this is to avoid re-creating 'factory' when we need to re-evaluate the
-         // definition
-         return restart(() => factory.call(null, this.ns, new Proxy(this.ns, {
-            get: (target, prop, receiver) => this.getBinding(prop).value()
-         })));
-      }
-
-      populateNamespace() {
+      switchToRuntime() {
          for (let binding of this.bindings.values()) {
             Object.defineProperty(this.ns, binding.name, {
                configurable: true,
@@ -601,17 +615,23 @@
                ...binding.value.val.descriptor()
             });
          }
+
+         for (let set$ of this.setters$) {
+            set$(this.ns);
+         }
       }
    }
 
 
    // params are: $ns, $proxy
-   const factoryFuncSource = (source) => `
+   const factorySource = (source) => `
    "use strict";
-   let $ = $proxy;
-   let $res = (${source});
-   $ = $ns;
-   return $res;
+   let $;
+
+   return [
+      () => (${source}),
+      (new$) => { $ = new$ }
+   ]
 `;
 
    class Registry {
@@ -659,9 +679,9 @@
          }
       }
 
-      populateModuleNamespaces() {
+      switchToRuntime() {
          for (let module of this.modules.values()) {
-            module.populateNamespace();
+            module.switchToRuntime();
          }
       }
 
@@ -690,7 +710,7 @@
 
       digest();
 
-      reg.populateModuleNamespaces();
+      reg.switchToRuntime();
       return reg.moduleNsMap();
    }
 
@@ -845,12 +865,16 @@
 
 
    function run(rawModules) {
-      console.time('mini');
+      console.time('bootload');
       let modulesData = Array.from(rawModules, parseRawModule);
       let namespaces = loadModulesData(modulesData);
-      console.timeEnd('mini');
+      console.timeEnd('bootload');
 
-      console.log(namespaces);
+      // Tests
+      {
+         namespaces.get('test-dedb')['runTests']();
+      }
+
       return;
    }
 

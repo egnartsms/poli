@@ -12,104 +12,107 @@ dedb-base
    removeFact
    removeWhere
    baseRelation
+   resetFacts
 dedb-derived
    derivedRelation
 dedb-projection
    updateProjection
    releaseProjection
 -----
-box continent ::= null
-box country ::= null
-box city ::= null
-box continentCity ::= null
+continent ::=
+   $.baseRelation({
+      name: 'continent',
+      attrs: ['name'],
+      indices: [
+         ['name', 1]
+      ]
+   })
+
+country ::=
+   $.baseRelation({
+      name: 'country',
+      attrs: ['name', 'continent'],
+      indices: [
+         ['name', 1],
+         ['continent']
+      ]
+   })
+
+city ::=
+   $.baseRelation({
+      name: 'city',
+      attrs: ['country', 'name', 'population'],
+      indices: [
+         ['name', 1],
+         ['country']
+      ]
+   })
+
+continentCity ::=
+   $.derivedRelation({
+      name: 'continentCity',
+      attrs: ['continent', 'city'],
+      indices: [],
+      body: v => [
+         $.use($.continent, {name: v`continent`}),
+         $.use($.country, {continent: v`continent`, name: v`country`}),
+         $.use($.city, {country: v`country`, name: v`city`}),
+      ]
+   })
 
 setup ::=
    function () {
-      $.continent = $.baseRelation({
-         name: 'continent',
-         attrs: ['name'],
-         indices: [
-            ['name', 1]
-         ],
-         records: [
-            {name: 'Europe'},
-            {name: 'Asia'},
-            {name: 'America'}
-         ]
-      });
+      $.resetFacts($.continent, [
+         {name: 'Europe'},
+         {name: 'Asia'},
+         {name: 'America'}
+      ]);
 
-      $.country = $.baseRelation({
-         name: 'country',
-         attrs: ['name', 'continent'],
-         indices: [
-            ['name', 1],
-            ['continent']
-         ],
-         records: [
-            {continent: 'Europe', name: 'France'},
-            {continent: 'Europe', name: 'Poland'},
-            {continent: 'Europe', name: 'Ruthenia'},
-            {continent: 'Asia', name: 'China'},
-            {continent: 'Asia', name: 'India'},
-            {continent: 'Asia', name: 'Turkey'},
-            {continent: 'America', name: 'Canada'},
-            {continent: 'America', name: 'USA'}
-         ]
-      });
+      $.resetFacts($.country, [
+         {continent: 'Europe', name: 'France'},
+         {continent: 'Europe', name: 'Poland'},
+         {continent: 'Europe', name: 'Ruthenia'},
+         {continent: 'Asia', name: 'China'},
+         {continent: 'Asia', name: 'India'},
+         {continent: 'Asia', name: 'Turkey'},
+         {continent: 'America', name: 'Canada'},
+         {continent: 'America', name: 'USA'}
+      ]);
 
-      $.city = $.baseRelation({
-         name: 'city',
-         attrs: ['country', 'name', 'population'],
-         indices: [
-            ['name', 1],
-            ['country']
-         ],
-         records: [
-            {country: 'France', name: 'Paris', population: 13.024},
-            {country: 'France', name: 'Marseille', population: 1.761},
-            {country: 'France', name: 'Lyon', population: 2.323},
+      $.resetFacts($.city, [
+         {country: 'France', name: 'Paris', population: 13.024},
+         {country: 'France', name: 'Marseille', population: 1.761},
+         {country: 'France', name: 'Lyon', population: 2.323},
 
-            {country: 'Poland', name: 'Warsaw', population: 3.100},
-            {country: 'Poland', name: 'Wroclaw', population: 1.250},
-            {country: 'Poland', name: 'Krakow', population: 1.725},
+         {country: 'Poland', name: 'Warsaw', population: 3.100},
+         {country: 'Poland', name: 'Wroclaw', population: 1.250},
+         {country: 'Poland', name: 'Krakow', population: 1.725},
 
-            {country: 'Ruthenia', name: 'Kyiv', population: 3.375},
-            {country: 'Ruthenia', name: 'Lviv', population: 0.720},
-            {country: 'Ruthenia', name: 'Dnipro', population: 0.993},
+         {country: 'Ruthenia', name: 'Kyiv', population: 3.375},
+         {country: 'Ruthenia', name: 'Lviv', population: 0.720},
+         {country: 'Ruthenia', name: 'Dnipro', population: 0.993},
 
-            {country: 'China', name: 'Beijing', population: 21.707},
-            {country: 'China', name: 'Chongqing', population: 30.165},
-            {country: 'China', name: 'Shanghai', population: 24.183},
+         {country: 'China', name: 'Beijing', population: 21.707},
+         {country: 'China', name: 'Chongqing', population: 30.165},
+         {country: 'China', name: 'Shanghai', population: 24.183},
 
-            {country: 'India', name: 'Delhi', population: 29.000},
-            {country: 'India', name: 'Mumbai', population: 24.400},
-            {country: 'India', name: 'Bangalore', population: 8.443},
+         {country: 'India', name: 'Delhi', population: 29.000},
+         {country: 'India', name: 'Mumbai', population: 24.400},
+         {country: 'India', name: 'Bangalore', population: 8.443},
 
-            {country: 'Turkey', name: 'Istanbul', population: 14.025},
-            {country: 'Turkey', name: 'Ankara', population: 4.587},
-            {country: 'Turkey', name: 'Izmir', population: 2.847},
+         {country: 'Turkey', name: 'Istanbul', population: 14.025},
+         {country: 'Turkey', name: 'Ankara', population: 4.587},
+         {country: 'Turkey', name: 'Izmir', population: 2.847},
 
-            {country: 'Canada', name: 'Toronto', population: 6.417},
-            {country: 'Canada', name: 'Montreal', population: 4.247},
-            {country: 'Canada', name: 'Vancouver', population: 2.463},
+         {country: 'Canada', name: 'Toronto', population: 6.417},
+         {country: 'Canada', name: 'Montreal', population: 4.247},
+         {country: 'Canada', name: 'Vancouver', population: 2.463},
 
-            {country: 'USA', name: 'New York', population: 8.622},
-            {country: 'USA', name: 'Los Angeles', population: 4.085},
-            {country: 'USA', name: 'Chicago', population: 2.670},
-            {country: 'USA', name: 'Houston', population: 2.378},
-         ]
-      });
-
-      $.continentCity = $.derivedRelation({
-         name: 'continentCity',
-         attrs: ['continent', 'city'],
-         indices: [],
-         body: v => [
-            $.use($.continent, {name: v`continent`}),
-            $.use($.country, {continent: v`continent`, name: v`country`}),
-            $.use($.city, {country: v`country`, name: v`city`}),
-         ]
-      });
+         {country: 'USA', name: 'New York', population: 8.622},
+         {country: 'USA', name: 'Los Angeles', population: 4.085},
+         {country: 'USA', name: 'Chicago', population: 2.670},
+         {country: 'USA', name: 'Houston', population: 2.378},
+      ]);
    }
 
 test_query_no_bindings ::=
