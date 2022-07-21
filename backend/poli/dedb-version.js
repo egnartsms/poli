@@ -16,16 +16,17 @@ refRelationState ::=
    function (rel) {
       $.assert(() => rel.kind === 'base');
 
-      $.ensureTopmostFresh(rel);
+      $.ensureTopmostFresh(rel, rel.protoEntity !== null);
       rel.myVer.refCount += 1;
 
       return rel.myVer;
    }
 
+
 refProjectionState ::=
    function (proj) {
       if (proj.kind === 'derived' || proj.kind === 'aggregate') {
-         $.ensureTopmostFresh(proj);
+         $.ensureTopmostFresh(proj, proj.rel.protoEntity !== null);
          proj.myVer.refCount += 1;
 
          return proj.myVer;
@@ -36,7 +37,7 @@ refProjectionState ::=
             proj.depVer = $.refRelationState(proj.rel);
          }
 
-         $.ensureTopmostFresh(proj);
+         $.ensureTopmostFresh(proj, proj.rel.protoEntity !== null);
          proj.myVer.refCount += 1;
 
          return proj.myVer;
@@ -77,9 +78,9 @@ makeZeroVersion ::=
 
 
 ensureTopmostFresh ::=
-   function (versionable) {
+   function (versionable, isEntityBased) {
       let prev = versionable.myVer;
-      
+
       if (prev !== null && $.isMultiVersionFresh(prev)) {
          return;
       }
@@ -87,10 +88,16 @@ ensureTopmostFresh ::=
       let ver = {
          kind: 'multi',
          owner: versionable,
+         isEntityBased,
          num: 1 + (prev === null ? 0 : prev.num),
          refCount: prev === null ? 0 : 1,
-         added: new Set,
-         removed: new Set,
+         changes: isEntityBased ? {
+            added: new Map,
+            removed: new Map
+         } : {
+            added: new Set,
+            removed: new Set
+         },
          next: null,
       };
 
@@ -104,7 +111,9 @@ ensureTopmostFresh ::=
 
 isMultiVersionFresh ::=
    function (ver) {
-      return ver.added.size === 0 && ver.removed.size === 0;
+      let {added, removed} = ver.changes;
+
+      return added.size === 0 && removed.size === 0;
    }
 
 
@@ -152,7 +161,7 @@ prepareVersion ::=
 
       let owner = ver.owner;
 
-      $.ensureTopmostFresh(owner);
+      $.ensureTopmostFresh(owner, ver.isEntityBased);
 
       let topmost = owner.myVer;
       let chain = [];

@@ -2,10 +2,10 @@ common
    check
 
 dedb-base
-   empty
-   makeEntity
+   emptyRelation
+   addFact
    baseRelation
-   symEntity
+   entity
 
 dedb-projection
    projectionFor
@@ -13,8 +13,7 @@ dedb-projection
 -----
 
 protoCountry ::=
-   {
-   }
+   {}
 
 Country ::=
    $.baseRelation({
@@ -33,11 +32,16 @@ Turkey ::= null
 
 setup ::=
    function () {
-      $.empty($.Country);
+      $.emptyRelation($.Country);
 
-      $.Ruthenia = $.makeEntity($.protoCountry, {name: 'Ruthenia', population: 40});
-      $.Poland = $.makeEntity($.protoCountry, {name: 'Poland', population: 35});
-      $.Turkey = $.makeEntity($.protoCountry, {name: 'Turkey', population: 60});
+      $.Ruthenia = {__proto__: $.protoCountry};
+      $.addFact($.Country, {name: 'Ruthenia', population: 40, [$.entity]: $.Ruthenia});
+
+      $.Poland = {__proto__: $.protoCountry};
+      $.addFact($.Country, {name: 'Poland', population: 35, [$.entity]: $.Poland});
+
+      $.Turkey = {__proto__: $.protoCountry};
+      $.addFact($.Country, {name: 'Turkey', population: 60, [$.entity]: $.Turkey});
    }
 
 
@@ -50,8 +54,8 @@ test_basic_attrs ::=
 
 test_projection ::=
    function () {
-      let proj = $.projectionFor($.Country, {[$.symEntity]: $.Ruthenia});
+      let proj = $.projectionFor($.Country, {[$.entity]: $.Ruthenia});
 
       $.check(proj.isValid);
-      $.check(proj.rec === $.Ruthenia);
+      $.check(proj.rec === $.Ruthenia[$.Country.recSym]);
    }

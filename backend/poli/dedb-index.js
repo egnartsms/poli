@@ -125,6 +125,13 @@ makeIndex ::=
    }
 
 
+emptyIndex ::=
+   function (index) {
+      index.map.clear();
+      index.map.totalSize = 0;
+   }
+
+
 findSuitableIndex ::=
    function (indices, bindings) {
       return $.greatestBy(

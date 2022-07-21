@@ -8,7 +8,7 @@ common
    isA
 dedb-base
    * as: base
-   symEntity
+   entity
 dedb-derived
    * as: derived
 dedb-aggregate
@@ -51,7 +51,7 @@ projectionKey ::=
       }
 
       if (rel.protoEntity !== null) {
-         push($.symEntity);
+         push($.entity);
       }
 
       for (let attr of rel.attrs) {

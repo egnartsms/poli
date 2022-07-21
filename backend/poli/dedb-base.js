@@ -17,17 +17,21 @@ common
    noUndefinedProps
    selectProps
    trackingFinal
+
 dedb-rec-key
    recKey
    recVal
    normalizeAttrs
+
 dedb-version
    refRelationState
    releaseVersion
    versionAdd
    versionRemove
    prepareVersion
+
 dedb-index
+   emptyIndex
    unique
    tupleKeys
    isUniqueHitByBindings
@@ -41,14 +45,18 @@ dedb-index
    makeIndex
    indexRef
    indexRefWithBindings
+
 dedb-projection
    invalidateProjection
    makeProjectionRegistry
+
 dedb-relation
    rec2val
    rec2pair
+
 dedb-query
    getRecords
+
 -----
 
 baseRelation ::=
@@ -63,6 +71,7 @@ baseRelation ::=
          name,
          attrs,
          protoEntity,
+         recSym: protoEntity !== null ? Symbol(name) : null,
          indices: [],
          projections: new Map,
          myVer: null,
@@ -89,47 +98,25 @@ baseRelation ::=
 
 populateProtoEntity ::=
    function (rel) {
-      rel.protoEntity[$.symRelation] = rel;
+      let {protoEntity, recSym} = rel;
 
       for (let attr of rel.attrs) {
-         let relevantIndices = rel.indices.filter(idx => idx.tuple.includes(attr));
+         $.check(!Object.hasOwn(protoEntity, attr), () =>
+            `Relation '${rel.name}': property '${attr}' already defined on the prototype`
+         );
 
          Object.defineProperty(rel.protoEntity, attr, {
             configurable: true,
             enumerable: true,
             get() {
-               return this[$.symPlain][attr];
-            },
-            set(newValue) {
-               if (this[attr] === newValue) {
-                  return;
-               }
-
-               for (let index of relevantIndices) {
-                  $.indexRemove(index, this);
-               }
-
-               this[$.symPlain][attr] = newValue;
-
-               for (let index of relevantIndices) {
-                  $.indexAdd(index, this);
-               }
+               return this[recSym][attr];
             }
          })
       }
    }
 
 
-symRelation ::=
-   :protoEntity[$.symRelation] === <relation object>
-   Symbol('relation')
-
-symPlain ::=
-   :entity[$.symPlain] === <plain record object>
-   Symbol('plain')
-
-
-invalidateRelation ::=
+relationChanged ::=
    function (rel) {
       for (let proj of rel.validRevDeps) {
          $.invalidateProjection(proj);
@@ -139,10 +126,10 @@ invalidateRelation ::=
    }
 
 
-symEntity ::=
-   :bindings[$.symEntity] === <entity object to bind>
-    This is used to bind the actual entity reference, in entity relations.
-
+entity ::=
+   :This symbol is used for 2 purposes:
+      - bindings[$.entity] === <entity object>
+      - record[$.entity] === <entity object>
    Symbol('entity')
 
 
@@ -157,15 +144,15 @@ makeProjection ::=
          validRevDeps: new Set,
       };
 
-      if (Object.hasOwn(bindings, $.symEntity)) {
+      if (Object.hasOwn(bindings, $.entity)) {
          $.check(rel.protoEntity !== null);
 
          proj.kind = 'entity';
-         proj.entity = bindings[$.symEntity];
-         proj.checkList = $.computeCheckList(bindings, [$.symEntity]);
-         // either entity or null if entity does not satisfy `filterBy` or is deleted.
-         // The `rec` property is also used in the 'unique-hit' projection kind with
-         // exactly the same meaning
+         proj.entity = bindings[$.entity];
+         proj.checkList = $.computeCheckList(bindings, [$.entity]);
+         // either the current record for `entity` or null if it does not satisfy
+         // `filterBy` or is deleted. The `rec` property is also used in the 'unique-hit'
+         // projection kind with exactly the same meaning.
          proj.rec = null;
       }
       else {
@@ -242,9 +229,10 @@ updateProjection ::=
          ;
       else if (kind === 'entity') {
          let {entity, checkList} = proj;
+         let rec = entity[rel.recSym];
 
-         if (rel.records.has(entity)) {
-            proj.rec = $.suitsCheckList(entity, checkList) ? entity : null;
+         if (rel.records.has(rec)) {
+            proj.rec = $.suitsCheckList(rec, checkList) ? rec : null;
          }
          else {
             proj.rec = null;
@@ -292,50 +280,9 @@ updateProjection ::=
    }
 
 
-makeEntity ::=
-   function (protoEntity, values) {
-      let rel = protoEntity[$.symRelation];
-      let plainRec = {__proto__: null};
-
-      for (let attr of rel.attrs) {
-         plainRec[attr] = Object.hasOwn(values, attr) ? values[attr] : null;
-      }
-
-      let entity = {
-         __proto__: protoEntity,
-         [$.symPlain]: plainRec
-      };
-
-      $.doAdd(rel, entity);
-      $.invalidateRelation(rel);
-
-      return entity;
-   }
-
-
-addFact ::=
-   function (rel, rec) {
-      $.check(!rel.records.has(rec), `Duplicate record`);
-      $.doAdd(rel, rec);
-      $.invalidateRelation(rel);
-   }
-
-addFacts ::=
-   function (rel, recs) {
-      for (let rec of recs) {
-         $.addFact(rel, rec);
-      }
-   }
-
-
-resetFacts ::=
-   function (rel, recs) {
-      $.empty(rel);
-      $.addFacts(rel, recs);
-   }
-
-
-doAdd ::=
+addRecord ::=
+   :This is an implementation function, not part of public interface
+    It does the actual adding of `rec` to the relation.
    function (rel, rec) {
       rel.records.add(rec);
 
@@ -349,11 +296,46 @@ doAdd ::=
    }
 
 
+addFact ::=
+   function (rel, rec) {
+      $.check(!rel.records.has(rec), `Duplicate record`);
+
+      if (rel.protoEntity !== null) {
+         let entity = rec[$.entity];
+
+         if (entity[rel.recSym] != null) {
+            // Need to remove the existing record first
+            $.removeFact(rel, entity[rel.recSym]);
+         }
+
+         entity[rel.recSym] = rec;
+      }
+
+      $.addRecord(rel, rec);
+      $.relationChanged(rel);
+   }
+
+
+addFacts ::=
+   function (rel, recs) {
+      for (let rec of recs) {
+         $.addFact(rel, rec);
+      }
+   }
+
+
+resetFacts ::=
+   function (rel, recs) {
+      $.emptyRelation(rel);
+      $.addFacts(rel, recs);
+   }
+
+
 removeFact ::=
    function (rel, rec) {
       $.check(rel.records.has(rec), `Missing record`);
       $.doRemove(rel, rec);
-      $.invalidateRelation(rel);
+      $.relationChanged(rel);
    }
 
 
@@ -371,13 +353,15 @@ doRemove ::=
    }
 
 
-empty ::=
+emptyRelation ::=
    function (rel) {
-      for (let rec of rel.records) {
-         $.doRemove(rel, rec);
+      rel.records.clear();
+
+      for (let idx of rel.indices) {
+         $.emptyIndex(idx);
       }
 
-      $.invalidateRelation(rel);
+      $.relationChanged(rel);
    }
 
 
@@ -389,7 +373,7 @@ removeWhere ::=
          $.doRemove(rel, rec);
       }
 
-      $.invalidateRelation(rel);
+      $.relationChanged(rel);
    }
 
 
@@ -429,5 +413,5 @@ revertTo ::=
          $.doAdd(rel, rec);
       }
 
-      $.invalidateRelation(rel);
+      $.relationChanged(rel);
    }

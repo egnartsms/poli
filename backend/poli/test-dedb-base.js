@@ -13,7 +13,6 @@ dedb-projection
    releaseProjection
    updateProjection
 dedb-base
-   empty
    addFact
    addFacts
    resetFacts
@@ -23,7 +22,9 @@ dedb-base
    revertTo
 dedb-version
    refRelationState
+
 -----
+
 cityInfo ::=
    $.baseRelation({
       name: 'cityInfo',
@@ -86,10 +87,12 @@ test_unique_hit_projection ::=
       });
    }
 
-xtest_query_records ::=
+xtest_partial_projection ::=
    function () {
+      let proj = $.projectionFor($.cityInfo, {country: 'Ruthenia'});
+
       $.checkLike(
-         $.query($.cityInfo, {country: 'Ruthenia'}),
+         proj,
          new Set([
             {country: 'Ruthenia', city: 'Kyiv', big: 1},
             {country: 'Ruthenia', city: 'Dnipro', big: 2},
