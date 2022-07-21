@@ -2,6 +2,8 @@ dedb-query
    clearProjectionCache
 test-dedb-base
    * as: base
+test-dedb-base-entity
+   * as: baseEntity
 test-dedb-derived
    * as: derived
 test-dedb-disjunction
@@ -18,11 +20,12 @@ runTests ::=
    function () {
       console.time('tests');
       $.runTestsIn('base', $.base);
-      $.runTestsIn('derived', $.derived);
-      $.runTestsIn('disjunction', $.disjunction);
-      $.runTestsIn('func-1', $.func1);
-      $.runTestsIn('func-2', $.func2);
-      $.runTestsIn('agg-1', $.agg1);
+      $.runTestsIn('base-entity', $.baseEntity);
+      // $.runTestsIn('derived', $.derived);
+      // $.runTestsIn('disjunction', $.disjunction);
+      // $.runTestsIn('func-1', $.func1);
+      // $.runTestsIn('func-2', $.func2);
+      // $.runTestsIn('agg-1', $.agg1);
       $.clearProjectionCache();
       console.log('--- DONE');
       console.timeEnd('tests')

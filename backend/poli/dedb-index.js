@@ -6,23 +6,27 @@ common
    commonArrayPrefixLength
    hasOwnDefinedProperty
    hasOwnProperty
+   greatestBy
 -----
+"Tuple" means logical index: an array of columns that constitute an index. "Index" means
+actual data structure containing records/entities.
+
 unique ::= 1
 
-indexFromSpec ::=
+tupleFromSpec ::=
    function (spec) {
-      let index;
+      let tuple;
 
       if (spec[spec.length - 1] === $.unique) {
-         index = spec.slice(0, -1);
-         index.isUnique = true;
+         tuple = spec.slice(0, -1);
+         tuple.isUnique = true;
       }
       else {
-         index = spec.slice();
-         index.isUnique = false;
+         tuple = spec.slice();
+         tuple.isUnique = false;
       }
 
-      return index;
+      return tuple;
    }
 
 superIndexOfAnother ::=
@@ -63,17 +67,17 @@ Fitness ::=
       uniqueHit: 1,
    })
 
-indexFitnessByBindings ::=
-   function (index, bindings) {
-      return $.indexFitnessByBounds(
-         index,
-         Array.from(index, a => $.hasOwnProperty(bindings, a))
+tupleFitnessByBindings ::=
+   function (tuple, bindings) {
+      return $.tupleFitnessByBounds(
+         tuple,
+         Array.from(tuple, a => Object.hasOwn(bindings, a))
       );
    }
 
-indexFitnessByBounds ::=
-   function (index, bounds) {
-      let lim = Math.min(index.length, bounds.length);
+tupleFitnessByBounds ::=
+   function (tuple, bounds) {
+      let lim = Math.min(tuple.length, bounds.length);
       let i = 0;
 
       while (i < lim && bounds[i]) {
@@ -84,22 +88,22 @@ indexFitnessByBounds ::=
          return $.Fitness.minimum;
       }
 
-      let diff = i - index.length;
+      let diff = i - tuple.length;
 
-      return (diff === 0 && index.isUnique) ? $.Fitness.uniqueHit : diff;
+      return (diff === 0 && tuple.isUnique) ? $.Fitness.uniqueHit : diff;
    }
 
 isUniqueHitByBindings ::=
    function (index, bindings) {
-      return $.indexFitnessByBindings(index, bindings) === $.Fitness.uniqueHit;
+      return $.tupleFitnessByBindings(index, bindings) === $.Fitness.uniqueHit;
    }
 
-indexKeys ::=
-   function (index, bindings) {
+tupleKeys ::=
+   function (tuple, bindings) {
       let keys = [];
 
-      for (let attr of index) {
-         if (!$.hasOwnProperty(bindings, attr)) {
+      for (let attr of tuple) {
+         if (!Object.hasOwn(bindings, attr)) {
             break;
          }
 
@@ -107,4 +111,133 @@ indexKeys ::=
       }
 
       return keys;
+   }
+
+
+makeIndex ::=
+   function (owner, tuple) {
+      return {
+         refCount: 0,
+         owner,
+         tuple,
+         map: Object.assign(new Map, {totalSize: 0}),
+      }
+   }
+
+
+findSuitableIndex ::=
+   function (indices, bindings) {
+      return $.greatestBy(
+         indices,
+         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings)
+      );
+   }
+
+indexAdd ::=
+   function (index, rec) {
+      let {tuple} = index;
+
+      (function go(lvl, map) {
+         let key = rec[tuple[lvl]];
+
+         if (lvl + 1 === tuple.length) {
+            if (tuple.isUnique) {
+               if (map.has(key)) {
+                  throw new Error(`Unique index violation`);
+               }
+
+               map.set(key, rec);
+            }
+            else {
+               let bucket;
+
+               if (map.has(key)) {
+                  bucket = map.get(key);
+               }
+               else {
+                  bucket = new Set;
+                  map.set(key, bucket);
+               }
+
+               bucket.add(rec);
+            }
+         }
+         else {
+            let next = map.get(key);
+
+            if (next === undefined) {
+               next = Object.assign(new Map, {
+                  totalSize: 0
+               });
+               map.set(key, next);
+            }
+
+            go(lvl + 1, next);
+         }
+
+         map.totalSize += 1;
+      })(0, index.map);
+   }
+
+indexRemove ::=
+   function (index, rec) {
+      let {tuple} = index;
+
+      (function go(lvl, map) {
+         let key = rec[tuple[lvl]];
+
+         if (!map.has(key)) {
+            throw new Error(`Index missing fact`);
+         }  
+
+         if (lvl + 1 === tuple.length) {
+            if (tuple.isUnique) {
+               map.delete(key);
+            }
+            else {
+               let bucket = map.get(key);
+
+               bucket.delete(rec);
+
+               if (bucket.size === 0) {
+                  map.delete(key);
+               }
+            }
+         }
+         else {
+            let next = map.get(key);
+
+            go(lvl + 1, next);
+
+            if (next.size === 0) {
+               map.delete(key);
+            }
+         }
+
+         map.totalSize -= 1;
+      })(0, index.map);
+   }
+
+
+indexRef ::=
+   function* (index, keys) {
+      let {tuple} = index;
+
+      yield* (function* rec(map, lvl) {
+         if (lvl === tuple.length) {
+            tuple.isUnique ? (yield map) : (yield* map);
+         }
+         else {
+            let key = keys[lvl];
+
+            if (key === undefined) {
+               for (let sub of map.values()) {
+                  yield* rec(sub, lvl + 1);
+               }
+            }
+            else if (map.has(key)) {
+               yield* rec(map.get(key), lvl + 1);
+            }
+         }
+      }(index.map, 0));
    }

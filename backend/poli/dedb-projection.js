@@ -8,25 +8,106 @@ common
    isA
 dedb-base
    * as: base
+   symEntity
 dedb-derived
    * as: derived
 dedb-aggregate
    * as: agg
 dedb-query
-   suitsFilterBy
-   computeFilterBy
+   suitsCheckList
+   computeCheckList
 dedb-index
-   indexFitnessByBindings
+   tupleFitnessByBindings
 dedb-index-instance
    indexRefWithBindings
+
 -----
 
-makeProjectionRegistry ::=
-   function () {
-      return Object.assign(new Map, {
-         parent: null
-      });
+projectionFor ::=
+   function (rel, bindings) {
+      let key = $.projectionKey(rel, bindings);
+
+      if (rel.projections.has(key)) {
+         return rel.projections.get(key);
+      }
+
+      let proj = $.makeProjection(rel, bindings);
+
+      rel.projections.set(key, proj);
+      proj.myKey = key;
+
+      return proj;
    }
+
+
+projectionKey ::=
+   function (rel, bindings) {
+      let pieces = [];
+
+      function push(attr) {
+         let obj = Object.hasOwn(bindings, attr) ? bindings[attr] : undefined;
+
+         pieces.push($.encodeObject(obj));
+      }
+
+      if (rel.protoEntity !== null) {
+         push($.symEntity);
+      }
+
+      for (let attr of rel.attrs) {
+         push(attr);
+      }
+
+      return pieces.join('\0');
+   }
+
+
+object2code ::= new WeakMap
+nextObjectCode ::= 1
+
+encodeObject ::=
+   function (obj) {
+      switch (typeof obj) {
+         case 'undefined':
+            return '';
+
+         case 'boolean':
+            return `b:${obj ? 1 : 0}`;
+
+         case 'string':
+            return `s:${obj}`;
+
+         case 'symbol':
+            throw new Error(`Cannot use symbols as projection specializers`);
+
+         case 'number':
+            return `n:${obj}`;
+
+         case 'object':
+         case 'function':
+            {
+               if (obj === null) {
+                  return 'o';
+               }
+
+               let code = $.object2code.get(obj);
+
+               if (code === undefined) {
+                  code = $.nextObjectCode;
+                  $.nextObjectCode += 1;
+                  $.object2code.set(obj, code);
+               }
+
+               return `o:${code}`;
+            }
+
+         default:
+            throw new Error(
+               `Cannot use object of type '${typeof obj}' as projection specializer`
+            );
+      }
+   }
+
 
 makeProjection ::=
    function (rel, bindings) {
@@ -44,41 +125,6 @@ makeProjection ::=
       }
    }
 
-projectionFor ::=
-   function (rel, bindings) {
-      let map = rel.projections;
-
-      for (let [key, isFinal] of
-            $.trackingFinal($.genProjectionKey(rel, bindings))) {
-         if (map.has(key)) {
-            map = map.get(key);
-         }
-         else {
-            let next;
-
-            if (isFinal) {
-               next = {
-                  parent: map,
-                  key: key,
-                  proj: $.makeProjection(rel, bindings)
-               };
-
-               next.proj.regPoint = next;
-            }
-            else {
-               next = Object.assign(new Map, {
-                  parent: map,
-                  key: key
-               });
-            }
-            
-            map.set(key, next);
-            map = next;
-         }
-      }
-
-      return map.proj;
-   }
 
 releaseProjection ::=
    function (proj) {
@@ -87,25 +133,11 @@ releaseProjection ::=
       proj.refCount -= 1;
 
       if (proj.refCount === 0) {
-         let {parent: map, key} = proj.regPoint;
-
-         map.delete(key);
-
-         while (map.size === 0 && map.parent !== null) {
-            map.parent.delete(map.key);
-            map = map.parent;
-         }
-
-         $.freeProjection(proj);      
+         proj.rel.projections.delete(proj.myKey);
+         $.freeProjection(proj);
       }
    }
 
-genProjectionKey ::=
-   function* (rel, bindings) {
-      for (let attr of rel.attrs) {
-         yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
-      }
-   }
 
 freeProjection ::=
    function (proj) {
@@ -125,6 +157,7 @@ freeProjection ::=
       }
    }
 
+
 invalidateProjection ::=
    function (root) {
       if (!root.isValid) {
@@ -136,12 +169,15 @@ invalidateProjection ::=
       while (stack.length > 0) {
          let proj = stack.pop();
 
-         stack.push(...proj.validRevDeps);
+         if (proj.isValid) {
+            stack.push(...proj.validRevDeps);
 
-         proj.validRevDeps.clear();
-         proj.isValid = false;
+            proj.validRevDeps.clear();
+            proj.isValid = false;
+         }
       }
    }
+
 
 updateProjection ::=
    function (proj) {
@@ -165,6 +201,7 @@ updateProjection ::=
       }
    }
 
+
 referentialSize ::=
    function (proj) {
       if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
@@ -185,6 +222,7 @@ referentialSize ::=
 
       throw new Error;
    }
+
 
 projectionRecords ::=
    function (proj) {
@@ -207,7 +245,7 @@ projectionRecords ::=
       }
 
       if (proj.kind === 'partial') {
-         return $.filter(proj.rel.records, rec => $.suitsFilterBy(rec, proj.filterBy));
+         return $.filter(proj.rel.records, rec => $.suitsCheckList(rec, proj.filterBy));
       }
 
       throw new Error;   

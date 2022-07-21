@@ -43,7 +43,7 @@ dedb-index
    superIndexOfAnother
    copyIndex
    isFullyCoveredBy
-   indexFitnessByBounds
+   tupleFitnessByBounds
    reduceIndex
 dedb-projection
    projectionFor
@@ -326,7 +326,7 @@ computeJoinSpec ::=
          }
 
          if (ff.join === 'index') {
-            return $.indexFitnessByBounds(ff.index, Array.from(ff.keys, isBound));
+            return $.tupleFitnessByBounds(ff.index, Array.from(ff.keys, isBound));
          }
 
          throw new Error;

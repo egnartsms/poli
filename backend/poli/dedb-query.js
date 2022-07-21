@@ -13,7 +13,7 @@ dedb-base
    idty
 dedb-index
    Fitness
-   indexFitnessByBindings
+   tupleFitnessByBindings
 dedb-index-instance
    indexRefWithBindings
 dedb-derived
@@ -22,40 +22,17 @@ dedb-derived
 
 getRecords ::=
    function (insts, bindings) {
-      let [inst, fitness] = $.findSuitableIdxInst(insts, bindings);
+      let [inst, fitness] = $.findSuitableIndex(insts, bindings);
 
       $.check(fitness !== $.Fitness.minimum, `Could not find suitable index`);
 
       let recs = $.indexRefWithBindings(inst, bindings);
-      let filterBy = $.computeFilterBy(bindings, inst.index);
+      let filterBy = $.computeCheckList(bindings, inst.index);
 
       return (filterBy.length === 0) ? recs :
-         $.filter(recs, rec => $.suitsFilterBy(rec, filterBy));
+         $.filter(recs, rec => $.suitsCheckList(rec, filterBy));
    }
 
-findSuitableIdxInst ::=
-   function (insts, bindings) {
-      return $.greatestBy(
-         insts,
-         ({index}) => $.indexFitnessByBindings(index, bindings)
-      );
-   }
-
-computeFilterBy ::=
-   function (bindings, exceptAttrs=[]) {
-      return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
-   }
-
-suitsFilterBy ::=
-   function (rec, filterBy) {
-      for (let [attr, val] of filterBy) {
-         if (rec[attr] !== val) {
-            return false;
-         }
-      }
-
-      return true;
-   }
 
 time ::= 0
 derivedProjectionCache ::= new Map

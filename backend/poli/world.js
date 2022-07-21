@@ -41,57 +41,78 @@ dedb-aggregate
 dedb-aggregators
    mutableSetOfUnique
 -----
-protoModule ::= ({})
-protoEntry ::= ({})
-box module ::= null
-box entry ::= null
-box import ::= null
-box starImport ::= null
-referrings ::= null
-knownNames ::= null
+module ::=
+   $.baseRelation({
+      name: 'module',
+      protoIdentity: $.protoModule,
+      attrs: ['idty', 'name', 'lang', 'members', 'ns', 'nsDelta'],
+      indices: [
+         ['idty', 1],
+         ['name', 1]
+      ]
+   })
 
-createRelations ::=
+protoModule ::=
+   {
+      [$.symAssocRels]: new Set
+   }
+
+
+entry ::=
+   $.baseRelation({
+      name: 'entry',
+      protoIdentity: $.protoEntry,
+      attrs: ['idty', 'module', 'target', 'definition'],
+      indices: [
+         ['idty', 1],
+         ['module', 'name', 1],
+      ]
+   })
+
+protoEntry ::=
+   {
+      [$.symAssocRels]: new Set
+   }
+
+
+binding ::=
+   $.baseRelation({
+      name: 'binding',
+      protoIdentity: $.protoBinding,
+      attrs: ['idty', 'module'],
+      indices: [
+         ['module']
+      ]
+   })
+
+protoBinding ::= 
+   {
+      [$.symAssocRels]: new Set
+   }
+
+
+import ::=
+   $.baseRelation({
+      name: 'import',
+      attrs: ['entry', 'recp', 'alias'],
+      indices: [
+         ['recp'],
+         ['entry']
+      ]
+   })
+
+starImport ::=
+   $.baseRelation({
+      name: 'starImport',
+      attrs: ['donor', 'recp', 'alias'],
+      indices: [
+         ['recp']
+      ]
+   })
+
+
+junk ::=
    function () {
-      $.protoModule[$.symAssocRels] = new Set;
-      $.protoEntry[$.symAssocRels] = new Set;
-
-      $.module = $.baseRelation({
-         name: 'module',
-         protoIdentity: $.protoModule,
-         attrs: ['idty', 'name', 'lang', 'members', 'ns', 'nsDelta'],
-         indices: [
-            ['idty', 1],
-            ['name', 1]
-         ]
-      });
-      
-      $.entry = $.baseRelation({
-         name: 'entry',
-         protoIdentity: $.protoEntry,
-         attrs: ['idty', 'module', 'name', 'def', 'isBox'],
-         indices: [
-            ['idty', 1],
-            ['module', 'name', 1],
-         ]
-      });
-
-      $.import = $.baseRelation({
-         name: 'import',
-         attrs: ['entry', 'recp', 'alias'],
-         indices: [
-            ['recp'],
-            ['entry']
-         ]
-      });
-
-      $.starImport = $.baseRelation({
-         name: 'starImport',
-         attrs: ['donor', 'recp', 'alias'],
-         indices: [
-            ['recp']
-         ]
-      });
-
       // Trying out: derived/aggregated relations
       let equal = $.functionalRelation({
          name: 'equal',
@@ -222,6 +243,7 @@ createRelations ::=
          ]
       })
    }
+
 
 load ::=
    function (minfos) {

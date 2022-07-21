@@ -58,7 +58,7 @@ dedb-version
    versionRemovedRecords
 dedb-index
    copyIndex
-   indexFromSpec
+   tupleFromSpec
    reduceIndex
 dedb-index-instance
    refBaseInstance
@@ -105,8 +105,8 @@ derivedRelation ::=
          kind: 'derived',
          name: relname,
          attrs,
-         indices: Array.from(potentialIndices, $.indexFromSpec),
-         hardIndices: Array.from(hardIndices, $.indexFromSpec),
+         indices: Array.from(potentialIndices, $.tupleFromSpec),
+         hardIndices: Array.from(hardIndices, $.tupleFromSpec),
          rootGroup,
          goals,
          statefulGoals,

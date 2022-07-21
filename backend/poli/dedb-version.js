@@ -42,7 +42,7 @@ refProjectionState ::=
          return proj.myVer;
       }
 
-      if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
+      if (['unique-hit', 'aggregate-0-dim', 'entity'].includes(proj.kind)) {
          return $.makeScalarVersion(proj);
       }
 
@@ -53,6 +53,7 @@ refProjectionState ::=
       throw new Error;
    }
 
+
 makeScalarVersion ::=
    function (proj) {
       return {
@@ -61,6 +62,7 @@ makeScalarVersion ::=
          rec: proj.rec,
       }
    }
+
 
 makeZeroVersion ::=
    function (owner) {
@@ -72,6 +74,7 @@ makeZeroVersion ::=
          owner
       }
    }
+
 
 ensureTopmostFresh ::=
    function (versionable) {
@@ -98,10 +101,12 @@ ensureTopmostFresh ::=
       versionable.myVer = ver;
    }
 
+
 isMultiVersionFresh ::=
    function (ver) {
       return ver.added.size === 0 && ver.removed.size === 0;
    }
+
 
 releaseVersion ::=
    function (ver) {
@@ -133,6 +138,7 @@ releaseVersion ::=
          }
       }
    }
+
 
 prepareVersion ::=
    function (ver) {
@@ -188,6 +194,7 @@ prepareVersion ::=
       }
    }
 
+
 isVersionPristine ::=
    function (ver) {
       if (ver.kind === 'scalar') {
@@ -201,6 +208,7 @@ isVersionPristine ::=
       throw new Error;
    }
 
+
 versionAdd ::=
    function (ver, rec) {
       if (ver.removed.has(rec)) {
@@ -211,12 +219,14 @@ versionAdd ::=
       }
    }
 
+
 versionAddAll ::=
    function (vec, recs) {
       for (let rec of recs) {
          $.versionAdd(ver, rec);
       }
    }
+
 
 versionRemove ::=
    function (ver, rec) {
@@ -228,12 +238,14 @@ versionRemove ::=
       }
    }
 
+
 versionRemoveAll ::=
    function (ver, rec) {
       for (let rec of recs) {
          $.versionRemove(ver, rec);
       }
    }
+
 
 versionAddedRecords ::=
    function (ver) {
@@ -258,6 +270,7 @@ versionAddedRecords ::=
 
       throw new Error;
    }
+
 
 versionRemovedRecords ::=
    function (ver) {

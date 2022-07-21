@@ -29,16 +29,16 @@ dedb-version
    prepareVersion
 dedb-index
    unique
-   indexKeys
+   tupleKeys
    isUniqueHitByBindings
-   indexFitnessByBindings
-   indexFromSpec
+   tupleFitnessByBindings
+   tupleFromSpec
    Fitness
-dedb-index-instance
+   findSuitableIndex
    rebuildIndex
    indexAdd
    indexRemove
-   makeIndexInstance
+   makeIndex
    indexRef
    indexRefWithBindings
 dedb-projection
@@ -48,54 +48,86 @@ dedb-relation
    rec2val
    rec2pair
 dedb-query
-   computeFilterBy
-   suitsFilterBy
    getRecords
-   findSuitableIdxInst
 -----
 
 baseRelation ::=
    function ({
       name,
-      protoIdentity = null,
-      attrs = [],
-      indices: indexSpecs = [],
-      records = []
+      attrs,
+      protoEntity = null,
+      indices: indexSpecs = []
    }) {
       let rel = {
          kind: 'base',
          name,
          attrs,
-         myInsts: [],   // initialized below
-         projections: $.makeProjectionRegistry(),
+         protoEntity,
+         indices: [],
+         projections: new Map,
          myVer: null,
-         records: new Set(records),
-         validRevDeps: new Set,  // 'revdeps' here means projections
-         symRec: null,  // if non-null, then 'entity[rel.symRec] === rec'
+         records: new Set,
+         validRevDeps: new Set,
       };
 
       for (let spec of indexSpecs) {
-         let index = $.indexFromSpec(spec);
-         let inst = $.makeIndexInstance(rel, index);
+         let tuple = $.tupleFromSpec(spec);
+         let index = $.makeIndex(rel, tuple);
 
-         inst.refCount += 1;  // this guarantees that 'inst' will always be alive
+         index.refCount += 1;  // 'index' is going to be around forever
 
-         $.rebuildIndex(inst, rel.records);
-
-         rel.myInsts.push(inst);
+         rel.indices.push(index);
       }
 
-      if (protoIdentity !== null) {
-         $.check(rel.attrs.includes($.idty));
-
-         let symRec = Symbol(name);
-
-         $.populateProtoIdentity(rel, symRec, protoIdentity);
-         rel.symRec = symRec;
+      if (protoEntity !== null) {
+         $.populateProtoEntity(rel);
       }
 
       return rel;
    }
+
+
+populateProtoEntity ::=
+   function (rel) {
+      rel.protoEntity[$.symRelation] = rel;
+
+      for (let attr of rel.attrs) {
+         let relevantIndices = rel.indices.filter(idx => idx.tuple.includes(attr));
+
+         Object.defineProperty(rel.protoEntity, attr, {
+            configurable: true,
+            enumerable: true,
+            get() {
+               return this[$.symPlain][attr];
+            },
+            set(newValue) {
+               if (this[attr] === newValue) {
+                  return;
+               }
+
+               for (let index of relevantIndices) {
+                  $.indexRemove(index, this);
+               }
+
+               this[$.symPlain][attr] = newValue;
+
+               for (let index of relevantIndices) {
+                  $.indexAdd(index, this);
+               }
+            }
+         })
+      }
+   }
+
+
+symRelation ::=
+   :protoEntity[$.symRelation] === <relation object>
+   Symbol('relation')
+
+symPlain ::=
+   :entity[$.symPlain] === <plain record object>
+   Symbol('plain')
+
 
 invalidateRelation ::=
    function (rel) {
@@ -106,47 +138,68 @@ invalidateRelation ::=
       rel.validRevDeps.clear();
    }
 
+
+symEntity ::=
+   :bindings[$.symEntity] === <entity object to bind>
+    This is used to bind the actual entity reference, in entity relations.
+
+   Symbol('entity')
+
+
 makeProjection ::=
    function (rel, bindings) {
-      bindings = $.noUndefinedProps(bindings);
-
       let proj = {
          kind: '',  // initialized below
          rel,
          refCount: 0,
-         regPoint: null,   // initialized by the calling code
+         myKey: '',   // set by the calling code
          isValid: false,
          validRevDeps: new Set,
-         fullRecords: rel.records,
       };
 
-      let [inst, fitness] = $.findSuitableIdxInst(rel.myInsts, bindings);
+      if (Object.hasOwn(bindings, $.symEntity)) {
+         $.check(rel.protoEntity !== null);
 
-      if (fitness === $.Fitness.uniqueHit) {
-         proj.kind = 'unique-hit';
-         proj.inst = inst;
-         proj.keys = $.indexKeys(inst.index, bindings);
-         proj.filterBy = $.computeFilterBy(bindings, inst.index);
+         proj.kind = 'entity';
+         proj.entity = bindings[$.symEntity];
+         proj.checkList = $.computeCheckList(bindings, [$.symEntity]);
+         // either entity or null if entity does not satisfy `filterBy` or is deleted.
+         // The `rec` property is also used in the 'unique-hit' projection kind with
+         // exactly the same meaning
          proj.rec = null;
       }
       else {
-         let filterBy = $.computeFilterBy(bindings);
-         
-         if (filterBy.length === 0) {
-            proj.kind = 'full';
-            Object.defineProperty(proj, 'myVer', {
-               configurable: true,
-               enumerable: true,
-               get() {
-                  return this.rel.myVer;
-               }
-            })
+         let [index, fitness] = $.findSuitableIndex(rel.indices, bindings);
+
+         if (fitness === $.Fitness.uniqueHit) {
+            proj.kind = 'unique-hit';
+            proj.index = index;
+            proj.keys = $.tupleKeys(index.tuple, bindings);
+            proj.checkList = $.computeCheckList(bindings, index.tuple);
+            proj.rec = null;
          }
          else {
-            proj.kind = 'partial';
-            proj.myVer = null;
-            proj.depVer = null;
-            proj.filterBy = filterBy;
+            let checkList = $.computeCheckList(bindings);
+
+            if (checkList.length === 0) {
+               proj.kind = 'full';
+               Object.defineProperty(proj, 'myVer', {
+                  configurable: true,
+                  enumerable: true,
+                  get() {
+                     return this.rel.myVer;
+                  }
+               })
+            }
+            else {
+               // TODO: we might as well save the fact that there is a non-unique index
+               // hit. This is for the derived computation algorithm to start with
+               // (`rebuildProjection`).  For now, this is not done.
+               proj.kind = 'partial';
+               proj.myVer = null;
+               proj.depVer = null;
+               proj.checkList = checkList;
+            }
          }
       }
 
@@ -155,16 +208,31 @@ makeProjection ::=
       return proj;
    }
 
+
+computeCheckList ::=
+   function (bindings, exceptAttrs=[]) {
+      return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
+   }
+
+
+suitsCheckList ::=
+   function (rec, checkList) {
+      return $.all(checkList, ([attr, val]) => rec[attr] === val);
+   }
+
+
 freeProjection ::=
    function (proj) {
       proj.rel.validRevDeps.delete(proj);
    }
 
-markAsValid ::=
+
+validateProjection ::=
    function (proj) {
       proj.rel.validRevDeps.add(proj);
       proj.isValid = true;
    }
+
 
 updateProjection ::=
    function (proj) {
@@ -172,15 +240,26 @@ updateProjection ::=
 
       if (kind === 'full')
          ;
-      else if (kind === 'unique-hit') {
-         let {inst, keys, filterBy} = proj;
-         let [rec] = $.indexRef(inst, keys);
+      else if (kind === 'entity') {
+         let {entity, checkList} = proj;
 
-         if (rec !== null && !$.suitsFilterBy(rec, filterBy)) {
-            rec = null;
+         if (rel.records.has(entity)) {
+            proj.rec = $.suitsCheckList(entity, checkList) ? entity : null;
          }
-         
-         proj.rec = rec;
+         else {
+            proj.rec = null;
+         }
+      }
+      else if (kind === 'unique-hit') {
+         let {index, keys, checkList} = proj;
+         let [rec] = $.indexRef(index, keys);
+
+         if (rec !== undefined) {
+            proj.rec = $.suitsCheckList(rec, checkList) ? rec : null;
+         }
+         else {
+            proj.rec = null;
+         }
       }
       else if (kind === 'partial') {
          $.assert(() => (proj.depVer === null) === (proj.myVer === null));
@@ -189,13 +268,13 @@ updateProjection ::=
             $.prepareVersion(proj.depVer);
 
             for (let rec of proj.depVer.removed) {
-               if ($.suitsFilterBy(rec, proj.filterBy)) {
+               if ($.suitsCheckList(rec, proj.checkList)) {
                   $.versionRemove(proj.myVer, rec);
                }
             }
 
             for (let rec of proj.depVer.added) {
-               if ($.suitsFilterBy(rec, proj.filterBy)) {
+               if ($.suitsCheckList(rec, proj.checkList)) {
                   $.versionAdd(proj.myVer, rec);
                }
             }
@@ -209,8 +288,30 @@ updateProjection ::=
          throw new Error;
       }
 
-      $.markAsValid(proj);
+      $.validateProjection(proj);
    }
+
+
+makeEntity ::=
+   function (protoEntity, values) {
+      let rel = protoEntity[$.symRelation];
+      let plainRec = {__proto__: null};
+
+      for (let attr of rel.attrs) {
+         plainRec[attr] = Object.hasOwn(values, attr) ? values[attr] : null;
+      }
+
+      let entity = {
+         __proto__: protoEntity,
+         [$.symPlain]: plainRec
+      };
+
+      $.doAdd(rel, entity);
+      $.invalidateRelation(rel);
+
+      return entity;
+   }
+
 
 addFact ::=
    function (rel, rec) {
@@ -226,11 +327,13 @@ addFacts ::=
       }
    }
 
+
 resetFacts ::=
    function (rel, recs) {
       $.empty(rel);
       $.addFacts(rel, recs);
    }
+
 
 doAdd ::=
    function (rel, rec) {
@@ -240,10 +343,11 @@ doAdd ::=
          $.versionAdd(rel.myVer, rec);
       }
 
-      for (let inst of rel.myInsts) {
-         $.indexAdd(inst, rec);
+      for (let idx of rel.indices) {
+         $.indexAdd(idx, rec);
       }
    }
+
 
 removeFact ::=
    function (rel, rec) {
@@ -251,6 +355,7 @@ removeFact ::=
       $.doRemove(rel, rec);
       $.invalidateRelation(rel);
    }
+
 
 doRemove ::=
    function (rel, rec) {
@@ -260,10 +365,11 @@ doRemove ::=
          $.versionRemove(rel.myVer, rec);
       }
 
-      for (let inst of rel.myInsts) {
-         $.indexRemove(inst, rec);
+      for (let idx of rel.indices) {
+         $.indexRemove(idx, rec);
       }
    }
+
 
 empty ::=
    function (rel) {
@@ -273,6 +379,7 @@ empty ::=
 
       $.invalidateRelation(rel);
    }
+
 
 removeWhere ::=
    function (rel, bindings) {
@@ -284,6 +391,7 @@ removeWhere ::=
 
       $.invalidateRelation(rel);
    }
+
 
 replaceWhere ::=
    function (rel, bindings, replacer) {
@@ -304,66 +412,6 @@ replaceWhere ::=
       }
    }
 
-idty ::= 'idty'
-symAssocRels ::= Symbol.for('poli.assoc-rels')
-
-populateProtoIdentity ::=
-   function (rel, symRec, protoIdentity) {
-      for (let attr of rel.attrs) {
-         $.check(!$.hasOwnProperty(protoIdentity, attr), () =>
-            `Relation '${rel.name}': property '${attr}' already defined on the prototype`
-         );
-
-         Object.defineProperty(protoIdentity, attr, {
-            configurable: true,
-            enumerable: true,
-            get() {
-               return this[symRec][attr];
-            }
-         });
-      }
-
-      protoIdentity[$.symAssocRels].add(rel);
-   }
-
-makeIdentity ::=
-   function (protoIdentity) {
-      let identity = Object.create(protoIdentity);
-
-      for (let rel of protoIdentity[$.symAssocRels]) {
-         identity[rel.symRec] = null;
-      }
-
-      return identity;
-   }
-
-removeIdentity ::=
-   function (rel, identity) {
-      $.removeFact(rel, identity[rel.symRec]);
-      identity[rel.symRec] = null;
-   }
-
-addIdentity ::=
-   function (rel, newRec) {
-      let identity = newRec[$.idty];
-      let oldRec = identity[rel.symRec];
-
-      if (oldRec !== null) {
-         $.doRemove(rel, oldRec);
-      }
-
-      $.doAdd(rel, newRec);
-      identity[rel.symRec] = newRec;
-
-      $.invalidateRelation(rel);
-   }
-
-patchIdentity ::=
-   function (rel, identity, fn, ...args) {
-      let newRec = fn(identity[rel.symRec], ...args);
-      $.check(newRec[$.idty] === identity, `patchIdentity: changed identity`);
-      $.addIdentity(rel, newRec);
-   }
 
 revertTo ::=
    function (ver) {
