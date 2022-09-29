@@ -28,16 +28,20 @@ common
    multimap
    reduce
    takeWhile
+
 set-map
    intersection
    difference
    intersect
    purgeSet
+
 dedb-rec-key
    recKey
    recVal
+
 dedb-goal
    relGoalsBeneath
+
 dedb-index
    Fitness
    superIndexOfAnother
@@ -45,13 +49,17 @@ dedb-index
    isFullyCoveredBy
    tupleFitnessByBounds
    reduceIndex
+
 dedb-projection
    projectionFor
+
 -----
+
 visualizeIncrementalUpdateScheme ::=
    function* (rel) {
       // tbd
    }
+
 
 makeConfig ::=
    function (rel, boundAttrs) {
@@ -70,7 +78,7 @@ makeConfig ::=
       let idxReg = [];
       let vpool = $.makeAnonymousVarPool();
       let fulfillments = new Map;
-      
+
       for (let goal of rel.goals) {
          let ffs;
 
@@ -108,14 +116,15 @@ makeConfig ::=
       return {
          attrs: rel.attrs.filter(v => !boundAttrs.includes(v)),
          // bound attrs that are non-evaporatable
-         nonEvaporated: rel.attrs.filter(a => boundAttrs.includes(a) && rel.varsNE.has(a)),
-         // array of variables used in computations. Does not include non-evaporated and firm
-         // vars
+         nonEvaporated: rel.attrs.filter(a => boundAttrs.includes(a) && rel.attrsNE.has(a)),
+         // array of variables used in computations. Does not include non-evaporated and
+         // firm vars
          vars,
          idxReg,
          joinSpecs
       };
    }
+
 
 computeJoinSpec ::=
    function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpool) {
@@ -452,7 +461,9 @@ computeJoinSpec ::=
       }
    }
 
+
 CannotJoinError ::= class CannotJoinError extends Error {}
+
 
 funcGoalFulfillments ::=
    function* (goal, vpool) {
@@ -617,4 +628,4 @@ getDumbVar ::=
       return $.dumbVar;
    }
    
-dumbVar ::= '--dumb'
+dumbVar ::= '-dumb'

@@ -761,6 +761,7 @@ class Module {
    }
 
    addEntry(target, source) {
+      let targetBinding = this.getBinding(target);
       let factory, set$;
 
       try {
@@ -777,9 +778,7 @@ class Module {
       }));
 
       let cell = computableCell(factory);
-      let targetBinding = this.getBinding(target);
-
-      targetBinding.defineAsTarget(cell);
+         targetBinding.defineAsTarget(cell);
 
       this.setters$.push(set$);
    }

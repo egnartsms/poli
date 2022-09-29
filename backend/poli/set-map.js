@@ -24,6 +24,7 @@ uniquesDups ::=
       return [uniques, duplicated];
    }
 
+
 hasAny ::=
    function (set, X) {
       for (let x of X) {
@@ -35,7 +36,9 @@ hasAny ::=
       return false;
    }
 
+
 deleteIntersection ::=
+   :Works with Maps and Sets, in all combinations
    function (sm1, sm2) {
       // any of the 4 combinations of set and map are possible
       let [G, L] = $.greaterLesser(sm1, sm2);
@@ -47,6 +50,7 @@ deleteIntersection ::=
          }
       }
    }
+
 
 greaterLesser ::=
    function (s1, s2) {

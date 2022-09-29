@@ -55,10 +55,12 @@ hasOwnProperty ::=
       return Object.prototype.hasOwnProperty.call(obj, prop);
    }
 
-hasOwnDefinedProperty ::=
+
+hasOwnDefined ::=
    function (obj, prop) {
-      return $.hasOwnProperty(obj, prop) && obj[prop] !== undefined;
+      return Object.hasOwn(obj, prop) && obj[prop] !== undefined;
    }
+
 
 ownPropertyValue ::=
    function (obj, prop) {
@@ -67,7 +69,7 @@ ownPropertyValue ::=
 
 isObjectWithOwnProperty ::=
    function (obj, prop) {
-      return obj != null && $.hasOwnProperty(obj, prop);
+      return obj != null && Object.hasOwn(obj, prop);
    }
 
 selectProps ::=
@@ -172,8 +174,8 @@ moduleNames ::=
    }
 
 greatestBy ::=
-   function (items, keyOf) {
-      let maxKey = -Infinity;
+   function (items, keyOf, greaterThan=-Infinity) {
+      let maxKey = greaterThan;
       let maxItem = undefined;
 
       for (let item of items) {
@@ -185,7 +187,7 @@ greatestBy ::=
          }
       }
 
-      return [maxItem, maxKey];
+      return maxItem;
    }
 
 leastBy ::=
@@ -270,6 +272,7 @@ setWeedOut ::=
       return weed;
    }
 
+
 arrayChain ::=
    function arrayChain(array, startFrom=0) {
       if (startFrom >= array.length) {
@@ -284,6 +287,7 @@ arrayChain ::=
          }
       }
    }
+
 
 isChainEmpty ::=
    function (chain) {

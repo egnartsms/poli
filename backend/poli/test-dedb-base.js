@@ -6,8 +6,7 @@ common
    find
    sortedArray
 dedb-query
-   query
-   queryAtMostOne
+   getIndex
 dedb-projection
    projectionFor
    releaseProjection
@@ -19,7 +18,7 @@ dedb-base
    removeFact
    removeWhere
    baseRelation
-   revertTo
+   getRecords
 dedb-version
    refRelationState
 
@@ -68,10 +67,40 @@ setup ::=
       ]);
    }
 
-test_unique_hit_projection ::=
-   function () {
-      let proj;
 
+test_get_records ::=
+   function () {
+      let recs;
+
+      // Full index match
+      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
+      $.checkLike(recs, new Set([
+         {city: 'Kyiv', country: 'Ruthenia', big: 1},
+      ]));
+
+      // Part of an index
+      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia'}));
+      $.checkLike(recs, new Set([
+         {city: 'Kyiv', country: 'Ruthenia', big: 1},
+         {city: 'Lviv', country: 'Ruthenia', big: 3},
+         {city: 'Dnipro', country: 'Ruthenia', big: 2},
+      ]));
+
+      // No index (full scan)
+      recs = Array.from($.getRecords($.cityInfo, {city: 'Toronto'}));
+      $.checkLike(recs, new Set([
+         {city: 'Toronto', country: 'Canada', big: 1},
+      ]));
+   }
+
+
+xtest_projection ::=
+   function () {
+      let proj = $.projectionFor($.cityInfo, {country: 'Ruthenia'});
+
+      $.addFact($.cityInfo, {country: 'Ruthenia', city: 'Odesa', big: 4})
+      $.removeWhere($.cityInfo, {country: 'Turkey', })
+      
       proj = $.projectionFor($.cityInfo, {country: 'Ruthenia', big: 1});
       $.checkLike(proj.rec, {
          country: 'Ruthenia',
@@ -86,6 +115,7 @@ test_unique_hit_projection ::=
          big: 2
       });
    }
+
 
 xtest_partial_projection ::=
    function () {
@@ -106,6 +136,7 @@ xtest_partial_projection ::=
       );
    }
 
+
 xtest_query_records_extra_bound ::=
    function () {
       $.checkLike(
@@ -121,12 +152,14 @@ xtest_query_records_extra_bound ::=
       );
    }
 
+
 xtest_query_no_index_hit_results_in_exc ::=
    function () {
       $.checkThrows(() => {
          $.query($.cityInfo, {city: 'Paris'});
       });
    }
+
 
 xtest_revert_to ::=
    function () {

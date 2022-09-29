@@ -20,92 +20,13 @@ dedb-index
    tupleFitnessByBindings
 dedb-index-instance
    indexRefWithBindings
-
+dedb-pyramid
+   * as: py
 -----
 
 projectionFor ::=
    function (rel, bindings) {
-      let key = $.projectionKey(rel, bindings);
-
-      if (rel.projections.has(key)) {
-         return rel.projections.get(key);
-      }
-
-      let proj = $.makeProjection(rel, bindings);
-
-      rel.projections.set(key, proj);
-      proj.myKey = key;
-
-      return proj;
-   }
-
-
-projectionKey ::=
-   function (rel, bindings) {
-      let pieces = [];
-
-      function push(attr) {
-         let obj = Object.hasOwn(bindings, attr) ? bindings[attr] : undefined;
-
-         pieces.push($.encodeObject(obj));
-      }
-
-      if (rel.protoEntity !== null) {
-         push($.entity);
-      }
-
-      for (let attr of rel.attrs) {
-         push(attr);
-      }
-
-      return pieces.join('\0');
-   }
-
-
-object2code ::= new WeakMap
-nextObjectCode ::= 1
-
-encodeObject ::=
-   function (obj) {
-      switch (typeof obj) {
-         case 'undefined':
-            return '';
-
-         case 'boolean':
-            return `b:${obj ? 1 : 0}`;
-
-         case 'string':
-            return `s:${obj}`;
-
-         case 'symbol':
-            throw new Error(`Cannot use symbols as projection specializers`);
-
-         case 'number':
-            return `n:${obj}`;
-
-         case 'object':
-         case 'function':
-            {
-               if (obj === null) {
-                  return 'o';
-               }
-
-               let code = $.object2code.get(obj);
-
-               if (code === undefined) {
-                  code = $.nextObjectCode;
-                  $.nextObjectCode += 1;
-                  $.object2code.set(obj, code);
-               }
-
-               return `o:${code}`;
-            }
-
-         default:
-            throw new Error(
-               `Cannot use object of type '${typeof obj}' as projection specializer`
-            );
-      }
+      return $.py.setDefault(rel.projections, bindings, () => $.makeProjection(rel, bindings));
    }
 
 
@@ -115,9 +36,11 @@ makeProjection ::=
          return $.base.makeProjection(rel, bindings);
       }
       else if (rel.kind === 'derived') {
+         throw new Error(`Not impl`);
          return $.derived.makeProjection(rel, bindings);
       }
       else if (rel.kind === 'aggregate') {
+         throw new Error(`Not impl`);
          return $.agg.makeProjection(rel, bindings);
       }
       else {
@@ -133,7 +56,8 @@ releaseProjection ::=
       proj.refCount -= 1;
 
       if (proj.refCount === 0) {
-         proj.rel.projections.delete(proj.myKey);
+         $.py.remove(proj.rel.projections, proj.bindings);
+
          $.freeProjection(proj);
       }
    }
@@ -144,7 +68,7 @@ freeProjection ::=
       let {rel} = proj;
 
       if (rel.kind === 'base') {
-         $.base.freeProjection(proj);
+         // In base projection, there's nothing to free
       }
       else if (rel.kind === 'derived') {
          $.derived.freeProjection(proj);
@@ -164,7 +88,24 @@ invalidateProjection ::=
          return;
       }
 
-      let stack = [root];
+      /*let stack = [root];
+
+      while (stack.length > 0) {
+         let proj = stack.pop();
+
+         if (proj.isValid) {
+            stack.push(...proj.validRevDeps);
+
+            proj.validRevDeps.clear();
+            proj.isValid = false;
+         }
+      }*/
+   }
+
+
+invalidateAll ::=
+   function (projs) {
+      let stack = Array.from(projs);
 
       while (stack.length > 0) {
          let proj = stack.pop();

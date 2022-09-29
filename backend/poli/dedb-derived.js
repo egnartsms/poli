@@ -28,15 +28,19 @@ common
    range
    settify
    leastBy
+
 data-structures
    RecDependencies
+
 set-map
    deleteAll
    intersect
+
 dedb-rec-key
    recKey
    recVal
    normalizeAttrs
+
 dedb-projection
    projectionFor
    projectionRecords
@@ -44,22 +48,25 @@ dedb-projection
    releaseProjection
    updateProjection as: updateGenericProjection
    makeProjectionRegistry
+
 dedb-goal
    makeLvar
    buildGoalTree
+
 dedb-version
    refProjectionState
    releaseVersion
-   isVersionPristine
    prepareVersion
    versionAdd
    versionRemove
    versionAddedRecords
    versionRemovedRecords
+
 dedb-index
    copyIndex
    tupleFromSpec
    reduceIndex
+
 dedb-index-instance
    refBaseInstance
    refDerivedInstance
@@ -69,19 +76,23 @@ dedb-index-instance
    indexRef
    indexRefSize
    makeIndexInstance
+
 dedb-join-plan
    makeConfig
+
 dedb-relation
    rkeyX2pairFn
+
 -----
+
 MAX_REL_ATTRS ::= 30
+
 
 derivedRelation ::=
    function ({
       name: relname,
       attrs,
-      potentialIndices = [],
-      hardIndices = [],
+      indices: indexSpecs = [],
       body: bodyCallback
    }) {
       $.check(attrs.length <= $.MAX_REL_ATTRS, `Too many attributes`);
@@ -95,10 +106,9 @@ derivedRelation ::=
          numDeps,
          firmVarBindings,
          fictitiousVars,
-         firms,
          subRoutes,
          vars,
-         varsNE
+         attrsNE
       } = $.buildGoalTree(root0, attrs);
 
       return {
@@ -113,14 +123,14 @@ derivedRelation ::=
          numDeps,
          firmVarBindings,
          fictitiousVars,
-         firms,
          subRoutes,
          vars,
-         varsNE,
+         attrsNE,
          configs: new Map,  // cfgkey -> config object
-         projections: $.makeProjectionRegistry(),
+         projections: new Map,
       };
    }
+
 
 vTagged ::=
    function (strings) {
@@ -133,20 +143,21 @@ vTagged ::=
       return $.makeLvar(name);
    }
 
+
+computeIndices ::=
+   function () {
+
+   }
+
+
 makeProjection ::=
    function (rel, bindings) {
       bindings = $.noUndefinedProps(bindings);
 
-      let config = $.configFor(rel, bindings);
       let subs = [];
 
       for (let [num, [subBinding, goal]] of
-            $.enumerate(
-               $.zip(
-                  $.makeSubBindings(rel.firms, rel.subRoutes, bindings),
-                  rel.statefulGoals
-               )
-            )) {
+            $.enumerate($.zip($.makeSubBindings(rel, bindings), rel.statefulGoals))) {
          let subProj = $.projectionFor(goal.rel, subBinding);
 
          subProj.refCount += 1;
@@ -158,6 +169,8 @@ makeProjection ::=
             goal
          })
       }
+
+      let config = $.configFor(rel, bindings);
 
       let subInsts = Array.from(
          config.idxReg,
@@ -226,18 +239,20 @@ makeProjection ::=
       return proj;
    }
 
+
 makeSubBindings ::=
-   function (firms, subRoutes, bindings) {
-      let subBindings = Array.from(firms, Object.fromEntries);
+   function (rel, bindings) {
+      let subBindings = Array.from(rel.statefulGoals, goal => ({...goal.firm}));
 
       for (let [attr, val] of Object.entries(bindings)) {
-         for (let [subNum, subAttr] of subRoutes.get(attr) ?? []) {
+         for (let [subNum, subAttr] of rel.subRoutes.get(attr) ?? []) {
             subBindings[subNum][subAttr] = val;
          }
       }
 
       return subBindings;
    }
+
 
 configFor ::=
    function (rel, bindings) {
@@ -251,18 +266,20 @@ configFor ::=
       return configs.get(cfgkey);
    }
 
+
 bindings2cfgkey ::=
    function (attrs, bindings) {
       let cfgkey = 0;
 
       for (let i = 0; i < attrs.length; i += 1) {
-         if ($.hasOwnProperty(bindings, attrs[i])) {
+         if (Object.hasOwn(bindings, attrs[i])) {
             cfgkey |= (1 << i);
          }
       }
 
       return cfgkey;
    }
+
 
 freeProjection ::=
    function (proj) {
@@ -282,7 +299,7 @@ freeProjection ::=
       }
    }
 
-markAsValid ::=
+validateProjection ::=
    function (proj) {
       for (let sub of proj.subs) {
          sub.proj.validRevDeps.add(proj);
@@ -381,7 +398,7 @@ rebuildProjection ::=
          sub.ver = newVer;
       }
 
-      $.markAsValid(proj);
+      $.validateProjection(proj);
    }
 
 updateProjection ::=
@@ -424,7 +441,7 @@ updateProjection ::=
          sub.ver = newVer;
       }
 
-      $.markAsValid(proj);
+      $.validateProjection(proj);
    }
 
 run ::=

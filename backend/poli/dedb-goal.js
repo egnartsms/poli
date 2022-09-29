@@ -54,9 +54,10 @@ and ::=
 
       return {
          kind: 'and',
-         subgoals: conjuncts,
+         conjuncts,
       };
    }
+
 
 or ::=
    function (...subgoals) {
@@ -79,16 +80,19 @@ or ::=
       
       return {
          kind: 'or',
-         subgoals: disjuncts,
+         disjuncts,
       };
    }
 
+
 lvarSym ::= Symbol('lvar')
+
 
 isLvar ::=
    function (obj) {
       return $.isObjectWithOwnProperty(obj, $.lvarSym);
    }
+
 
 makeLvar ::=
    function (name) {
@@ -97,8 +101,25 @@ makeLvar ::=
       }
    }
 
+
 use ::=
-   function (rel, bindings) {
+   :Make a goal that refers to the given relation (of any kind)
+
+    Can be used in 2 forms:
+
+      - $.use(rel, bindings)
+
+      - $.use(rel, evar, bindings)
+
+        `evar` stands for "entity variable". This is for entity base relations, to get
+        a hold of entity itself.
+
+   function (rel, evar, bindings) {
+      if (arguments.length === 2) {
+         bindings = evar;
+         evar = null;
+      }
+
       let firmBindings = new Map(
          $.filter(Object.entries(bindings), ([a, val]) => {
             return val !== undefined && !$.isLvar(val);
@@ -111,7 +132,7 @@ use ::=
             }
          })
       );
-      
+
       {
          let vars = Array.from(looseBindings.values());
          let dupVar = $.firstDuplicate(vars);
@@ -129,18 +150,19 @@ use ::=
       }
    }
 
+
 buildGoalTree ::=
    function (root0, attrs) {
       if (root0 instanceof Array) {
          root0 = {
             kind: 'and',
-            subgoals: root0
+            conjuncts: root0
          }
       }
       else if (root0.kind !== 'and') {
          root0 = {
             kind: 'and',
-            subgoals: [root0]
+            conjuncts: [root0]
          }
       }
 
@@ -156,9 +178,8 @@ buildGoalTree ::=
       let {
          firmVarBindings,
          fictitiousVars,
+         subRoutes,
          root: root2,
-         firms,
-         subRoutes
       } = $.buildTree2(root1, attrs);
       let numDeps = $.setupDepNums(root2);
 
@@ -169,12 +190,12 @@ buildGoalTree ::=
          numDeps,
          firmVarBindings,
          fictitiousVars,
-         firms,
          subRoutes,
          vars,
-         varsNE
+         attrsNE: varsNE  // non-evaporatable
       }
    }
+
 
 buildTree1 ::=
    :Convert goal object (as provided by relation definition, see $.or, $.and, $.use)
@@ -182,31 +203,31 @@ buildTree1 ::=
     
     * conjunctions discriminate their children as leaves and disjunctions
     
-    * all disjuncts are necessarily conjunctions (achieved by wrapping all rel goals in
+    * all disjuncts are necessarily conjunctions (achieved by wrapping all 'rel' goals in
       singleton conjunctions). This is needed because then we can use conjunction nodes
       directly as branch designators.
     
     * we don't need the 'kind' discriminator any more, so we don't use it
    
    function (root0) {
-      function convertRel(g0) {
+      function convertRel(goal0) {
          return {
-            rel: g0.rel,
-            firmBindings: g0.firmBindings,
-            looseBindings: g0.looseBindings,
+            rel: goal0.rel,
+            firmBindings: goal0.firmBindings,
+            looseBindings: goal0.looseBindings,
          }
       }
 
-      function convertConj(g0) {
+      function convertConj(goal0) {
          let choices = [];
          let leaves = [];
 
-         for (let sg0 of g0.subgoals) {
-            if (sg0.kind === 'or') {
-               choices.push(convertDisj(sg0));
+         for (let sub0 of goal0.conjuncts) {
+            if (sub0.kind === 'or') {
+               choices.push(convertDisj(sub0));
             }
-            else if (sg0.kind === 'rel') {
-               leaves.push(convertRel(sg0));
+            else if (sub0.kind === 'rel') {
+               leaves.push(convertRel(sub0));
             }
             else {
                throw new Error;
@@ -219,29 +240,29 @@ buildTree1 ::=
          }
       }
 
-      function convertDisj(g0) {
+      function convertDisj(goal0) {
          let alts = [];  // all alternatives (disjuncts) are always conjunctions
 
-         for (let sg0 of g0.subgoals) {
-            $.assert(() => sg0.kind !== 'or');
+         for (let sub0 of goal0.disjuncts) {
+            let sub1;
 
-            let sg1;
-
-            if (sg0.kind === 'rel') {
+            if (sub0.kind === 'rel') {
                // Wrap it in an 'and'
-               sg1 = {
+               sub1 = {
                   choices: [],
-                  leaves: [convertRel(sg0)],
+                  leaves: [convertRel(sub0)],
                }
             }
-            else if (sg0.kind === 'and') {
-               sg1 = convertConj(sg0);
+            else if (sub0.kind === 'and') {
+               sub1 = convertConj(sub0);
             }
             else {
+               // 'or' cannot be nested inside another 'or', the $.or itself takes care of
+               // that
                throw new Error;
             }
 
-            alts.push(sg1);
+            alts.push(sub1);
          }
 
          return {
@@ -253,6 +274,7 @@ buildTree1 ::=
 
       return convertConj(root0);
    }
+
 
 checkVarUsage ::=
    function (root1, attrs) {
@@ -266,6 +288,7 @@ checkVarUsage ::=
          `Variables mentioned only once: ${$.singleQuoteJoinComma(open)}`
       );
    }
+
 
 openClosedVars ::=
    function (root1) {
@@ -312,6 +335,7 @@ openClosedVars ::=
       return groupOC(root1);
    }
 
+
 addOpenVar ::=
    function (open, closed, lvar) {
       if (closed.has(lvar))
@@ -324,6 +348,7 @@ addOpenVar ::=
          open.add(lvar);
       }
    }
+
 
 relGoalsBeneath ::=
    function* (root) {
@@ -345,14 +370,16 @@ relGoalsBeneath ::=
       yield* fromGroup(root);
    }
 
+
 collectLooseVars ::=
    function (root1) {
       return Array.from(
          new Set(
             $.chain($.map($.relGoalsBeneath(root1), g => g.looseBindings.values()))
          )
-      );
+      )
    }
+
 
 collectNonEvaporatableVars ::=
    function (root1) {
@@ -367,6 +394,7 @@ collectNonEvaporatableVars ::=
       return varsNE;
    }
 
+
 buildTree2 ::=
    :Goals and tree v2 differ from those v1 in the following:
       * we introduce firm vars and fictitious vars
@@ -376,17 +404,16 @@ buildTree2 ::=
    function (root1, attrs) {
       let firmVarBindings = new Map;
       let fictitiousVars = new Set;
-      let firms = [];
       let subRoutes = new Map($.map(attrs, a => [a, []]));
       let varNum = 0;
       let subNum = 0;
 
-      function convertRel(goal, parentGroup) {
-         let isDerived = goal.rel.kind === 'derived';
-         let bindings = new Map(goal.looseBindings);
+      function convertRel(goal1, parentGroup) {
+         let isDerived = goal1.rel.kind === 'derived';
+         let bindings = new Map(goal1.looseBindings);
 
-         for (let [attr, val] of goal.firmBindings) {
-            let lvar = `var-${goal.rel.name}-${varNum}`;
+         for (let [attr, val] of goal1.firmBindings) {
+            let lvar = `-firm-${goal1.rel.name}-${varNum}`;
             varNum += 1;
 
             bindings.set(attr, lvar);
@@ -399,65 +426,59 @@ buildTree2 ::=
             }
          }
 
-         let goal2;
-
-         if ($.isStatefulRelation(goal.rel)) {
-            firms.push(goal.firmBindings);
-
-            for (let [attr, lvar] of goal.looseBindings) {
+         if ($.isStatefulRelation(goal1.rel)) {
+            for (let [attr, lvar] of goal1.looseBindings) {
                if (subRoutes.has(lvar)) {
                   subRoutes.get(lvar).push([subNum, attr]);
                }
             }
 
-            goal2 = {
+            return {
                parentGroup,
-               rel: goal.rel,
+               rel: goal1.rel,
                isStateful: true,
                isDerived,
                bindings,
+               firm: Object.fromEntries(goal1.firmBindings),
                depNum: -1,  // will be evaluated separately
-               subNum,
+               subNum: subNum++
             }
-            subNum += 1;
          }
          else {
-            goal2 = {
+            return {
                parentGroup,
-               rel: goal.rel,
+               rel: goal1.rel,
                isStateful: false,
                bindings,
             }
          }
-
-         return goal2;
       }
 
-      function convertGroup(goal, parentChoice) {
+      function convertGroup(goal1, parentChoice) {
          let group = {
             parentChoice,
             leaves: [],
             choices: []
          };
 
-         for (let leaf of goal.leaves) {
+         for (let leaf of goal1.leaves) {
             group.leaves.push(convertRel(leaf, group));
          }
 
-         for (let choice of goal.choices) {
+         for (let choice of goal1.choices) {
             group.choices.push(convertChoice(choice, group));
          }
 
          return group;
       }
 
-      function convertChoice(goal, parentGroup) {
+      function convertChoice(goal1, parentGroup) {
          let choice = {
             parentGroup,
             alts: []
          }
 
-         for (let alt of goal.alts) {
+         for (let alt of goal1.alts) {
             choice.alts.push(convertGroup(alt, choice));
          }
 
@@ -469,11 +490,11 @@ buildTree2 ::=
       return {
          firmVarBindings,
          fictitiousVars,
-         firms,
          subRoutes,
          root: root2
       };
    }
+
 
 setupDepNums ::=
    function (root2) {
@@ -512,13 +533,4 @@ setupDepNums ::=
       processGroup(root2);
 
       return num;
-   }
-
-isGroupDescendant ::=
-   function (group, ancestor) {
-      while (group !== null && group !== ancestor) {
-         group = group.parentChoice.parentGroup;
-      }
-
-      return group === ancestor;
    }

@@ -26,6 +26,7 @@ refBaseInstance ::=
       return inst;
    }
 
+
 refDerivedInstance ::=
    function (proj, desired) {
       $.assert(() => proj.kind === 'derived');
@@ -45,16 +46,18 @@ refDerivedInstance ::=
       return inst;
    }
 
+
 refExistingInstance ::=
    function (instances, desired) {
-      let inst = instances.find(({index}) => $.arraysEqual(index, desired));
+      let idx = instances.find(({tuple}) => $.arraysEqual(tuple, desired));
 
-      if (inst !== undefined) {
-         inst.refCount += 1;
+      if (idx !== undefined) {
+         idx.refCount += 1;
       }
 
-      return inst;
+      return idx;
    }
+
 
 releaseIndexInstance ::=
    function (inst) {

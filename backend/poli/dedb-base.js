@@ -54,9 +54,8 @@ dedb-relation
    rec2val
    rec2pair
 
-dedb-query
-   getRecords
-
+dedb-pyramid
+   * as: py
 -----
 
 baseRelation ::=
@@ -71,12 +70,9 @@ baseRelation ::=
          name,
          attrs,
          protoEntity,
-         recSym: protoEntity !== null ? Symbol(name) : null,
          indices: [],
          projections: new Map,
-         myVer: null,
          records: new Set,
-         validRevDeps: new Set,
       };
 
       for (let spec of indexSpecs) {
@@ -89,7 +85,8 @@ baseRelation ::=
       }
 
       if (protoEntity !== null) {
-         $.populateProtoEntity(rel);
+         // $.populateProtoEntity(rel);
+         throw new Error;
       }
 
       return rel;
@@ -98,101 +95,111 @@ baseRelation ::=
 
 populateProtoEntity ::=
    function (rel) {
-      let {protoEntity, recSym} = rel;
+      let {protoEntity} = rel;
 
-      for (let attr of rel.attrs) {
+      for (let [abit, attr] of $.enumerate(rel.attrs)) {
          $.check(!Object.hasOwn(protoEntity, attr), () =>
-            `Relation '${rel.name}': property '${attr}' already defined on the prototype`
+            `Relation '${rel.name}': property '${attr}' already defined on the entity prototype`
          );
 
-         Object.defineProperty(rel.protoEntity, attr, {
+         let relevantIndices = rel.indices.filter(idx => idx.tuple.includes(attr));
+
+         Object.defineProperty(protoEntity, attr, {
             configurable: true,
             enumerable: true,
             get() {
-               return this[recSym][attr];
+               return this[$.store][attr];
+            },
+            set(newValue) {
+               let store = this[$.store];
+
+               if (newValue === store[attr]) {
+                  return;
+               }
+
+               for (let idx of relevantIndices) {
+                  $.indexRemove(idx, this);
+               }
+
+               let backpatch = store[$.backpatch];
+
+               if (backpatch === undefined) {
+                  backpatch = store[$.backpatch] = {
+                     __proto__: store
+                  };
+               }
+
+               if (rel.myVer !== null && store[$.vnum] < rel.myVer.num) {
+                  store[$.vnum]
+               }
+
+               if (!Object.hasOwn(backpatch, attr)) {
+                  backpatch[attr] = store[attr];
+               }
+
+               store[attr] = newValue;
+
+               for (let idx of relevantIndices) {
+                  $.indexAdd(idx, this);
+               }
             }
          })
       }
    }
 
 
-relationChanged ::=
-   function (rel) {
-      for (let proj of rel.validRevDeps) {
-         $.invalidateProjection(proj);
-      }
-
-      rel.validRevDeps.clear();
+makeProjection ::=
+   function (rel, bindings) {
+      return {
+         rel,
+         bindings,
+         refCount: 0,
+         ver: null,
+         validRevDeps: new Set,
+      };
    }
 
 
-entity ::=
-   :This symbol is used for 2 purposes:
-      - bindings[$.entity] === <entity object>
-      - record[$.entity] === <entity object>
-   Symbol('entity')
+projAdd ::=
+   function (proj, rec) {
+      if (proj.validRevDeps.size > 0) {
+         $.invalidateAll(proj.validRevDeps);
+         proj.validRevDeps.clear();
+      }
+      
+      $.versionAdd(proj.ver, rec);
+   }
 
 
-makeProjection ::=
+projRemove ::=
+   function (proj, rec) {
+      if (proj.validRevDeps.size > 0) {
+         $.invalidateAll(proj.validRevDeps);
+         proj.validRevDeps.clear();
+      }
+      
+      $.versionRemove(proj.ver, rec);
+   }
+
+
+getRecords ::=
    function (rel, bindings) {
-      let proj = {
-         kind: '',  // initialized below
-         rel,
-         refCount: 0,
-         myKey: '',   // set by the calling code
-         isValid: false,
-         validRevDeps: new Set,
-      };
+      $.check(rel.kind === 'base');
 
-      if (Object.hasOwn(bindings, $.entity)) {
-         $.check(rel.protoEntity !== null);
+      let idx = $.findSuitableIndex(rel.indices, bindings);
+      let recs;
 
-         proj.kind = 'entity';
-         proj.entity = bindings[$.entity];
-         proj.checkList = $.computeCheckList(bindings, [$.entity]);
-         // either the current record for `entity` or null if it does not satisfy
-         // `filterBy` or is deleted. The `rec` property is also used in the 'unique-hit'
-         // projection kind with exactly the same meaning.
-         proj.rec = null;
+      if (idx === undefined) {
+         recs = rel.records;
       }
       else {
-         let [index, fitness] = $.findSuitableIndex(rel.indices, bindings);
-
-         if (fitness === $.Fitness.uniqueHit) {
-            proj.kind = 'unique-hit';
-            proj.index = index;
-            proj.keys = $.tupleKeys(index.tuple, bindings);
-            proj.checkList = $.computeCheckList(bindings, index.tuple);
-            proj.rec = null;
-         }
-         else {
-            let checkList = $.computeCheckList(bindings);
-
-            if (checkList.length === 0) {
-               proj.kind = 'full';
-               Object.defineProperty(proj, 'myVer', {
-                  configurable: true,
-                  enumerable: true,
-                  get() {
-                     return this.rel.myVer;
-                  }
-               })
-            }
-            else {
-               // TODO: we might as well save the fact that there is a non-unique index
-               // hit. This is for the derived computation algorithm to start with
-               // (`rebuildProjection`).  For now, this is not done.
-               proj.kind = 'partial';
-               proj.myVer = null;
-               proj.depVer = null;
-               proj.checkList = checkList;
-            }
-         }
+         recs = $.indexRefWithBindings(idx, bindings);
       }
 
-      $.updateProjection(proj);
+      let filterBy = $.computeCheckList(bindings, idx !== undefined ? idx.tuple : []);
 
-      return proj;
+      return (filterBy.length === 0) ? recs :
+         $.filter(recs, rec => $.suitsCheckList(rec, filterBy));
    }
 
 
@@ -208,111 +215,19 @@ suitsCheckList ::=
    }
 
 
-freeProjection ::=
-   function (proj) {
-      proj.rel.validRevDeps.delete(proj);
-   }
-
-
-validateProjection ::=
-   function (proj) {
-      proj.rel.validRevDeps.add(proj);
-      proj.isValid = true;
-   }
-
-
-updateProjection ::=
-   function (proj) {
-      let {rel, kind} = proj;
-
-      if (kind === 'full')
-         ;
-      else if (kind === 'entity') {
-         let {entity, checkList} = proj;
-         let rec = entity[rel.recSym];
-
-         if (rel.records.has(rec)) {
-            proj.rec = $.suitsCheckList(rec, checkList) ? rec : null;
-         }
-         else {
-            proj.rec = null;
-         }
-      }
-      else if (kind === 'unique-hit') {
-         let {index, keys, checkList} = proj;
-         let [rec] = $.indexRef(index, keys);
-
-         if (rec !== undefined) {
-            proj.rec = $.suitsCheckList(rec, checkList) ? rec : null;
-         }
-         else {
-            proj.rec = null;
-         }
-      }
-      else if (kind === 'partial') {
-         $.assert(() => (proj.depVer === null) === (proj.myVer === null));
-
-         if (proj.depVer !== null) {
-            $.prepareVersion(proj.depVer);
-
-            for (let rec of proj.depVer.removed) {
-               if ($.suitsCheckList(rec, proj.checkList)) {
-                  $.versionRemove(proj.myVer, rec);
-               }
-            }
-
-            for (let rec of proj.depVer.added) {
-               if ($.suitsCheckList(rec, proj.checkList)) {
-                  $.versionAdd(proj.myVer, rec);
-               }
-            }
-
-            let newDepVer = $.refRelationState(rel);
-            $.releaseVersion(proj.depVer);
-            proj.depVer = newDepVer;
-         }
-      }
-      else {
-         throw new Error;
-      }
-
-      $.validateProjection(proj);
-   }
-
-
-addRecord ::=
-   :This is an implementation function, not part of public interface
-    It does the actual adding of `rec` to the relation.
-   function (rel, rec) {
-      rel.records.add(rec);
-
-      if (rel.myVer !== null) {
-         $.versionAdd(rel.myVer, rec);
-      }
-
-      for (let idx of rel.indices) {
-         $.indexAdd(idx, rec);
-      }
-   }
-
-
 addFact ::=
    function (rel, rec) {
       $.check(!rel.records.has(rec), `Duplicate record`);
 
-      if (rel.protoEntity !== null) {
-         let entity = rec[$.entity];
+      rel.records.add(rec);
 
-         if (entity[rel.recSym] != null) {
-            // Need to remove the existing record first
-            $.removeFact(rel, entity[rel.recSym]);
-         }
-
-         entity[rel.recSym] = rec;
+      for (let idx of rel.indices) {
+         $.indexAdd(idx, rec);
       }
 
-      $.addRecord(rel, rec);
-      $.relationChanged(rel);
+      for (let proj of $.py.matching(rel.projections, rec)) {
+         $.projAdd(proj, rec);
+      }
    }
 
 
@@ -324,56 +239,47 @@ addFacts ::=
    }
 
 
-resetFacts ::=
-   function (rel, recs) {
-      $.emptyRelation(rel);
-      $.addFacts(rel, recs);
-   }
-
-
 removeFact ::=
    function (rel, rec) {
       $.check(rel.records.has(rec), `Missing record`);
-      $.doRemove(rel, rec);
-      $.relationChanged(rel);
-   }
 
-
-doRemove ::=
-   function (rel, rec) {
       rel.records.delete(rec);
-
-      if (rel.myVer !== null) {
-         $.versionRemove(rel.myVer, rec);
-      }
 
       for (let idx of rel.indices) {
          $.indexRemove(idx, rec);
       }
+
+      for (let proj of $.py.matching(rel.projections, rec)) {
+         $.projRemove(proj, rec);
+      }
    }
 
 
-emptyRelation ::=
-   function (rel) {
+resetFacts ::=
+   :Remove all existing records and add all the 'recs' to the relation 'rel'.
+
+    NOTE: this is for very specific use cases. All the relation's projection are just forgotten.
+
+   function (rel, recs) {
+      $.py.empty(rel.projections);
+
       rel.records.clear();
 
       for (let idx of rel.indices) {
          $.emptyIndex(idx);
       }
 
-      $.relationChanged(rel);
+      $.addFacts(rel, recs);
    }
 
 
 removeWhere ::=
    function (rel, bindings) {
-      let toRemove = Array.from($.getRecords(rel.myInsts, bindings));
+      let toRemove = Array.from($.getRecords(rel, bindings));
 
       for (let rec of toRemove) {
-         $.doRemove(rel, rec);
+         $.removeFact(rel, rec);
       }
-
-      $.relationChanged(rel);
    }
 
 

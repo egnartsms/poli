@@ -9,7 +9,7 @@ common
    greatestBy
 -----
 "Tuple" means logical index: an array of columns that constitute an index. "Index" means
-actual data structure containing records/entities.
+the actual data structure containing records/entities.
 
 unique ::= 1
 
@@ -28,6 +28,23 @@ tupleFromSpec ::=
 
       return tuple;
    }
+
+
+isTuplePrefixOf ::=
+   function (prefix, bigger) {
+      if (prefix.length > bigger.length) {
+         return false;
+      }
+
+      for (let i = 0; i < prefix.length; i += 1) {
+         if (prefix[i] !== bigger[i]) {
+            return false;
+         }
+      }
+
+      return true;
+   }
+
 
 superIndexOfAnother ::=
    function (index1, index2) {
@@ -69,13 +86,14 @@ Fitness ::=
 
 tupleFitnessByBindings ::=
    function (tuple, bindings) {
-      return $.tupleFitnessByBounds(
+      return $.tupleFitness(
          tuple,
          Array.from(tuple, a => Object.hasOwn(bindings, a))
       );
    }
 
-tupleFitnessByBounds ::=
+
+tupleFitness ::=
    function (tuple, bounds) {
       let lim = Math.min(tuple.length, bounds.length);
       let i = 0;
@@ -93,10 +111,12 @@ tupleFitnessByBounds ::=
       return (diff === 0 && tuple.isUnique) ? $.Fitness.uniqueHit : diff;
    }
 
+
 isUniqueHitByBindings ::=
    function (index, bindings) {
       return $.tupleFitnessByBindings(index, bindings) === $.Fitness.uniqueHit;
    }
+
 
 tupleKeys ::=
    function (tuple, bindings) {
@@ -136,9 +156,11 @@ findSuitableIndex ::=
    function (indices, bindings) {
       return $.greatestBy(
          indices,
-         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings)
+         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
+         $.Fitness.minimum
       );
    }
+
 
 indexAdd ::=
    function (index, rec) {
@@ -185,6 +207,7 @@ indexAdd ::=
          map.totalSize += 1;
       })(0, index.map);
    }
+
 
 indexRemove ::=
    function (index, rec) {
@@ -247,4 +270,43 @@ indexRef ::=
             }
          }
       }(index.map, 0));
+   }
+
+
+indexRefWithBindings ::=
+   function (index, bindings) {
+      return $.indexRef(index, $.tupleKeys(index.tuple, bindings));
+   }
+
+
+refIndex ::=
+   function (rel, tuple) {
+      $.check(rel.kind === 'base');
+
+      let idx = rel.indices.find(idx => $.arraysEqual(idx.tuple, tuple));
+
+      $.check(idx !== undefined);
+
+      idx.refCount += 1;
+
+      return idx;
+   }
+
+
+releaseIndex ::=
+   function (idx) {
+      $.check(idx.owner.kind === 'base');
+
+      $.assert(() => idx.refCount > 0);
+
+      idx.refCount -= 1;
+
+      if (idx.refCount === 0) {
+         let indices = idx.owner.indices;
+         let k = indices.findIndex(idx);
+
+         $.assert(() => k !== -1);
+
+         indices.splice(k, 1);
+      }
    }
