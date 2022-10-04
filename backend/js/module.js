@@ -1,18 +1,22 @@
 import {Binding} from './binding';
-import {computableCell, restart, rigidCell} from './engine';
+import {computableCell, rigidCell} from './engine';
+import {publicDescriptor} from './common';
 
 
 export class Module {
    constructor(name) {
       this.name = name;
-      this.exist = false;
+      this.exists = rigidCell(false);
       this.bindings = new Map;
       this.setters$ = [];
-      this.ns = Object.create(null);
+      this.ns = {__proto__: null};
+      this.nsProxy = new Proxy(this.ns, {
+         get: (target, prop, receiver) => this.getBinding(prop).value()
+      });
    }
 
    youExist() {
-      this.exist = true;
+      this.exists.set(true);
    }
 
    getBinding(name) {
@@ -39,14 +43,10 @@ export class Module {
          return;
       }
 
-      set$(new Proxy(this.ns, {
-         get: (target, prop, receiver) => this.getBinding(prop).value()
-      }));
-
-      let cell = computableCell(factory);
-         targetBinding.defineAsTarget(cell);
-
+      set$(this.nsProxy);
       this.setters$.push(set$);
+
+      targetBinding.defineAsTarget(computableCell(factory));
    }
 
    addImport(donorBinding, importUnder) {
@@ -63,11 +63,9 @@ export class Module {
 
    switchToRuntime() {
       for (let binding of this.bindings.values()) {
-         Object.defineProperty(this.ns, binding.name, {
-            configurable: true,
-            enumerable: true,
-            ...binding.value.val.descriptor()
-         })
+         Object.defineProperty(
+            this.ns, binding.name, publicDescriptor(binding.runtimeValueDescriptor())
+         );
       }
 
       for (let set$ of this.setters$) {

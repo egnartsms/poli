@@ -224,74 +224,99 @@ function rearToFront(queue) {
    }
 }
 
+function publicDescriptor(descriptor) {
+   return {
+      enumerable: true,
+      configurable: true,
+      ...descriptor
+   }
+}
+
+
+function publicGetterDescriptor(fn) {
+   return {
+      enumerable: true,
+      configurable: true,
+      get: fn
+   }
+}
+
+
+function publicReadonlyPropertyDescriptor(value) {
+   return {
+      enumerable: true,
+      configurable: true,
+      writable: false,
+      value: value
+   }
+}
+
+
+function wrapWith(tag, value) {
+   return {
+      [tag]: value
+   }
+}
+
+
+function isWrappedWith(tag, value) {
+   return value != null && Object.hasOwn(value, tag)
+}
+
 let invq = new Queue;
 let blockedCells = new Map;   // cell -> blockedBy
-// either a Cell or Stage object that's currently being computed
+
+// a ComputedCell that's currently being computed
 let beingComputed = null;
 
 
-function rigidCell(value) {
-   let cell = () => {
+function plainCell() {
+   return function cell() {
       connectCells(beingComputed, cell);
 
-      return cell.val;
-   };
+      return cell.value;
+   }
+}
 
-   cell.val = value;
-   cell.revdeps = new Set;
+
+function rigidCell(initialValue) {
+   let cell = plainCell();
 
    Object.assign(cell, rigidCellProps);
+   cell.value = initialValue;
+   cell.revdeps = new Set;
 
    return cell;
 }
 
 
-const rigidCellProps = {
-   setValue(value) {
-      this.val = value;
-      this.invalidate();
-   },
-
+let rigidCellProps = {
    invalidate() {
       for (let rdep of this.revdeps) {
          rdep.invalidate();
       }
    },
 
-   mutate(callback) {
-      callback(this.val);
+   set(value) {
+      this.value = value;
+      this.invalidate();
+   },
+
+   mutate(fnmut) {
+      fnmut(this.value);
       this.invalidate();
    }
 };
 
 
-rigidCell.exc = function (exc) {
-   let cell = () => {
-      connectCells(beingComputed, cell);
-
-      throw cell.exc;
-   };
-
-   cell.exc = exc;
-   cell.revdeps = new Set;
-
-   return cell;
-};
-
-
 function computableCell(computer) {
-   let cell = () => {
-      connectCells(beingComputed, cell);
+   let cell = plainCell();
 
-      return cell.val.get(cell);
-   };
-
-   cell.invalidate = invalidateCell;
-   cell.val = invalidValue;
-   cell.stage = null;
+   setCellInvalid(cell);
+   cell.invalidate = invalidateThisCell;
    cell.computer = computer;
-   cell.revdeps = new Set;
    cell.deps = new Set;
+   cell.revdeps = new Set;
 
    invq.enqueue(cell);
 
@@ -299,72 +324,56 @@ function computableCell(computer) {
 }
 
 
-function invalidateCell() {
-   invalidateCellValue(this);
+function invalidateThisCell() {
+   setCellInvalid(this);
+   invq.enqueue(this);
 
-   if (this.stage !== null) {
-      killStage(this.stage);
-      this.stage = null;
+   if (blockedCells.has(this)) {
+      // When a blocked cell becomes a plain invalid cell, we don't transitively follow
+      // its 'revdeps' because the cell's observable state is not changed.
+      blockedCells.delete(this);
+   }
+   else {
+      for (let rdep of this.revdeps) {
+         rdep.invalidate();
+      }
    }
 
    disconnectFromDeps(this);   
 }
 
 
-class Stage {
-   constructor(cell, prev, computer) {
+function setCellValue(cell, value) {
+   Object.defineProperty(cell, 'value', publicReadonlyPropertyDescriptor(value));
+}
+
+
+function setCellGetter(cell, func) {
+   Object.defineProperty(cell, 'value', publicGetterDescriptor(func));
+}
+
+
+function setCellInvalid(cell) {
+   setCellGetter(cell, invalidValueGetter);
+}
+
+
+function invalidValueGetter() {
+   throw new InvalidCell(this)
+}
+
+
+class InvalidCell extends Error {
+   constructor(cell) {
+      super();
       this.cell = cell;
-      this.prev = prev;
-      this.next = null;
-      this.computer = computer;
-      this.deps = new Set;
-   }
-
-   invalidate() {
-      invalidateCellValue(this.cell);
-
-      if (this.next !== null) {
-         killStage(this.next);
-
-         this.next = null;
-         this.cell.stage = this;
-      }
-
-      disconnectFromDeps(this);
    }
 }
 
 
-function killStage(stage) {
-   if (stage.next !== null) {
-      killStage(stage.next);
-   }
-
-   stage.prev = null;
-   stage.next = null;
-
-   disconnectFromDeps(stage);
-}
-
-
-function invalidateCellValue(cell) {
-   if (!cell.val.isValid) {
-      return;
-   }
-
-   cell.val = invalidValue;
-   invq.enqueue(cell);
-
-   if (blockedCells.has(cell)) {
-      // When a blocked invalid cell becomes a plain invalid cell, we don't transitively
-      // follow its 'revdeps' because the cell's actual state is not changed.
-      blockedCells.delete(cell);
-   }
-   else {
-      for (let rdep of cell.revdeps) {
-         rdep.invalidate();
-      }
-   }
+function connectCells(cell, dependency) {
+   cell.deps.add(dependency);
+   dependency.revdeps.add(cell);
 }
 
 
@@ -374,12 +383,6 @@ function disconnectFromDeps(comp) {
    }
 
    comp.deps.clear();
-}
-
-
-function connectCells(cell, dependency) {
-   cell.deps.add(dependency);
-   dependency.revdeps.add(cell);
 }
 
 
@@ -395,7 +398,7 @@ function digest() {
       let exc = null;
       let blockedBy = null;
 
-      beingComputed = cell.stage ?? cell;
+      beingComputed = cell;
 
       try {
          value = beingComputed.computer.call(null);
@@ -412,34 +415,25 @@ function digest() {
          beingComputed = null;
       }
 
-      // The following 2 cases do not make 'cell' valid.
       if (blockedBy !== null) {
          blockedCells.set(cell, blockedBy);
-         cell.val = blockedValue;
          continue;
       }
       
-      if (value instanceof Restart) {
-         appendNewStage(cell, value.computer);
-         invq.enqueueFirst(cell);
-         continue;
-      }
-
-      // So 'cell' is going to be made valid now. But a blocked cell may depend on(at most
-      // 1) invalidated cell. When the latter becomes valid, those blocked cells should
-      // be made invalidated again.
+      // So 'cell' is going to be made valid now. But some blocked cells may be depending on 'cell'
+      // at this point. As 'cell' becomes now valid all these blocked cells should be invalidated.
       for (let rdep of cell.revdeps) {
          rdep.invalidate();
       }
 
       if (exc !== null) {
-         cell.val = exceptionValue(exc);
+         setCellGetter(cell, () => { throw exc });
       }
-      else if (value instanceof Getter) {
-         cell.val = getterValue(value.getter);
+      else if (isWrappedWith(getterTag, value)) {
+         setCellGetter(cell, value[getterTag]);
       }
       else {
-         cell.val = plainValue(value);
+         setCellValue(cell, value);
       }
    }
 
@@ -448,7 +442,12 @@ function digest() {
    // At this point, the invalid queue is exhausted. All the cells we have in
    // blockedCells are blocked because of circular dependencies.
    while (blockedCells.size > 0) {
-      let {value: [cell, ncell]} = blockedCells[Symbol.iterator]().next();
+      let cell, ncell;
+
+      for ([cell, ncell] of blockedCells) {
+         break;
+      }
+
       let chain = [cell];
       let k = -1;
 
@@ -464,7 +463,7 @@ function digest() {
       }
 
       for (let i = 0; i < chain.length; i += 1) {
-         chain[i].val = circularValue(dependencyCircle(chain, k, i));
+         setCellGetter(chain[i], circularGetter(dependencyCircle(chain, k, i)));
       }
 
       for (let cell of chain) {
@@ -474,15 +473,11 @@ function digest() {
 }
 
 
-function appendNewStage(cell, computer) {
-   let newStage = new Stage(cell, cell.stage, computer);
+const getterTag = Symbol('getter');
 
-   if (cell.stage !== null) {
-      cell.stage.next = newStage;
-      newStage.prev = cell.stage;
-   }
 
-   cell.stage = newStage;
+function getter(func) {
+   return wrapWith(getterTag, func);
 }
 
 
@@ -495,117 +490,6 @@ function dependencyCircle(chain, k, i) {
 }
 
 
-const invalidValue = {
-   isValid: false,
-   get(cell) {
-      throw new InvalidCell(cell);
-   }
-};
-
-
-const blockedValue = {
-   // blocked cell is considered valid for the purpose of invalidation algorithm, but it
-   // throws InvalidCell in exactly the same way as an ordinary invalidated cell.
-   isValid: true,
-   get(cell) {
-      throw new InvalidCell(cell);
-   }
-};
-
-
-const protoExceptionValue = {
-   isValid: true,
-   get(cell) {
-      throw this.exc;
-   },
-   descriptor() {
-      return {
-         get: () => {
-            throw this.exc;
-         }
-      }
-   }
-};
-
-
-function exceptionValue(exc) {
-   return {
-      __proto__: protoExceptionValue,
-      exc
-   }
-}
-
-
-const protoPlainValue = {
-   isValid: true,
-   get(cell) {
-      return this.value;
-   },
-   descriptor() {
-      return {
-         value: this.value,
-         writable: true
-      }
-   }
-};
-
-
-function plainValue(value) {
-   return {
-      __proto__: protoPlainValue,
-      value
-   }
-}
-
-
-function getterValue(getter) {
-   return {
-      isValid: true,
-      get(cell) {
-         return getter();
-      },
-      descriptor() {
-         return {
-            get: getter
-         }
-      }
-   }
-}
-
-
-const protoCircularValue = {
-   isValid: true,
-   get(cell) {
-      throw new CircularDependency(this.circle);
-   },
-   descriptor() {
-      let circle = this.circle;
-
-      return {
-         get() {
-            throw new CircularDependency(circle);
-         }
-      }
-   }
-};
-
-
-function circularValue(circle) {
-   return {
-      __proto__: protoCircularValue,
-      circle
-   }
-}
-
-
-class InvalidCell extends Error {
-   constructor(cell) {
-      super();
-      this.cell = cell;
-   }
-}
-
-
 class CircularDependency extends Error {
    constructor(circle) {
       super();
@@ -614,21 +498,9 @@ class CircularDependency extends Error {
 }
 
 
-class Getter {
-   constructor(func) {
-      this.getter = func;
-   }
-}
-
-
-function getter(func) {
-   return new Getter(func);
-}
-
-
-class Restart {
-   constructor(func) {
-      this.computer = func;
+function circularGetter(circle) {
+   return () => {
+      throw new CircularDependency(circle);
    }
 }
 
@@ -637,8 +509,8 @@ class Binding {
       this.module = module;
       this.name = name;
       this.inputs = rigidCell([]);
-      this.state = computableCell(this.computeState.bind(this));
-      this.value = computableCell(this.computeValue.bind(this));
+      this.state = computableCell(() => computeState(this));
+      this.value = computableCell(() => computeValue(this));
    }
 
    defineAsTarget(def) {
@@ -646,6 +518,7 @@ class Binding {
    }
 
    defineAsImport(donorBinding) {
+      // TODO: continue here
       this.inputs.mutate(arr => arr.push({donorBinding}));
    }
 
@@ -653,100 +526,128 @@ class Binding {
       this.inputs.mutate(arr => arr.push({donorModule}));
    }
 
-   computeState() {
-      if (this.inputs().length === 0) {
+   runtimeValueDescriptor() {
+      let state = this.state.value;
+
+      if (state.isOk && Object.hasOwn(state, 'runtimeValue')) {
          return {
-            isDefined: false,
-            reason: 'undefined'
-         };
-      }
-
-      if (this.inputs().length > 1) {
-         return {
-            isDefined: false,
-            reason: 'duplicate'
-         };
-      }
-
-      let [input] = this.inputs();
-
-      if (input.hasOwnProperty('def')) {
-         let {def} = input;
-
-         return {
-            isDefined: true,
-            source: def
+            writable: false,
+            value: state.runtimeValue
          }
       }
-      else if (input.hasOwnProperty('donorBinding')) {
-         let {donorBinding} = input;
+      else {
+         return Object.getOwnPropertyDescriptor(this.value, 'value');
+      }
+   }
+}
 
-         if (donorBinding.state().isDefined) {
-            return {
-               isDefined: true,
-               source: donorBinding.value
-            }
-         }
-         else {
-            return {
-               isDefined: false,
-               reason: 'import-of-broken',
-            }
+
+function computeState(binding) {
+   if (binding.inputs().length === 0) {
+      return {
+         isOk: false,
+         reason: 'undefined'
+      };
+   }
+
+   if (binding.inputs().length > 1) {
+      return {
+         isOk: false,
+         reason: 'duplicate'
+      };
+   }
+
+   let [input] = binding.inputs();
+
+   if (Object.hasOwn(input, 'def')) {
+      let {def} = input;
+
+      return {
+         isOk: true,
+         source: def
+      }
+   }
+   else if (Object.hasOwn(input, 'donorBinding')) {
+      let {donorBinding} = input;
+
+      if (donorBinding.state().isOk) {
+         return {
+            isOk: true,
+            source: donorBinding.value
          }
       }
-      else if (input.hasOwnProperty('donorModule')) {
-         let {donorModule} = input;
-
+      else {
          return {
-            isDefined: true,
-            source: () => donorModule.ns
+            isOk: false,
+            reason: 'import-of-broken',
          }
+      }
+   }
+   else if (Object.hasOwn(input, 'donorModule')) {
+      let {donorModule} = input;
+
+      if (donorModule.exists()) {
+         return {
+            isOk: true,
+            source: () => donorModule.nsProxy,
+            runtimeValue: donorModule.ns
+         }
+      }
+      else {
+         return {
+            isOk: false,
+            reason: 'import-of-broken'
+         }
+      }
+   }
+   else
+      throw new Error(`Logic error`);
+}
+
+
+function computeValue(binding) {
+   if (binding.state().isOk) {
+      let {source} = binding.state();
+
+      return source();
+   }
+   else {
+      let {reason} = binding.state();
+
+      if (reason === 'undefined') {
+         return getter(() => {
+            throw new Error(`Referenced undefined binding '$.${binding.name}'`);
+         });
+      }
+      else if (reason === 'duplicate') {
+         return getter(() => {
+            throw new Error(`Referenced duplicated binding '$.${binding.name}'`);
+         });
+      }
+      else if (reason === 'import-of-broken') {
+         return getter(() => {
+            throw new Error(`Referenced broken or non-existing import '$.${binding.name}'`);
+         })
       }
       else
          throw new Error(`Logic error`);
-   }
-
-   computeValue() {
-      if (this.state().isDefined) {
-         let {source} = this.state();
-
-         return source();
-      }
-      else {
-         let {reason} = this.state();
-
-         if (reason === 'undefined') {
-            return getter(() => {
-               throw new Error(`Referenced undefined binding '$.${this.name}'`);
-            });
-         }
-         else if (reason === 'duplicate') {
-            return getter(() => {
-               throw new Error(`Referenced duplicated binding '$.${this.name}'`);
-            });
-         }
-         else if (reason === 'import-of-broken') {
-            return getter(() => {
-               throw new Error(`Referenced broken import '$.${this.name}'`);
-            })
-         }
-         else
-            throw new Error(`Logic error`);
-      }
    }
 }
 
 class Module {
    constructor(name) {
       this.name = name;
-      this.exist = false;
+      this.exists = rigidCell(false);
       this.bindings = new Map;
       this.setters$ = [];
-      this.ns = Object.create(null);
+      this.ns = {__proto__: null};
+      this.nsProxy = new Proxy(this.ns, {
+         get: (target, prop, receiver) => this.getBinding(prop).value()
+      });
    }
 
    youExist() {
-      this.exist = true;
+      this.exists.set(true);
    }
 
    getBinding(name) {
@@ -773,14 +674,10 @@ class Module {
          return;
       }
 
-      set$(new Proxy(this.ns, {
-         get: (target, prop, receiver) => this.getBinding(prop).value()
-      }));
-
-      let cell = computableCell(factory);
-         targetBinding.defineAsTarget(cell);
-
+      set$(this.nsProxy);
       this.setters$.push(set$);
+
+      targetBinding.defineAsTarget(computableCell(factory));
    }
 
    addImport(donorBinding, importUnder) {
@@ -797,11 +694,9 @@ class Module {
 
    switchToRuntime() {
       for (let binding of this.bindings.values()) {
-         Object.defineProperty(this.ns, binding.name, {
-            configurable: true,
-            enumerable: true,
-            ...binding.value.val.descriptor()
-         });
+         Object.defineProperty(
+            this.ns, binding.name, publicDescriptor(binding.runtimeValueDescriptor())
+         );
       }
 
       for (let set$ of this.setters$) {
@@ -828,24 +723,29 @@ class Registry {
       this.nExisting = 0;
    }
 
-   getModule(name, {exists} = {exists: false}) {
+   getModule(name, {create} = {create: false}) {
       let module = this.modules.get(name);
 
       if (module === undefined) {
          module = new Module(name);
          this.modules.set(name, module);
 
-         if (exists) {
+         if (create) {
             module.youExist();
             this.nExisting += 1;
          }
+      }
+      // The module may be already mentioned before but not yet created.
+      else if (create && !module.exists.value) {
+         module.youExist();
+         this.nExisting += 1;
       }
 
       return module;
    }
 
    loadModuleData(mdata) {
-      let module = this.getModule(mdata.name, {exists: true});
+      let module = this.getModule(mdata.name, {create: true});
 
       // Imports
       for (let {donor, imports} of mdata.imports) {
