@@ -1,5 +1,5 @@
 import {Binding} from './binding';
-import {computableCell, rigidCell} from './engine';
+import {computableCell, rigidCell, rigidGetter} from './engine';
 import {publicDescriptor} from './common';
 
 
@@ -39,7 +39,7 @@ export class Module {
       }
       catch (e) {
          console.error(source);
-         targetBinding.defineAsTarget(rigidCell.exc(e));
+         targetBinding.defineAsTarget(rigidGetter(() => { throw e }));
          return;
       }
 

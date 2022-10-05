@@ -195,35 +195,25 @@ export function digest() {
 
    // At this point, the invalid queue is exhausted. All the cells we have in
    // blockedCells are blocked because of circular dependencies.
-   while (blockedCells.size > 0) {
-      let cell, ncell;
-
-      for ([cell, ncell] of blockedCells) {
-         break;
-      }
-
+   for (let cell of blockedCells.keys()) {
       let chain = [cell];
-      let k = -1;
+      let xcell = cell;
 
       for (;;) {
-         k = chain.indexOf(ncell);
+         xcell = blockedCells.get(xcell);
+         let k = chain.indexOf(xcell);
+
+         chain.push(xcell);
 
          if (k !== -1) {
             break;
          }
-
-         chain.push(ncell);
-         [cell, ncell] = [ncell, blockedCells.get(ncell)];
       }
 
-      for (let i = 0; i < chain.length; i += 1) {
-         setCellGetter(chain[i], circularGetter(dependencyCircle(chain, k, i)));
-      }
-
-      for (let cell of chain) {
-         blockedCells.delete(cell);
-      }
+      setCellGetter(cell, circularGetter(chain));
    }
+
+   blockedCells.clear();
 }
 
 
@@ -237,7 +227,7 @@ export function getter(func) {
 
 function dependencyCircle(chain, k, i) {
    return [
-      ...chain.slice(i, k),
+      ...chain.slice(0, k),
       ...chain.slice(Math.max(i, k)),
       ...chain.slice(k, i)
    ];
@@ -246,7 +236,7 @@ function dependencyCircle(chain, k, i) {
 
 class CircularDependency extends Error {
    constructor(circle) {
-      super();
+      super("Circular dependency");
       this.circle = circle;
    }
 }

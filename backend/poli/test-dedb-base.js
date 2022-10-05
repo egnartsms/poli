@@ -22,6 +22,8 @@ dedb-base
 dedb-version
    refRelationState
 
+exp-b
+   b as: circularName
 -----
 
 cityInfo ::=
@@ -84,6 +86,7 @@ test_get_records_index_prefix ::=
          {city: 'Lviv', country: 'Ruthenia', big: 3},
          {city: 'Dnipro', country: 'Ruthenia', big: 2},
       ]));
+   }
 
 test_get_records_no_index ::=
    function () {
