@@ -68,26 +68,26 @@ setup ::=
    }
 
 
-test_get_records ::=
+test_get_records_full_index_match ::=
    function () {
-      let recs;
-
-      // Full index match
-      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
+      let recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
       $.checkLike(recs, new Set([
          {city: 'Kyiv', country: 'Ruthenia', big: 1},
       ]));
+   }
 
-      // Part of an index
-      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia'}));
+test_get_records_index_prefix ::=
+   function () {
+      let recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia'}));
       $.checkLike(recs, new Set([
          {city: 'Kyiv', country: 'Ruthenia', big: 1},
          {city: 'Lviv', country: 'Ruthenia', big: 3},
          {city: 'Dnipro', country: 'Ruthenia', big: 2},
       ]));
 
-      // No index (full scan)
-      recs = Array.from($.getRecords($.cityInfo, {city: 'Toronto'}));
+test_get_records_no_index ::=
+   function () {
+      let recs = Array.from($.getRecords($.cityInfo, {city: 'Toronto'}));
       $.checkLike(recs, new Set([
          {city: 'Toronto', country: 'Canada', big: 1},
       ]));
