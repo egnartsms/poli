@@ -71,7 +71,7 @@ baseRelation ::=
          attrs,
          protoEntity,
          indices: [],
-         projections: new Map,
+         projections: $.py.make(attrs),
          records: new Set,
       };
 
@@ -148,37 +148,112 @@ populateProtoEntity ::=
    }
 
 
+refSubVersion ::=
+   function (rel, bindings) {
+      let proj = $.projectionFor(rel, bindings);
+
+      $.ensureTopmostPristine(proj);
+      $.versionAddRef(proj.ver);
+
+      return proj.ver;
+   }
+
+
+releaseVersion ::=
+   function (ver) {
+      let {proj} = ver;
+
+      $.assert(() => ver.refCount > 0 && ver.proj.refCount > 0);
+
+      ver.refCount -= 1;
+      proj.refCount -= 1;
+
+      if (proj.refCount === 0) {
+         $.py.remove(proj.rel.projections, proj.bindings);
+      }
+   }
+
+
+projectionFor ::=
+   function (rel, bindings) {
+      return $.py.setDefault(rel.projections, bindings, () => $.makeProjection(rel, bindings));
+   }
+
+
 makeProjection ::=
    function (rel, bindings) {
-      return {
+      let proj = {
          rel,
          bindings,
          refCount: 0,
          ver: null,
          validRevDeps: new Set,
       };
+
+      proj.ver = $.makeVersionFor(proj);
+
+      return proj;
+   }
+
+
+makeVersionFor ::=
+   function (proj) {
+      return {
+         proj,
+         refCount: 0,
+         added: new Set,
+         removed: new Set,
+         next: null,
+      }
+   }
+
+
+isVersionPristine ::=
+   function (ver) {
+      return ver.added.size === 0 && ver.removed.size === 0;
+   }
+
+
+versionAddRef ::=
+   function (ver) {
+      ver.refCount += 1;
+      ver.proj.refCount += 1;
+   }
+
+
+ensureTopmostPristine ::=
+   function (proj) {
+      if ($.isVersionPristine(proj.ver)) {
+         return;
+      }
+
+      let nver = $.makeVersionFor(proj);
+
+      proj.ver.next = nver;
+      proj.ver = nver;
    }
 
 
 projAdd ::=
    function (proj, rec) {
-      if (proj.validRevDeps.size > 0) {
-         $.invalidateAll(proj.validRevDeps);
-         proj.validRevDeps.clear();
-      }
-      
+      $.invalidateProjectionRevdeps(proj);
       $.versionAdd(proj.ver, rec);
    }
 
 
 projRemove ::=
    function (proj, rec) {
+      $.invalidateProjectionRevdeps(proj);
+      $.versionRemove(proj.ver, rec);
+   }
+
+
+invalidateProjectionRevdeps ::=
+   function (proj) {
       if (proj.validRevDeps.size > 0) {
          $.invalidateAll(proj.validRevDeps);
          proj.validRevDeps.clear();
       }
-      
-      $.versionRemove(proj.ver, rec);
    }
 
 

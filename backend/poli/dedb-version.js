@@ -28,31 +28,6 @@ refState ::=
    }
 
 
-ensureTopmostPristine ::=
-   function (proj) {
-      let prev = proj.ver;
-
-      if (prev !== null && $.isPristine(prev)) {
-         return;
-      }
-
-      let ver = {
-         owner: proj,
-         num: 1 + (prev === null ? 0 : prev.num),
-         refCount: prev === null ? 0 : 1,
-         added: new Set,
-         removed: new Set,
-         next: null,
-      };
-
-      if (prev !== null) {
-         prev.next = ver;
-      }
-
-      proj.ver = ver;
-   }
-
-
 isPristine ::=
    function (ver) {
       return ver.added.size === 0 && ver.removed.size === 0;

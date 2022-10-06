@@ -261,6 +261,7 @@ indexRef ::=
             let key = keys[lvl];
 
             if (key === undefined) {
+               // Assuming that keys[lvl + N] will also be undefined for N = 1,2,...
                for (let sub of map.values()) {
                   yield* rec(sub, lvl + 1);
                }
