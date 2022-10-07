@@ -142,7 +142,7 @@ const reDef = `(?:(?:\x20*\\n)*\x20.*\\n)*`;
 const reBody = `(?<docstring>${reDocstring})?(?<def>${reDef})`;
 
 const reEntry = new RegExp(
-   `^(?<target>\\S.*?)\x20+:(?<kind>.*?):=(?:\x20*\\n(?<multiliner>${reBody})|\x20+(?<oneliner>.+)\\n)`,
+   `^(?<target>\\S.*?)\x20+:(?<kind>.+?)?:=(?:\x20*\\n(?<multiliner>${reBody})|\x20+(?<oneliner>.+)\\n)`,
    'gm'
 );
 
@@ -152,7 +152,7 @@ function parseModuleBody(str) {
       return {
          target: match.groups.target,
          definition: match.groups.oneliner ?? match.groups.def,
-         kind: match.groups.kind || null
+         kind: match.groups.kind ?? 'js'
       }
    });
 
@@ -629,12 +629,19 @@ class Module {
       return binding;
    }
 
-   addEntry(target, source) {
+   addEntry(entryInfo) {
+      let {target, kind, definition} = entryInfo;
+
+      if (!Object.hasOwn(kind2js, kind)) {
+         throw new Error(`Unknown entry definition kind: '${kind}'`);
+      }
+
       let targetBinding = this.getBinding(target);
       let factory, set$;
 
       try {
-         [factory, set$] = Function(factorySource(source))();
+         let source = factorySource(kind2js[kind](definition));
+         [factory, set$] = Function(source)();
       }
       catch (e) {
          console.error(source);
@@ -676,14 +683,20 @@ class Module {
 
 // params are: $ns, $proxy
 const factorySource = (source) => `
-   "use strict";
-   let $;
+"use strict";
+let $;
 
-   return [
-      () => (${source}),
-      (new$) => { $ = new$ }
-   ]
+return [
+   () => (${source}),
+   (new$) => { $ = new$ }
+]
 `;
+
+
+const kind2js = {
+   js: (def) => def,
+   body: (def) => `function () { ${def} }`
+};
 
 class Registry {
    constructor() {
@@ -730,8 +743,8 @@ class Registry {
       }
 
       // Definitions
-      for (let {target, definition} of mdata.body) {
-         module.addEntry(target, definition);
+      for (let entryInfo of mdata.body) {
+         module.addEntry(entryInfo);
       }
    }
 

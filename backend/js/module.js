@@ -30,12 +30,19 @@ export class Module {
       return binding;
    }
 
-   addEntry(target, source) {
+   addEntry(entryInfo) {
+      let {target, kind, definition} = entryInfo;
+
+      if (!Object.hasOwn(kind2js, kind)) {
+         throw new Error(`Unknown entry definition kind: '${kind}'`);
+      }
+
       let targetBinding = this.getBinding(target);
       let factory, set$;
 
       try {
-         [factory, set$] = Function(factorySource(source))();
+         let source = factorySource(kind2js[kind](definition));
+         [factory, set$] = Function(source)();
       }
       catch (e) {
          console.error(source);
@@ -77,11 +84,17 @@ export class Module {
 
 // params are: $ns, $proxy
 const factorySource = (source) => `
-   "use strict";
-   let $;
+"use strict";
+let $;
 
-   return [
-      () => (${source}),
-      (new$) => { $ = new$ }
-   ]
+return [
+   () => (${source}),
+   (new$) => { $ = new$ }
+]
 `;
+
+
+const kind2js = {
+   js: (def) => def,
+   body: (def) => `function () { ${def} }`
+};

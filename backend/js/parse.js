@@ -97,7 +97,7 @@ const reDef = `(?:(?:\x20*\\n)*\x20.*\\n)*`;
 const reBody = `(?<docstring>${reDocstring})?(?<def>${reDef})`;
 
 const reEntry = new RegExp(
-   `^(?<target>\\S.*?)\x20+:(?<kind>.*?):=(?:\x20*\\n(?<multiliner>${reBody})|\x20+(?<oneliner>.+)\\n)`,
+   `^(?<target>\\S.*?)\x20+:(?<kind>.+?)?:=(?:\x20*\\n(?<multiliner>${reBody})|\x20+(?<oneliner>.+)\\n)`,
    'gm'
 );
 
@@ -107,7 +107,7 @@ function parseModuleBody(str) {
       return {
          target: match.groups.target,
          definition: match.groups.oneliner ?? match.groups.def,
-         kind: match.groups.kind || null
+         kind: match.groups.kind ?? 'js'
       }
    });
 

@@ -60,17 +60,16 @@ contexts:
 
   entry:
     - meta_content_scope: meta.entry
-    # - include: pop-at-starting-line
-    - match: (?<=\s)(:(stmt):=)(?:\s*$)
+    - match: (?<=\s)(:(body):=)(?:\s*$)
       captures:
         1: punctuation.separator.defined-as
-        2: meta.defkind.stmt
-      push: [exit, body-*, exit, def/stmt, maybe-docstring]
-    - match: (?<=\s)(:(stmt):=)(?:\s+)(?=\S)
+        2: mdef.defkind.body
+      push: [exit, body-*, exit, def/body, maybe-docstring]
+    - match: (?<=\s)(:(body):=)(?:\s+)(?=\S)
       captures:
         1: punctuation.separator.defined-as
-        2: meta.defkind.stmt
-      push: [exit, definition-1, embedded-1/stmt]
+        2: mdef.defkind.body
+      push: [exit, definition-1, embedded-1/body]
     - match: (?<=\s)(:(css):=)(?:\s*$)
       captures:
         1: punctuation.separator.defined-as
@@ -217,20 +216,20 @@ contexts:
         - include: pop-at-starting-line
         - include: smart-empty-lines
 
-  def/stmt:
+  def/body:
     - match: ''
       set:
         - definition-*
-        - embedded-*/stmt
+        - embedded-*/body
 
-  embedded-1/stmt:
+  embedded-1/body:
     - match: ''
       set: Packages/JavaScript/JavaScript.sublime-syntax#statements
       with_prototype:
         - match: ^
           pop: true
 
-  embedded-*/stmt:
+  embedded-*/body:
     - match: ''
       set: Packages/JavaScript/JavaScript.sublime-syntax#statements
       with_prototype:

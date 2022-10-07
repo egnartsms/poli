@@ -46,8 +46,8 @@ export class Registry {
       }
 
       // Definitions
-      for (let {target, definition} of mdata.body) {
-         module.addEntry(target, definition);
+      for (let entryInfo of mdata.body) {
+         module.addEntry(entryInfo);
       }
    }
 

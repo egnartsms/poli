@@ -73,59 +73,53 @@ setup ::=
    }
 
 
-test_get_records ::=
-   function () {
-      let recs;
+test_get_records :body:=
+   let recs;
 
-      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
-      $.checkLike(recs, new Set([
-         {city: 'Kyiv', country: 'Ruthenia', big: 1},
-      ]));
+   recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
+   $.checkLike(recs, new Set([
+      {city: 'Kyiv', country: 'Ruthenia', big: 1},
+   ]));
 
-      recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia'}));
-      $.checkLike(recs, new Set([
-         {city: 'Kyiv', country: 'Ruthenia', big: 1},
-         {city: 'Lviv', country: 'Ruthenia', big: 3},
-         {city: 'Dnipro', country: 'Ruthenia', big: 2},
-      ]));
+   recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia'}));
+   $.checkLike(recs, new Set([
+      {city: 'Kyiv', country: 'Ruthenia', big: 1},
+      {city: 'Lviv', country: 'Ruthenia', big: 3},
+      {city: 'Dnipro', country: 'Ruthenia', big: 2},
+   ]));
 
-      recs = Array.from($.getRecords($.cityInfo, {city: 'Toronto'}));
-      $.checkLike(recs, new Set([
-         {city: 'Toronto', country: 'Canada', big: 1},
-      ]));
-   }
+   recs = Array.from($.getRecords($.cityInfo, {city: 'Toronto'}));
+   $.checkLike(recs, new Set([
+      {city: 'Toronto', country: 'Canada', big: 1},
+   ]));
 
 
-test_version_partial ::=
-   function () {
-      let ver = $.refSubVersion($.cityInfo, {country: 'India'});
+test_version_partial :body:=
+   let ver = $.refSubVersion($.cityInfo, {country: 'India'});
 
-      $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
-      $.removeWhere($.cityInfo, {city: 'Delhi'});
+   $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
+   $.removeWhere($.cityInfo, {city: 'Delhi'});
 
-      $.checkLike(ver.added, new Set([{country: 'India', city: 'Chinnai', big: 4}]));
-      $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
+   $.checkLike(ver.added, new Set([{country: 'India', city: 'Chinnai', big: 4}]));
+   $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
 
-      $.releaseVersion(ver);
-   }
+   $.releaseVersion(ver);
 
 
-test_version_full ::=
-   function () {
-      let ver = $.refSubVersion($.cityInfo, {});
+test_version_full :body:=
+   let ver = $.refSubVersion($.cityInfo, {});
 
-      $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
-      $.addFact($.cityInfo, {country: 'Ruthenia', city: 'Odesa', big: 4});
-      $.removeWhere($.cityInfo, {city: 'Delhi'});
+   $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
+   $.addFact($.cityInfo, {country: 'Ruthenia', city: 'Odesa', big: 4});
+   $.removeWhere($.cityInfo, {city: 'Delhi'});
 
-      $.checkLike(ver.added, new Set([
-         {country: 'India', city: 'Chinnai', big: 4},
-         {country: 'Ruthenia', city: 'Odesa', big: 4},
-      ]));
-      $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
+   $.checkLike(ver.added, new Set([
+      {country: 'India', city: 'Chinnai', big: 4},
+      {country: 'Ruthenia', city: 'Odesa', big: 4},
+   ]));
+   $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
 
-      $.releaseVersion(ver);
-   }
+   $.releaseVersion(ver);
 
 
 xtest_projection ::=

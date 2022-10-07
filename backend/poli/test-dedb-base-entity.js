@@ -9,6 +9,7 @@ dedb-base
    baseRelation
    makeEntity
    refSubVersion
+   runBatch
 
 dedb-projection
    projectionFor
@@ -68,92 +69,90 @@ setup ::=
    }
 
 
-test_basic_attrs ::=
-   function () {
-      $.check($.Ruthenia.population === 44);
-      $.check($.Turkey.population === 84);
-      $.check($.Pakistan.population === 221);
-   }
+test_basic_attrs :body:=
+   $.check($.Ruthenia.population === 44);
+   $.check($.Turkey.population === 84);
+   $.check($.Pakistan.population === 221);
 
 
-test_modify_positive ::=
-   function () {
-      let ver = $.refSubVersion($.country, {continent: 'Asia'});
+test_modify_positive :body:=
+   let ver = $.refSubVersion($.country, {continent: 'Asia'});
 
-      $.Pakistan.population += 9;
+   $.Pakistan.population += 9;
 
-      $.checkLike(ver.removed.keys(), new Set([$.Pakistan]))
-      $.checkLike(ver.added, new Set([$.Pakistan]));
+   $.checkLike(ver.removed.keys(), new Set([$.Pakistan]))
+   $.checkLike(ver.added, new Set([$.Pakistan]));
 
-      $.check(ver.removed.get($.Pakistan).population === 221);
-      $.check($.Pakistan.population === 230);
-   }
+   $.check(ver.removed.get($.Pakistan).population === 221);
+   $.check($.Pakistan.population === 230);
 
 
-test_modify_negative ::=
-   function () {
-      let ver = $.refSubVersion($.country, {continent: 'Europe'});
+test_modify_negative :body:=
+   let ver = $.refSubVersion($.country, {continent: 'Europe'});
 
-      $.Pakistan.population += 9;
+   $.Pakistan.population += 9;
 
-      $.check(ver.removed.size === 0);
-      $.check(ver.added.size === 0);
+   $.check(ver.removed.size === 0);
+   $.check(ver.added.size === 0);
 
-      $.check($.Pakistan.population === 230);
-   }
+   $.check($.Pakistan.population === 230);
 
 
-test_add_entity ::=
-   function () {
-      let ver = $.refSubVersion($.country, {});
+test_add_entity :body:=
+   let ver = $.refSubVersion($.country, {});
 
-      let Italy = $.makeEntity($.country, {
-         name: 'Italy',
-         continent: 'Europe',
-         population: 60
-      })
-      $.addEntity(Italy);
+   let Italy = $.makeEntity($.country, {
+      name: 'Italy',
+      continent: 'Europe',
+      population: 60
+   })
+   $.addEntity(Italy);
 
-      $.check(ver.removed.size === 0);
-      $.checkLike(ver.added, new Set([Italy]));
-   }
+   $.check(ver.removed.size === 0);
+   $.checkLike(ver.added, new Set([Italy]));
 
 
-test_add_remove_entity ::=
+test_add_remove_entity :body:=
    :Add then remove is regarded as a no-op
-   function () {
-      let ver = $.refSubVersion($.country, {});
 
-      let Italy = $.makeEntity($.country, {
-         name: 'Italy',
-         continent: 'Europe',
-         population: 60
-      })
-      $.addEntity(Italy);
-      $.removeEntity(Italy);
+   let ver = $.refSubVersion($.country, {});
 
-      $.check(ver.removed.size === 0);
-      $.check(ver.added.size === 0);
-   }
+   let Italy = $.makeEntity($.country, {
+      name: 'Italy',
+      continent: 'Europe',
+      population: 60
+   })
+   $.addEntity(Italy);
+   $.removeEntity(Italy);
+
+   $.check(ver.removed.size === 0);
+   $.check(ver.added.size === 0);
 
 
-test_remove_add_entity ::=
+test_remove_add_entity :body:=
    :Remove then add is regarded as entity modifications (even if it's not effectively modified).
-   function () {
-      let ver = $.refSubVersion($.country, {});
+   let ver = $.refSubVersion($.country, {});
 
-      $.removeEntity($.Ruthenia);
-      $.addEntity($.Ruthenia);
+   $.removeEntity($.Ruthenia);
+   $.addEntity($.Ruthenia);
 
-      $.checkLike(ver.removed.keys(), new Set([$.Ruthenia]))
-      $.checkLike(ver.added, new Set([$.Ruthenia]));
-   }
+   $.checkLike(ver.removed.keys(), new Set([$.Ruthenia]))
+   $.checkLike(ver.added, new Set([$.Ruthenia]));
 
 
-test_batch_modify ::=
-   function () {
-      
-   }
+test_batch_modify :body:=
+   let ver = $.refSubVersion($.country, {continent: 'Europe'});
+
+   $.runBatch(() => {
+      $.Ruthenia.population += 10;
+      $.Ruthenia.population -= 3;
+   });
+
+   $.checkLike(ver.removed.keys(), new Set([$.Ruthenia]));
+   $.checkLike(ver.added, new Set([$.Ruthenia]));
+
+   $.check(ver.removed.get($.Ruthenia).population === 44);
+   $.check($.Ruthenia.population === 51);
 
 
 ztest_projection ::=
