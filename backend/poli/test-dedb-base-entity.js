@@ -35,47 +35,45 @@ Poland ::= null
 Turkey ::= null
 Pakistan ::= null
 
-setup ::=
-   function () {
-      $.resetRelation($.country);
+setup :thunk:=
+   $.resetRelation($.country);
 
-      $.Ruthenia = $.makeEntity($.country, {
-         name: 'Ruthenia',
-         continent: 'Europe',
-         population: 44
-      });
-      $.addEntity($.Ruthenia);
+   $.Ruthenia = $.makeEntity($.country, {
+      name: 'Ruthenia',
+      continent: 'Europe',
+      population: 44
+   });
+   $.addEntity($.Ruthenia);
 
-      $.Poland = $.makeEntity($.country, {
-         name: 'Poland',
-         continent: 'Europe',
-         population: 38
-      });
-      $.addEntity($.Poland);
+   $.Poland = $.makeEntity($.country, {
+      name: 'Poland',
+      continent: 'Europe',
+      population: 38
+   });
+   $.addEntity($.Poland);
 
-      $.Turkey = $.makeEntity($.country, {
-         name: 'Turkey',
-         continent: 'Asia',
-         population: 84
-      })
-      $.addEntity($.Turkey);
+   $.Turkey = $.makeEntity($.country, {
+      name: 'Turkey',
+      continent: 'Asia',
+      population: 84
+   })
+   $.addEntity($.Turkey);
 
-      $.Pakistan = $.makeEntity($.country, {
-         name: 'Pakistan',
-         continent: 'Asia',
-         population: 221
-      })
-      $.addEntity($.Pakistan);
-   }
+   $.Pakistan = $.makeEntity($.country, {
+      name: 'Pakistan',
+      continent: 'Asia',
+      population: 221
+   })
+   $.addEntity($.Pakistan);
 
 
-test_basic_attrs :body:=
+test_basic_attrs :thunk:=
    $.check($.Ruthenia.population === 44);
    $.check($.Turkey.population === 84);
    $.check($.Pakistan.population === 221);
 
 
-test_modify_positive :body:=
+test_modify_positive :thunk:=
    let ver = $.refSubVersion($.country, {continent: 'Asia'});
 
    $.Pakistan.population += 9;
@@ -87,7 +85,7 @@ test_modify_positive :body:=
    $.check($.Pakistan.population === 230);
 
 
-test_modify_negative :body:=
+test_modify_negative :thunk:=
    let ver = $.refSubVersion($.country, {continent: 'Europe'});
 
    $.Pakistan.population += 9;
@@ -98,7 +96,7 @@ test_modify_negative :body:=
    $.check($.Pakistan.population === 230);
 
 
-test_add_entity :body:=
+test_add_entity :thunk:=
    let ver = $.refSubVersion($.country, {});
 
    let Italy = $.makeEntity($.country, {
@@ -112,7 +110,7 @@ test_add_entity :body:=
    $.checkLike(ver.added, new Set([Italy]));
 
 
-test_add_remove_entity :body:=
+test_add_remove_entity :thunk:=
    :Add then remove is regarded as a no-op
 
    let ver = $.refSubVersion($.country, {});
@@ -129,7 +127,7 @@ test_add_remove_entity :body:=
    $.check(ver.added.size === 0);
 
 
-test_remove_add_entity :body:=
+test_remove_add_entity :thunk:=
    :Remove then add is regarded as entity modifications (even if it's not effectively modified).
    let ver = $.refSubVersion($.country, {});
 
@@ -140,7 +138,7 @@ test_remove_add_entity :body:=
    $.checkLike(ver.added, new Set([$.Ruthenia]));
 
 
-test_batch_modify :body:=
+test_batch_modify :thunk:=
    let ver = $.refSubVersion($.country, {continent: 'Europe'});
 
    $.runBatch(() => {
@@ -153,12 +151,3 @@ test_batch_modify :body:=
 
    $.check(ver.removed.get($.Ruthenia).population === 44);
    $.check($.Ruthenia.population === 51);
-
-
-ztest_projection ::=
-   function () {
-      let proj = $.projectionFor($.Country, {[$.entity]: $.Ruthenia});
-
-      $.check(proj.isValid);
-      $.check(proj.rec === $.Ruthenia[$.Country.recSym]);
-   }

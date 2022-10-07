@@ -60,12 +60,12 @@ contexts:
 
   entry:
     - meta_content_scope: meta.entry
-    - match: (?<=\s)(:(body):=)(?:\s*$)
+    - match: (?<=\s)(:(body|thunk):=)(?:\s*$)
       captures:
         1: punctuation.separator.defined-as
         2: mdef.defkind.body
       push: [exit, body-*, exit, def/body, maybe-docstring]
-    - match: (?<=\s)(:(body):=)(?:\s+)(?=\S)
+    - match: (?<=\s)(:(body|thunk):=)(?:\s+)(?=\S)
       captures:
         1: punctuation.separator.defined-as
         2: mdef.defkind.body

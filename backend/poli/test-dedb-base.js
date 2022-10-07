@@ -38,42 +38,40 @@ cityInfo ::=
    })
 
 
-setup ::=
-   function () {
-      $.resetRelation($.cityInfo);
-      $.addFacts($.cityInfo, [
-         {city: 'Paris', country: 'France', big: 1},
-         {city: 'Marseille', country: 'France', big: 3},
-         {city: 'Lyon', country: 'France', big: 2},
+setup :thunk:=
+   $.resetRelation($.cityInfo);
+   $.addFacts($.cityInfo, [
+      {city: 'Paris', country: 'France', big: 1},
+      {city: 'Marseille', country: 'France', big: 3},
+      {city: 'Lyon', country: 'France', big: 2},
 
-         {city: 'Warsaw', country: 'Poland', big: 1},
-         {city: 'Wroclaw', country: 'Poland', big: 3},
-         {city: 'Krakow', country: 'Poland', big: 2},
+      {city: 'Warsaw', country: 'Poland', big: 1},
+      {city: 'Wroclaw', country: 'Poland', big: 3},
+      {city: 'Krakow', country: 'Poland', big: 2},
 
-         {city: 'Kyiv', country: 'Ruthenia', big: 1},
-         {city: 'Lviv', country: 'Ruthenia', big: 3},
-         {city: 'Dnipro', country: 'Ruthenia', big: 2},
+      {city: 'Kyiv', country: 'Ruthenia', big: 1},
+      {city: 'Lviv', country: 'Ruthenia', big: 3},
+      {city: 'Dnipro', country: 'Ruthenia', big: 2},
 
-         {city: 'Beijing', country: 'China', big: 3},
-         {city: 'Chongqing', country: 'China', big: 1},
-         {city: 'Shanghai', country: 'China', big: 2},
+      {city: 'Beijing', country: 'China', big: 3},
+      {city: 'Chongqing', country: 'China', big: 1},
+      {city: 'Shanghai', country: 'China', big: 2},
 
-         {city: 'Delhi', country: 'India', big: 1},
-         {city: 'Mumbai', country: 'India', big: 2},
-         {city: 'Bangalore', country: 'India', big: 3},
+      {city: 'Delhi', country: 'India', big: 1},
+      {city: 'Mumbai', country: 'India', big: 2},
+      {city: 'Bangalore', country: 'India', big: 3},
 
-         {city: 'Istanbul', country: 'Turkey', big: 1},
-         {city: 'Ankara', country: 'Turkey', big: 2},
-         {city: 'Izmir', country: 'Turkey', big: 3},
+      {city: 'Istanbul', country: 'Turkey', big: 1},
+      {city: 'Ankara', country: 'Turkey', big: 2},
+      {city: 'Izmir', country: 'Turkey', big: 3},
 
-         {city: 'Toronto', country: 'Canada', big: 1},
-         {city: 'Montreal', country: 'Canada', big: 2},
-         {city: 'Vancouver', country: 'Canada', big: 3},
-      ]);
-   }
+      {city: 'Toronto', country: 'Canada', big: 1},
+      {city: 'Montreal', country: 'Canada', big: 2},
+      {city: 'Vancouver', country: 'Canada', big: 3},
+   ]);
 
 
-test_get_records :body:=
+test_get_records :thunk:=
    let recs;
 
    recs = Array.from($.getRecords($.cityInfo, {country: 'Ruthenia', big: 1}));
@@ -94,7 +92,7 @@ test_get_records :body:=
    ]));
 
 
-test_version_partial :body:=
+test_version_partial :thunk:=
    let ver = $.refSubVersion($.cityInfo, {country: 'India'});
 
    $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
@@ -106,7 +104,7 @@ test_version_partial :body:=
    $.releaseVersion(ver);
 
 
-test_version_full :body:=
+test_version_full :thunk:=
    let ver = $.refSubVersion($.cityInfo, {});
 
    $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
