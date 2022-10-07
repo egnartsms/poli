@@ -338,7 +338,15 @@
             }
          }
          else {
-            return Object.getOwnPropertyDescriptor(this.value, 'value');
+            // TODO: we cannot have it read-only because our dynamic module members would don't work.
+            // When we have full generalized 'target-definition' schema, the read-onliness should be
+            // explicitly managed. By default, we should have writable: false, and only where needed
+            // should it be made writable.
+            let desc = Object.getOwnPropertyDescriptor(this.value, 'value');
+            if (Object.hasOwn(desc, 'writable')) {
+               desc.writable = true;
+            }
+            return desc;
          }
       }
    }

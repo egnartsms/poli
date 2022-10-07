@@ -20,7 +20,7 @@ runTests ::=
    function () {
       console.time('tests');
       $.runTestsIn('base', $.base);
-      //$.runTestsIn('base-entity', $.baseEntity);
+      $.runTestsIn('base-entity', $.baseEntity);
       // $.runTestsIn('derived', $.derived);
       // $.runTestsIn('disjunction', $.disjunction);
       // $.runTestsIn('func-1', $.func1);

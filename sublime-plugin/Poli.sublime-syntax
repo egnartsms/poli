@@ -96,7 +96,7 @@ contexts:
     - meta_scope: meta.target
     - include: pop-at-defined-as
     - match: \w+
-      scope: meta.name-binding variable.other
+      scope: meta.name-binding entity.name.function.poli variable.other
       pop: true
     - match: (?=\$)
       push: effect
@@ -110,9 +110,10 @@ contexts:
         3: meta.$func
       push:
         - meta_content_scope: meta.$args
-        - match: \)
-          scope: punctuation.section.group.end.js
-          pop: true
+        # Not sure why I added this in here
+        # - match: \)
+        #   scope: punctuation.section.group.end.js
+        #   pop: true
         - include: Packages/JavaScript/JavaScript.sublime-syntax#expression-list
       with_prototype:
         - include: pop-at-defined-as

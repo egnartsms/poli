@@ -1,5 +1,6 @@
 common
    all
+   any
    arraysEqual
    assert
    check
@@ -25,7 +26,6 @@ dedb-rec-key
 
 dedb-version
    refRelationState
-   releaseVersion
    versionAdd
    versionRemove
    prepareVersion
@@ -56,6 +56,7 @@ dedb-relation
 
 dedb-pyramid
    * as: py
+
 -----
 
 baseRelation ::=
@@ -85,66 +86,10 @@ baseRelation ::=
       }
 
       if (protoEntity !== null) {
-         // $.populateProtoEntity(rel);
-         throw new Error;
+         $.populateProtoEntity(rel);
       }
 
       return rel;
-   }
-
-
-populateProtoEntity ::=
-   function (rel) {
-      let {protoEntity} = rel;
-
-      for (let [abit, attr] of $.enumerate(rel.attrs)) {
-         $.check(!Object.hasOwn(protoEntity, attr), () =>
-            `Relation '${rel.name}': property '${attr}' already defined on the entity prototype`
-         );
-
-         let relevantIndices = rel.indices.filter(idx => idx.tuple.includes(attr));
-
-         Object.defineProperty(protoEntity, attr, {
-            configurable: true,
-            enumerable: true,
-            get() {
-               return this[$.store][attr];
-            },
-            set(newValue) {
-               let store = this[$.store];
-
-               if (newValue === store[attr]) {
-                  return;
-               }
-
-               for (let idx of relevantIndices) {
-                  $.indexRemove(idx, this);
-               }
-
-               let backpatch = store[$.backpatch];
-
-               if (backpatch === undefined) {
-                  backpatch = store[$.backpatch] = {
-                     __proto__: store
-                  };
-               }
-
-               if (rel.myVer !== null && store[$.vnum] < rel.myVer.num) {
-                  store[$.vnum]
-               }
-
-               if (!Object.hasOwn(backpatch, attr)) {
-                  backpatch[attr] = store[attr];
-               }
-
-               store[attr] = newValue;
-
-               for (let idx of relevantIndices) {
-                  $.indexAdd(idx, this);
-               }
-            }
-         })
-      }
    }
 
 
@@ -202,7 +147,7 @@ makeVersionFor ::=
          proj,
          refCount: 0,
          added: new Set,
-         removed: new Set,
+         removed: new (proj.rel.protoEntity === null ? Set : Map),
          next: null,
       }
    }
@@ -234,21 +179,46 @@ ensureTopmostPristine ::=
    }
 
 
-projAdd ::=
-   function (proj, rec) {
-      $.invalidateProjectionRevdeps(proj);
-      $.versionAdd(proj.ver, rec);
+versionAddFact ::=
+   function (ver, rec) {
+      if (ver.removed.has(rec)) {
+         ver.removed.delete(rec);
+      }
+      else {
+         ver.added.add(rec);
+      }
    }
 
 
-projRemove ::=
-   function (proj, rec) {
-      $.invalidateProjectionRevdeps(proj);
-      $.versionRemove(proj.ver, rec);
+versionRemoveFact ::=
+   function (ver, rec) {
+      if (ver.added.has(rec)) {
+         ver.added.delete(rec);
+      }
+      else {
+         ver.removed.add(rec);
+      }
    }
 
 
-invalidateProjectionRevdeps ::=
+versionAddEntity ::=
+   function (ver, entity) {
+      ver.added.add(entity);
+   }
+
+
+versionRemoveEntity ::=
+   function (ver, entity, asSeen) {
+      if (ver.added.has(entity)) {
+         ver.added.delete(entity);
+      }
+      else {
+         ver.removed.set(entity, asSeen);
+      }
+   }
+
+
+touchProjection ::=
    function (proj) {
       if (proj.validRevDeps.size > 0) {
          $.invalidateAll(proj.validRevDeps);
@@ -256,6 +226,125 @@ invalidateProjectionRevdeps ::=
       }
    }
 
+
+***** Entities *****
+
+batch ::=
+   :Current open batch: records to add, to remove, and dirty entities.
+   null
+
+
+backpatch ::=
+   :Entity property that points to the most recent "backpatch" object of the entity.
+   Symbol.for('poli.backpatch')
+
+
+nextBackpatch ::=
+   :Each backpatch points to its successor with this symbol property.
+   Symbol.for('poli.nextBackpatch')
+
+
+store ::=
+   :Entity property that points to the object which actually stores all the attributes.
+   Symbol.for('poli.store')
+
+
+myRelation ::=
+   :Entity prototype property that points back to the relation object.
+   Symbol.for('poli.myRelation')
+
+
+populateProtoEntity ::=
+   function (rel) {
+      let {protoEntity} = rel;
+
+      for (let attr of rel.attrs) {
+         $.check(!Object.hasOwn(protoEntity, attr), () =>
+            `Relation '${rel.name}': property '${attr}' already defined on the entity prototype`
+         );
+      }
+
+      for (let attr of rel.attrs) {
+         Object.defineProperty(protoEntity, attr, {
+            configurable: true,
+            enumerable: true,
+            get() {
+               return this[$.store][attr];
+            },
+            set(newValue) {
+               let {[$.store]: store, [$.backpatch]: back} = this;
+
+               if (!Object.hasOwn(back, attr)) {
+                  back[attr] = store[attr];
+               }
+
+               store[attr] = newValue;
+
+               if (rel.records.has(this)) {
+                  if ($.batch === null) {
+                     $.modifyEntity(this);
+                  }
+                  else {
+                     $.markEntityModified(this);
+                  }
+               }
+            }
+         })
+      }
+
+      protoEntity[$.myRelation] = rel;
+   }
+
+
+runBatch ::=
+   function (callback) {
+      $.check($.batch === null, `Nested batches not supported`);
+
+      let batch = {
+         removedRecords: new Map,
+         addedRecords: new Map,
+         dirtyEntities: new Map,
+      };
+
+      $.batch = batch;
+
+      try {
+         callback();
+      }
+      finally {
+         $.batch = null;
+      }
+
+      for (let [rec, rel] of batch.addedRecords) {
+         $.addFact(rel, rec);
+      }
+
+      for (let [rec, rel] of batch.removedRecords) {
+         $.removeFact(rel, rec);
+      }
+
+      for (let [entity, status] of batch.dirtyEntities) {
+         switch (status) {
+            case 'added':
+               $.addEntity(entity);
+               break;
+
+            case 'removed':
+               $.removeEntity(entity);
+               break;
+
+            case 'modified':
+               $.modifyEntity(entity);
+               break;
+
+            default:
+               throw new Error(`Programming error`);
+         }
+      }
+   }
+
+
+***** Operations *****
 
 getRecords ::=
    function (rel, bindings) {
@@ -292,16 +381,32 @@ suitsCheckList ::=
 
 addFact ::=
    function (rel, rec) {
-      $.check(!rel.records.has(rec), `Duplicate record`);
+      $.check(rel.protoEntity === null);
 
-      rel.records.add(rec);
+      if ($.batch !== null) {
+         let {addedRecords, removedRecords} = $.batch;
 
-      for (let idx of rel.indices) {
-         $.indexAdd(idx, rec);
+         if (removedRecords.has(rec)) {
+            removedRecords.delete(rec);
+         }
+         else {
+            $.check(!rel.records.has(rec), `Duplicate record`);
+            addedRecords.set(rec, rel);
+         }
       }
+      else {
+         $.check(!rel.records.has(rec), `Duplicate record`);
 
-      for (let proj of $.py.matching(rel.projections, rec)) {
-         $.projAdd(proj, rec);
+         rel.records.add(rec);
+
+         for (let idx of rel.indices) {
+            $.indexAdd(idx, rec);
+         }
+
+         for (let proj of $.py.matching(rel.projections, rec)) {
+            $.versionAddFact(proj.ver, rec);
+            $.touchProjection(proj);
+         }
       }
    }
 
@@ -316,26 +421,214 @@ addFacts ::=
 
 removeFact ::=
    function (rel, rec) {
-      $.check(rel.records.has(rec), `Missing record`);
+      $.check(rel.protoEntity === null);
 
-      rel.records.delete(rec);
+      if ($.batch !== null) {
+         let {addedRecords, removedRecords} = $.batch;
 
-      for (let idx of rel.indices) {
-         $.indexRemove(idx, rec);
+         if (addedRecords.has(rec)) {
+            addedRecords.delete(rec);
+         }
+         else {
+            $.check(rel.records.has(rec), `Missing record`);
+            removedRecords.set(rec, rel);
+         }
       }
+      else {
+         $.check(rel.records.has(rec), `Missing record`);
 
-      for (let proj of $.py.matching(rel.projections, rec)) {
-         $.projRemove(proj, rec);
+         rel.records.delete(rec);
+
+         for (let idx of rel.indices) {
+            $.indexRemove(idx, rec);
+         }
+
+         for (let proj of $.py.matching(rel.projections, rec)) {
+            $.versionRemoveFact(proj.ver, rec);
+            $.touchProjection(proj);
+         }
       }
    }
 
 
-resetFacts ::=
-   :Remove all existing records and add all the 'recs' to the relation 'rel'.
+addEntity ::=
+   function (entity) {
+      let {[$.myRelation]: rel} = entity;
 
-    NOTE: this is for very specific use cases. All the relation's projection are just forgotten.
+      if ($.batch !== null) {
+         let {dirtyEntities} = $.batch;
+         let status = dirtyEntities.get(entity);
 
-   function (rel, recs) {
+         if (status === undefined) {
+            if (!rel.records.has(entity)) {
+               dirtyEntities.set(entity, 'added');
+            }
+         }
+         else if (status === 'removed') {
+            dirtyEntities.set(entity, 'modified');
+         }
+      }
+      else if (!rel.records.has(entity)) {
+         let {[$.store]: store} = entity;
+
+         rel.records.add(entity);
+
+         for (let idx of rel.indices) {
+            $.indexAdd(idx, entity, store);
+         }
+
+         for (let proj of $.py.matching(rel.projections, store)) {
+            $.versionAddEntity(proj.ver, entity);
+            $.touchProjection(proj);
+         }
+
+         let isDirty = $.optimizeEntityBackpatch(entity);
+
+         if (isDirty) {
+            entity[$.backpatch] = entity[$.backpatch][$.nextBackpatch] = {
+               __proto__: store,
+               [$.nextBackpatch]: null
+            }
+         }
+      }
+   }
+
+
+removeEntity ::=
+   :Remove `entity` from its relation.
+
+    We think of removing an entity as of removing the entity's top backpatch (most recent snapshot).
+
+   function (entity) {
+      let {[$.myRelation]: rel} = entity;
+
+      if ($.batch !== null) {
+         let {dirtyEntities} = $.batch;
+         let status = dirtyEntities.get(entity);
+
+         if (status === undefined) {
+            if (rel.records.has(entity)) {
+               dirtyEntities.set(status, 'removed');
+            }
+         }
+         else if (status === 'added') {
+            dirtyEntities.delete(entity);
+         }
+         else if (status === 'modified') {
+            dirtyEntities.set(status, 'removed');
+         }
+      }
+      else if (rel.records.has(entity)) {
+         rel.records.delete(entity);
+
+         let {[$.backpatch]: back} = entity;
+
+         for (let idx of rel.indices) {
+            $.indexRemove(idx, entity, back);
+         }
+
+         for (let proj of $.py.matching(rel.projections, back)) {
+            $.versionRemoveEntity(proj.ver, entity, back);
+            $.touchProjection(proj);
+         }
+      }
+   }
+
+
+markEntityModified ::=
+   :Holds:
+     - $.batch !== null
+     - rel.records.has(entity)
+
+   function (entity) {
+      let {[$.myRelation]: rel} = entity;
+      let {dirtyEntities} = $.batch;
+
+      if (!dirtyEntities.has(entity)) {
+         dirtyEntities.set(entity, 'modified');
+      }
+   }
+
+
+modifyEntity ::=
+   :Holds:
+     - $.batch === null
+     - rel.records.has(entity)
+
+   function (entity) {
+      let isDirty = $.optimizeEntityBackpatch(entity);
+      
+      if (!isDirty) {
+         return;
+      }
+
+      let {[$.myRelation]: rel, [$.store]: store, [$.backpatch]: back} = entity;
+
+      for (let idx of rel.indices) {
+         if ($.any(idx.tuple, a => Object.hasOwn(back, a))) {
+            $.indexRemove(idx, entity, back);
+            $.indexAdd(idx, entity, store);
+         }
+      }
+
+      for (let proj of $.py.matching(rel.projections, back)) {
+         $.versionRemoveEntity(proj.ver, entity, back);
+         $.touchProjection(proj);
+      }
+
+      for (let proj of $.py.matching(rel.projections, store)) {
+         $.versionAddEntity(proj.ver, entity);
+         $.touchProjection(proj);
+      }
+
+      entity[$.backpatch] = back[$.nextBackpatch] = {
+         __proto__: store,
+         [$.nextBackpatch]: null
+      };
+   }
+
+
+optimizeEntityBackpatch ::=
+   function (entity) {
+      let {[$.store]: store, [$.backpatch]: back} = entity;
+
+      let isDirty = false;
+
+      for (let attr of Object.keys(back)) {
+         if (back[attr] === store[attr]) {
+            delete back[attr];
+         }
+         else {
+            isDirty = true;
+         }
+      }
+
+      return isDirty;
+   }
+
+
+makeEntity ::=
+   function (rel, data) {
+      let store = {};
+
+      for (let attr of rel.attrs) {
+         store[attr] = Object.hasOwn(data, attr) ? data[attr] : undefined;
+      }
+
+      return {
+         __proto__: rel.protoEntity,
+         [$.store]: store,
+         [$.backpatch]: {
+            __proto__: store,
+            [$.nextBackpatch]: null
+         }
+      }
+   }
+
+
+resetRelation ::=
+   :Remove all existing records and forget all the projections.
+   function (rel) {
       $.py.empty(rel.projections);
 
       rel.records.clear();
@@ -343,8 +636,6 @@ resetFacts ::=
       for (let idx of rel.indices) {
          $.emptyIndex(idx);
       }
-
-      $.addFacts(rel, recs);
    }
 
 
@@ -375,24 +666,4 @@ replaceWhere ::=
             $.addFact(rel, newRec);
          }
       }
-   }
-
-
-revertTo ::=
-   function (ver) {
-      let rel = ver.owner;
-
-      $.assert(() => rel.kind === 'base');
-
-      $.prepareVersion(ver);
-
-      for (let rec of ver.added) {
-         $.doRemove(rel, rec);
-      }
-
-      for (let rec of ver.removed) {
-         $.doAdd(rel, rec);
-      }
-
-      $.relationChanged(rel);
    }

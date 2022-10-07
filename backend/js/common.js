@@ -1,8 +1,3 @@
-export function defineProperty(obj, prop, descriptor) {
-   Object.defineProperty(obj, prop, publicDescriptor(descriptor))
-}
-
-
 export function publicDescriptor(descriptor) {
    return {
       enumerable: true,
@@ -28,16 +23,6 @@ export function publicReadonlyPropertyDescriptor(value) {
       writable: false,
       value: value
    }
-}
-
-
-export function defineGetter(obj, prop, func) {
-   defineProperty(obj, prop, {get: func});
-}
-
-
-export function defineReadonly(obj, prop, value) {
-   defineProperty(obj, prop, {value: value});
 }
 
 

@@ -48,10 +48,10 @@ _ <- meta.interspace
 And others
 _ <- meta.interspace
 
-$.effect arg1, arg2, arg3 ::=
+$.effect arg1(), arg2(), arg3() ::=
 _  <- meta.target
 _ ^^^^^^ meta.target meta.$func
-_        ^^^^^^^^^^^^^^^^ meta.target meta.$args
+_        ^^^^^^^^^^^^^^^^^^^^^^ meta.target meta.$args
    follows();
 _  ^^^^^^^^^^ meta.body.multiline meta.definition
    body();

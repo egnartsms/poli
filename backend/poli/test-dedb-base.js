@@ -14,7 +14,8 @@ dedb-projection
 dedb-base
    addFact
    addFacts
-   resetFacts
+   resetRelation
+   releaseVersion
    removeFact
    removeWhere
    baseRelation
@@ -39,7 +40,8 @@ cityInfo ::=
 
 setup ::=
    function () {
-      $.resetFacts($.cityInfo, [
+      $.resetRelation($.cityInfo);
+      $.addFacts($.cityInfo, [
          {city: 'Paris', country: 'France', big: 1},
          {city: 'Marseille', country: 'France', big: 3},
          {city: 'Lyon', country: 'France', big: 2},
@@ -103,6 +105,8 @@ test_version_partial ::=
 
       $.checkLike(ver.added, new Set([{country: 'India', city: 'Chinnai', big: 4}]));
       $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
+
+      $.releaseVersion(ver);
    }
 
 
@@ -119,6 +123,8 @@ test_version_full ::=
          {country: 'Ruthenia', city: 'Odesa', big: 4},
       ]));
       $.checkLike(ver.removed, new Set([{country: 'India', city: 'Delhi', big: 1}]));
+
+      $.releaseVersion(ver);
    }
 
 

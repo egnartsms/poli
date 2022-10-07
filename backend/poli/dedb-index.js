@@ -163,11 +163,14 @@ findSuitableIndex ::=
 
 
 indexAdd ::=
-   function (index, rec) {
+   :Add `rec` to `index`.
+    `attrs` if provided is the source of information instead of `rec`. This is used with entities.
+
+   function (index, rec, attrs=rec) {
       let {tuple} = index;
 
       (function go(lvl, map) {
-         let key = rec[tuple[lvl]];
+         let key = attrs[tuple[lvl]];
 
          if (lvl + 1 === tuple.length) {
             if (tuple.isUnique) {
@@ -210,11 +213,13 @@ indexAdd ::=
 
 
 indexRemove ::=
-   function (index, rec) {
+   :Remove `rec` from `index`.
+    `attrs` if provided is the source of information instead of `rec`. This is used with entities.
+   function (index, rec, attrs=rec) {
       let {tuple} = index;
 
       (function go(lvl, map) {
-         let key = rec[tuple[lvl]];
+         let key = attrs[tuple[lvl]];
 
          if (!map.has(key)) {
             throw new Error(`Index missing fact`);
@@ -222,6 +227,8 @@ indexRemove ::=
 
          if (lvl + 1 === tuple.length) {
             if (tuple.isUnique) {
+               $.assert(() => map.get(key) === rec);
+
                map.delete(key);
             }
             else {
