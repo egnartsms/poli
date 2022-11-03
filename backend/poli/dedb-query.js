@@ -14,7 +14,6 @@ dedb-base
 dedb-index
    Fitness
    tupleFitnessByBindings
-   findSuitableIndex
    refIndex
 dedb-index-instance
    indexRefWithBindings

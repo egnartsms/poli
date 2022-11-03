@@ -53,6 +53,8 @@ dedb-index
 dedb-projection
    projectionFor
 
+dedb-base
+   entity
 -----
 
 visualizeIncrementalUpdateScheme ::=
@@ -63,17 +65,7 @@ visualizeIncrementalUpdateScheme ::=
 
 makeConfig ::=
    function (rel, boundAttrs) {
-      function isNotBound(v) {
-         return !boundAttrs.includes(v);
-      }
-
-      function isDeadBound(v) {
-         return (
-            boundAttrs.includes(v) ||
-            rel.firmVarBindings.has(v) ||
-            rel.fictitiousVars.has(v)
-         )
-      }
+      let firmlyBounds = $.union(boundAttrs, rel.firmVarBindings.keys(), rel.fictitiousVars);
 
       let idxReg = [];
       let vpool = $.makeAnonymousVarPool();
@@ -84,17 +76,17 @@ makeConfig ::=
 
          if (goal.isStateful) {
             if (goal.isDerived) {
-               ffs = $.derivedGoalFulfillments(goal, isDeadBound);
+               ffs = $.derivedGoalFulfillments(goal, firmlyBounds);
             }
             else {
                ffs = $.baseGoalFulfillments(goal);
             }
-
-            ffs = Array.from(ffs);
          }
          else {
-            ffs = Array.from($.funcGoalFulfillments(goal, vpool));
+            ffs = $.funcGoalFulfillments(goal, vpool);
          }
+
+         ffs = Array.from(ffs);
 
          if (ffs.length === 0) {
             throw new Error(`No fulfillments found!`);
@@ -128,23 +120,12 @@ makeConfig ::=
 
 computeJoinSpec ::=
    function (rel, boundAttrs, fulfillments, Dgoal, idxReg, vpool) {
-      let boundVars = [
-         ...rel.firmVarBindings.keys(),
-         ...rel.fictitiousVars,
-         ...boundAttrs
-      ];
+      let firmlyBounds = $.union(rel.firmVarBindings.keys(), rel.fictitiousVars, boundAttrs);
+      let boundVars = [...firmlyBounds];
       let committedChoices = [];
 
       function isBound(lvar) {
          return boundVars.includes(lvar);
-      }
-
-      function isDeadBound(lvar) {
-         return (
-            rel.firmVarBindings.has(lvar) ||
-            rel.fictitiousVars.has(lvar) ||
-            boundAttrs.includes(lvar)
-         )
       }
 
       function topmostUncommittedChoice(goal) {
@@ -273,9 +254,9 @@ computeJoinSpec ::=
 
          $.assert(() => goal.isStateful);
 
-         if (ff.join === 'all') {
+         if (ff.join === 'entity') {
             return {
-               kind: 'all',
+               kind: 'entity',
                subNum: goal.subNum,
                ...propsForCheckExtract(goal.bindings),
                next: null
@@ -285,12 +266,10 @@ computeJoinSpec ::=
          if (ff.join === 'index') {
             let keys = Array.from($.takeWhile(ff.keys, isBound));
 
-            $.assert(() => keys.length > 0);
-
             return {
                kind: 'index',
                subNum: goal.subNum,
-               indexNum: $.registerIndex(idxReg, goal.subNum, ff.index),
+               indexNum: $.registerIndex(idxReg, goal.subNum, ff.tuple),
                indexKeys: keys,
                ...propsForCheckExtract(goal.bindings, keys),
                next: null
@@ -305,7 +284,7 @@ computeJoinSpec ::=
          let toExtract = [];
 
          for (let [attr, lvar] of bindings) {
-            if (isDeadBound(lvar)) {
+            if (firmlyBounds.has(lvar)) {
                continue;
             }
 
@@ -326,16 +305,16 @@ computeJoinSpec ::=
       }
 
       function ffFitness(ff) {
-         if (ff.join === 'all') {
-            return ff.fitness;
-         }
-
          if (ff.join === 'func') {
             return $.all(ff.inVars, isBound) ? ff.fitness : $.Fitness.minimum;
          }
 
+         if (ff.join === 'entity') {
+            return isBound(ff.lvar) ? $.Fitness.entityHit : $.Fitness.minimum;
+         }
+
          if (ff.join === 'index') {
-            return $.tupleFitnessByBounds(ff.index, Array.from(ff.keys, isBound));
+            return $.tupleFitness(ff.tuple, Array.from(ff.keys, isBound));
          }
 
          throw new Error;
@@ -404,23 +383,13 @@ computeJoinSpec ::=
 
             if (bFit > nFit) {
                let choice = topmostUncommittedChoice(bFF.goal);
-               let branches = null;
 
                try {
-                  branches = Array.from(choice.alts, withStackRestored(alt => {
+                  let branches = Array.from(choice.alts, withStackRestored(alt => {
                      committedChoices.push(choice);
                      return buildTree(branchGoals(goals, choice, alt), alt);
                   }));
-               }
-               catch (e) {
-                  if (!(e instanceof $.CannotJoinError) || nFF === null) {
-                     throw e;
-                  }
 
-                  // Try the no-branching (nFF) fulfillment
-               }
-
-               if (branches !== null) {
                   addTail({
                      kind: 'either',
                      choice,
@@ -428,6 +397,17 @@ computeJoinSpec ::=
                   });
 
                   break;
+               }
+               catch (e) {
+                  if (!(e instanceof $.CannotJoinError)) {
+                     throw e;
+                  }
+
+                  if (nFF === null) {
+                     throw e;
+                  }
+
+                  // Try the no-branching (nFF) fulfillment
                }
             }
 
@@ -504,14 +484,15 @@ funcGoalFulfillments ::=
       }
    }
 
+
 baseGoalFulfillments ::=
    function* (goal) {
       let {bindings, rel} = goal;
 
-      for (let {index} of rel.myInsts) {
+      for (let {tuple} of rel.indices) {
          let keys = [];
 
-         for (let attr of index) {
+         for (let attr of tuple) {
             if (!bindings.has(attr)) {
                break;
             }
@@ -523,74 +504,62 @@ baseGoalFulfillments ::=
             yield {
                goal,
                join: 'index',
-               index,
+               tuple,
                keys
             }
          }
       }
+
+      if (rel.protoEntity !== null) {
+         $.assert(() => bindings.has($.entity));
+
+         yield {
+            goal,
+            join: 'entity',
+            lvar: bindings.get($.entity)
+         }
+      }
    }
 
+
 derivedGoalFulfillments ::=
-   function* (goal, isDeadBound) {
+   function* (goal, firmlyBounds) {
       let {bindings, rel} = goal;
 
-      for (let sourceIndex of rel.indices) {
-         let index = [];
-         let keys = [];
-         let worked = false;
+      for (let fullTuple of rel.tuples) {
+         let tuple = $.reduceTuple(
+            fullTuple, attr => bindings.has(attr) && firmlyBounds.has(bindings.get(attr))
+         );
+         let keys = Array.from($.mapStop(tuple, attr => bindings.get(attr)));
 
-         for (let attr of sourceIndex) {
-            if (!bindings.has(attr)) {
-               break;
-            }
-
-            let lvar = bindings.get(attr);
-
-            if (!isDeadBound(lvar)) {
-               index.push(attr);
-               keys.push(lvar);
-            }
-
-            worked = true;
-         }
-
-         if (!worked) {
+         if (keys.length === 0 && !tuple.isNoMatchFine) {
             continue;
          }
 
-         if (index.length === 0) {
-            yield {
-               goal,
-               join: 'all',
-               fitness: sourceIndex.isUnique ? $.Fitness.uniqueHit : $.Fitness.hit,
-            }
-         }
-         else {
-            index.isUnique = sourceIndex.isUnique;
-
-            yield {
-               goal,
-               join: 'index',
-               index,
-               keys
-            }
+         yield {
+            goal,
+            join: 'index',
+            tuple,
+            keys
          }
       }
    }
 
+
 registerIndex ::=
-   function (registry, subNum, index) {
-      let n = registry.findIndex(({subNum: xSubNum, index: xIndex}) => {
-         return xSubNum === subNum && $.arraysEqual(xIndex, index);
+   function (registry, subNum, tuple) {
+      let n = registry.findIndex(({subNum: xSubNum, tuple: xTuple}) => {
+         return xSubNum === subNum && $.arraysEqual(xTuple, tuple);
       });
 
       if (n !== -1) {
          return n;
       }
 
-      registry.push({subNum, index});
+      registry.push({subNum, tuple});
       return registry.length - 1;
    }
+
 
 makeAnonymousVarPool ::=
    function () {
@@ -600,6 +569,7 @@ makeAnonymousVarPool ::=
       });
    }
 
+
 getHelperVar ::=
    function (vpool) {
       let lvar;
@@ -608,7 +578,7 @@ getHelperVar ::=
          lvar = vpool[vpool.idx];
       }
       else {
-         lvar = `--anon-${vpool.length}`;
+         lvar = `-anon-${vpool.length}`;
          vpool.push(lvar);
       }
 
@@ -617,15 +587,18 @@ getHelperVar ::=
       return lvar;      
    }
 
+
 resetVarPool ::=
    function (vpool) {
       vpool.idx = 0;
    }
+
 
 getDumbVar ::=
    function (vpool) {
       vpool.dumbVarUsed = true;
       return $.dumbVar;
    }
+
    
 dumbVar ::= '-dumb'

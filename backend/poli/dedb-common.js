@@ -1,3 +1,0 @@
-non-existing
-   * as: someName
------

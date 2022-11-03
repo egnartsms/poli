@@ -20,7 +20,7 @@ dedb-base
    removeWhere
    baseRelation
    getRecords
-   refSubVersion
+   refProjectionVersion
 dedb-version
    refRelationState
 
@@ -93,7 +93,7 @@ test_get_records :thunk:=
 
 
 test_version_partial :thunk:=
-   let ver = $.refSubVersion($.cityInfo, {country: 'India'});
+   let ver = $.refProjectionVersion($.cityInfo, {country: 'India'});
 
    $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
    $.removeWhere($.cityInfo, {city: 'Delhi'});
@@ -105,7 +105,7 @@ test_version_partial :thunk:=
 
 
 test_version_full :thunk:=
-   let ver = $.refSubVersion($.cityInfo, {});
+   let ver = $.refProjectionVersion($.cityInfo, {});
 
    $.addFact($.cityInfo, {country: 'India', city: 'Chinnai', big: 4});
    $.addFact($.cityInfo, {country: 'Ruthenia', city: 'Odesa', big: 4});

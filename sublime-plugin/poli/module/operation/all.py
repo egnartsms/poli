@@ -79,16 +79,16 @@ def setup_module_view(view):
     view.assign_syntax(LANG_SUBLIME_SYNTAX[lang])
     view.set_scratch(True)
     view.set_read_only(True)
-    # This is needed because otherwise Sublime tries to fix ws in non-edit-region
-    # parts of the view which leads to undoing.
-    view.settings().set('trim_automatic_white_space', False)
+    # # This is needed because otherwise Sublime tries to fix ws in non-edit-region
+    # # parts of the view which leads to undoing.
+    # view.settings().set('trim_automatic_white_space', False)
     poli_info[view] = {
         'kind': Kind.module,
         'lang': lang
     }
 
-    if lang == 'js':
-        highlight_unknown_names(view)
+    # if lang == 'js':
+    #     highlight_unknown_names(view)
 
 
 def teardown_module_view(view):

@@ -644,7 +644,7 @@ class Module {
          [factory, set$] = Function(source)();
       }
       catch (e) {
-         console.error(source);
+         console.error(`Failed to compile: ${this.name}.${target}`);
          targetBinding.defineAsTarget(rigidGetter(() => { throw e }));
          return;
       }

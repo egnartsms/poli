@@ -1,5 +1,7 @@
 dedb-query
    clearProjectionCache
+test-dedb-lifetime
+   * as: lifetime
 test-dedb-base
    * as: base
 test-dedb-base-entity
@@ -19,8 +21,9 @@ test-dedb-agg-1
 runTests ::=
    function () {
       console.time('tests');
-      $.runTestsIn('base', $.base);
-      $.runTestsIn('base-entity', $.baseEntity);
+      $.runTestsIn('lifetime', $.lifetime);
+      // $.runTestsIn('base', $.base);
+      // $.runTestsIn('base-entity', $.baseEntity);
       // $.runTestsIn('derived', $.derived);
       // $.runTestsIn('disjunction', $.disjunction);
       // $.runTestsIn('func-1', $.func1);
@@ -30,6 +33,7 @@ runTests ::=
       console.log('--- DONE');
       console.timeEnd('tests')
    }
+
 
 runTestsIn ::=
    function (moduleName, ns) {
@@ -56,4 +60,3 @@ runTestsIn ::=
          }
       }
    }
-   

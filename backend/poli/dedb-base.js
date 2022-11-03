@@ -38,7 +38,7 @@ dedb-index
    tupleFitnessByBindings
    tupleFromSpec
    Fitness
-   findSuitableIndex
+   packBestIndex
    rebuildIndex
    indexAdd
    indexRemove
@@ -57,6 +57,10 @@ dedb-relation
 dedb-pyramid
    * as: py
 
+dedb-tag
+   tag
+   recur
+
 -----
 
 baseRelation ::=
@@ -71,8 +75,8 @@ baseRelation ::=
          name,
          attrs,
          protoEntity,
-         indices: [],
-         projections: $.py.make(attrs),
+         indices: new Map,
+         projections: $.py.make(protoEntity ? [$.entity, ...attrs] : attrs),
          records: new Set,
       };
 
@@ -80,9 +84,7 @@ baseRelation ::=
          let tuple = $.tupleFromSpec(spec);
          let index = $.makeIndex(rel, tuple);
 
-         index.refCount += 1;  // 'index' is going to be around forever
-
-         rel.indices.push(index);
+         $.packAddIndex(rel.indices, index);
       }
 
       if (protoEntity !== null) {
@@ -93,46 +95,17 @@ baseRelation ::=
    }
 
 
-refSubVersion ::=
-   function (rel, bindings) {
-      let proj = $.projectionFor(rel, bindings);
-
-      $.ensureTopmostPristine(proj);
-      $.versionAddRef(proj.ver);
-
-      return proj.ver;
-   }
-
-
-releaseVersion ::=
-   function (ver) {
-      let {proj} = ver;
-
-      $.assert(() => ver.refCount > 0 && ver.proj.refCount > 0);
-
-      ver.refCount -= 1;
-      proj.refCount -= 1;
-
-      if (proj.refCount === 0) {
-         $.py.remove(proj.rel.projections, proj.bindings);
-      }
-   }
-
-
-projectionFor ::=
-   function (rel, bindings) {
-      return $.py.setDefault(rel.projections, bindings, () => $.makeProjection(rel, bindings));
-   }
-
+*** Projections ***
 
 makeProjection ::=
    function (rel, bindings) {
       let proj = {
+         kind: 'proj',
          rel,
          bindings,
-         refCount: 0,
-         ver: null,
+         tags: new Set,
          validRevDeps: new Set,
+         ver: null,
       };
 
       proj.ver = $.makeVersionFor(proj);
@@ -141,11 +114,20 @@ makeProjection ::=
    }
 
 
+projectionTaggables ::=
+   function* (proj) {
+      yield proj;
+   }
+
+
+*** Versions ***
+
 makeVersionFor ::=
    function (proj) {
       return {
+         kind: 'ver',
          proj,
-         refCount: 0,
+         tags: new Set,
          added: new Set,
          removed: new (proj.rel.protoEntity === null ? Set : Map),
          next: null,
@@ -153,20 +135,7 @@ makeVersionFor ::=
    }
 
 
-isVersionPristine ::=
-   function (ver) {
-      return ver.added.size === 0 && ver.removed.size === 0;
-   }
-
-
-versionAddRef ::=
-   function (ver) {
-      ver.refCount += 1;
-      ver.proj.refCount += 1;
-   }
-
-
-ensureTopmostPristine ::=
+reifyCurrentVersion ::=
    function (proj) {
       if ($.isVersionPristine(proj.ver)) {
          return;
@@ -176,6 +145,27 @@ ensureTopmostPristine ::=
 
       proj.ver.next = nver;
       proj.ver = nver;
+   }
+
+
+isVersionPristine ::=
+   function (ver) {
+      return ver.added.size === 0 && ver.removed.size === 0;
+   }
+
+
+releaseVersion ::=
+   function (ver) {
+      let {proj} = ver;
+
+      $.assert(() => ver.refCount > 0 && proj.refCount > 0);
+
+      ver.refCount -= 1;
+      proj.refCount -= 1;
+
+      if (proj.refCount === 0) {
+         $.py.remove(proj.rel.projections, proj.bindings);
+      }
    }
 
 
@@ -252,6 +242,18 @@ store ::=
 myRelation ::=
    :Entity prototype property that points back to the relation object.
    Symbol.for('poli.myRelation')
+
+
+entity ::=
+   :Store property that points to the entity.
+
+    - store[$.myself] === entity
+    - backpatch[$.myself] === entity (because Object.getPrototypeOf(backpatch) === store)
+
+    NOTE: it is important that this property is a string rather than symbol. This has to do with
+    pyramid algorithms.
+
+   'poli.entity'
 
 
 populateProtoEntity ::=
@@ -350,7 +352,7 @@ getRecords ::=
    function (rel, bindings) {
       $.check(rel.kind === 'base');
 
-      let idx = $.findSuitableIndex(rel.indices, bindings);
+      let idx = $.packBestIndex(rel.indices, bindings);
       let recs;
 
       if (idx === undefined) {
@@ -609,20 +611,26 @@ optimizeEntityBackpatch ::=
 
 makeEntity ::=
    function (rel, data) {
-      let store = {};
+      let store = {
+         [$.entity]: null  // will be set to the entity itself
+      };
 
       for (let attr of rel.attrs) {
          store[attr] = Object.hasOwn(data, attr) ? data[attr] : undefined;
       }
 
-      return {
+      let entity = {
          __proto__: rel.protoEntity,
          [$.store]: store,
          [$.backpatch]: {
             __proto__: store,
             [$.nextBackpatch]: null
          }
-      }
+      };
+
+      store[$.entity] = entity;
+
+      return entity;
    }
 
 

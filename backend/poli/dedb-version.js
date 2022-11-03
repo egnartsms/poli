@@ -3,6 +3,7 @@ common
    check
    isA
    isIterableEmpty
+   noUndefinedProps
 set-map
    deleteIntersection
    greaterLesser
@@ -10,10 +11,56 @@ set-map
    setAll
 dedb-projection
    projectionRecords
+   tagProjection
 dedb-base
-   entity
+   * as: base
+dedb-derived
+   * as: derived
+dedb-tag
+   tag
+   recur
 
 -----
+
+versionTaggables ::=
+   function* (ver) {
+      yield ver;
+      yield ver.proj;
+   }
+
+
+---------------------------------------------
+Everything below is the old code
+
+refProjectionVersion ::=
+   function (rel, bindings) {
+      bindings = $.noUndefinedProps(bindings);
+
+      if (rel.kind === 'base') {
+         return $.base.refProjectionVersion(rel, bindings);
+      }
+      else if (rel.kind === 'derived') {
+         return $.derived.refProjectionVersion(rel, bindings);
+      }
+      else {
+         throw new Error(`Unexpected rel type: '${rel.name}'`);
+      }
+   }
+
+
+releaseVersion ::=
+   function (ver) {
+      if (ver.proj.rel.kind === 'base') {
+         return $.base.releaseVersion(ver);
+      }
+      else if (ver.proj.rel.kind === 'derived') {
+         return $.derived.releaseVersion(ver);
+      }
+      else {
+         throw new Error(`Unexpected rel type: '${ver.proj.rel.name}'`);
+      }
+   }
+
 
 refState ::=
    function (proj) {

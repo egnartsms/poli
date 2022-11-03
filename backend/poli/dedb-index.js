@@ -7,28 +7,18 @@ common
    hasOwnDefinedProperty
    hasOwnProperty
    greatestBy
+
+dedb-projection
+   projectionFor
+
+dedb-tag
+   tag
+   recur
+
+set-map
+   setDefault
+
 -----
-"Tuple" means logical index: an array of columns that constitute an index. "Index" means
-the actual data structure containing records/entities.
-
-unique ::= 1
-
-tupleFromSpec ::=
-   function (spec) {
-      let tuple;
-
-      if (spec[spec.length - 1] === $.unique) {
-         tuple = spec.slice(0, -1);
-         tuple.isUnique = true;
-      }
-      else {
-         tuple = spec.slice();
-         tuple.isUnique = false;
-      }
-
-      return tuple;
-   }
-
 
 isTuplePrefixOf ::=
    function (prefix, bigger) {
@@ -60,199 +50,296 @@ superIndexOfAnother ::=
       }
    }
 
+
 copyIndex ::=
    function (index) {
       return Object.assign(Array.from(index), {isUnique: index.isUnique});
    }
 
-reduceIndex ::=
-   function (index, weedOut) {
-      return Object.assign(index.filter(attr => !weedOut(attr)), {
-         isUnique: index.isUnique
-      })
-   }
 
 isFullyCoveredBy ::=
    function (index, boundAttrs) {
       return $.all(index, attr => boundAttrs.includes(attr));
    }
 
-Fitness ::=
-   ({
-      minimum: -100,  // unless we have that large indices (we don't)
-      hit: 0,         // this must be 0 because of the way we computeFitness()
-      uniqueHit: 1,
-   })
 
-tupleFitnessByBindings ::=
-   function (tuple, bindings) {
-      return $.tupleFitness(
+*** Create indices ***
+
+getBaseIndex ::=
+   function (rel, tuple) {
+      let index = rel.indices.get(tuple.key);
+
+      $.check(index !== undefined, () =>
+         `Index '${tuple.key}' not found on relation '${rel.name}'`
+      );
+
+      return index;
+   }
+
+
+obtainDerivedIndex ::=
+   :Get index identified by 'tuple' on the projection of 'rel' identified by 'bindings'
+
+    Create projection if it does not exist yet. We don't check whether 'tuple' makes sense
+    for 'rel'. Also, don't check for prefix, i.e. if an index (A, B) is available then attempting
+    to get (A) will fail.
+
+   function (rel, bindings, tuple) {
+      let proj = $.projectionFor(rel, bindings);
+
+      // Here some optimizations with 0-length tuple may be implemented (0-length essentially
+      // means "I just want all the records"), for example: use any other existing index in place
+      // of a 0-length one. But for now we don't do any of these. We just create a 0-length index
+      // the same as any other index.
+      let index = proj.indices.get(tuple.key);
+
+      if (index === undefined) {
+         index = $.makeDerivedIndex(proj, tuple);
+
+         // 'index' should be populated if other indices exist at this moment. If none exist, this
+         //  means that the projection was never populated. We enforce this invariant elsewhere.
+         let exIndex = $.packShortestIndex(proj.indices);
+
+         if (exIndex !== undefined) {
+            for (let rec of $.indexRef(exIndex, [])) {
+               $.indexAdd(index, rec);
+            }
+         }
+
+         $.packAddIndex(proj.indices, index);
+      }
+
+      return index;
+   }
+
+
+releaseIndex ::=
+   function (index) {
+      // TODO: replace this ad-hoc with generic function polymorphism
+      if (!Object.hasOwn(index, 'proj')) {
+         return;
+      }
+
+      $.assert(() => index.refCount > 0);
+
+      index.refCount -= 1;
+
+      if (index.refCount === 0) {
+         $.packRemoveIndex(index.proj.indices, index);
+      }
+
+      $.releaseProjection(index.proj);
+   }
+
+
+makeBaseIndex ::=
+   function (rel, tuple) {
+      $.check(tuple.length > 0, `Cannot have 0-length indices on base relations`);
+
+      return {
+         kind: 'index',
+         rel,
          tuple,
-         Array.from(tuple, a => Object.hasOwn(bindings, a))
+         root: Object.assign(new Map, {totalSize: 0}),
+      }
+   }
+
+
+makeDerivedIndex ::=
+   function (proj, tuple) {
+      return {
+         kind: 'index',
+         proj,
+         tags: new Set,
+         tuple,
+         root: tuple.length === 0 ?
+            (tuple.isUnique ? null : new Set) :
+            Object.assign(new Map, {totalSize: 0}),
+      }
+   }
+
+
+indexTaggables ::=
+   function* (index) {
+      if (Object.hasOwn(index, 'rel'))
+         ;
+      else {
+         yield index;
+         yield index.proj;
+      }
+   }
+
+
+*** Index packs ***
+
+makeIndexPack ::=
+   function () {
+      return new Map;
+   }
+
+
+packAddIndex ::=
+   function (pack, index) {
+      $.check(!pack.has(index.tuple.key), () =>
+         `Duplicate index within a pack: '${index.tuple.key}'`
+      );
+
+      pack.set(index.tuple.key, index);
+   }
+
+
+packRemoveIndex ::=
+   function (pack, index) {
+      $.check(pack.has(index.tuple.key), () =>
+         `Index missing in a pack: '${index.tuple.key}'`
+      );
+
+      pack.delete(index.tuple.key);
+   }
+
+
+packBestIndex ::=
+   function (pack, bindings) {
+      return $.greatestBy(
+         pack.values(),
+         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
+         {greaterThan: $.Fitness.minimum}
       );
    }
 
 
-tupleFitness ::=
-   function (tuple, bounds) {
-      let lim = Math.min(tuple.length, bounds.length);
-      let i = 0;
-
-      while (i < lim && bounds[i]) {
-         i += 1;
-      }
-
-      if (i === 0) {
-         return $.Fitness.minimum;
-      }
-
-      let diff = i - tuple.length;
-
-      return (diff === 0 && tuple.isUnique) ? $.Fitness.uniqueHit : diff;
+packShortestIndex ::=
+   function (pack) {
+      // TODO: minimum: is not supported, we don't need this concept of shortest index anymore
+      return $.leastBy(pack.values(), ({tuple}) => tuple.length, {minimum: 0});
    }
 
 
-isUniqueHitByBindings ::=
-   function (index, bindings) {
-      return $.tupleFitnessByBindings(index, bindings) === $.Fitness.uniqueHit;
-   }
-
-
-tupleKeys ::=
-   function (tuple, bindings) {
-      let keys = [];
-
-      for (let attr of tuple) {
-         if (!Object.hasOwn(bindings, attr)) {
-            break;
-         }
-
-         keys.push(bindings[attr]);
-      }
-
-      return keys;
-   }
-
-
-makeIndex ::=
-   function (owner, tuple) {
-      return {
-         refCount: 0,
-         owner,
-         tuple,
-         map: Object.assign(new Map, {totalSize: 0}),
-      }
-   }
-
+*** Operations on indices ***
 
 emptyIndex ::=
    function (index) {
-      index.map.clear();
-      index.map.totalSize = 0;
-   }
-
-
-findSuitableIndex ::=
-   function (indices, bindings) {
-      return $.greatestBy(
-         indices,
-         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
-         $.Fitness.minimum
-      );
+      if (index.tuple.length === 0) {
+         if (index.tuple.isUnique) {
+            index.root = null;
+         }
+         else {
+            index.root.clear();
+         }
+      }
+      else {
+         index.root.clear();
+         index.root.totalSize = 0;
+      }
    }
 
 
 indexAdd ::=
-   :Add `rec` to `index`.
-    `attrs` if provided is the source of information instead of `rec`. This is used with entities.
+   :Add 'rec' to 'index'.
+    'attrs' if provided is the source of information instead of 'rec'. This is used with entities.
+
+    TODO: make this generic function
 
    function (index, rec, attrs=rec) {
       let {tuple} = index;
 
-      (function go(lvl, map) {
-         let key = attrs[tuple[lvl]];
+      if (tuple.length === 0) {
+         if (tuple.isUnique) {
+            $.check(index.root === null, `Unique index violation`);
+            index.root = rec;
+         }
+         else {
+            index.root.add(rec);
+         }
 
-         if (lvl + 1 === tuple.length) {
+         return;
+      }
+
+      function go(node, level) {
+         let key = attrs[tuple[level]];
+
+         if (level + 1 === tuple.length) {
             if (tuple.isUnique) {
-               if (map.has(key)) {
-                  throw new Error(`Unique index violation`);
-               }
-
-               map.set(key, rec);
+               $.check(!node.has(key), `Unique index violation`);
+               node.set(key, rec);
             }
             else {
-               let bucket;
-
-               if (map.has(key)) {
-                  bucket = map.get(key);
-               }
-               else {
-                  bucket = new Set;
-                  map.set(key, bucket);
-               }
-
-               bucket.add(rec);
+               $.setDefault(node, key, () => new Set).add(rec);
             }
          }
          else {
-            let next = map.get(key);
-
-            if (next === undefined) {
-               next = Object.assign(new Map, {
-                  totalSize: 0
-               });
-               map.set(key, next);
-            }
-
-            go(lvl + 1, next);
+            go(
+               $.setDefault(node, key, () => Object.assign(new Map, {totalSize: 0})),
+               level + 1
+            );
          }
 
-         map.totalSize += 1;
-      })(0, index.map);
+         node.totalSize += 1;
+      }
+
+      go(index.root, 0);
    }
 
 
 indexRemove ::=
-   :Remove `rec` from `index`.
-    `attrs` if provided is the source of information instead of `rec`. This is used with entities.
+   :Remove 'rec' from 'index'.
+    'attrs' if provided is the source of information instead of 'rec'. This is used with entities.
+
+    TODO: make this generic function
+
    function (index, rec, attrs=rec) {
       let {tuple} = index;
 
-      (function go(lvl, map) {
-         let key = attrs[tuple[lvl]];
+      if (tuple.length === 0) {
+         if (tuple.isUnique) {
+            $.check(index.root === rec, `Unique index violation`);
+            index.root = null;
+         }
+         else {
+            $.check(index.has(rec), `Index missing record`);
+            index.root.delete(rec);
+         }
 
-         if (!map.has(key)) {
-            throw new Error(`Index missing fact`);
-         }  
+         return;
+      }
 
-         if (lvl + 1 === tuple.length) {
+      function go(node, level) {
+         let key = attrs[tuple[level]];
+
+         $.check(node.has(key), `Index missing record`);
+
+         if (level + 1 === tuple.length) {
             if (tuple.isUnique) {
-               $.assert(() => map.get(key) === rec);
+               $.check(node.get(key) === rec, `Index corrupted`);
 
-               map.delete(key);
+               node.delete(key);
             }
             else {
-               let bucket = map.get(key);
+               let bucket = node.get(key);
+
+               $.check(bucket.has(rec), `Index corrupted`);
 
                bucket.delete(rec);
 
                if (bucket.size === 0) {
-                  map.delete(key);
+                  node.delete(key);
                }
             }
          }
          else {
-            let next = map.get(key);
+            let next = node.get(key);
 
-            go(lvl + 1, next);
+            go(next, level + 1);
 
             if (next.size === 0) {
-               map.delete(key);
+               node.delete(key);
             }
          }
 
-         map.totalSize -= 1;
-      })(0, index.map);
+         node.totalSize -= 1;
+      }
+
+      go(index.root, 0);
    }
 
 
@@ -260,61 +347,41 @@ indexRef ::=
    function* (index, keys) {
       let {tuple} = index;
 
-      yield* (function* rec(map, lvl) {
-         if (lvl === tuple.length) {
-            tuple.isUnique ? (yield map) : (yield* map);
+      if (tuple.length === 0) {
+         if (tuple.isUnique) {
+            if (tuple.root !== null) {
+               yield tuple.root;
+            }
          }
          else {
-            let key = keys[lvl];
+            yield* tuple.root;
+         }
+
+         return;
+      }
+
+      yield* (function* rec(node, level) {
+         if (level === tuple.length) {
+            tuple.isUnique ? (yield node) : (yield* node);
+         }
+         else {
+            let key = keys[level];
 
             if (key === undefined) {
-               // Assuming that keys[lvl + N] will also be undefined for N = 1,2,...
-               for (let sub of map.values()) {
-                  yield* rec(sub, lvl + 1);
+               // Assuming that keys[level + N] will also be undefined for N = 1,2,...
+               for (let sub of node.values()) {
+                  yield* rec(sub, level + 1);
                }
             }
-            else if (map.has(key)) {
-               yield* rec(map.get(key), lvl + 1);
+            else if (node.has(key)) {
+               yield* rec(node.get(key), level + 1);
             }
          }
-      }(index.map, 0));
+      }(index.root, 0));
    }
 
 
 indexRefWithBindings ::=
    function (index, bindings) {
       return $.indexRef(index, $.tupleKeys(index.tuple, bindings));
-   }
-
-
-refIndex ::=
-   function (rel, tuple) {
-      $.check(rel.kind === 'base');
-
-      let idx = rel.indices.find(idx => $.arraysEqual(idx.tuple, tuple));
-
-      $.check(idx !== undefined);
-
-      idx.refCount += 1;
-
-      return idx;
-   }
-
-
-releaseIndex ::=
-   function (idx) {
-      $.check(idx.owner.kind === 'base');
-
-      $.assert(() => idx.refCount > 0);
-
-      idx.refCount -= 1;
-
-      if (idx.refCount === 0) {
-         let indices = idx.owner.indices;
-         let k = indices.findIndex(idx);
-
-         $.assert(() => k !== -1);
-
-         indices.splice(k, 1);
-      }
    }

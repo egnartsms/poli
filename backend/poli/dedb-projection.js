@@ -24,6 +24,28 @@ dedb-pyramid
    * as: py
 -----
 
+Bproj <-- version
+Dproj <-- version, index.
+
+
+obtainProjectionVersion ::=
+   :Get the current version of the projection of 'rel' identified by 'bindings'.
+
+    Create projection if it does not exist yet.
+
+    For derived relation, we returned a "positive" version -- the one that only remembers what has
+    been added. Versions that track removed records should be requested separately
+    ("negative version").
+
+   function (rel, bindings) {
+      let proj = $.projectionFor(rel, bindings);
+
+      $.reifyCurrentVersion(proj);
+
+      return proj.ver;
+   }
+
+
 projectionFor ::=
    function (rel, bindings) {
       return $.py.setDefault(rel.projections, bindings, () => $.makeProjection(rel, bindings));
@@ -49,36 +71,27 @@ makeProjection ::=
    }
 
 
-releaseProjection ::=
+reifyCurrentVersion ::=
+   :Get the version of 'proj' at the current moment of time.
+
    function (proj) {
-      $.check(proj.refCount > 0);
-
-      proj.refCount -= 1;
-
-      if (proj.refCount === 0) {
-         $.py.remove(proj.rel.projections, proj.bindings);
-
-         $.freeProjection(proj);
+      if (proj.rel.kind === 'base') {
+         return $.base.reifyCurrentVersion(proj);
+      }
+      else if (proj.rel.kind === 'derived') {
+         return $.derived.reifyCurrentVersion(proj);
+      }
+      else {
+         throw new Error(`Not impl`);
       }
    }
 
 
 freeProjection ::=
    function (proj) {
-      let {rel} = proj;
+      $.assert(() => proj.rel.kind !== 'derived' || proj.indices.length === 0);
 
-      if (rel.kind === 'base') {
-         // In base projection, there's nothing to free
-      }
-      else if (rel.kind === 'derived') {
-         $.derived.freeProjection(proj);
-      }
-      else if (rel.kind === 'aggregate') {
-         $.agg.freeProjection(proj);
-      }
-      else {
-         throw new Error;
-      }
+      $.py.remove(proj.rel.projections, proj.bindings);
    }
 
 

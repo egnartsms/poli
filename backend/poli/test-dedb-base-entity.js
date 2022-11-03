@@ -8,7 +8,7 @@ dedb-base
    removeEntity
    baseRelation
    makeEntity
-   refSubVersion
+   refProjectionVersion
    runBatch
 
 dedb-projection
@@ -74,7 +74,7 @@ test_basic_attrs :thunk:=
 
 
 test_modify_positive :thunk:=
-   let ver = $.refSubVersion($.country, {continent: 'Asia'});
+   let ver = $.refProjectionVersion($.country, {continent: 'Asia'});
 
    $.Pakistan.population += 9;
 
@@ -86,7 +86,7 @@ test_modify_positive :thunk:=
 
 
 test_modify_negative :thunk:=
-   let ver = $.refSubVersion($.country, {continent: 'Europe'});
+   let ver = $.refProjectionVersion($.country, {continent: 'Europe'});
 
    $.Pakistan.population += 9;
 
@@ -97,7 +97,7 @@ test_modify_negative :thunk:=
 
 
 test_add_entity :thunk:=
-   let ver = $.refSubVersion($.country, {});
+   let ver = $.refProjectionVersion($.country, {});
 
    let Italy = $.makeEntity($.country, {
       name: 'Italy',
@@ -113,7 +113,7 @@ test_add_entity :thunk:=
 test_add_remove_entity :thunk:=
    :Add then remove is regarded as a no-op
 
-   let ver = $.refSubVersion($.country, {});
+   let ver = $.refProjectionVersion($.country, {});
 
    let Italy = $.makeEntity($.country, {
       name: 'Italy',
@@ -129,7 +129,7 @@ test_add_remove_entity :thunk:=
 
 test_remove_add_entity :thunk:=
    :Remove then add is regarded as entity modifications (even if it's not effectively modified).
-   let ver = $.refSubVersion($.country, {});
+   let ver = $.refProjectionVersion($.country, {});
 
    $.removeEntity($.Ruthenia);
    $.addEntity($.Ruthenia);
@@ -139,7 +139,7 @@ test_remove_add_entity :thunk:=
 
 
 test_batch_modify :thunk:=
-   let ver = $.refSubVersion($.country, {continent: 'Europe'});
+   let ver = $.refProjectionVersion($.country, {continent: 'Europe'});
 
    $.runBatch(() => {
       $.Ruthenia.population += 10;

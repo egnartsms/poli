@@ -87,6 +87,21 @@ settify ::=
       return X instanceof Set ? X : new Set(X);
    }
 
+
+wrapWith ::=
+   function (designator, value) {
+      return {
+         [designator]: value
+      }
+   }
+
+
+isWrappedWith ::=
+   function (designator, value) {
+      return value != null && Object.hasOwn(value, designator)
+   }
+
+
 compare ::=
    function (x1, x2) {
       return x1 < x2 ? -1 : x1 > x2 ? 1 : 0;
@@ -173,8 +188,9 @@ moduleNames ::=
       return [...module.entries, ...module.importedNames];
    }
 
+
 greatestBy ::=
-   function (items, keyOf, greaterThan=-Infinity) {
+   function (items, keyOf, {greaterThan=-Infinity}={}) {
       let maxKey = greaterThan;
       let maxItem = undefined;
 
@@ -190,9 +206,10 @@ greatestBy ::=
       return maxItem;
    }
 
+
 leastBy ::=
-   function (items, keyOf) {
-      let minKey = Infinity;
+   function (items, keyOf, {lessThan=Infinity}={}) {
+      let minKey = lessThan;
       let minItem = undefined;
 
       for (let item of items) {
@@ -204,8 +221,9 @@ leastBy ::=
          }
       }
 
-      return [minItem, minKey];
+      return minItem;
    }
+
 
 isIterableEmpty ::=
    function (Xs) {
@@ -338,6 +356,7 @@ parameterize ::=
       }
    }
 
+
 sortedArray ::=
    function (itbl, keyfn) {
       let array = Array.from(itbl);
@@ -351,32 +370,24 @@ sortedArray ::=
       return array;
    }
 
-setDefault ::=
-   function (map, key, producer) {
-      if (map.has(key)) {
-         return map.get(key);
-      }
-      else {
-         let val = producer();
-         map.set(key, val);
-         return val;
-      }
-   }
 
 lessThan ::=
    function (a, b) {
       return a < b;
    }
 
+
 objLessThan ::=
    function (objA, objB) {
       return $.objId(objA) < $.objId(objB);
    }
 
+
 equal ::=
    function equal(a, b) {
       return a === b;
    }
+
 
 firstDuplicate ::=
    function (itbl) {
@@ -391,6 +402,7 @@ firstDuplicate ::=
       }
    }
 
+
 itorFinal ::=
    function (itor) {
       let finalItem = undefined;
@@ -401,6 +413,7 @@ itorFinal ::=
 
       return finalItem;
    }
+
 
 find ::=
    function (itbl, pred) {
@@ -414,6 +427,7 @@ find ::=
          }
       }
    }
+
 
 findIndex ::=
    function (itbl, pred) {
@@ -429,6 +443,7 @@ findIndex ::=
       return -1;
    }
 
+
 indexOf ::=
    function (itbl, item) {
       let i = -1;
@@ -443,6 +458,7 @@ indexOf ::=
       return -1;
    }
 
+
 arraysEqual ::=
    function (A, B, itemsEqual=$.equal) {
       if (A.length !== B.length) {
@@ -456,6 +472,7 @@ arraysEqual ::=
       }
       return true;
    }
+
 
 setsEqual ::=
    function (A, B) {
@@ -477,6 +494,7 @@ setsEqual ::=
 
       return true;
    }
+
 
 allEqual ::=
    function (xs, pred) {
@@ -507,6 +525,7 @@ allEqual ::=
 
       return true;      
    }
+
 
 isLike ::=
    function isLike(A, B) {
@@ -602,10 +621,12 @@ isLike ::=
       return false;
    }
 
+
 checkLike ::=
    function (A, B) {
       $.check($.isLike(A, B));
    }
+
 
 enumerate ::=
    function* (xs) {
@@ -705,6 +726,7 @@ chain ::=
       }
    }
 
+
 takeWhile ::=
    function* (xs, pred) {
       for (let x of xs) {
@@ -713,6 +735,21 @@ takeWhile ::=
          }
       }
    }
+
+
+mapStop ::=
+   function* (xs, fnMapper) {
+      for (let x of xs) {
+         let y = fnMapper(x);
+
+         if (y === undefined) {
+            break;
+         }
+
+         yield y;
+      }
+   }
+
 
 reduce ::=
    function (xs, rfn) {
@@ -940,5 +977,75 @@ m2mAddAll ::=
 
       for (let b of bs) {
          $.mmapAdd(mm[$.m2mCompanion], b, a);
+      }
+   }
+
+Queue ::=
+   :This class is duplicated with the bootloader
+
+   class Queue {
+      constructor() {
+         this.front = [];
+         this.rear = [];
+      }
+
+      enqueue(item) {
+         this.rear.push(item);
+      }
+
+      enqueueAll(items) {
+         for (let item of items) {
+            this.enqueue(item);
+         }
+      }
+
+      enqueueFirst(item) {
+         this.front.push(item);
+      }
+
+      dequeue() {
+         if (this.front.length === 0) {
+            $.rearToFront(this);
+         }
+
+         return this.front.pop();
+      }
+
+      get isEmpty() {
+         return this.front.length === 0 && this.rear.length === 0;
+      }
+   }
+
+
+rearToFront ::=
+   function (queue) {
+      while (queue.rear.length > 0) {
+         queue.front.push(queue.rear.pop());
+      }
+   }
+
+
+breadthExpansion ::=
+   function ({initial, stopWhen, genMore}) {
+      if (!stopWhen) {
+         stopWhen = () => false;
+      }
+
+      let queue = new $.Queue;
+
+      queue.enqueueAll(initial);
+
+      while (!queue.isEmpty) {
+         let item = queue.dequeue();
+
+         if (stopWhen(item)) {
+            break;
+         }
+
+         let more = genMore(item);
+
+         if (more) {
+            queue.enqueueAll(more);
+         }
       }
    }

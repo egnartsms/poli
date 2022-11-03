@@ -57,6 +57,20 @@ greaterLesser ::=
       return s1.size > s2.size ? [s1, s2] : [s2, s1];
    }
 
+
+setDefault ::=
+   function (map, key, fnCreate) {
+      let value = map.get(key);
+
+      if (value === undefined) {
+         value = fnCreate();
+         map.set(key, value);
+      }
+      
+      return value;
+   }
+
+
 deleteAll ::=
    function (sm, xs) {
       for (let x of xs) {

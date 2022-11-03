@@ -6,7 +6,7 @@ leaf ::= Symbol.for('poli.pyramid-leaf')
 make ::=
    function (attrs) {
       return {
-         attrs,
+         attrs: attrs,
          root: {__proto__: null}
       }
    }
@@ -85,7 +85,7 @@ matching ::=
          for (let attr in node) {
             // attr !== $.leaf because the 'for-in' loop does not iterate over symbols
             let subnode = node[attr].get(rec[attr]);
-            
+
             if (subnode !== undefined) {
                yield* go(subnode);
             }
