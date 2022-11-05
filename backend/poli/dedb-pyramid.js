@@ -54,9 +54,7 @@ remove ::=
    function (py, bindings) {
       let node = py.root;
 
-      for (let i = 0; i < py.attrs.length; i += 1) {
-         let attr = py.attrs[i];
-
+      for (let attr of py.attrs) {
          if (!Object.hasOwn(bindings, attr)) {
             continue;
          }

@@ -103,7 +103,6 @@ makeProjection ::=
          kind: 'proj',
          rel,
          bindings,
-         tags: new Set,
          validRevDeps: new Set,
          ver: null,
       };
@@ -114,9 +113,9 @@ makeProjection ::=
    }
 
 
-projectionTaggables ::=
-   function* (proj) {
-      yield proj;
+freeProjection ::=
+   function (proj) {
+      $.py.remove(proj.rel.projections, proj.bindings);
    }
 
 
@@ -124,14 +123,17 @@ projectionTaggables ::=
 
 makeVersionFor ::=
    function (proj) {
-      return {
+      let ver = {
          kind: 'ver',
          proj,
-         tags: new Set,
          added: new Set,
          removed: new (proj.rel.protoEntity === null ? Set : Map),
          next: null,
-      }
+      };
+
+      $.link(ver, proj);
+
+      return ver;
    }
 
 
@@ -151,21 +153,6 @@ reifyCurrentVersion ::=
 isVersionPristine ::=
    function (ver) {
       return ver.added.size === 0 && ver.removed.size === 0;
-   }
-
-
-releaseVersion ::=
-   function (ver) {
-      let {proj} = ver;
-
-      $.assert(() => ver.refCount > 0 && proj.refCount > 0);
-
-      ver.refCount -= 1;
-      proj.refCount -= 1;
-
-      if (proj.refCount === 0) {
-         $.py.remove(proj.rel.projections, proj.bindings);
-      }
    }
 
 
@@ -224,19 +211,19 @@ batch ::=
    null
 
 
+store ::=
+   :Entity property that points to the object which actually stores all the attributes.
+   Symbol.for('poli.store')
+
+
 backpatch ::=
    :Entity property that points to the most recent "backpatch" object of the entity.
    Symbol.for('poli.backpatch')
 
 
 nextBackpatch ::=
-   :Each backpatch points to its successor with this symbol property.
+   :Backpatch property that points to the next backpatch.
    Symbol.for('poli.nextBackpatch')
-
-
-store ::=
-   :Entity property that points to the object which actually stores all the attributes.
-   Symbol.for('poli.store')
 
 
 myRelation ::=
@@ -247,10 +234,10 @@ myRelation ::=
 entity ::=
    :Store property that points to the entity.
 
-    - store[$.myself] === entity
-    - backpatch[$.myself] === entity (because Object.getPrototypeOf(backpatch) === store)
+    - store[$.entity] === entity
+    - backpatch[$.entity] === entity (because Object.getPrototypeOf(backpatch) === store)
 
-    NOTE: it is important that this property is a string rather than symbol. This has to do with
+    NOTE: it is required that this property is a string rather than a symbol. This has to do with
     pyramid algorithms.
 
    'poli.entity'

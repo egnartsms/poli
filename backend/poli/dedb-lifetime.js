@@ -47,24 +47,35 @@ ensureNodeFor ::=
    }
 
 
+connectParentChild ::=
+   function (parent, child) {
+      if (child.parent !== null) {
+         $.unconnectFromParent(child);
+      }
+
+      parent.children.add(child);
+      child.parent = parent;
+   }
+
+
+unconnectFromParent ::=
+   function (node) {
+      node.parent.children.delete(node);
+      node.parent = null;
+   }
+
+
 connectNodes ::=
    function (nFrom, nTo) {
       if (nTo.parent === null) {
          $.connectParentChild(nFrom, nTo);
       }
 
+      $.check(!nFrom.outgoing.has(nTo));
+      $.check(!nTo.ingoing.has(nFrom));
+
       nFrom.outgoing.add(nTo);
       nTo.ingoing.add(nFrom);
-   }
-
-
-connectParentChild ::=
-   function (parent, child) {
-      $.check(child.parent === null);
-      $.check(!parent.children.has(child));
-
-      parent.children.add(child);
-      child.parent = parent;
    }
 
 
@@ -77,8 +88,7 @@ unconnectNodes ::=
       nTo.ingoing.delete(nFrom);
 
       if (nTo.parent === nFrom) {
-         nTo.parent = null;
-         nFrom.children.delete(nTo);
+         $.unconnectFromParent(nTo);
       }
    }
 
@@ -91,8 +101,6 @@ addRoot ::=
 
 link ::=
    function (from, to) {
-      // $.check($.obj2node.has(from), `Cannot link from an unknown object`);
-
       let nFrom = $.ensureNodeFor(from);
       let nTo = $.ensureNodeFor(to);
 
@@ -102,9 +110,7 @@ link ::=
 
 linkN ::=
    function (from, toMany) {
-      $.check($.obj2node.has(from), `Cannot link from an unknown object`);
-
-      let nFrom = $.obj2node.get(from);
+      let nFrom = $.ensureNodeFor(from);
 
       for (let to of toMany) {
          $.connectNodes(nFrom, $.ensureNodeFor(to));
@@ -120,13 +126,60 @@ unlink ::=
       $.unconnectNodes(nFrom, nTo);
 
       if (nTo.parent === null) {
-         $.fixDamagedSubtree(nTo);
+         $.fixOrphanedSubtree(nTo);
       }
    }
 
 
-fixDamagedSubtree ::=
+relink ::=
+   function (from, objNo, objYes) {
+      if (objNo === objYes) {
+         return;
+      }
+
+      let nFrom = $.obj2node.get(from);
+      let nNo = $.obj2node.get(objNo);
+      let nYes = $.ensureNodeFor(objYes);
+
+      $.unconnectNodes(nFrom, nNo);
+      $.connectNodes(nFrom, nYes);
+
+      if (nNo.parent === null) {
+         $.fixOrphanedSubtree(nNo);
+      }
+   }
+
+
+relinkN ::=
+   function (from, objsNo, objsYes) {
+      let nFrom = $.obj2node.get(from);
+      let toRemove = new Set($.map(objsNo, obj => $.obj2node.get(obj)));
+      let toAdd = new Set($.map(objsYes, obj => $.obj2node.get(obj)));
+
+      $.deleteIntersection(toRemove, toAdd);
+
+      for (let node of toRemove) {
+         $.unconnectNodes(nFrom, node);
+      }
+
+      for (let node of toAdd) {
+         $.connectNodes(nFrom, node);
+      }
+
+      for (let node of toRemove) {
+         if (node.parent === null) {
+            $.fixOrphanedSubtree(node);
+         }
+      }
+   }
+
+
+fixOrphanedSubtree ::=
+   :Fix a subtree whose root has been disconnected from the spanning tree
+
    function (subroot) {
+      $.check(subroot.parent === null);
+
       // Look whether 'subroot' can be easily hung up at another spot
       let newParent = $.leastBy(subroot.ingoing, (node) => {
          let depth = 0;

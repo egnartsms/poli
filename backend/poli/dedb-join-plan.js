@@ -55,6 +55,7 @@ dedb-projection
 
 dedb-base
    entity
+
 -----
 
 visualizeIncrementalUpdateScheme ::=
@@ -543,6 +544,15 @@ derivedGoalFulfillments ::=
             keys
          }
       }
+   }
+
+fuck :css:=
+   li.hey {
+      border-width: 20px;
+   }
+
+   p.gay {
+      margin-top: 10rem;
    }
 
 

@@ -125,10 +125,17 @@ contexts:
     - match: ''
       pop: 2
 
-  definition-1:
-    - meta_content_scope: meta.body.oneline meta.definition
+  pop-at-newline:
     - match: ^
       pop: true
+
+  pop-immediately:
+    - match: ''
+      pop: true
+
+  definition-1:
+    - meta_content_scope: meta.body.oneline meta.definition
+    - include: pop-at-newline
 
   body-*:
     - meta_content_scope: meta.body.multiline
@@ -138,8 +145,7 @@ contexts:
       captures:
         1: punctuation.definition.docstring
       set: docstring
-    - match: ^
-      pop: true
+    - include: pop-at-newline
 
   docstring:
     - meta_content_scope: meta.docstring comment.block.docstring
@@ -198,40 +204,44 @@ contexts:
 
   def/js:
     - match: ''
-      set:
-        - definition-*
-        - embedded-*/js
+      set: [definition-*, embedded-*/js]
 
   embedded-1/js:
+    - include: pop-at-newline
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
-      with_prototype:
-        - match: ^
-          pop: true
+      embed: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      embed_scope: source.js
+      escape: ^
 
   embedded-*/js:
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      set:
+        -
+          - meta_content_scope: source.js
+          - include: pop-immediately
+        - Packages/JavaScript/JavaScript.sublime-syntax#expression
       with_prototype:
         - include: pop-at-starting-line
         - include: smart-empty-lines
 
   def/body:
     - match: ''
-      set:
-        - definition-*
-        - embedded-*/body
+      set: [definition-*, embedded-*/body]
 
   embedded-1/body:
+    - include: pop-at-newline
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
-      with_prototype:
-        - match: ^
-          pop: true
+      embed: Packages/JavaScript/JavaScript.sublime-syntax#statements
+      embed_scope: source.js
+      escape: ^
 
   embedded-*/body:
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
+      set:
+        -
+          - meta_content_scope: source.js
+          - include: pop-immediately
+        - Packages/JavaScript/JavaScript.sublime-syntax#statements
       with_prototype:
         - include: pop-at-starting-line
         - include: smart-empty-lines

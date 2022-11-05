@@ -40,7 +40,6 @@ hasAny ::=
 deleteIntersection ::=
    :Works with Maps and Sets, in all combinations
    function (sm1, sm2) {
-      // any of the 4 combinations of set and map are possible
       let [G, L] = $.greaterLesser(sm1, sm2);
 
       for (let x of L.keys()) {

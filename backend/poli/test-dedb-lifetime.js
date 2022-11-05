@@ -100,3 +100,20 @@ test_complex_tree_rebuild :thunk:=
 
    $.check($.deadObjects === null);
    $.check($.obj2node.get(B).parent === $.obj2node.get(E));
+
+
+test_complex_tree_dead_circle :thunk:=
+   let [A, B, C, D, E] = $.makeObjects();
+
+   $.addRoot(A);
+   $.link(A, B);
+   $.link(A, D);
+   $.link(B, C);
+   $.link(C, D);
+   $.link(D, E);
+   $.link(E, B);
+
+   $.unlink(A, B);
+   $.unlink(A, D);
+
+   $.checkLike($.deadObjects, new Set([B, C, D, E]));
