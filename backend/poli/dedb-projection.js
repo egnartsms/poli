@@ -25,7 +25,7 @@ dedb-pyramid
 -----
 
 Bproj <-- version
-Dproj <-- version, index.
+Dproj <-- version, index
 
 
 obtainProjectionVersion ::=
@@ -76,10 +76,10 @@ reifyCurrentVersion ::=
 
    function (proj) {
       if (proj.rel.kind === 'base') {
-         return $.base.reifyCurrentVersion(proj);
+         $.base.reifyCurrentVersion(proj);
       }
       else if (proj.rel.kind === 'derived') {
-         return $.derived.reifyCurrentVersion(proj);
+         $.derived.reifyCurrentVersion(proj);
       }
       else {
          throw new Error(`Not impl`);
@@ -89,7 +89,10 @@ reifyCurrentVersion ::=
 
 freeProjection ::=
    function (proj) {
-      $.assert(() => proj.rel.kind !== 'derived' || proj.indices.length === 0);
+      // TODO: indices are actually not guaranteed to be freed before the projection itself
+      // (because of circular structures)
+      //
+      // $.assert(() => proj.rel.kind !== 'derived' || // proj.indices.length === 0);
 
       $.py.remove(proj.rel.projections, proj.bindings);
    }
@@ -180,6 +183,8 @@ referentialSize ::=
 
 projectionRecords ::=
    function (proj) {
+      throw new Error(`Not impl`);
+
       if (proj.kind === 'derived') {
          return proj.records;
       }

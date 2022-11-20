@@ -4,30 +4,24 @@ common
    isA
    isIterableEmpty
    noUndefinedProps
+
 set-map
    deleteIntersection
    greaterLesser
    addAll
    setAll
+
 dedb-projection
    projectionRecords
    tagProjection
+
 dedb-base
    * as: base
+
 dedb-derived
    * as: derived
-dedb-tag
-   tag
-   recur
 
 -----
-
-versionTaggables ::=
-   function* (ver) {
-      yield ver;
-      yield ver.proj;
-   }
-
 
 ---------------------------------------------
 Everything below is the old code

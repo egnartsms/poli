@@ -61,9 +61,11 @@ dedb-version
 
 dedb-index
    copyIndex
-   tupleFromSpec
    reduceIndex
    refProjectionIndex
+
+dedb-tuple
+   tupleFromSpec
 
 dedb-index-instance
    refBaseInstance
@@ -80,10 +82,6 @@ dedb-join-plan
 
 dedb-pyramid
    * as: py
-
-dedb-tag
-   tag
-   recur
 
 -----
 
@@ -105,41 +103,30 @@ derivedRelation ::=
          rootGroup,
          goals,
          statefulGoals,
-         // numDeps,
          firmVarBindings,
          fictitiousVars,
          subRoutes,
          vars,
-         entityVars,
-         outVars,
+         idVars,
          attrsNE
       } = $.buildGoalTree(root0, attrs);
 
-      let tuples = Array.from(indexSpecs, $.tupleFromSpec);
-
-      for (let entityVar of entityVars) {
-         if (attrs.includes(entityVar)) {
-            let tuple = tuples.find(tuple => tuple[0] === entityVar);
-
-            // $.check
-            if (tuple === undefined) {
-
-            }
-
+      let availableTuples = Array.from(indexSpecs, $.tupleFromSpec);
+      
+      for (let idVar of idVars) {
+         if (attrs.includes(idVar) && !availableTuples.some(tuple => tuple[0] === idVar)) {
+            availableTuples.push($.tupleFromSpec([idVar]));
          }
-         
       }
 
       return {
          kind: 'derived',
          name: relname,
          attrs,
-         tuples,
+         availableTuples,
          rootGroup,
          goals,
          statefulGoals,
-         // TODO: remove num deps
-         // numDeps,
          firmVarBindings,
          fictitiousVars,
          subRoutes,
@@ -180,7 +167,7 @@ makeProjection ::=
 
       let subIndices = Array.from(
          config.idxReg,
-         ({subNum, tuple}) => $.refProjectionIndex(subVers[subNum].proj, tuple)
+         ({nSub, tuple}) => $.refProjectionIndex(subVers[nSub].proj, tuple)
       );
 
       /*
@@ -203,7 +190,6 @@ makeProjection ::=
          kind: 'proj',
          rel,
          bindings,
-         tags: new Set,
          isValid: false,
          validRevDeps: new Set,
          config,
@@ -219,7 +205,7 @@ makeProjection ::=
       };
 
       $.rebuildProjection(proj);
-      
+
       return proj;
    }
 
@@ -229,8 +215,8 @@ makeSubBindings ::=
       let subBindings = Array.from(rel.statefulGoals, goal => ({...goal.firm}));
 
       for (let [attr, val] of Object.entries(bindings)) {
-         for (let [subNum, subAttr] of rel.subRoutes.get(attr) ?? []) {
-            subBindings[subNum][subAttr] = val;
+         for (let [nSub, subAttr] of rel.subRoutes.get(attr) ?? []) {
+            subBindings[nSub][subAttr] = val;
          }
       }
 
@@ -390,7 +376,7 @@ rebuildProjection ::=
             if (solutions.length === 0) {
                return {
                   subs: [],
-                  minRS: Infinity
+                  rs: Infinity
                }
             }
 
@@ -515,19 +501,19 @@ run ::=
             return;
          }
 
-         let {subNum, toCheck, toExtract} = jnode;
-         let {depNum} = proj.rel.statefulGoals[subNum];
+         let {nSub, toCheck, toExtract} = jnode;
+         let {depNum} = proj.rel.statefulGoals[nSub];
 
          let toExclude;
 
-         if (subNum < Lnum) {
-            toExclude = exclusion.get(subNum);
+         if (nSub < Lnum) {
+            toExclude = exclusion.get(nSub);
 
             if (toExclude === undefined) {
-               let {ver} = proj.subs[subNum];
+               let {ver} = proj.subs[nSub];
 
                toExclude = $.settify($.versionAddedRecords(ver));
-               exclusion.set(subNum, toExclude);
+               exclusion.set(nSub, toExclude);
             }
          }
          else {
@@ -556,7 +542,7 @@ run ::=
          }
       }
 
-      let exclusion = new Map;  // subNum -> Set{rec, ...}
+      let exclusion = new Map;  // nSub -> Set{rec, ...}
       let {ns, subrecs} = proj;
       let {jroot, depNum, toExtract} = spec;
 
@@ -592,8 +578,8 @@ joinFunc ::=
 
 joinRecords ::=
    function (proj, jnode) {
-      let {kind, subNum} = jnode;
-      let {proj: subProj} = proj.subs[subNum];
+      let {kind, nSub} = jnode;
+      let {proj: subProj} = proj.subs[nSub];
       let {ns} = proj;
 
       if (kind === 'all') {

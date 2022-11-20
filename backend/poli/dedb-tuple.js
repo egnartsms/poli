@@ -8,7 +8,7 @@ tupleFromSpec ::=
    function (spec) {
       let tuple;
 
-      if (spec[spec.length - 1] === $.unique) {
+      if (spec.at(-1) === $.unique) {
          tuple = spec.slice(0, -1);
          tuple.isUnique = true;
       }

@@ -20,21 +20,27 @@ common
    singleQuoteJoinComma
    isWrappedWith
    wrapWith
+
 dedb-index
    reduceIndex
    copyIndex
+
 dedb-rec-key
    recKey
    recVal
+
 dedb-relation
    isStatefulRelation
+
 set-map
    deleteAll
    addAll
    intersect
    intersection
+
 dedb-base
-   entity
+   entitySym
+
 -----
 
 and ::=
@@ -89,7 +95,7 @@ or ::=
    }
 
 
-lvarSym ::= Symbol('poli.lvar')
+lvarSym ::= Symbol.for('poli.lvar')
 
 
 makeLvar ::=
@@ -113,14 +119,14 @@ use ::=
 
       - $.use(rel, entityVar, bindings)
 
-    `entityVar` stands for "entity variable". This is to get a hold of the entity itself. Can be
-    provided only if rel is a base entity relation.
+    'entityVar' stands for "entity variable". This is to get a hold of the entity itself. Can be
+     provided only if 'rel' is a base entity relation.
 
    function (rel, bindings) {
+      let entityVar = null;
+
       if (arguments.length === 3) {
-         let entityVar = arguments[1];
-         
-         bindings = arguments[2];
+         [rel, entityVar, bindings] = arguments;
 
          $.check($.isEntityRelation(rel), () =>
             `Entity variable only makes sense for entity relations, used for: '${rel.name}'`
@@ -129,14 +135,9 @@ use ::=
             `Expected entity variable, got this instead: '${entityVar}'`
          );
 
-         bindings[$.entity] = entityVar;
+         entityVar = entityVar[$.lvarSym];
       }
-      else if (arguments.length === 2) {
-         $.check(!Object.hasOwn(bindings, $.entity), () =>
-            `Entity variable supplied to $.use() as part of bindings`
-         )
-      }
-      else {
+      else if (arguments.length !== 2) {
          throw new Error(`$.use(): wrong number of arguments`);
       }
 
@@ -155,6 +156,11 @@ use ::=
 
       {
          let vars = Array.from(looseBindings.values());
+
+         if (entityVar !== null) {
+            vars.push(entityVar);
+         }
+
          let dupVar = $.firstDuplicate(vars);
 
          $.check(dupVar === undefined, () =>
@@ -191,35 +197,34 @@ buildGoalTree ::=
 
       $.checkVarUsage(root1, attrs);
 
-      let vars = $.collectLooseVars(root1);
-      let attrsNE = $.collectNonEvaporatableAttrs(root1, attrs);
-      // TODO: restructure this to 'entityVars'
-      let idVars = new Set($.idvarsBeneath(root1));
-      let outVars = new Set($.concat(attrs, idVars));
-
       let {
          firmVarBindings,
          fictitiousVars,
-         anonymousEntityVars,
          subRoutes,
+         numAnonymousIdVars,
          root: root2,
       } = $.buildTree2(root1, attrs);
 
-      
-      // TODO: remove numDeps
-      // let numDeps = $.setupDepNums(root2);
+      let vars = new Set(
+         $.concat(
+            $.chain($.map($.goalsBeneath(root1), $.goalVars)),
+            $.map($.range(numAnonymousIdVars), $.nthIdVar)
+         )
+      );
+      let attrsNE = $.collectNonEvaporatableAttrs(root2, attrs);
+      // TODO: this is not implemented
+      let idVars = new Set($.idvarsBeneath(root1));
+      let outVars = new Set($.concat(attrs, idVars));
 
       return {
          rootGroup: root2,
-         goals: Array.from($.leavesBeneath(root2)),
-         statefulGoals: Array.from($.filter($.leavesBeneath(root2), g => g.isStateful)),
-         // numDeps,
+         goals: Array.from($.goalsBeneath(root2)),
+         statefulGoals: Array.from($.filter($.goalsBeneath(root2), g => g.isStateful)),
          firmVarBindings,
          fictitiousVars,
-         anonymousEntityVars,
          subRoutes,
          vars,
-         idVars,  // variables v such that: record[v] === #<dependency record>
+         idVars,
          outVars,  // all variables that are copied onto the record being created
          attrsNE  // non-evaporatable
       }
@@ -324,7 +329,7 @@ openClosedVars ::=
          let subOpen = [], subClosed = [];
 
          for (let leaf of goal.leaves) {
-            subOpen.push(new Set(leaf.looseBindings.values()));
+            subOpen.push(new Set($.goalVars(leaf)));
          }
 
          for (let choice of goal.choices) {
@@ -364,6 +369,16 @@ openClosedVars ::=
    }
 
 
+goalVars ::=
+   function* (goal1) {
+      yield* goal1.looseBindings.values();
+
+      if (goal1.entityVar !== null) {
+         yield goal1.entityVar;
+      }
+   }
+
+
 addOpenVar ::=
    function (open, closed, lvar) {
       if (closed.has(lvar))
@@ -378,7 +393,7 @@ addOpenVar ::=
    }
 
 
-leavesBeneath ::=
+goalsBeneath ::=
    :Generate all leaf goals in the given subtree
 
     Works for both v1 and v2 trees (because the nodes have same props).
@@ -408,35 +423,17 @@ isVarSynthetic ::=
    }
 
 
-collectLooseVars ::=
-   function (root1) {
-      return new Set($.chain($.map($.leavesBeneath(root1), g => g.looseBindings.values())));
-   }
-
-
 collectNonEvaporatableAttrs ::=
    function (root1, attrs) {
-      let varsNE = new Set;
-
-      for (let goal1 of $.leavesBeneath(root1)) {
-         if (goal1.rel.kind !== 'derived') {
-            $.addAll(varsNE, goal1.looseBindings.values());
+      let varsNE = new Set(function* () {
+         for (let goal of $.goalsBeneath(root1)) {
+            if (goal.rel.kind !== 'derived') {
+               yield* $.goalVars(goal)
+            }
          }
-      }
+      }());
 
-      $.intersect(varsNE, attrs);
-
-      return varsNE;
-   }
-
-
-idvarsBeneath ::=
-   function* (root1) {
-      for (let goal1 of $.leavesBeneath(root1)) {
-         if (goal1.idvar !== null) {
-            yield goal1.idvar;
-         }
-      }
+      return attrs.filter(attr => varsNE.has(attr));
    }
 
 
@@ -449,22 +446,37 @@ buildTree2 ::=
    function (root1, attrs) {
       let firmVarBindings = new Map;
       let fictitiousVars = new Set;
-      let anonymousEntityVars = new Set;
       let subRoutes = new Map($.map(attrs, a => [a, []]));
-      let vnumFirm = 0;
-      let vnumEntity = 0;
-      let subNum = 0;
+      let nFirmVar = 0;
+      let nIdVar = 0;
+      let nMaxIdVar = -1;
+      let nSub = 0;
 
-      function convertRel(goal1, parentGroup) {
-         let isDerived = goal1.rel.kind === 'derived';
-         let bindings = new Map(goal1.looseBindings);
+      function nextFirmVar(relName) {
+         return `-firm-${relName}-${nFirmVar++}`
+      }
 
-         for (let [attr, val] of goal1.firmBindings) {
-            let lvar = `-firm-${goal1.rel.name}-${vnumFirm++}`;
+      function nextIdVar() {
+         if (nIdVar > nMaxIdVar) {
+            nMaxIdVar = nIdVar;
+         }
+         
+         let lvar = $.nthIdVar(nIdVar);
+
+         nIdVar += 1;
+
+         return lvar;
+      }
+
+      function convertRel(goal, parentGroup) {
+         let bindings = new Map(goal.looseBindings);
+
+         for (let [attr, val] of goal.firmBindings) {
+            let lvar = nextFirmVar(goal.rel.name);
 
             bindings.set(attr, lvar);
 
-            if (isDerived) {
+            if (goal.rel.kind === 'derived') {
                fictitiousVars.add(lvar);
             }
             else {
@@ -472,69 +484,73 @@ buildTree2 ::=
             }
          }
 
-         if ($.isEntityRelation(goal1.rel) && !bindings.has($.entity)) {
-            let lvar = `-entity-${goal1.rel.name}-${vnumEntity++}`;
-
-            bindings.set($.entity, lvar);
-            anonymousEntityVars.add(lvar);
-         }
-
-         if ($.isStatefulRelation(goal1.rel)) {
-            for (let [attr, lvar] of bindings) {
+         if ($.isStatefulRelation(goal.rel)) {
+            for (let [attr, lvar] of goal.looseBindings) {
                if (subRoutes.has(lvar)) {
-                  subRoutes.get(lvar).push([subNum, attr]);
+                  subRoutes.get(lvar).push([nSub, attr]);
                }
+            }
+
+            if (goal.entityVar !== null && subRoutes.has(goal.entityVar)) {
+               subRoutes.get(goal.entityVar).push([nSub, $.entitySym]);
             }
 
             return {
                parentGroup,
-               rel: goal1.rel,
+               rel: goal.rel,
                isStateful: true,
                bindings,
-               isDerived,
-               firm: Object.fromEntries(goal1.firmBindings),
-               // TODO: remove depNum as a concept
-               // depNum: -1,  // will be evaluated separately
-               subNum: subNum++
+               idVar: goal.entityVar ?? (goal.rel.kind === 'derived' ? true : nextIdVar()),
+               firm: Object.fromEntries(goal.firmBindings),
+               nSub: nSub++
             }
          }
          else {
             return {
                parentGroup,
-               rel: goal1.rel,
+               rel: goal.rel,
                isStateful: false,
                bindings,
             }
          }
       }
 
-      function convertGroup(goal1, parentChoice) {
+      function convertGroup(goal, parentChoice) {
          let group = {
             parentChoice,
             leaves: [],
             choices: []
          };
 
-         for (let leaf of goal1.leaves) {
+         for (let leaf of goal.leaves) {
             group.leaves.push(convertRel(leaf, group));
          }
 
-         for (let choice of goal1.choices) {
+         for (let choice of goal.choices) {
             group.choices.push(convertChoice(choice, group));
          }
 
          return group;
       }
 
-      function convertChoice(goal1, parentGroup) {
+      function convertChoice(goal, parentGroup) {
          let choice = {
             parentGroup,
             alts: []
          }
 
-         for (let alt of goal1.alts) {
+         let baseId = nIdVar;
+         let maxId = -1;
+
+         for (let alt of goal.alts) {
+            nIdVar = baseId;
+
             choice.alts.push(convertGroup(alt, choice));
+
+            maxId = Math.max(maxId, nIdVar)
          }
+
+         nIdVar = maxId;
 
          return choice;
       }
@@ -544,48 +560,14 @@ buildTree2 ::=
       return {
          firmVarBindings,
          fictitiousVars,
-         anonymousEntityVars,
          subRoutes,
+         numAnonymousIdVars: nMaxIdVar,
          root: root2
       };
    }
 
 
-setupDepNums ::=
-   function (root2) {
-      let num = 0;
-
-      function processRel(goal) {
-         if (goal.isStateful) {
-            goal.depNum = num;
-            num += 1;
-         }
-      }
-
-      function processGroup(goal) {
-         for (let leaf of goal.leaves) {
-            processRel(leaf);
-         }
-
-         for (let choice of goal.choices) {
-            processChoice(choice);
-         }
-      }
-
-      function processChoice(goal) {
-         let num0 = num;
-         let biggestNum = -1;
-
-         for (let alt of goal.alts) {
-            num = num0;
-            processGroup(alt);
-            biggestNum = Math.max(biggestNum, num);
-         }
-
-         num = biggestNum;      
-      }
-
-      processGroup(root2);
-
-      return num;
+nthIdVar ::=
+   function (n) {
+      return `-id-${n}`;
    }

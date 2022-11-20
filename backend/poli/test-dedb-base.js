@@ -5,12 +5,15 @@ common
    checkThrows
    find
    sortedArray
+
 dedb-query
    getIndex
+
 dedb-projection
    projectionFor
    releaseProjection
    updateProjection
+
 dedb-base
    addFact
    addFacts
@@ -21,11 +24,13 @@ dedb-base
    baseRelation
    getRecords
    refProjectionVersion
+
 dedb-version
    refRelationState
 
 exp-b
    b as: circularName
+
 -----
 
 cityInfo ::=

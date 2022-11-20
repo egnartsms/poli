@@ -32,12 +32,6 @@ dedb-version
 
 dedb-index
    emptyIndex
-   unique
-   tupleKeys
-   isUniqueHitByBindings
-   tupleFitnessByBindings
-   tupleFromSpec
-   Fitness
    packBestIndex
    rebuildIndex
    indexAdd
@@ -45,6 +39,14 @@ dedb-index
    makeIndex
    indexRef
    indexRefWithBindings
+
+dedb-tuple
+   tupleFromSpec
+   unique
+   tupleKeys
+   isUniqueHitByBindings
+   tupleFitnessByBindings
+   Fitness
 
 dedb-projection
    invalidateProjection
@@ -57,9 +59,8 @@ dedb-relation
 dedb-pyramid
    * as: py
 
-dedb-tag
-   tag
-   recur
+dedb-lifetime
+   link
 
 -----
 
@@ -76,7 +77,7 @@ baseRelation ::=
          attrs,
          protoEntity,
          indices: new Map,
-         projections: $.py.make(protoEntity ? [$.entity, ...attrs] : attrs),
+         projections: $.py.make(protoEntity ? [$.entitySym, ...attrs] : attrs),
          records: new Set,
       };
 
@@ -110,12 +111,6 @@ makeProjection ::=
       proj.ver = $.makeVersionFor(proj);
 
       return proj;
-   }
-
-
-freeProjection ::=
-   function (proj) {
-      $.py.remove(proj.rel.projections, proj.bindings);
    }
 
 
@@ -204,11 +199,16 @@ touchProjection ::=
    }
 
 
-***** Entities *****
+*** Entities ***
 
 batch ::=
    :Current open batch: records to add, to remove, and dirty entities.
    null
+
+
+myRelation ::=
+   :Entity prototype property that points back to the relation object.
+   Symbol.for('poli.myRelation')
 
 
 store ::=
@@ -217,7 +217,7 @@ store ::=
 
 
 backpatch ::=
-   :Entity property that points to the most recent "backpatch" object of the entity.
+   :Entity property that points to the most recent backpatch object.
    Symbol.for('poli.backpatch')
 
 
@@ -226,16 +226,11 @@ nextBackpatch ::=
    Symbol.for('poli.nextBackpatch')
 
 
-myRelation ::=
-   :Entity prototype property that points back to the relation object.
-   Symbol.for('poli.myRelation')
-
-
-entity ::=
+entitySym ::=
    :Store property that points to the entity.
 
-    - store[$.entity] === entity
-    - backpatch[$.entity] === entity (because Object.getPrototypeOf(backpatch) === store)
+    - store[$.entitySym] === entity
+    - backpatch[$.entitySym] === entity (because Object.getPrototypeOf(backpatch) === store)
 
     NOTE: it is required that this property is a string rather than a symbol. This has to do with
     pyramid algorithms.
@@ -290,8 +285,8 @@ runBatch ::=
       $.check($.batch === null, `Nested batches not supported`);
 
       let batch = {
-         removedRecords: new Map,
-         addedRecords: new Map,
+         addedFacts: new Map,
+         removedFacts: new Map,
          dirtyEntities: new Map,
       };
 
@@ -304,11 +299,11 @@ runBatch ::=
          $.batch = null;
       }
 
-      for (let [rec, rel] of batch.addedRecords) {
+      for (let [rec, rel] of batch.addedFacts) {
          $.addFact(rel, rec);
       }
 
-      for (let [rec, rel] of batch.removedRecords) {
+      for (let [rec, rel] of batch.removedFacts) {
          $.removeFact(rel, rec);
       }
 
@@ -373,14 +368,14 @@ addFact ::=
       $.check(rel.protoEntity === null);
 
       if ($.batch !== null) {
-         let {addedRecords, removedRecords} = $.batch;
+         let {addedFacts, removedFacts} = $.batch;
 
-         if (removedRecords.has(rec)) {
-            removedRecords.delete(rec);
+         if (removedFacts.has(rec)) {
+            removedFacts.delete(rec);
          }
          else {
             $.check(!rel.records.has(rec), `Duplicate record`);
-            addedRecords.set(rec, rel);
+            addedFacts.set(rec, rel);
          }
       }
       else {
@@ -401,8 +396,8 @@ addFact ::=
 
 
 addFacts ::=
-   function (rel, recs) {
-      for (let rec of recs) {
+   function (rel, facts) {
+      for (let rec of facts) {
          $.addFact(rel, rec);
       }
    }
@@ -413,14 +408,14 @@ removeFact ::=
       $.check(rel.protoEntity === null);
 
       if ($.batch !== null) {
-         let {addedRecords, removedRecords} = $.batch;
+         let {addedFacts, removedFacts} = $.batch;
 
-         if (addedRecords.has(rec)) {
-            addedRecords.delete(rec);
+         if (addedFacts.has(rec)) {
+            addedFacts.delete(rec);
          }
          else {
             $.check(rel.records.has(rec), `Missing record`);
-            removedRecords.set(rec, rel);
+            removedFacts.set(rec, rel);
          }
       }
       else {
@@ -546,7 +541,7 @@ modifyEntity ::=
 
    function (entity) {
       let isDirty = $.optimizeEntityBackpatch(entity);
-      
+
       if (!isDirty) {
          return;
       }
@@ -599,7 +594,7 @@ optimizeEntityBackpatch ::=
 makeEntity ::=
    function (rel, data) {
       let store = {
-         [$.entity]: null  // will be set to the entity itself
+         [$.entitySym]: null  // will be set to the entity itself
       };
 
       for (let attr of rel.attrs) {
@@ -615,7 +610,7 @@ makeEntity ::=
          }
       };
 
-      store[$.entity] = entity;
+      store[$.entitySym] = entity;
 
       return entity;
    }

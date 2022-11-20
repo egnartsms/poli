@@ -1,114 +1,45 @@
 common
+   assert
    check
    breadthExpansion
    leastBy
+   Queue
+   map
 
 set-map
    setDefault
+   addAll
+   deleteAll
+
+multi-set
+   MultiSet
 
 -----
 
-obj2node ::= new Map
+*** High-level interface ***
 
-
-root ::=
-   {
-      parent: null,
-      children: new Set,
-      outgoing: new Set,
-   }
-
-
-deadCallback ::=
-   null
-
-
-setDeadCallback ::=
-   function (callback) {
-      $.deadCallback = callback;
-   }
-
-
-makeNode ::=
-   function (object) {
-      return {
-         parent: null,
-         children: new Set,
-         ingoing: new Set,
-         outgoing: new Set,
-         object
-      }
-   }
-
-
-ensureNodeFor ::=
-   function (object) {
-      return $.setDefault($.obj2node, object, () => $.makeNode(object));
-   }
-
-
-connectParentChild ::=
-   function (parent, child) {
-      if (child.parent !== null) {
-         $.unconnectFromParent(child);
-      }
-
-      parent.children.add(child);
-      child.parent = parent;
-   }
-
-
-unconnectFromParent ::=
-   function (node) {
-      node.parent.children.delete(node);
-      node.parent = null;
-   }
-
-
-connectNodes ::=
-   function (nFrom, nTo) {
-      if (nTo.parent === null) {
-         $.connectParentChild(nFrom, nTo);
-      }
-
-      $.check(!nFrom.outgoing.has(nTo));
-      $.check(!nTo.ingoing.has(nFrom));
-
-      nFrom.outgoing.add(nTo);
-      nTo.ingoing.add(nFrom);
-   }
-
-
-unconnectNodes ::=
-   function (nFrom, nTo) {
-      $.check(nFrom.outgoing.has(nTo));
-      $.check(nTo.ingoing.has(nFrom));
-
-      nFrom.outgoing.delete(nTo);
-      nTo.ingoing.delete(nFrom);
-
-      if (nTo.parent === nFrom) {
-         $.unconnectFromParent(nTo);
-      }
-   }
-
-
-addRoot ::=
-   function (object) {
-      $.connectNodes($.root, $.ensureNodeFor(object));
-   }
-
-
-link ::=
+ref ::=
    function (from, to) {
-      let nFrom = $.ensureNodeFor(from);
-      let nTo = $.ensureNodeFor(to);
+      if ($.obj2node.has(from)) {
+         let nFrom = $.obj2node.get(from);
+         let nTo = $.obj2node.get(to);
 
-      $.connectNodes(nFrom, nTo);
+         if (nTo !== undefined) {
+            $.connectNodes(nFrom, nTo);
+         }
+         else {
+            nTo = $.installNodeFor(to, nFrom);
+            $.connectNodes(nFrom, nTo);
+            $.attachReachable(nTo);
+         }
+      }
+      else {
+         $.setDefault($.obj2refs, from, () => new $.MultiSet).add(to);
+      }
    }
 
 
-linkN ::=
+linkN ::
    function (from, toMany) {
       let nFrom = $.ensureNodeFor(from);
 
@@ -118,57 +49,163 @@ linkN ::=
    }
 
 
-unlink ::=
+unref ::=
    function (from, to) {
-      let nFrom = $.obj2node.get(from);
-      let nTo = $.obj2node.get(to);
+      if ($.obj2node.has(from)) {
+         let nFrom = $.obj2node.get(from);
+         let nTo = $.obj2node.get(to);
 
-      $.unconnectNodes(nFrom, nTo);
+         $.unconnectNodes(nFrom, nTo);
 
-      if (nTo.parent === null) {
-         $.fixOrphanedSubtree(nTo);
+         if (nTo.parentNode === nFrom) {
+            nTo.parentNode = null;
+
+            $.fixOrphanedSubtree(nTo);
+            return;
+         }
       }
+      else {
+         $.obj2refs.get(from).remove(to);
+      }
+
+      $.setDeadSet(null);
    }
 
 
-relink ::=
+reref ::=
    function (from, objNo, objYes) {
       if (objNo === objYes) {
          return;
       }
 
-      let nFrom = $.obj2node.get(from);
-      let nNo = $.obj2node.get(objNo);
-      let nYes = $.ensureNodeFor(objYes);
+      $.ref(from, objYes);
+      $.unref(from, objNo);
+   }
 
-      $.unconnectNodes(nFrom, nNo);
-      $.connectNodes(nFrom, nYes);
 
-      if (nNo.parent === null) {
-         $.fixOrphanedSubtree(nNo);
+addRoot ::=
+   function (object) {
+      $.ref($.rootObj, object);
+   }
+
+
+removeRoot ::=
+   function (object) {
+      $.unref($.rootObj, object);
+   }
+
+
+mostRecentDeadSet ::= null
+
+
+setDeadSet ::=
+   function (deadSet) {
+      $.mostRecentDeadSet = deadSet;
+   }
+
+
+getMostRecentDeadSet ::=
+   function () {
+      return $.mostRecentDeadSet;
+   }
+
+
+*** Nodes, trees, operations on them
+
+obj2node ::=
+   :Map an object to its node in the graph.
+
+    NOTE: a node is created only when an object becomes reachable from the root. Until this point,
+    we remember "ref" connections between objects in the 'obj2refs' data structure.
+
+   new Map
+
+
+obj2refs ::=
+   :Map an object to the set of objects it references.
+
+    This is used before the object is attached to the graph. Once it becomes attached, the object
+    gets deleted from 'obj2refs', and it is allocated a node in 'obj2node'.
+
+   new WeakMap
+
+
+rootObj ::=
+   :Virtual root object. Only needed to satisfy the general case of our algorithms.
+
+   new Object
+
+
+root ::= 
+   :Virtual root node. The only node whose .parentNode === null.
+
+   $.installNodeFor($.rootObj, null)
+
+
+installNodeFor ::=
+   function (object, parentNode) {
+      $.assert(() => !$.obj2node.has(object));
+
+      let node = {
+         object,
+         parentNode,
+         toObjects: $.setDefault($.obj2refs, object, () => new $.MultiSet),
+         fromNodes: new Set,
+      };
+
+      $.obj2node.set(object, node);
+
+      return node;
+   }
+
+
+connectNodes ::=
+   function (nFrom, nTo) {
+      nFrom.toObjects.add(nTo.object);
+      nTo.fromNodes.add(nFrom);
+   }
+
+
+unconnectNodes ::=
+   function (nFrom, nTo) {
+      let isGone = nFrom.toObjects.remove(nTo.object);
+
+      if (isGone) {
+         nTo.fromNodes.delete(nFrom);
       }
    }
 
 
-relinkN ::=
-   function (from, objsNo, objsYes) {
-      let nFrom = $.obj2node.get(from);
-      let toRemove = new Set($.map(objsNo, obj => $.obj2node.get(obj)));
-      let toAdd = new Set($.map(objsYes, obj => $.obj2node.get(obj)));
+childNodes ::=
+   function* (node) {
+      for (let childObj of node.toObjects) {
+         let childNode = $.obj2node.get(childObj);
 
-      $.deleteIntersection(toRemove, toAdd);
-
-      for (let node of toRemove) {
-         $.unconnectNodes(nFrom, node);
+         if (childNode.parentNode === node) {
+            yield childNode;
+         }
       }
+   }
 
-      for (let node of toAdd) {
-         $.connectNodes(nFrom, node);
-      }
 
-      for (let node of toRemove) {
-         if (node.parent === null) {
-            $.fixOrphanedSubtree(node);
+attachReachable ::=
+   function (subroot) {
+      let belt = new $.Queue;
+
+      belt.enqueue(subroot);
+
+      while (!belt.isEmpty) {
+         let fromNode = belt.dequeue();
+
+         for (let toObj of fromNode.toObjects) {
+            let toNode = $.obj2node.get(toObj);
+
+            if (toNode === undefined) {
+               toNode = $.installNodeFor(toObj, fromNode);
+               belt.enqueue(toNode);
+            }
+
+            toNode.fromNodes.add(fromNode);
          }
       }
    }
@@ -178,109 +215,89 @@ fixOrphanedSubtree ::=
    :Fix a subtree whose root has been disconnected from the spanning tree
 
    function (subroot) {
-      $.check(subroot.parent === null);
+      $.assert(() => subroot.parentNode === null);
 
       // Look whether 'subroot' can be easily hung up at another spot
-      let newParent = $.leastBy(subroot.ingoing, (node) => {
-         let depth = 0;
+      let newParent = $.leastBy(subroot.fromNodes, {
+         keyOf: (node) => {
+            let depth = 0;
 
-         while (node !== subroot && node !== $.root) {
-            node = node.parent;
-            depth += 1;
-         }
+            while (node !== subroot && node !== $.root) {
+               node = node.parentNode;
+               depth += 1;
+            }
 
-         return node === subroot ? Infinity : depth;
+            return node === $.root ? depth : Infinity;
+         },
+         minimum: 0
       });
 
       if (newParent !== undefined) {
-         $.connectParentChild(newParent, subroot);
+         subroot.parentNode = newParent;
+         $.setDeadSet(null);
          return;
       }
 
-      // 'subroot' might be dead (unreachable), as well as some part of its subtree. Find exactly
-      //  what is dead.
-      let deadCandidates = new Set([subroot]);
+      // Could not easily rehang 'subroot'. Seek for the full garbage node set.
+      let belt = new $.Queue($.childNodes(subroot));
+      let deadCandidates = new Set(belt);
 
-      $.breadthExpansion({
-         initial: subroot.children,
-         genMore: function* (node) {
-            let parent = $.leastBy(node.ingoing, (node) => {
+      deadCandidates.add(subroot);
+
+      while (!belt.isEmpty) {
+         let candidate = belt.dequeue();
+
+         if (!deadCandidates.has(candidate)) {
+            continue;
+         }
+
+         let parent = $.leastBy(candidate.fromNodes, {
+            keyOf: (node) => {
                let depth = 0;
 
                while (node !== $.root && !deadCandidates.has(node)) {
-                  node = node.parent;
+                  node = node.parentNode;
                   depth += 1;
                }
 
-               return deadCandidates.has(node) ? Infinity : depth;
-            });
+               return node === $.root ? depth : Infinity;
+            },
+            minimum: 0
+         });
 
-            if (parent !== undefined) {
-               $.connectParentChild(parent, node);
-            }
-            else {
-               deadCandidates.add(node);
-               yield* node.children;
-            }
-         }
-      });
+         if (parent !== undefined) {
+            candidate.parentNode = parent;
+            deadCandidates.delete(candidate);
 
-      // Now we have deadCandidates. Determine which of them are actually dead.
-      function pickOutRandomAlive() {
-         for (let node of deadCandidates) {
-            for (let parent of node.ingoing) {
-               if (!deadCandidates.has(parent)) {
-                  $.connectParentChild(parent, alive);
-                  deadCandidates.delete(alive);
+            $.breadthExpansion(candidate, function* (node) {
+               for (let child of $.childNodes(node)) {
+                  if (deadCandidates.has(child)) {
+                     child.parentNode = node;
+                     deadCandidates.delete(child);
 
-                  return alive;
-               }
-            }
-         }
-
-         return null;
-      }
-
-      while (deadCandidates.size > 0) {
-         let alive = pickOutRandomAlive();
-
-         if (alive === null) {
-            // No alive found, all deadCandidates are really dead
-            break;
-         }
-
-         // Now follow from alive and join to the tree everything from 'deadCandidates' that can be
-         // reached from 'alive'
-         $.breadthExpansion({
-            initial: [alive],
-            stopWhen: () => deadCandidates.size === 0,
-            genMore: function* (node) {
-               for (let sub of node.outgoing) {
-                  if (deadCandidates.has(sub)) {
-                     $.connectParentChild(node, sub);
-                     deadCandidates.delete(sub);
-                     yield sub;
+                     yield child;
                   }
                }
-            }
-         });
-      }
-
-      // Now whatever left in 'deadCandidates' is really dead. We should remove all outgoing
-      // connections from dead objects. Ingoing connections can be only from another dead.
-      for (let node of deadCandidates) {
-         for (let out of node.outgoing) {
-            $.unconnectNodes(node, out);
+            })
          }
-
-         $.obj2node.delete(node.object);
-
-         $.freeDead(node.object);
+         else {
+            for (let child of $.childNodes(candidate)) {
+               belt.enqueue(child);
+               deadCandidates.add(child);
+            }
+         }
       }
 
-      if ($.deadCallback !== null) {
-         $.deadCallback(Array.from(deadCandidates, node => node.object));
+      // Now whatever left in 'deadCandidates' is really dead
+      let deadObjects = new Set($.map(deadCandidates, node => node.object))
+
+      $.deleteAll($.obj2node, deadObjects);
+
+      for (let dead of deadObjects) {
+         $.freeDead(dead, deadObjects);
       }
+
+      $.setDeadSet(deadObjects);
    }
 
 

@@ -4,22 +4,16 @@ common
 
 dedb-lifetime
    addRoot
-   link
-   unlink
-   setDeadCallback
+   removeRoot
+   ref
+   unref
+   getMostRecentDeadSet
    obj2node
 
 -----
 
-deadObjects ::= null
-
-
 setup :thunk:=
-   $.setDeadCallback((deadObjects) => {
-      $.deadObjects = deadObjects;
-   });
-
-   $.deadObjects = null;
+   ;
 
 
 makeObjects ::=
@@ -32,88 +26,108 @@ makeObjects ::=
 
 test_one_dead :thunk:=
    let [A, B, C] = $.makeObjects();
-   
+
    $.addRoot(A);
-   $.link(A, B);
-   $.link(B, C);
+   $.ref(A, B);
+   $.ref(B, C);
 
-   $.unlink(B, C);
+   $.unref(B, C);
 
-   $.checkLike($.deadObjects, new Set([C]))
+   $.checkLike($.getMostRecentDeadSet(), new Set([C]))
 
 
 test_subtree_dead :thunk:=
    let [A, B, C] = $.makeObjects();
 
    $.addRoot(A);
-   $.link(A, B);
-   $.link(B, C);
+   $.ref(A, B);
+   $.ref(B, C);
 
-   $.unlink(A, B);
+   $.unref(A, B);
 
-   $.checkLike($.deadObjects, new Set([B, C]))
+   $.checkLike($.getMostRecentDeadSet(), new Set([B, C]))
 
 
 test_no_dead_tree_rebuild :thunk:=
    let [A, B, C] = $.makeObjects();
 
    $.addRoot(A);
-   $.link(A, B);
-   $.link(B, C);
-   $.link(A, C);
+   $.ref(A, B);
+   $.ref(B, C);
+   $.ref(A, C);
 
-   $.check($.obj2node.get(C).parent === $.obj2node.get(B));
+   $.check($.obj2node.get(C).parentNode === $.obj2node.get(B));
 
-   $.unlink(B, C);
+   $.unref(B, C);
 
-   $.check($.deadObjects === null);
-   $.check($.obj2node.get(C).parent === $.obj2node.get(A));
+   $.check($.getMostRecentDeadSet() === null);
+   $.check($.obj2node.get(C).parentNode === $.obj2node.get(A));
 
 
 test_circular_dead :thunk:=
    let [A, B, C, D] = $.makeObjects();
 
    $.addRoot(A);
-   $.link(A, B);
-   $.link(B, C);
-   $.link(C, D);
-   $.link(D, B);
-   $.link(B, D);
+   $.ref(A, B);
+   $.ref(B, C);
+   $.ref(C, D);
+   $.ref(D, B);
+   $.ref(B, D);
 
-   $.unlink(A, B);
+   $.unref(A, B);
 
-   $.checkLike($.deadObjects, new Set([B, C, D]))
+   $.checkLike($.getMostRecentDeadSet(), new Set([B, C, D]))
 
 
 test_complex_tree_rebuild :thunk:=
    let [A, B, C, D, E] = $.makeObjects();
 
    $.addRoot(A);
-   $.link(A, B);
-   $.link(A, D);
-   $.link(B, C);
-   $.link(C, D);
-   $.link(D, E);
-   $.link(E, B);
+   $.ref(A, B);
+   $.ref(A, D);
+   $.ref(B, C);
+   $.ref(C, D);
+   $.ref(D, E);
+   $.ref(E, B);
 
-   $.unlink(A, B);
+   $.unref(A, B);
 
-   $.check($.deadObjects === null);
-   $.check($.obj2node.get(B).parent === $.obj2node.get(E));
+   $.check($.getMostRecentDeadSet() === null);
+   $.check($.obj2node.get(B).parentNode === $.obj2node.get(E));
 
 
 test_complex_tree_dead_circle :thunk:=
    let [A, B, C, D, E] = $.makeObjects();
 
    $.addRoot(A);
-   $.link(A, B);
-   $.link(A, D);
-   $.link(B, C);
-   $.link(C, D);
-   $.link(D, E);
-   $.link(E, B);
+   $.ref(A, B);
+   $.ref(A, D);
+   $.ref(B, C);
+   $.ref(C, D);
+   $.ref(D, E);
+   $.ref(E, B);
 
-   $.unlink(A, B);
-   $.unlink(A, D);
+   $.unref(A, B);
+   $.unref(A, D);
 
-   $.checkLike($.deadObjects, new Set([B, C, D, E]));
+   $.checkLike($.getMostRecentDeadSet(), new Set([B, C, D, E]));
+
+
+test_add_subgraph_to_root :thunk:=
+   let [A, B, C, D] = $.makeObjects();
+
+   $.ref(A, B);
+   $.ref(B, C);
+   $.ref(C, D);
+   $.ref(D, A);
+
+   $.addRoot(A);
+
+   $.check($.obj2node.has(A));
+   $.check($.obj2node.has(B));
+   $.check($.obj2node.has(C));
+   $.check($.obj2node.has(D));
+
+   $.removeRoot(A);
+
+   $.checkLike($.getMostRecentDeadSet(), new Set([A, B, C, D]));

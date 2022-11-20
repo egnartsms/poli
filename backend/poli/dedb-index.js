@@ -11,14 +11,12 @@ common
 dedb-projection
    projectionFor
 
-dedb-tag
-   tag
-   recur
-
 set-map
    setDefault
 
 -----
+
+*** Old junk ***
 
 isTuplePrefixOf ::=
    function (prefix, bigger) {
@@ -80,8 +78,8 @@ getBaseIndex ::=
 obtainDerivedIndex ::=
    :Get index identified by 'tuple' on the projection of 'rel' identified by 'bindings'
 
-    Create projection if it does not exist yet. We don't check whether 'tuple' makes sense
-    for 'rel'. Also, don't check for prefix, i.e. if an index (A, B) is available then attempting
+    Create projection if it does not exist yet. We don't check whether 'tuple' is available
+    for 'rel'. Also, don't check for prefixes, i.e. if an index (A, B) is available then attempting
     to get (A) will fail.
 
    function (rel, bindings, tuple) {
@@ -89,8 +87,8 @@ obtainDerivedIndex ::=
 
       // Here some optimizations with 0-length tuple may be implemented (0-length essentially
       // means "I just want all the records"), for example: use any other existing index in place
-      // of a 0-length one. But for now we don't do any of these. We just create a 0-length index
-      // the same as any other index.
+      // of a 0-length one. But for now we don't do any of these as it would incur more
+      // complications. So we just create a 0-length index the same as any other index.
       let index = proj.indices.get(tuple.key);
 
       if (index === undefined) {
@@ -106,7 +104,7 @@ obtainDerivedIndex ::=
             }
          }
 
-         $.packAddIndex(proj.indices, index);
+         proj.indices.set(tuple.key, index);
       }
 
       return index;
@@ -150,22 +148,10 @@ makeDerivedIndex ::=
       return {
          kind: 'index',
          proj,
-         tags: new Set,
          tuple,
          root: tuple.length === 0 ?
             (tuple.isUnique ? null : new Set) :
-            Object.assign(new Map, {totalSize: 0}),
-      }
-   }
-
-
-indexTaggables ::=
-   function* (index) {
-      if (Object.hasOwn(index, 'rel'))
-         ;
-      else {
-         yield index;
-         yield index.proj;
+            Object.assign(new Map, {totalSize: 0})
       }
    }
 
@@ -205,13 +191,6 @@ packBestIndex ::=
          ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
          {greaterThan: $.Fitness.minimum}
       );
-   }
-
-
-packShortestIndex ::=
-   function (pack) {
-      // TODO: minimum: is not supported, we don't need this concept of shortest index anymore
-      return $.leastBy(pack.values(), ({tuple}) => tuple.length, {minimum: 0});
    }
 
 

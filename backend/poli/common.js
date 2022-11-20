@@ -208,7 +208,17 @@ greatestBy ::=
 
 
 leastBy ::=
-   function (items, keyOf, {lessThan=Infinity}={}) {
+   function (items, keyOf) {
+      let lessThan, minimum;
+
+      if (typeof keyOf === 'function') {
+         lessThan = Infinity;
+         minimum = -Infinity;
+      }
+      else {
+         ({lessThan=Infinity, minimum=-Infinity, keyOf} = keyOf);
+      }
+
       let minKey = lessThan;
       let minItem = undefined;
 
@@ -218,6 +228,10 @@ leastBy ::=
          if (key < minKey) {
             minKey = key;
             minItem = item;
+
+            if (minKey <= minimum) {
+               break;
+            }
          }
       }
 
@@ -801,12 +815,14 @@ indexRange ::=
       yield* $.range(array.length);
    }
 
+
 range ::=
    function* (to) {
       for (let i = 0; i < to; i += 1) {
          yield i;
       }
    }
+
 
 newObj ::=
    function (proto, ...props) {
@@ -980,13 +996,14 @@ m2mAddAll ::=
       }
    }
 
+
 Queue ::=
    :This class is duplicated with the bootloader
 
    class Queue {
-      constructor() {
+      constructor(items=[]) {
          this.front = [];
-         this.rear = [];
+         this.rear = [...items];
       }
 
       enqueue(item) {
@@ -997,10 +1014,6 @@ Queue ::=
          for (let item of items) {
             this.enqueue(item);
          }
-      }
-
-      enqueueFirst(item) {
-         this.front.push(item);
       }
 
       dequeue() {
@@ -1014,38 +1027,35 @@ Queue ::=
       get isEmpty() {
          return this.front.length === 0 && this.rear.length === 0;
       }
+
+      *[Symbol.iterator]() {
+         for (let i = this.front.length; i > 0; i -= 1) {
+            yield this.front[i - 1];
+         }
+
+         yield* this.rear;
+      }
    }
 
 
 rearToFront ::=
    function (queue) {
-      while (queue.rear.length > 0) {
-         queue.front.push(queue.rear.pop());
+      let {front, rear} = queue;
+
+      while (rear.length > 0) {
+         front.push(rear.pop());
       }
    }
 
 
 breadthExpansion ::=
-   function ({initial, stopWhen, genMore}) {
-      if (!stopWhen) {
-         stopWhen = () => false;
-      }
+   function (initial, gtor) {
+      let belt = new $.Queue;
 
-      let queue = new $.Queue;
+      belt.enqueue(initial);
 
-      queue.enqueueAll(initial);
-
-      while (!queue.isEmpty) {
-         let item = queue.dequeue();
-
-         if (stopWhen(item)) {
-            break;
-         }
-
-         let more = genMore(item);
-
-         if (more) {
-            queue.enqueueAll(more);
-         }
+      while (!belt.isEmpty) {
+         let item = belt.dequeue();
+         belt.enqueueAll(gtor(item));
       }
    }

@@ -109,7 +109,7 @@ makeConfig ::=
       return {
          attrs: rel.attrs.filter(v => !boundAttrs.includes(v)),
          // bound attrs that are non-evaporatable
-         nonEvaporated: rel.attrs.filter(a => boundAttrs.includes(a) && rel.attrsNE.has(a)),
+         nonEvaporated: rel.attrs.filter(a => boundAttrs.includes(a) && rel.attrsNE.includes(a)),
          // array of variables used in computations. Does not include non-evaporated and
          // firm vars
          vars,
@@ -258,7 +258,7 @@ computeJoinSpec ::=
          if (ff.join === 'entity') {
             return {
                kind: 'entity',
-               subNum: goal.subNum,
+               nSub: goal.nSub,
                ...propsForCheckExtract(goal.bindings),
                next: null
             }
@@ -269,8 +269,8 @@ computeJoinSpec ::=
 
             return {
                kind: 'index',
-               subNum: goal.subNum,
-               indexNum: $.registerIndex(idxReg, goal.subNum, ff.tuple),
+               nSub: goal.nSub,
+               indexNum: $.registerIndex(idxReg, goal.nSub, ff.tuple),
                indexKeys: keys,
                ...propsForCheckExtract(goal.bindings, keys),
                next: null
@@ -546,27 +546,18 @@ derivedGoalFulfillments ::=
       }
    }
 
-fuck :css:=
-   li.hey {
-      border-width: 20px;
-   }
-
-   p.gay {
-      margin-top: 10rem;
-   }
-
 
 registerIndex ::=
-   function (registry, subNum, tuple) {
-      let n = registry.findIndex(({subNum: xSubNum, tuple: xTuple}) => {
-         return xSubNum === subNum && $.arraysEqual(xTuple, tuple);
+   function (registry, nSub, tuple) {
+      let n = registry.findIndex(({nSub: xSubNum, tuple: xTuple}) => {
+         return xSubNum === nSub && $.arraysEqual(xTuple, tuple);
       });
 
       if (n !== -1) {
          return n;
       }
 
-      registry.push({subNum, tuple});
+      registry.push({nSub, tuple});
       return registry.length - 1;
    }
 
