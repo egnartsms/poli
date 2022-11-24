@@ -39,16 +39,6 @@ ref ::=
    }
 
 
-linkN ::
-   function (from, toMany) {
-      let nFrom = $.ensureNodeFor(from);
-
-      for (let to of toMany) {
-         $.connectNodes(nFrom, $.ensureNodeFor(to));
-      }
-   }
-
-
 unref ::=
    function (from, to) {
       if ($.obj2node.has(from)) {
@@ -99,6 +89,8 @@ mostRecentDeadSet ::= null
 
 
 setDeadSet ::=
+   // TODO: we don't want to hold references to these objects This is now needed only for testing.
+   // Do this instead: in tests, just check for nodes' presence with $.obj2node.
    function (deadSet) {
       $.mostRecentDeadSet = deadSet;
    }
@@ -190,19 +182,19 @@ childNodes ::=
 
 attachReachable ::=
    function (subroot) {
-      let belt = new $.Queue;
+      let belt = $.Queue.new();
 
-      belt.enqueue(subroot);
+      $.Queue.put(belt, subroot);
 
-      while (!belt.isEmpty) {
-         let fromNode = belt.dequeue();
+      while (!$.Queue.isEmpty(belt)) {
+         let fromNode = $.Queue.take(belt);
 
          for (let toObj of fromNode.toObjects) {
             let toNode = $.obj2node.get(toObj);
 
             if (toNode === undefined) {
                toNode = $.installNodeFor(toObj, fromNode);
-               belt.enqueue(toNode);
+               $.Queue.put(belt, toNode);
             }
 
             toNode.fromNodes.add(fromNode);
@@ -239,13 +231,14 @@ fixOrphanedSubtree ::=
       }
 
       // Could not easily rehang 'subroot'. Seek for the full garbage node set.
-      let belt = new $.Queue($.childNodes(subroot));
-      let deadCandidates = new Set(belt);
+      let subrootChildren = Array.from($.childNodes(subroot))
+      let belt = $.Queue.new(subrootChildren);
+      let deadCandidates = new Set(subrootChildren);
 
       deadCandidates.add(subroot);
 
-      while (!belt.isEmpty) {
-         let candidate = belt.dequeue();
+      while (!$.Queue.isEmpty(belt)) {
+         let candidate = $.Queue.take(belt);
 
          if (!deadCandidates.has(candidate)) {
             continue;
@@ -282,7 +275,7 @@ fixOrphanedSubtree ::=
          }
          else {
             for (let child of $.childNodes(candidate)) {
-               belt.enqueue(child);
+               $.Queue.put(belt, child);
                deadCandidates.add(child);
             }
          }

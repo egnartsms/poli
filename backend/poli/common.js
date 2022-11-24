@@ -998,42 +998,34 @@ m2mAddAll ::=
 
 
 Queue ::=
-   :This class is duplicated with the bootloader
+   {
+      new(items) {
+         return {
+            front: [],
+            rear: items == null ? [] : [...items]
+         }
+      },
 
-   class Queue {
-      constructor(items=[]) {
-         this.front = [];
-         this.rear = [...items];
-      }
+      put(queue, item) {
+         queue.rear.push(item);
+      },
 
-      enqueue(item) {
-         this.rear.push(item);
-      }
-
-      enqueueAll(items) {
+      putAll(queue, items) {
          for (let item of items) {
-            this.enqueue(item);
+            $.Queue.put(queue, item);
          }
-      }
+      },
 
-      dequeue() {
-         if (this.front.length === 0) {
-            $.rearToFront(this);
-         }
-
-         return this.front.pop();
-      }
-
-      get isEmpty() {
-         return this.front.length === 0 && this.rear.length === 0;
-      }
-
-      *[Symbol.iterator]() {
-         for (let i = this.front.length; i > 0; i -= 1) {
-            yield this.front[i - 1];
+      take(queue) {
+         if (queue.front.length === 0) {
+            $.rearToFront(queue);
          }
 
-         yield* this.rear;
+         return queue.front.pop();
+      },
+
+      isEmpty(queue) {
+         return queue.front.length === 0 && queue.rear.length === 0;
       }
    }
 
@@ -1050,12 +1042,12 @@ rearToFront ::=
 
 breadthExpansion ::=
    function (initial, gtor) {
-      let belt = new $.Queue;
+      let belt = $.Queue.new();
 
-      belt.enqueue(initial);
+      $.Queue.put(belt, initial);
 
-      while (!belt.isEmpty) {
-         let item = belt.dequeue();
-         belt.enqueueAll(gtor(item));
+      while (!$.Queue.isEmpty(belt)) {
+         let item = $.Queue.take(belt);
+         $.Queue.putAll(belt, gtor(item));
       }
    }

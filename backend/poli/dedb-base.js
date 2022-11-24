@@ -31,12 +31,12 @@ dedb-version
    prepareVersion
 
 dedb-index
+   IndexPack
    emptyIndex
-   packBestIndex
    rebuildIndex
    indexAdd
    indexRemove
-   makeIndex
+   makeBaseIndex
    indexRef
    indexRefWithBindings
 
@@ -60,7 +60,7 @@ dedb-pyramid
    * as: py
 
 dedb-lifetime
-   link
+   ref
 
 -----
 
@@ -76,16 +76,16 @@ baseRelation ::=
          name,
          attrs,
          protoEntity,
-         indices: new Map,
-         projections: $.py.make(protoEntity ? [$.entitySym, ...attrs] : attrs),
+         indices: $.IndexPack.new(),
+         projections: $.py.make(protoEntity ? [$.entitySym, ...attrs] : [...attrs]),
          records: new Set,
       };
 
       for (let spec of indexSpecs) {
          let tuple = $.tupleFromSpec(spec);
-         let index = $.makeIndex(rel, tuple);
+         let index = $.makeBaseIndex(rel, tuple);
 
-         $.packAddIndex(rel.indices, index);
+         $.IndexPack.add(rel.indices, index);
       }
 
       if (protoEntity !== null) {
@@ -334,7 +334,7 @@ getRecords ::=
    function (rel, bindings) {
       $.check(rel.kind === 'base');
 
-      let idx = $.packBestIndex(rel.indices, bindings);
+      let idx = $.IndexPack.bestIndex(rel.indices, bindings);
       let recs;
 
       if (idx === undefined) {
@@ -383,7 +383,7 @@ addFact ::=
 
          rel.records.add(rec);
 
-         for (let idx of rel.indices) {
+         for (let idx of $.IndexPack.iter(rel.indices)) {
             $.indexAdd(idx, rec);
          }
 
@@ -423,7 +423,7 @@ removeFact ::=
 
          rel.records.delete(rec);
 
-         for (let idx of rel.indices) {
+         for (let idx of $.IndexPack.iter(rel.indices)) {
             $.indexRemove(idx, rec);
          }
 
@@ -457,7 +457,7 @@ addEntity ::=
 
          rel.records.add(entity);
 
-         for (let idx of rel.indices) {
+         for (let idx of $.IndexPack.iter(rel.indices)) {
             $.indexAdd(idx, entity, store);
          }
 
@@ -507,7 +507,7 @@ removeEntity ::=
 
          let {[$.backpatch]: back} = entity;
 
-         for (let idx of rel.indices) {
+         for (let idx of $.IndexPack.iter(rel.indices)) {
             $.indexRemove(idx, entity, back);
          }
 
@@ -548,7 +548,7 @@ modifyEntity ::=
 
       let {[$.myRelation]: rel, [$.store]: store, [$.backpatch]: back} = entity;
 
-      for (let idx of rel.indices) {
+      for (let idx of $.IndexPack.iter(rel.indices)) {
          if ($.any(idx.tuple, a => Object.hasOwn(back, a))) {
             $.indexRemove(idx, entity, back);
             $.indexAdd(idx, entity, store);
@@ -623,7 +623,7 @@ resetRelation ::=
 
       rel.records.clear();
 
-      for (let idx of rel.indices) {
+      for (let idx of $.IndexPack.iter(rel.indices)) {
          $.emptyIndex(idx);
       }
    }

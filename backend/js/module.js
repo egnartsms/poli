@@ -96,6 +96,6 @@ return [
 
 const kind2js = {
    js: (def) => def,
-   thunk: (def) => `function () { ${def} }`,
-   body: (def) => `(function () { ${def} })()`,
+   thunk: (def) => `function () {\n   ${def}\n}`,
+   body: (def) => `(function () {\n   ${def}\n})()`,
 };

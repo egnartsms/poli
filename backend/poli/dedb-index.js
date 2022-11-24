@@ -1,12 +1,18 @@
 common
    all
    assert
+   check
    map
    trackingFinal
    commonArrayPrefixLength
    hasOwnDefinedProperty
    hasOwnProperty
    greatestBy
+
+dedb-tuple
+   Fitness
+   tupleFitnessByBindings
+   tupleKeys
 
 dedb-projection
    projectionFor
@@ -158,39 +164,39 @@ makeDerivedIndex ::=
 
 *** Index packs ***
 
-makeIndexPack ::=
-   function () {
-      return new Map;
-   }
+IndexPack ::=
+   {
+      new() {
+         return new Map;
+      },
 
+      add(pack, index) {
+         $.check(!pack.has(index.tuple.key), () =>
+            `Duplicate index within a pack: '${index.tuple.key}'`
+         );
 
-packAddIndex ::=
-   function (pack, index) {
-      $.check(!pack.has(index.tuple.key), () =>
-         `Duplicate index within a pack: '${index.tuple.key}'`
-      );
+         pack.set(index.tuple.key, index);
+      },
 
-      pack.set(index.tuple.key, index);
-   }
+      remove(pack, index) {
+         $.check(pack.has(index.tuple.key), () =>
+            `Index missing in a pack: '${index.tuple.key}'`
+         );
 
+         pack.delete(index.tuple.key);
+      },
 
-packRemoveIndex ::=
-   function (pack, index) {
-      $.check(pack.has(index.tuple.key), () =>
-         `Index missing in a pack: '${index.tuple.key}'`
-      );
+      iter(pack) {
+         return pack.values();
+      },
 
-      pack.delete(index.tuple.key);
-   }
-
-
-packBestIndex ::=
-   function (pack, bindings) {
-      return $.greatestBy(
-         pack.values(),
-         ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
-         {greaterThan: $.Fitness.minimum}
-      );
+      bestIndex(pack, bindings) {
+         return $.greatestBy(
+            pack.values(),
+            ({tuple}) => $.tupleFitnessByBindings(tuple, bindings),
+            {greaterThan: $.Fitness.minimum}
+         );
+      }
    }
 
 
