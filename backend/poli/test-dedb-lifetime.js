@@ -1,4 +1,5 @@
 common
+   all
    check
    checkLike
 
@@ -9,11 +10,25 @@ dedb-lifetime
    unref
    getMostRecentDeadSet
    obj2node
+   isAlive
+   isDead
 
 -----
 
 setup :thunk:=
    ;
+
+
+checkDead ::=
+   function (...objects) {
+      $.check($.all(objects, $.isDead));
+   }
+
+
+checkAlive ::=
+   function (...objects) {
+      $.check($.all(objects, $.isAlive));
+   }
 
 
 makeObjects ::=
@@ -33,7 +48,8 @@ test_one_dead :thunk:=
 
    $.unref(B, C);
 
-   $.checkLike($.getMostRecentDeadSet(), new Set([C]))
+   $.checkDead(C);
+   $.checkAlive(A, B);
 
 
 test_subtree_dead :thunk:=
@@ -45,7 +61,8 @@ test_subtree_dead :thunk:=
 
    $.unref(A, B);
 
-   $.checkLike($.getMostRecentDeadSet(), new Set([B, C]))
+   $.checkDead(B, C);
+   $.checkAlive(A);
 
 
 test_no_dead_tree_rebuild :thunk:=
@@ -60,7 +77,7 @@ test_no_dead_tree_rebuild :thunk:=
 
    $.unref(B, C);
 
-   $.check($.getMostRecentDeadSet() === null);
+   $.checkAlive(A, B, C);
    $.check($.obj2node.get(C).parentNode === $.obj2node.get(A));
 
 
@@ -76,7 +93,7 @@ test_circular_dead :thunk:=
 
    $.unref(A, B);
 
-   $.checkLike($.getMostRecentDeadSet(), new Set([B, C, D]))
+   $.checkDead(B, C, D);
 
 
 test_complex_tree_rebuild :thunk:=
@@ -92,7 +109,7 @@ test_complex_tree_rebuild :thunk:=
 
    $.unref(A, B);
 
-   $.check($.getMostRecentDeadSet() === null);
+   $.checkAlive(A, B, C, D, E);
    $.check($.obj2node.get(B).parentNode === $.obj2node.get(E));
 
 
@@ -110,7 +127,7 @@ test_complex_tree_dead_circle :thunk:=
    $.unref(A, B);
    $.unref(A, D);
 
-   $.checkLike($.getMostRecentDeadSet(), new Set([B, C, D, E]));
+   $.checkDead(B, C, D, E);
 
 
 test_add_subgraph_to_root :thunk:=
@@ -123,11 +140,8 @@ test_add_subgraph_to_root :thunk:=
 
    $.addRoot(A);
 
-   $.check($.obj2node.has(A));
-   $.check($.obj2node.has(B));
-   $.check($.obj2node.has(C));
-   $.check($.obj2node.has(D));
+   $.checkAlive(A, B, C, D);
 
    $.removeRoot(A);
 
-   $.checkLike($.getMostRecentDeadSet(), new Set([A, B, C, D]));
+   $.checkDead(A, B, C, D);

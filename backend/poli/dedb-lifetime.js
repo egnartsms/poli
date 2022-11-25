@@ -57,8 +57,6 @@ unref ::=
       else {
          $.obj2refs.get(from).remove(to);
       }
-
-      $.setDeadSet(null);
    }
 
 
@@ -85,20 +83,15 @@ removeRoot ::=
    }
 
 
-mostRecentDeadSet ::= null
-
-
-setDeadSet ::=
-   // TODO: we don't want to hold references to these objects This is now needed only for testing.
-   // Do this instead: in tests, just check for nodes' presence with $.obj2node.
-   function (deadSet) {
-      $.mostRecentDeadSet = deadSet;
+isAlive ::=
+   function (object) {
+      return $.obj2node.has(object);
    }
 
 
-getMostRecentDeadSet ::=
-   function () {
-      return $.mostRecentDeadSet;
+isDead ::=
+   function (object) {
+      return !$.isAlive(object);
    }
 
 
@@ -226,7 +219,6 @@ fixOrphanedSubtree ::=
 
       if (newParent !== undefined) {
          subroot.parentNode = newParent;
-         $.setDeadSet(null);
          return;
       }
 
@@ -289,8 +281,6 @@ fixOrphanedSubtree ::=
       for (let dead of deadObjects) {
          $.freeDead(dead, deadObjects);
       }
-
-      $.setDeadSet(deadObjects);
    }
 
 

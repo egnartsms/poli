@@ -39,7 +39,7 @@ set-map
    intersection
 
 dedb-base
-   entitySym
+   myEntity
 
 -----
 
@@ -492,7 +492,7 @@ buildTree2 ::=
             }
 
             if (goal.entityVar !== null && subRoutes.has(goal.entityVar)) {
-               subRoutes.get(goal.entityVar).push([nSub, $.entitySym]);
+               subRoutes.get(goal.entityVar).push([nSub, $.myEntity]);
             }
 
             return {
