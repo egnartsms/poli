@@ -55,10 +55,12 @@ hasOwnProperty ::=
       return Object.prototype.hasOwnProperty.call(obj, prop);
    }
 
-hasOwnDefinedProperty ::=
+
+hasOwnDefined ::=
    function (obj, prop) {
-      return $.hasOwnProperty(obj, prop) && obj[prop] !== undefined;
+      return Object.hasOwn(obj, prop) && obj[prop] !== undefined;
    }
+
 
 ownPropertyValue ::=
    function (obj, prop) {
@@ -67,7 +69,7 @@ ownPropertyValue ::=
 
 isObjectWithOwnProperty ::=
    function (obj, prop) {
-      return obj != null && $.hasOwnProperty(obj, prop);
+      return obj != null && Object.hasOwn(obj, prop);
    }
 
 selectProps ::=
@@ -84,6 +86,21 @@ settify ::=
    function (X) {
       return X instanceof Set ? X : new Set(X);
    }
+
+
+wrapWith ::=
+   function (designator, value) {
+      return {
+         [designator]: value
+      }
+   }
+
+
+isWrappedWith ::=
+   function (designator, value) {
+      return value != null && Object.hasOwn(value, designator)
+   }
+
 
 compare ::=
    function (x1, x2) {
@@ -171,9 +188,10 @@ moduleNames ::=
       return [...module.entries, ...module.importedNames];
    }
 
+
 greatestBy ::=
-   function (items, keyOf) {
-      let maxKey = -Infinity;
+   function (items, keyOf, {greaterThan=-Infinity}={}) {
+      let maxKey = greaterThan;
       let maxItem = undefined;
 
       for (let item of items) {
@@ -185,12 +203,23 @@ greatestBy ::=
          }
       }
 
-      return [maxItem, maxKey];
+      return maxItem;
    }
+
 
 leastBy ::=
    function (items, keyOf) {
-      let minKey = Infinity;
+      let lessThan, minimum;
+
+      if (typeof keyOf === 'function') {
+         lessThan = Infinity;
+         minimum = -Infinity;
+      }
+      else {
+         ({lessThan=Infinity, minimum=-Infinity, keyOf} = keyOf);
+      }
+
+      let minKey = lessThan;
       let minItem = undefined;
 
       for (let item of items) {
@@ -199,11 +228,16 @@ leastBy ::=
          if (key < minKey) {
             minKey = key;
             minItem = item;
+
+            if (minKey <= minimum) {
+               break;
+            }
          }
       }
 
-      return [minItem, minKey];
+      return minItem;
    }
+
 
 isIterableEmpty ::=
    function (Xs) {
@@ -270,6 +304,7 @@ setWeedOut ::=
       return weed;
    }
 
+
 arrayChain ::=
    function arrayChain(array, startFrom=0) {
       if (startFrom >= array.length) {
@@ -284,6 +319,7 @@ arrayChain ::=
          }
       }
    }
+
 
 isChainEmpty ::=
    function (chain) {
@@ -334,6 +370,7 @@ parameterize ::=
       }
    }
 
+
 sortedArray ::=
    function (itbl, keyfn) {
       let array = Array.from(itbl);
@@ -347,32 +384,24 @@ sortedArray ::=
       return array;
    }
 
-setDefault ::=
-   function (map, key, producer) {
-      if (map.has(key)) {
-         return map.get(key);
-      }
-      else {
-         let val = producer();
-         map.set(key, val);
-         return val;
-      }
-   }
 
 lessThan ::=
    function (a, b) {
       return a < b;
    }
 
+
 objLessThan ::=
    function (objA, objB) {
       return $.objId(objA) < $.objId(objB);
    }
 
+
 equal ::=
    function equal(a, b) {
       return a === b;
    }
+
 
 firstDuplicate ::=
    function (itbl) {
@@ -387,6 +416,7 @@ firstDuplicate ::=
       }
    }
 
+
 itorFinal ::=
    function (itor) {
       let finalItem = undefined;
@@ -397,6 +427,7 @@ itorFinal ::=
 
       return finalItem;
    }
+
 
 find ::=
    function (itbl, pred) {
@@ -410,6 +441,7 @@ find ::=
          }
       }
    }
+
 
 findIndex ::=
    function (itbl, pred) {
@@ -425,6 +457,7 @@ findIndex ::=
       return -1;
    }
 
+
 indexOf ::=
    function (itbl, item) {
       let i = -1;
@@ -439,6 +472,7 @@ indexOf ::=
       return -1;
    }
 
+
 arraysEqual ::=
    function (A, B, itemsEqual=$.equal) {
       if (A.length !== B.length) {
@@ -452,6 +486,7 @@ arraysEqual ::=
       }
       return true;
    }
+
 
 setsEqual ::=
    function (A, B) {
@@ -473,6 +508,7 @@ setsEqual ::=
 
       return true;
    }
+
 
 allEqual ::=
    function (xs, pred) {
@@ -503,6 +539,7 @@ allEqual ::=
 
       return true;      
    }
+
 
 isLike ::=
    function isLike(A, B) {
@@ -598,10 +635,12 @@ isLike ::=
       return false;
    }
 
+
 checkLike ::=
    function (A, B) {
       $.check($.isLike(A, B));
    }
+
 
 enumerate ::=
    function* (xs) {
@@ -701,6 +740,7 @@ chain ::=
       }
    }
 
+
 takeWhile ::=
    function* (xs, pred) {
       for (let x of xs) {
@@ -709,6 +749,21 @@ takeWhile ::=
          }
       }
    }
+
+
+mapStop ::=
+   function* (xs, fnMapper) {
+      for (let x of xs) {
+         let y = fnMapper(x);
+
+         if (y === undefined) {
+            break;
+         }
+
+         yield y;
+      }
+   }
+
 
 reduce ::=
    function (xs, rfn) {
@@ -760,12 +815,14 @@ indexRange ::=
       yield* $.range(array.length);
    }
 
+
 range ::=
    function* (to) {
       for (let i = 0; i < to; i += 1) {
          yield i;
       }
    }
+
 
 newObj ::=
    function (proto, ...props) {
@@ -936,5 +993,61 @@ m2mAddAll ::=
 
       for (let b of bs) {
          $.mmapAdd(mm[$.m2mCompanion], b, a);
+      }
+   }
+
+
+Queue ::=
+   {
+      new(items) {
+         return {
+            front: [],
+            rear: items == null ? [] : [...items]
+         }
+      },
+
+      put(queue, item) {
+         queue.rear.push(item);
+      },
+
+      putAll(queue, items) {
+         for (let item of items) {
+            $.Queue.put(queue, item);
+         }
+      },
+
+      take(queue) {
+         if (queue.front.length === 0) {
+            $.rearToFront(queue);
+         }
+
+         return queue.front.pop();
+      },
+
+      isEmpty(queue) {
+         return queue.front.length === 0 && queue.rear.length === 0;
+      }
+   }
+
+
+rearToFront ::=
+   function (queue) {
+      let {front, rear} = queue;
+
+      while (rear.length > 0) {
+         front.push(rear.pop());
+      }
+   }
+
+
+breadthExpansion ::=
+   function (initial, gtor) {
+      let belt = $.Queue.new();
+
+      $.Queue.put(belt, initial);
+
+      while (!$.Queue.isEmpty(belt)) {
+         let item = $.Queue.take(belt);
+         $.Queue.putAll(belt, gtor(item));
       }
    }

@@ -60,17 +60,16 @@ contexts:
 
   entry:
     - meta_content_scope: meta.entry
-    # - include: pop-at-starting-line
-    - match: (?<=\s)(:(stmt):=)(?:\s*$)
+    - match: (?<=\s)(:(body|thunk):=)(?:\s*$)
       captures:
         1: punctuation.separator.defined-as
-        2: meta.defkind.stmt
-      push: [exit, body-*, exit, def/stmt, maybe-docstring]
-    - match: (?<=\s)(:(stmt):=)(?:\s+)(?=\S)
+        2: mdef.defkind.body
+      push: [exit, body-*, exit, def/body, maybe-docstring]
+    - match: (?<=\s)(:(body|thunk):=)(?:\s+)(?=\S)
       captures:
         1: punctuation.separator.defined-as
-        2: meta.defkind.stmt
-      push: [exit, definition-1, embedded-1/stmt]
+        2: mdef.defkind.body
+      push: [exit, definition-1, embedded-1/body]
     - match: (?<=\s)(:(css):=)(?:\s*$)
       captures:
         1: punctuation.separator.defined-as
@@ -96,7 +95,7 @@ contexts:
     - meta_scope: meta.target
     - include: pop-at-defined-as
     - match: \w+
-      scope: meta.name-binding variable.other
+      scope: meta.name-binding entity.name.function.poli variable.other
       pop: true
     - match: (?=\$)
       push: effect
@@ -110,9 +109,10 @@ contexts:
         3: meta.$func
       push:
         - meta_content_scope: meta.$args
-        - match: \)
-          scope: punctuation.section.group.end.js
-          pop: true
+        # Not sure why I added this in here
+        # - match: \)
+        #   scope: punctuation.section.group.end.js
+        #   pop: true
         - include: Packages/JavaScript/JavaScript.sublime-syntax#expression-list
       with_prototype:
         - include: pop-at-defined-as
@@ -125,10 +125,17 @@ contexts:
     - match: ''
       pop: 2
 
-  definition-1:
-    - meta_content_scope: meta.body.oneline meta.definition
+  pop-at-newline:
     - match: ^
       pop: true
+
+  pop-immediately:
+    - match: ''
+      pop: true
+
+  definition-1:
+    - meta_content_scope: meta.body.oneline meta.definition
+    - include: pop-at-newline
 
   body-*:
     - meta_content_scope: meta.body.multiline
@@ -138,8 +145,7 @@ contexts:
       captures:
         1: punctuation.definition.docstring
       set: docstring
-    - match: ^
-      pop: true
+    - include: pop-at-newline
 
   docstring:
     - meta_content_scope: meta.docstring comment.block.docstring
@@ -198,40 +204,44 @@ contexts:
 
   def/js:
     - match: ''
-      set:
-        - definition-*
-        - embedded-*/js
+      set: [definition-*, embedded-*/js]
 
   embedded-1/js:
+    - include: pop-at-newline
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
-      with_prototype:
-        - match: ^
-          pop: true
+      embed: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      embed_scope: source.js
+      escape: ^
 
   embedded-*/js:
     - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#expression
+      set:
+        -
+          - meta_content_scope: source.js
+          - include: pop-immediately
+        - Packages/JavaScript/JavaScript.sublime-syntax#expression
       with_prototype:
         - include: pop-at-starting-line
         - include: smart-empty-lines
 
-  def/stmt:
+  def/body:
+    - match: ''
+      set: [definition-*, embedded-*/body]
+
+  embedded-1/body:
+    - include: pop-at-newline
+    - match: ''
+      embed: Packages/JavaScript/JavaScript.sublime-syntax#statements
+      embed_scope: source.js
+      escape: ^
+
+  embedded-*/body:
     - match: ''
       set:
-        - definition-*
-        - embedded-*/stmt
-
-  embedded-1/stmt:
-    - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
-      with_prototype:
-        - match: ^
-          pop: true
-
-  embedded-*/stmt:
-    - match: ''
-      set: Packages/JavaScript/JavaScript.sublime-syntax#statements
+        -
+          - meta_content_scope: source.js
+          - include: pop-immediately
+        - Packages/JavaScript/JavaScript.sublime-syntax#statements
       with_prototype:
         - include: pop-at-starting-line
         - include: smart-empty-lines

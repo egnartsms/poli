@@ -13,52 +13,17 @@ dedb-base
    idty
 dedb-index
    Fitness
-   indexFitnessByBindings
+   tupleFitnessByBindings
+   refIndex
 dedb-index-instance
    indexRefWithBindings
 dedb-derived
    makeProjection as: makeDerivedProjection
+
 -----
 
-getRecords ::=
-   function (insts, bindings) {
-      let [inst, fitness] = $.findSuitableIdxInst(insts, bindings);
-
-      $.check(fitness !== $.Fitness.minimum, `Could not find suitable index`);
-
-      let recs = $.indexRefWithBindings(inst, bindings);
-      let filterBy = $.computeFilterBy(bindings, inst.index);
-
-      return (filterBy.length === 0) ? recs :
-         $.filter(recs, rec => $.suitsFilterBy(rec, filterBy));
-   }
-
-findSuitableIdxInst ::=
-   function (insts, bindings) {
-      return $.greatestBy(
-         insts,
-         ({index}) => $.indexFitnessByBindings(index, bindings)
-      );
-   }
-
-computeFilterBy ::=
-   function (bindings, exceptAttrs=[]) {
-      return Object.entries(bindings).filter(([attr, val]) => !exceptAttrs.includes(attr));
-   }
-
-suitsFilterBy ::=
-   function (rec, filterBy) {
-      for (let [attr, val] of filterBy) {
-         if (rec[attr] !== val) {
-            return false;
-         }
-      }
-
-      return true;
-   }
-
 time ::= 0
-derivedProjectionCache ::= new Map
+indexCache ::= new Map
 recencyHead ::= null
 
 dumpRecencyList ::=
@@ -68,68 +33,35 @@ dumpRecencyList ::=
       console.log('Q proj cache:', $.derivedProjectionCache);
    }
 
-query ::=
+
+getIndex ::=
    function (rel, hardBindings, softBindings) {
       if (rel.kind === 'base') {
-         $.check(softBindings === undefined);
+         $.check(arguments.length === 2);
 
-         softBindings = hardBindings;
+         let idx = $.refIndex(hardBindings);
+         let rec = $.indexCache.get(idx);
 
-         return softBindings == null ? rel.records :
-            $.getRecords(rel.myInsts, softBindings);
-      }
-
-      if (rel.kind === 'derived') {
-         let proj = $.lookupDerivedProjection(rel, hardBindings);
-
-         return softBindings === undefined ? proj.records :
-            $.getRecords(proj.myInsts, softBindings);
-      }
-
-      throw new Error;
-   }
-
-queryAtMostOne ::=
-   function (rel, hardBindings, softBindings) {
-      if (rel.kind === 'aggregate') {
-         let proj = $.lookupDerivedProjection(rel, hardBindings);
-         
-         if (proj.kind === 'aggregate-0-dim') {
-            $.check(softBindings === undefined);
-            return proj.rec;
+         if (rec === undefined) {
+            rec = {
+               index: idx,
+               lastUsed: 0,
+               prev: null,
+               next: null,
+            };
+            $.indexCache.set(idx, rec);
+         }
+         else {
+            idx.refCount -= 1;
          }
 
-         $.assert(() => proj.kind === 'aggregate');
-
-         let group = proj.recordMap;
-
-         for (let key of proj.groupBy) {
-            group = group.get(softBindings[key]);
-
-            if (group === undefined) {
-               return null;
-            }
-         }
-
-         return group;
+         $.time += 1;
+         $.setAsNewHead(rec);
       }
 
-      let [rec] = $.query(rel, hardBindings, softBindings);
-      return rec ?? null;
+      throw new Error(`Not impl`);
    }
 
-queryOne ::=
-   function (rel, hardBindings, softBindings) {
-      let rec = $.queryAtMostOne(rel, hardBindings, softBindings);
-      $.check(rec !== null);
-      return rec;
-   }
-
-queryIdentity ::=
-   function (rel, bindings) {
-      let [rec] = $.getRecords(rel.myInsts, bindings);
-      return rec[$.idty];
-   }
 
 lookupDerivedProjection ::=
    function (rel, bindings) {
@@ -177,6 +109,7 @@ setAsNewHead ::=
 
 clearProjectionCache ::=
    function () {
+      throw new Error(`Not impl`);
       for (let proj of $.derivedProjectionCache.keys()) {
          $.releaseProjection(proj);
       }

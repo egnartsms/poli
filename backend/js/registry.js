@@ -7,24 +7,29 @@ export class Registry {
       this.nExisting = 0;
    }
 
-   getModule(name, {exists} = {exists: false}) {
+   getModule(name, {create} = {create: false}) {
       let module = this.modules.get(name);
 
       if (module === undefined) {
          module = new Module(name);
          this.modules.set(name, module);
 
-         if (exists) {
+         if (create) {
             module.youExist();
             this.nExisting += 1;
          }
+      }
+      // The module may be already mentioned before but not yet created.
+      else if (create && !module.exists.value) {
+         module.youExist();
+         this.nExisting += 1;
       }
 
       return module;
    }
 
    loadModuleData(mdata) {
-      let module = this.getModule(mdata.name, {exists: true});
+      let module = this.getModule(mdata.name, {create: true});
 
       // Imports
       for (let {donor, imports} of mdata.imports) {
@@ -41,8 +46,8 @@ export class Registry {
       }
 
       // Definitions
-      for (let {target, definition} of mdata.body) {
-         module.addEntry(target, definition);
+      for (let entryInfo of mdata.body) {
+         module.addEntry(entryInfo);
       }
    }
 

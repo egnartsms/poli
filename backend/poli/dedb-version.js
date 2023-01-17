@@ -3,55 +3,77 @@ common
    check
    isA
    isIterableEmpty
+   noUndefinedProps
+
 set-map
    deleteIntersection
    greaterLesser
    addAll
    setAll
+
 dedb-projection
    projectionRecords
+   tagProjection
+
+dedb-base
+   * as: base
+
+dedb-derived
+   * as: derived
+
 -----
 
-refRelationState ::=
-   function (rel) {
-      $.assert(() => rel.kind === 'base');
+---------------------------------------------
+Everything below is the old code
 
-      $.ensureTopmostFresh(rel);
-      rel.myVer.refCount += 1;
+refProjectionVersion ::=
+   function (rel, bindings) {
+      bindings = $.noUndefinedProps(bindings);
 
-      return rel.myVer;
+      if (rel.kind === 'base') {
+         return $.base.refProjectionVersion(rel, bindings);
+      }
+      else if (rel.kind === 'derived') {
+         return $.derived.refProjectionVersion(rel, bindings);
+      }
+      else {
+         throw new Error(`Unexpected rel type: '${rel.name}'`);
+      }
    }
 
-refProjectionState ::=
+
+releaseVersion ::=
+   function (ver) {
+      if (ver.proj.rel.kind === 'base') {
+         return $.base.releaseVersion(ver);
+      }
+      else if (ver.proj.rel.kind === 'derived') {
+         return $.derived.releaseVersion(ver);
+      }
+      else {
+         throw new Error(`Unexpected rel type: '${ver.proj.rel.name}'`);
+      }
+   }
+
+
+refState ::=
    function (proj) {
-      if (proj.kind === 'derived' || proj.kind === 'aggregate') {
-         $.ensureTopmostFresh(proj);
-         proj.myVer.refCount += 1;
+      if (proj.rel.kind === 'base') {
+         $.ensureTopmostPristine(proj);
+         proj.ver.refCount += 1;
 
-         return proj.myVer;
+         return proj.ver;
       }
 
-      if (proj.kind === 'partial') {
-         if (proj.depVer === null) {
-            proj.depVer = $.refRelationState(proj.rel);
-         }
-
-         $.ensureTopmostFresh(proj);
-         proj.myVer.refCount += 1;
-
-         return proj.myVer;
-      }
-
-      if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
-         return $.makeScalarVersion(proj);
-      }
-
-      if (proj.kind === 'full') {
-         return $.refRelationState(proj.rel);
-      }
-
-      throw new Error;
+      throw new Error(`Not impl`);
    }
+
+
+isPristine ::=
+   function (ver) {
+      return ver.added.size === 0 && ver.removed.size === 0;
+   }
+
 
 makeScalarVersion ::=
    function (proj) {
@@ -61,6 +83,7 @@ makeScalarVersion ::=
          rec: proj.rec,
       }
    }
+
 
 makeZeroVersion ::=
    function (owner) {
@@ -73,35 +96,6 @@ makeZeroVersion ::=
       }
    }
 
-ensureTopmostFresh ::=
-   function (versionable) {
-      let prev = versionable.myVer;
-      
-      if (prev !== null && $.isMultiVersionFresh(prev)) {
-         return;
-      }
-
-      let ver = {
-         kind: 'multi',
-         owner: versionable,
-         num: 1 + (prev === null ? 0 : prev.num),
-         refCount: prev === null ? 0 : 1,
-         added: new Set,
-         removed: new Set,
-         next: null,
-      };
-
-      if (prev !== null) {
-         prev.next = ver;
-      }
-
-      versionable.myVer = ver;
-   }
-
-isMultiVersionFresh ::=
-   function (ver) {
-      return ver.added.size === 0 && ver.removed.size === 0;
-   }
 
 releaseVersion ::=
    function (ver) {
@@ -134,7 +128,10 @@ releaseVersion ::=
       }
    }
 
+
 prepareVersion ::=
+   :For 'multi' kind of version, unchain it. For others, do nothing.
+
    function (ver) {
       if (ver.kind !== 'multi') {
          return;
@@ -146,7 +143,7 @@ prepareVersion ::=
 
       let owner = ver.owner;
 
-      $.ensureTopmostFresh(owner);
+      $.ensureTopmostPristine(owner, ver.added.constructor);
 
       let topmost = owner.myVer;
       let chain = [];
@@ -178,8 +175,8 @@ prepareVersion ::=
             next.removed = null;
          }
          else {
-            $.versionAddAll(next.added, ver);
-            $.versionRemoveAll(next.removed, ver);
+            $.versionAddAll(ver, next.added);
+            $.versionRemoveAll(ver, next.removed);
          }
 
          ver.next = topmost;
@@ -188,18 +185,6 @@ prepareVersion ::=
       }
    }
 
-isVersionPristine ::=
-   function (ver) {
-      if (ver.kind === 'scalar') {
-         return ver.rec === vec.proj.rec
-      }
-
-      if (ver.kind === 'multi') {
-         return $.isMultiVersionFresh(ver);
-      }
-
-      throw new Error;
-   }
 
 versionAdd ::=
    function (ver, rec) {
@@ -211,12 +196,6 @@ versionAdd ::=
       }
    }
 
-versionAddAll ::=
-   function (vec, recs) {
-      for (let rec of recs) {
-         $.versionAdd(ver, rec);
-      }
-   }
 
 versionRemove ::=
    function (ver, rec) {
@@ -228,6 +207,15 @@ versionRemove ::=
       }
    }
 
+
+versionAddAll ::=
+   function (ver, recs) {
+      for (let rec of recs) {
+         $.versionAdd(ver, rec);
+      }
+   }
+
+
 versionRemoveAll ::=
    function (ver, rec) {
       for (let rec of recs) {
@@ -235,45 +223,95 @@ versionRemoveAll ::=
       }
    }
 
+
 versionAddedRecords ::=
-   function (ver) {
+   :Return the set of records added since `ver` capture time.
+
+    The version should be prepared (see `prepareVersion`) if it's a 'multi' version.
+
+    `relevantAttrs` is an array of attributes we're interested in (if they changed).
+    This currently makes sense only for entity-based projections.
+
+   function (ver, relevantAttrs=null) {
       if (ver.kind === 'scalar') {
          let {proj} = ver;
+         let recA = proj.rec;
+         let recR = ver.rec;
 
          if (ver.rec !== proj.rec && proj.rec !== null) {
-            return [proj.rec];
+            // TODO: continue here
          }
-         else {
-            return [];
-         }
+         return new Set(
+            (ver.rec !== proj.rec && proj.rec !== null) ? [proj.rec] : []
+         );
       }
 
       if (ver.kind === 'multi') {
-         return ver.added;
+         if (relevantAttrs === null) {
+            return ver.added;
+         }
+
+         $.check(ver.added.constructor === $.EntitySet);
+         let result = new Set;
+
+         for (let recA of ver.added) {
+            let entity = recA[$.entity];
+            let recR = ver.removed.recordFor(entity);
+
+            if (recR === null) {
+               result.add(recA);
+            }
+            else if ($.any($.relevantAttrs, attr => recA[attr] !== recR[attr])) {
+               result.add(recA);
+            }
+         }
+
+         return result;
       }
 
       if (ver.kind === 'zero') {
-         return $.projectionRecords(ver.owner);
+         return new Set($.projectionRecords(ver.owner));
       }
 
       throw new Error;
    }
 
+
 versionRemovedRecords ::=
-   function (ver) {
+   :Return the iterable of records removed since `ver` capture time.
+
+    The version should be prepared (see `prepareVersion`) if it's a 'multi' version.
+
+    `relevantAttrs` is an array of attributes we're interested in (if they changed).
+    This currently makes sense only for entity-based projections.
+
+   function (ver, relevantAttrs=null) {
       if (ver.kind === 'scalar') {
          let {proj} = ver;
 
-         if (proj.rec !== ver.rec && ver.rec !== null) {
-            return [ver.rec];
-         }
-         else {
-            return [];
-         }
+         return (ver.rec !== proj.rec && ver.rec !== null) ? [ver.rec] : [];
       }
 
       if (ver.kind === 'multi') {
-         return ver.removed;
+         if (relevantAttrs === null) {
+            return ver.removed;
+         }
+
+         $.assert(() => ver.removed.constructor === $.EntitySet);
+         
+         return (function* () {
+            for (let recR of ver.removed) {
+               let entity = recR[$.entity];
+               let recA = ver.added.recordFor(entity);
+
+               if (recA === null) {
+                  yield recR;
+               }
+               else if ($.any($.relevantAttrs, attr => recR[attr] !== recA[attr])) {
+                  yield recR;
+               }
+            }
+         }());
       }
 
       if (ver.kind === 'zero') {

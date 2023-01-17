@@ -8,25 +8,49 @@ common
    isA
 dedb-base
    * as: base
+   entity
 dedb-derived
    * as: derived
 dedb-aggregate
    * as: agg
 dedb-query
-   suitsFilterBy
-   computeFilterBy
+   suitsCheckList
+   computeCheckList
 dedb-index
-   indexFitnessByBindings
+   tupleFitnessByBindings
 dedb-index-instance
    indexRefWithBindings
+dedb-pyramid
+   * as: py
 -----
 
-makeProjectionRegistry ::=
-   function () {
-      return Object.assign(new Map, {
-         parent: null
-      });
+Bproj <-- version
+Dproj <-- version, index
+
+
+obtainProjectionVersion ::=
+   :Get the current version of the projection of 'rel' identified by 'bindings'.
+
+    Create projection if it does not exist yet.
+
+    For derived relation, we returned a "positive" version -- the one that only remembers what has
+    been added. Versions that track removed records should be requested separately
+    ("negative version").
+
+   function (rel, bindings) {
+      let proj = $.projectionFor(rel, bindings);
+
+      $.reifyCurrentVersion(proj);
+
+      return proj.ver;
    }
+
+
+projectionFor ::=
+   function (rel, bindings) {
+      return $.py.setDefault(rel.projections, bindings, () => $.makeProjection(rel, bindings));
+   }
+
 
 makeProjection ::=
    function (rel, bindings) {
@@ -34,9 +58,11 @@ makeProjection ::=
          return $.base.makeProjection(rel, bindings);
       }
       else if (rel.kind === 'derived') {
+         throw new Error(`Not impl`);
          return $.derived.makeProjection(rel, bindings);
       }
       else if (rel.kind === 'aggregate') {
+         throw new Error(`Not impl`);
          return $.agg.makeProjection(rel, bindings);
       }
       else {
@@ -44,86 +70,33 @@ makeProjection ::=
       }
    }
 
-projectionFor ::=
-   function (rel, bindings) {
-      let map = rel.projections;
 
-      for (let [key, isFinal] of
-            $.trackingFinal($.genProjectionKey(rel, bindings))) {
-         if (map.has(key)) {
-            map = map.get(key);
-         }
-         else {
-            let next;
+reifyCurrentVersion ::=
+   :Get the version of 'proj' at the current moment of time.
 
-            if (isFinal) {
-               next = {
-                  parent: map,
-                  key: key,
-                  proj: $.makeProjection(rel, bindings)
-               };
-
-               next.proj.regPoint = next;
-            }
-            else {
-               next = Object.assign(new Map, {
-                  parent: map,
-                  key: key
-               });
-            }
-            
-            map.set(key, next);
-            map = next;
-         }
-      }
-
-      return map.proj;
-   }
-
-releaseProjection ::=
    function (proj) {
-      $.check(proj.refCount > 0);
-
-      proj.refCount -= 1;
-
-      if (proj.refCount === 0) {
-         let {parent: map, key} = proj.regPoint;
-
-         map.delete(key);
-
-         while (map.size === 0 && map.parent !== null) {
-            map.parent.delete(map.key);
-            map = map.parent;
-         }
-
-         $.freeProjection(proj);      
+      if (proj.rel.kind === 'base') {
+         $.base.reifyCurrentVersion(proj);
+      }
+      else if (proj.rel.kind === 'derived') {
+         $.derived.reifyCurrentVersion(proj);
+      }
+      else {
+         throw new Error(`Not impl`);
       }
    }
 
-genProjectionKey ::=
-   function* (rel, bindings) {
-      for (let attr of rel.attrs) {
-         yield $.hasOwnProperty(bindings, attr) ? bindings[attr] : undefined;
-      }
-   }
 
 freeProjection ::=
    function (proj) {
-      let {rel} = proj;
+      // TODO: indices are actually not guaranteed to be freed before the projection itself
+      // (because of circular structures)
+      //
+      // $.assert(() => proj.rel.kind !== 'derived' || // proj.indices.length === 0);
 
-      if (rel.kind === 'base') {
-         $.base.freeProjection(proj);
-      }
-      else if (rel.kind === 'derived') {
-         $.derived.freeProjection(proj);
-      }
-      else if (rel.kind === 'aggregate') {
-         $.agg.freeProjection(proj);
-      }
-      else {
-         throw new Error;
-      }
+      $.py.remove(proj.rel.projections, proj.bindings);
    }
+
 
 invalidateProjection ::=
    function (root) {
@@ -131,17 +104,37 @@ invalidateProjection ::=
          return;
       }
 
-      let stack = [root];
+      /*let stack = [root];
 
       while (stack.length > 0) {
          let proj = stack.pop();
 
-         stack.push(...proj.validRevDeps);
+         if (proj.isValid) {
+            stack.push(...proj.validRevDeps);
 
-         proj.validRevDeps.clear();
-         proj.isValid = false;
+            proj.validRevDeps.clear();
+            proj.isValid = false;
+         }
+      }*/
+   }
+
+
+invalidateAll ::=
+   function (projs) {
+      let stack = Array.from(projs);
+
+      while (stack.length > 0) {
+         let proj = stack.pop();
+
+         if (proj.isValid) {
+            stack.push(...proj.validRevDeps);
+
+            proj.validRevDeps.clear();
+            proj.isValid = false;
+         }
       }
    }
+
 
 updateProjection ::=
    function (proj) {
@@ -165,6 +158,7 @@ updateProjection ::=
       }
    }
 
+
 referentialSize ::=
    function (proj) {
       if (proj.kind === 'unique-hit' || proj.kind === 'aggregate-0-dim') {
@@ -186,8 +180,11 @@ referentialSize ::=
       throw new Error;
    }
 
+
 projectionRecords ::=
    function (proj) {
+      throw new Error(`Not impl`);
+
       if (proj.kind === 'derived') {
          return proj.records;
       }
@@ -207,7 +204,7 @@ projectionRecords ::=
       }
 
       if (proj.kind === 'partial') {
-         return $.filter(proj.rel.records, rec => $.suitsFilterBy(rec, proj.filterBy));
+         return $.filter(proj.rel.records, rec => $.suitsCheckList(rec, proj.filterBy));
       }
 
       throw new Error;   
