@@ -1,4 +1,4 @@
-import {SRC_FOLDER} from './const';
+import {SRC_FOLDER} from './const.js';
 
 
 /**

@@ -1,6 +1,6 @@
-import {Binding} from './binding';
-import {computableCell, rigidCell, rigidGetter} from './engine';
-import {publicDescriptor} from './common';
+import {Binding} from './binding.js';
+import {computableCell, rigidCell, rigidGetter} from './engine.js';
+import {publicDescriptor} from './common.js';
 
 
 export class Module {

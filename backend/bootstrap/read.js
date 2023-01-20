@@ -1,7 +1,6 @@
-import {SRC_FOLDER} from './const';
+import fs from 'fs';
 
-
-const fs = require('fs');
+import {SRC_FOLDER} from './const.js';
 
 
 /**

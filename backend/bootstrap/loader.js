@@ -1,7 +1,7 @@
 // const loadModules = require('./load-modules');
-import {WORLD_MODULE, RUN_MODULE} from './const';
-import {loadModulesData} from './load';
-import {parseRawModule} from './parse';
+import {WORLD_MODULE, RUN_MODULE} from './const.js';
+import {loadModulesData} from './load.js';
+import {parseRawModule} from './parse.js';
 
 
 function run(rawModules) {

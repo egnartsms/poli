@@ -1,9 +1,12 @@
-const http = require('http');
-const fs = require('fs');
-const WebSocket = require('ws');
+import http from 'http';
+import fs from 'fs';
+import {WebSocketServer} from 'ws';
 
+import {SRC_FOLDER, RUN_MODULE} from '$/bootstrap/const.js';
 
-const {SRC_FOLDER, RUN_MODULE, loadModulesData, readRawModules, parseRawModule} = require('./node-lib');
+import {readRawModules} from '$/bootstrap/read.js';
+import {parseRawModule} from '$/bootstrap/parse.js';
+import {loadModulesData} from '$/bootstrap/load.js';
 
 
 function run() {
@@ -14,7 +17,7 @@ function run() {
    let websocket = null;
 
    let server = http.createServer();
-   let wss = new WebSocket.Server({ noServer: true });
+   let wss = new WebSocketServer({ noServer: true });
 
    wss
       .on('error', function (error) {
@@ -34,7 +37,9 @@ function run() {
             })
             .on('close', function (code, reason) {
                websocket = null;
-               console.log("Front-end disconnected. Code:", code, "reason:", reason);
+               console.log(
+                  "Front-end disconnected. Code:", code, "reason:", reason.toString()
+               );
             })
             .on('error', function (error) {
                console.error("WebSocket client connection error:", error);
@@ -60,6 +65,4 @@ function run() {
 }
 
 
-if (require.main === module) {
-   run();
-}
+run();

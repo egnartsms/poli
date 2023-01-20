@@ -1,32 +1,17 @@
-
-// const nodeResolve = require('rollup-plugin-node-resolve');
-// const commonjs = require('rollup-plugin-commonjs');
-// import nodeResolve from 'rollup-plugin-node-resolve';
+import nodeResolve from 'rollup-plugin-node-resolve';
 import commonjs from 'rollup-plugin-commonjs';
 
 export default [
    {
-      input: 'js/bootloader.js',
+      input: 'bootstrap/loader.js',
       output: {
-         file: 'script/bootloader.js',
+         file: 'gen/loader.js',
          format: 'iife',
          name: 'poli'
       },
       plugins: [
-         // nodeResolve(),
+         nodeResolve(),
          commonjs()
-      ]
-   },
-   {
-      input: 'js/node-lib.js',
-      output: {
-         file: 'script/node-lib.js',
-         format: 'cjs',
-         exports: null
-      },
-      plugins: [
-         // nodeResolve(),
-         // commonjs()
       ]
    }
 ];

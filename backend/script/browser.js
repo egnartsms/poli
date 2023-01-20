@@ -1,16 +1,16 @@
-const http = require('http');
-const fs = require('fs');
-const WebSocket = require('ws');
-const url = require('url');
+import http from 'http';
+import fs from 'fs';
+import {WebSocketServer} from 'ws';
+import url from 'url';
 
-
-const {SRC_FOLDER, RUN_MODULE, readRawModules} = require('./node-lib');
+import {SRC_FOLDER, RUN_MODULE} from '$/bootstrap/const.js';
+import {readRawModules} from '$/bootstrap/read.js';
 
 
 function run() {
    let server = http.createServer();
-   let wssBrowser = new WebSocket.Server({ noServer: true });
-   let wssSublime = new WebSocket.Server({ noServer: true });
+   let wssBrowser = new WebSocketServer({ noServer: true });
+   let wssSublime = new WebSocketServer({ noServer: true });
 
    let wsBrowser = null;
    let wsSublime = null;
@@ -30,7 +30,9 @@ function run() {
          wsSublime
             .on('close', function (code, reason) {
                wsSublime = null;
-               console.log("Sublime disconnected. Code:", code, "reason:", reason);
+               console.log(
+                  "Sublime disconnected. Code:", code, "reason:", reason.toString()
+               );
             })
             .on('error', function (error) {
                console.error("Sublime websocket connection error:", error);
@@ -72,7 +74,9 @@ function run() {
             wsBrowser
                .on('close', function (code, reason) {
                   wsBrowser = null;
-                  console.log("Browser disconnected. Code:", code, "reason:", reason);
+                  console.log(
+                     "Browser disconnected. Code:", code, "reason:", reason.toString()
+                  );
                })
                .on('error', function (error) {
                   console.error("Browser websocket connection error:", error);
@@ -120,10 +124,10 @@ function run() {
          });
          resp.end(fs.readFileSync('index.html', 'utf8'));
       }
-      else if (pathname === '/bootloader.js') {
+      else if (pathname === '/bootstrap') {
          let rawModules = readRawModules();
          let bootloader = fs
-            .readFileSync('./script/bootloader.js', 'utf8')
+            .readFileSync('./gen/loader.js', 'utf8')
             .replace(/\/\*RAW_MODULES\*\//, () => JSON.stringify(rawModules, null, 2));
 
          resp.writeHead(200, {
@@ -141,6 +145,4 @@ function run() {
 }
 
 
-if (require.main === module) {
-   run();
-}
+run();
