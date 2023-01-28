@@ -1,0 +1,7 @@
+{
+    "preserve_newlines": true,
+    "operator_position": "before-newline",
+    "brace_style": "end-expand, preserve-inline",
+    "indent_size": 2,
+    "wrap_line_length": 80
+}
