@@ -1,27 +1,28 @@
-export {parseModuleSource};
+export {parseTopLevel};
 
 
-const rLineComment = `(?://.*?\n)+`;
-const rBlockComment = `/\\*.*?\\*/(?<erroneous>.*?)$`;
+const rSingleLineComment = `(?://.*?\n)+`;
+const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.+?)?\n`;
 const rIndentedLine = `[ \t]+\\S.*?\n`;
 const rBlankLine = `\\s*?\n`;
 const rZeroLine = `\\S.*?\n`;
-const rEntryTerminatingLine = `[)\\]}\`'"].*?\n`;
-const rEntry = (
+const rShifted = `${rIndentedLine}(?:(?:${rBlankLine})*${rIndentedLine})*`;
+const rCodeTerminatingLine = `[)\\]}\`'"].*?\n`;
+const rCode = (
   `${rZeroLine}` + 
   `(?:(?:${rBlankLine})*${rIndentedLine})*` +
-  `(?:(?:${rBlankLine})*${rEntryTerminatingLine})?`
+  `(?:(?:${rBlankLine})*${rCodeTerminatingLine})?`
 );
-const rShiftedBlock = `${rIndentedLine}(?:(?:${rBlankLine})*${rIndentedLine})*`;
 
 
 const reEntry = new RegExp(
   (() => {
     let branches = [
-        `(?<line_comment>${rLineComment})`,
-        `(?<block_comment>${rBlockComment})`,
-        `(?<shifted_block>${rShiftedBlock})`,
-        `(?<entry>${rEntry})`
+        `(?<space>(?:${rBlankLine})+)`,
+        `(?<single_line_comment>${rSingleLineComment})`,
+        `(?<multi_line_comment>${rMultiLineComment})`,
+        `(?<shifted>${rShifted})`,
+        `(?<code>${rCode})`
       ].join('|');
 
     return `^(?:${branches})`;
@@ -30,33 +31,51 @@ const reEntry = new RegExp(
 );
 
 
-function parseModuleSource(src) {
-  console.time('parse');
+function* parseTopLevel(src) {
   reEntry.lastIndex = 0;
 
   let mo;
 
   while ((mo = reEntry.exec(src)) !== null) {
     let type;
+    let ignoreReason = null;
 
-    if (mo.groups.line_comment != null) {
-      type = 'line_comment';
+    if (mo.groups.space !== undefined) {
+      type = 'space';
     }
-    else if (mo.groups.block_comment != null) {
-      type = 'block_comment';
+    else if (mo.groups.single_line_comment !== undefined) {
+      type = 'single-line-comment';
     }
-    else if (mo.groups.shifted_block != null) {
-      type = 'shifted_block';
+    else if (mo.groups.multi_line_comment !== undefined) {
+      if (mo.groups.redundant) {
+        type = 'ignored';
+        ignoreReason = 'bad-multi-comment';
+      }
+      else {
+        type = 'multi-line-comment';
+      }
     }
-    else if (mo.groups.entry != null) {
-      type = 'entry';
+    else if (mo.groups.shifted !== undefined) {
+      type = 'ignored';
+      ignoreReason = 'shifted';
+    }
+    else if (mo.groups.code !== undefined) {
+      type = 'code';
     }
     else {
       throw new Error(`Module parse internal error`);
     }
 
-    // console.log(`<${type}>`);
-    // console.log(mo.groups.entry);
+    yield {
+      type,
+      ignoreReason,
+      text: mo[0],
+      start: mo.index,
+      end: mo.index + mo[0].length,
+    }
   }
-  console.timeEnd('parse');
+
+  if (reEntry.lastIndex < src.length) {
+    throw new Error(`Remaining unparsed chunk: '${src.slice(reEntry.lastIndex)}'`);
+  }
 }

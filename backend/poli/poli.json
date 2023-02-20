@@ -1,4 +1,4 @@
 {
     "project-name": "poli",
-    "root-module": "load.js"
+    "root-module": "main.js"
 }

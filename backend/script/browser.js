@@ -1,50 +1,39 @@
 import fs from 'node:fs';
-import * as fsP from 'node:fs/promises';
+import fsP from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
-import {
-  WebSocketServer
-}
-from 'ws';
+import { WebSocketServer } from 'ws';
 
-import {
-  SRC_FOLDER,
-  RUN_MODULE
-}
-from '$/poli/const.js';
-import {
-  readRawModules
-}
-from '$/poli/read.js';
+import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 
 
-/* beautify preserve:start */
-const meta = import.meta;
-/* beautify preserve:end */
+const LIB_ROOT = new URL('../lib/', import.meta.url).pathname;
 
 
-let projects = new Map([
-  ['poli', new URL('../poli/', meta.url).pathname]
-]);
+let projects = new Map;
 
 
 async function addProjectRoot(root) {
-  let rootUrl = new URL(root, meta.url);
-  let configUrl = new URL('poli.json', rootUrl);
-  let config = JSON.parse(await fsP.readFile(configUrl));
+  let rootFolder = new URL(root, import.meta.url).pathname;
+  let config = JSON.parse(
+    await fsP.readFile(path.join(rootFolder, 'poli.json'))
+  );
 
   if (typeof config['project-name'] !== 'string' ||
-    typeof config['root-module'] !== 'string') {
+      typeof config['root-module'] !== 'string') {
     throw new Error(`Malformed poli.json config for root folder '${folder}'`);
   }
 
-  // if (projects.has(config['project-name']))
+  if (projects.has(config['project-name'])) {
+    throw new Error(`Double project name: '${config['project-name']}'`);
+  }
+
   projects.set(config['project-name'], {
-    rootFolder: rootUrl.pathname,
-    rootModule: new URL(config['root-module'], rootUrl).pathname,
+    rootFolder: rootFolder,
+    rootModule: config['root-module'],
   });
 
-  console.log(projects);
+  // TODO: add check for project folder structure overlap ?
 }
 
 
@@ -84,17 +73,17 @@ function run() {
       }
     });
 
-  let wssFrontend = new WebSocketServer({
-      noServer: true
-    })
-    .on('error', function(error) {
+  let wssFrontend = new WebSocketServer({ noServer: true })
+    .on('error', function (error) {
       console.error("Frontend websocket server error:", error);
     })
-    .on('connection', function(ws) {
+    .on('connection', function (ws) {
       if (wsFront !== null) {
         console.error(
-          "Double simultaneous connections from frontend attempted");
+          "Double simultaneous connections from frontend attempted"
+        );
         ws.close();
+
         return;
       }
 
@@ -106,7 +95,7 @@ function run() {
 
   const prepareBackendWebsocket = (ws) =>
     ws
-    .on('close', function(code, reason) {
+    .on('close', function (code, reason) {
       wsBack = null;
       console.log(
         "Backend disconnected. Code:", code, "reason:", reason.toString()
@@ -125,9 +114,7 @@ function run() {
       }
     });
 
-  let wssBackend = new WebSocketServer({
-      noServer: true
-    })
+  let wssBackend = new WebSocketServer({ noServer: true })
     .on('error', function(error) {
       console.error("Backend websocket server error:", error);
     })
@@ -177,42 +164,83 @@ function run() {
         return;
       }
 
-      if (req.url === '/load') {
+      if (req.url === '/bootstrap') {
         resp.writeHead(200, {
           'Content-Type': 'text/javascript'
         });
-        fs.createReadStream('gen/load.js').pipe(resp);
+        fs.createReadStream('gen/bootstrap.js').pipe(resp);
 
         return;
       }
 
       let mo;
 
-      if ((mo = /^\/proj\/([^/]+)(\/.*)$/.exec(req.url)) !== null) {
+      if ((mo = /^\/lib\/(.*)$/.exec(req.url)) !== null) {
+        let [, file] = mo;
+
+        sendJsFile(resp, path.join(LIB_ROOT, file));
+
+        return;
+      }
+
+      if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
         let [, projName, modulePath] = mo;
 
-        if (!projects.has(projName)) {
-          resp
-            .writeHead(404, {
-              'Content-Type': 'text/javascript'
-            })
-            .end(JSON.stringify({
-              result: false,
-              error: `Unknown project '${projName}'`
-            }));
+        if (projects.has(projName)) {
+          let proj = projects.get(projName);
 
-          return;
+          if (modulePath) {
+            sendJsFile(resp, path.join(proj.rootFolder, modulePath));
+          }
+          else {
+            sendData(resp, 200, {
+              rootModule: proj.rootModule
+            })
+          }
         }
+        else {
+          sendData(resp, 404, {
+            result: false,
+            error: `Unknown project '${projName}'`            
+          });
+        }
+
+        return;
       }
-      else {
-        resp.writeHead(404);
-        resp.end();
-      }
+
+      resp.writeHead(404).end();
     })
     .listen(8080);
 }
 
 
+function sendJsFile(resp, filePath) {
+  try {
+    fs.accessSync(filePath);
+  }
+  catch (e) {
+    resp.writeHead(404).end();
+    return;
+  }
+
+  resp.writeHead(200, {
+    'Content-Type': 'text/javascript'
+  });
+
+  fs.createReadStream(filePath).pipe(resp);
+}
+
+
+function sendData(resp, code, data) {
+  resp
+    .writeHead(code, {
+      'Content-Type': 'application/json'
+    })
+    .end(JSON.stringify(data));
+}
+
+
 addProjectRoot('../poli/');
 
-// run();
+
+run();

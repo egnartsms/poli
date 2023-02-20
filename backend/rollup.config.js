@@ -3,9 +3,9 @@ import commonjs from 'rollup-plugin-commonjs';
 
 export default [
    {
-      input: 'poli/load.js',
+      input: 'poli/bootstrap.js',
       output: {
-         file: 'gen/load.js',
+         file: 'gen/bootstrap.js',
          format: 'iife',
          name: 'poli'
       },
