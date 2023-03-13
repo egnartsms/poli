@@ -1,4 +1,6 @@
 import {loadProject} from '$/poli/load.js';
 
 
-loadProject('poli');
+loadProject('poli').then(() => {
+  console.log("Project 'poli' loaded");
+});

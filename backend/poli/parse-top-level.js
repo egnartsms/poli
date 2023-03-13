@@ -35,8 +35,19 @@ function* parseTopLevel(src) {
   reEntry.lastIndex = 0;
 
   let mo;
+  let index = 0;
 
-  while ((mo = reEntry.exec(src)) !== null) {
+  for (;;) {
+    reEntry.lastIndex = index;
+
+    let mo = reEntry.exec(src);
+
+    if (mo === null) {
+      break;
+    }
+
+    index = reEntry.lastIndex;
+
     let type;
     let ignoreReason = null;
 
@@ -75,7 +86,7 @@ function* parseTopLevel(src) {
     }
   }
 
-  if (reEntry.lastIndex < src.length) {
-    throw new Error(`Remaining unparsed chunk: '${src.slice(reEntry.lastIndex)}'`);
+  if (index < src.length) {
+    throw new Error(`Remaining unparsed chunk: '${src.slice(index)}'`);
   }
 }

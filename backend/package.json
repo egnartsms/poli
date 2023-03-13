@@ -26,6 +26,9 @@
   },
   "homepage": "https://github.com/egnartsms/poli#readme",
   "dependencies": {
+    "acorn": "^8.8.2",
+    "acorn-loose": "^8.3.0",
+    "mime-lite": "^1.0.3",
     "rollup": "^3.10.1",
     "rollup-plugin-commonjs": "^10.1.0",
     "rollup-plugin-node-resolve": "^5.2.0",

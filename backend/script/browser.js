@@ -3,11 +3,12 @@ import fsP from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
+import mime from 'node:mime-type';
 
 import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 
 
-const LIB_ROOT = new URL('../lib/', import.meta.url).pathname;
+const GEN_ROOT = new URL('../gen/', import.meta.url).pathname;
 
 
 let projects = new Map;
@@ -156,29 +157,16 @@ function run() {
     })
     .on('request', (req, resp) => {
       if (req.url === '/') {
-        resp.writeHead(200, {
-          'Content-Type': 'text/html'
-        });
-        fs.createReadStream('index.html').pipe(resp);
-
-        return;
-      }
-
-      if (req.url === '/bootstrap') {
-        resp.writeHead(200, {
-          'Content-Type': 'text/javascript'
-        });
-        fs.createReadStream('gen/bootstrap.js').pipe(resp);
-
+        sendFile(resp, 'index.html');
         return;
       }
 
       let mo;
 
-      if ((mo = /^\/lib\/(.*)$/.exec(req.url)) !== null) {
+      if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
         let [, file] = mo;
 
-        sendJsFile(resp, path.join(LIB_ROOT, file));
+        sendFile(resp, path.join(GEN_ROOT, file));
 
         return;
       }
@@ -190,12 +178,12 @@ function run() {
           let proj = projects.get(projName);
 
           if (modulePath) {
-            sendJsFile(resp, path.join(proj.rootFolder, modulePath));
+            sendFile(resp, path.join(proj.rootFolder, modulePath));
           }
           else {
             sendData(resp, 200, {
               rootModule: proj.rootModule
-            })
+            });
           }
         }
         else {
@@ -214,7 +202,7 @@ function run() {
 }
 
 
-function sendJsFile(resp, filePath) {
+function sendFile(resp, filePath) {
   try {
     fs.accessSync(filePath);
   }
@@ -224,7 +212,7 @@ function sendJsFile(resp, filePath) {
   }
 
   resp.writeHead(200, {
-    'Content-Type': 'text/javascript'
+    'Content-Type': mime.getType(filePath)
   });
 
   fs.createReadStream(filePath).pipe(resp);
