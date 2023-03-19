@@ -1,9 +1,23 @@
 (function () {
   'use strict';
 
+  function assert$1(callback) {
+    if (!callback()) {
+      throw new Error(`Assert failed`);
+    }
+  }
+
+
   function* map(xs, func) {
     for (let x of xs) {
       yield func(x);
+    }
+  }
+
+
+  function addAll(container, xs) {
+    for (let x of xs) {
+      container.add(x);
     }
   }
 
@@ -95,7 +109,55 @@
     }
   }
 
+  const Result = {
+    unevaluated: {
+      isNormal: false,
+      access() {
+        throw new Error(`Accessed unevaluated computation result`);
+      }
+    },
+
+    plain(value) {
+      return {
+        __proto__: protoPlain,
+        value: value
+      }
+    },
+
+    exception(exc) {
+      return {
+        __proto__: protoException,
+        exc: exc
+      }
+    }
+  };
+
+
+  const protoPlain = {
+    isNormal: true,
+
+    access() {
+      return this.value;
+    }
+  };
+
+
+  const protoException = {
+    isNormal: false,
+
+    access() {
+      throw this.exc;
+    }
+  };
+
   class Definition {
+    static stoppedOnBrokenBinding(binding) {
+      return {
+        __proto__: protoStoppedOnBrokenBinding,
+        brokenBinding: binding
+      }
+    }
+
     constructor(module, props) {
       this.module = module;
 
@@ -108,7 +170,13 @@
       this.usedBindings = new Set;
       this.usedBrokenBinding = null;
 
-      this.value = null;
+      this.result = null;
+
+      for (let ref of this.referencedBindings) {
+        ref.referenceBy(this);
+      }
+
+      this.setEvaluationResult(Result.unevaluated);
     }
 
     use(binding) {
@@ -120,86 +188,92 @@
       }
     }
 
-    setEvaluationResult(value) {
-      this.value = value;
-      this.target.setBy(this, value);
+    setEvaluationResult(result) {
+      this.result = result;
+
+      if (result.isNormal) {
+        this.target.setBy(this, result.value);
+      }
+      else {
+        this.target.setBrokenBy(this);
+      }
+    }
+
+    makeUnevaluated() {
+      if (this.isUnevaluated) {
+        return;
+      }
+
+      for (let binding of this.usedBindings) {
+        binding.unuseBy(this);
+      }
+
+      this.usedBindings.clear();
+      this.usedBrokenBinding = null;
+
+      this.setEvaluationResult(Result.unevaluated);
+      this.module.recordAsUnevaluated(this);
+    }
+
+    get isUnevaluated() {
+      return this.result === Result.unevaluated;
     }
   }
 
-  const EvaluationResult = {
-    unevaluated: {
-      isNormal: false
-    },
 
-    plain(value) {
-      return {
-        isNormal: true,
-        value: value
-      }
-    },
+  const protoStoppedOnBrokenBinding = {
+    isNormal: false,
 
-    exception(exc) {
-      return {
-        isNormal: false,
-        exc: exc
-      }
-    },
-
-    stoppedOnBrokenBinding(binding) {
-      return {
-        isNormal: false,
-        brokenBinding: binding
-      }
+    access() {
+      throw new Error(
+        `Definition accessed broken binding: '${this.brokenBinding.name}'`
+      );
     }
   };
 
   function ensureAllDefinitionsEvaluated(module) {
-    for (let def of module.defs) {
-      ensureEvaluated(def);
+    for (let def of module.unevaluatedDefs) {
+      evaluate(def);
     }
+
+    module.unevaluatedDefs.length = 0;
   }
 
 
-  function ensureEvaluated(def) {
-    if (def.value !== EvaluationResult.unevaluated) {
-      return;
-    }
-
-    let accessedBrokenBinding = null;
+  function evaluate(def) {
+    let brokenBinding = null;
     let result;
 
     try {
       result = withNonLocalRefsIntercepted(
         (module, prop) => {
-          if (accessedBrokenBinding) {
-            // This means we had already attempted to stop the evaluation but it
-            // caught our exception and continued on. This is incorrect behavior
-            // that we unfortunately have no means to enforce.
-            throw new StopOnBrokenBinding;
-          }
-
           let binding = module.getBinding(prop);
 
           def.use(binding);
 
-          if (binding.isBroken) {
-            accessedBrokenBinding = binding;
+          return binding.access({
+            normal: value => value,
+            broken: () => {
+              if (brokenBinding === null) {
+                // This means we had already attempted to stop the evaluation but
+                // it caught our exception and continued on. This is incorrect
+                // behavior that we unfortunately have no means to eschew.
+                brokenBinding = binding;
+              }
 
-            throw new StopOnBrokenBinding;
-          }
-          else {
-            return binding.access();
-          }
+              throw new StopOnBrokenBinding;
+            }
+          })
         },
-        () => EvaluationResult.plain(def.factory.call(null, def.module.$))
+        () => Result.plain(def.factory.call(null, def.module.$))
       );
     }
     catch (e) {
       if (e instanceof StopOnBrokenBinding) {
-        result = EvaluationResult.stoppedOnBrokenBinding(accessedBrokenBinding);
+        result = Definition.stoppedOnBrokenBinding(brokenBinding);
       }
       else {
-        result = EvaluationResult.exception(e);
+        result = Result.exception(e);
       }
     }
 
@@ -249,21 +323,313 @@
 
   class StopOnBrokenBinding extends Error {}
 
+  let beingComputed = [];
+
+
+  function compute(cell, func) {
+    if (beingComputed.includes(cell)) {
+      throw new Error("Circular cell dependency detected");
+    }
+
+    beingComputed.push(cell);
+
+    try {
+      return func.call(null);
+    }
+    finally {
+      beingComputed.pop();
+    }
+  }
+
+
+  function computeWrap(cell, func) {
+    if (beingComputed.includes(cell)) {
+      throw new Error("Circular cell dependency detected");
+    }
+
+    beingComputed.push(cell);
+
+    try {
+      return Result.plain(func.call(null));
+    }
+    catch (e) {
+      return Result.exception(e);
+    }
+    finally {
+      beingComputed.pop();
+    }
+  }
+
+
+  function dependOn(Bcell) {
+    if (beingComputed.length === 0) {
+      return;
+    }
+
+    let Acell = beingComputed.at(-1);
+
+    if (Acell.deps.has(Bcell)) {
+      return;
+    }
+
+    Acell.deps.add(Bcell);
+    Bcell.revdeps.add(Acell);
+  }
+
+
+  function invalidate(cell) {
+    let callbacks = [];
+    let queue = new Set([cell]);
+
+    function writeDown(res) {
+      let {doLater, invalidate} = res ?? {};
+
+      if (doLater) {
+        callbacks.push(doLater);
+      }
+
+      if (invalidate) {
+        addAll(queue, invalidate);
+      }
+    }
+
+    for (;;) {
+      while (queue.size > 0) {
+        let [cell] = queue;
+
+        queue.delete(cell);
+
+        if (cell.onInvalidate) {
+          writeDown(cell.onInvalidate());
+        }
+        else {
+          addAll(queue, cell.revdeps);
+        }
+      }
+
+      let callback = callbacks.shift();
+
+      if (callback === undefined) {
+        break;
+      }
+
+      writeDown(callback());
+    }
+  }
+
+
+  function unlinkDeps(cell) {
+    for (let dep of cell.deps) {
+      unlinkRevdep(dep, cell);
+    }
+
+    cell.deps.clear();
+  }
+
+
+  function unlinkRevdep(cell, revdep) {
+    if (cell.unlinkRevdep) {
+      cell.unlinkRevdep(revdep);
+    }
+    else {
+      cell.revdeps.delete(revdep);
+    }
+  }
+
+
+  class Leaf {
+    value;
+    revdeps = new Set;
+
+    constructor(value) {
+      this.value = value;
+    }
+
+    get v() {
+      dependOn(this);
+      return this.value;
+    }
+
+    set v(value) {
+      invalidate(this);
+      this.value = value;
+    }
+  }
+
+
+  class VirtualLeaf {
+    accessor;
+    revdeps = new Set;
+
+    constructor(accessor) {
+      this.accessor = accessor;
+    }
+
+    get v() {
+      dependOn(this);
+      return this.accessor.call(null);
+    }
+  }
+
+
+  class Computed {
+    func;
+    value = Result.unevaluated;
+    deps = new Set;
+    revdeps = new Set;
+
+    constructor(func) {
+      this.func = func;
+    }
+
+    get v() {
+      dependOn(this);
+
+      if (this.isInvalidated) {
+        this.value = computeWrap(this, this.func);
+      }
+
+      return this.value.access();
+    }
+
+    get isInvalidated() {
+      return this.value === Result.unevaluated;
+    }
+
+    onInvalidate() {
+      this.value = Result.unevaluated;
+      unlinkDeps(this);
+      return {invalidate: this.revdeps};
+    }
+  }
+
+
+  class Derived {
+    func;
+    value = Result.unevaluated;
+    deps = new Set;
+    revdep = null;
+
+    constructor(func) {
+      if (beingComputed.length === 0) {
+        throw new Error(
+          `Derived computation can only run within some other computation`
+        );
+      }
+
+      this.func = func;
+      this.value = compute(this, this.func);
+      this.revdep = beingComputed.at(-1);
+    }
+
+    unlinkRevdep(revdep) {
+      assert(() => revdep === this.revdep);
+
+      this.revdep = null;
+      unlinkDeps(this);
+    }
+
+    onInvalidate() {
+      return {
+        doLater: () => {
+          unlinkDeps(this);
+
+          let newValue = compute(this, this.func);
+
+          if (newValue !== this.value) {
+            return {invalidate: [this.revdep]};
+          }
+        }
+      }
+    }
+  }
+
+
+  function derived(func) {
+    let derived = new Derived(func);
+
+    return derived.value;
+  }
+
+
+  class InvalidationHook {
+    constructor(cell, hook) {
+      this.cell = cell;
+      this.hook = hook;
+
+      cell.revdeps.add(this);
+
+      if (cell.isInvalidated) {
+        hook.call(null);
+      }
+    }
+
+    onInvalidate() {
+      // Call the hook later but 'cell.revdeps' will still have 'this'.
+      return {
+        doLater: () => {
+          this.hook.call(null);
+        }
+      }
+    }
+
+    unhook() {
+      unlinkRevdep(this.cell, this);
+    }
+  }
+
+
+  function registerInvalidationHook(cell, hook) {
+    return new InvalidationHook(cell, hook);
+  }
+
+  let dirtyBindings = new Set;
+
+
   class Binding {
     constructor(module, name) {
       this.module = module;
       this.name = name;
       this.defs = new Map;
+      this.defsize = new VirtualLeaf(() => this.defs.size);
       this.refs = new Set;
       this.usages = new Set;
 
-      this.value = {
-        kind: 'unevaluated'
-      };
+      this.value = new Computed(() => bindingValue(this));
+
+      this.hook = registerInvalidationHook(this.value, () => {
+        makeDependentDefinitionsUnevaluated(this);
+        dirtyBindings.add(this);
+      });
+    }
+
+    recordValueInNamespace() {
+      Object.defineProperty(this.module.ns, this.name, {
+        configurable: true,
+        enumerable: true,
+        ...makeBindingValueDescriptor(this)
+      });
+    }
+
+    access({normal, broken}) {
+      if (this.value.v.isBroken) {
+        return broken();
+      }
+      else {
+        return normal(this.value.v.value);
+      }
+    }
+
+    setBrokenBy(def) {
+      let cell = cellForDef(this, def);
+
+      cell.v = Binding.Value.broken;
     }
 
     setBy(def, value) {
-      this.defs.set(def, value);
+      let cell = cellForDef(this, def);
+
+      cell.v = Binding.Value.plain(value);
     }
 
     referenceBy(def) {
@@ -274,17 +640,80 @@
       this.usages.add(def);
     }
 
-    // get value() {
-    //   if (this.defs.length === 0) {
-    //     return 'unknown';
-    //   }
+    unuseBy(def) {
+      this.usages.delete(def);
+    }
+  }
 
-    //   if (this.defs.length > 1) {
-    //     return 'duplicate';
-    //   }
 
-    //   let [entry] = this.defs;
-    // }
+  function cellForDef(binding, def) {
+    let cell = binding.defs.get(def);
+
+    if (!cell) {
+      cell = new Leaf;
+      binding.defs.set(def, cell);
+      invalidate(binding.defsize);
+    }
+
+    return cell;
+  }
+
+
+  function bindingValue(binding) {
+    if (derived(() => binding.defsize.v === 0)) {
+      return Binding.Value.undefined;
+    }
+
+    if (derived(() => binding.defsize.v > 1)) {
+      return Binding.Value.duplicated;
+    }
+
+    let [cell] = binding.defs.values();
+
+    return cell.v;
+  }
+
+
+  function makeDependentDefinitionsUnevaluated(binding) {
+    for (let def of binding.usages) {
+      def.makeUnevaluated();
+    }
+  }
+
+
+  Binding.Value = {
+    undefined: {
+      isBroken: true,
+    },
+    duplicated: {
+      isBroken: true,
+    },
+    broken: {
+      isBroken: true,
+    },
+    plain(value) {
+      return {
+        isBroken: false,
+        value: value
+      }
+    }
+  };
+
+
+  function makeBindingValueDescriptor(binding) {
+    if (binding.value.v.isBroken) {
+      return {
+        get() {
+          throw new Error(`Broken binding access: '${binding.name}'`);
+        }
+      }
+    }
+    else {
+      return {
+        value: binding.value.v.value,
+        writable: false
+      }    
+    }
   }
 
   class Module {
@@ -292,6 +721,7 @@
       this.path = path;
       this.bindings = new Map;
       this.defs = [];
+      this.unevaluatedDefs = [];
       this.ns = Object.create(null);
       // This object is passed as '_$' to all definitions of this module. That's
       // how definitions reference non-local identifiers: 'x' becomes '_$.v.x'.
@@ -311,13 +741,33 @@
 
       return binding;
     }
+
+    addDefinition(def) {
+      assert$1(() => !def.isEvaluated);
+
+      this.defs.push(def);
+      this.recordAsUnevaluated(def);
+    }
+
+    recordAsUnevaluated(def) {
+      this.unevaluatedDefs.push(def);
+    }
   }
 
   async function loadProject(projName) {
     let resp = await fetch(`/proj/${projName}/`);
     let {rootModule} = await resp.json();
 
-    await loadModule(projName, rootModule);
+    let module = await loadModule(projName, rootModule);
+
+    for (let binding of dirtyBindings) {
+      binding.recordValueInNamespace();
+    }
+
+    dirtyBindings.clear();
+
+    console.log(module.ns);
+    console.log(module);
   }
 
 
@@ -354,7 +804,7 @@
     let body;
 
     try {
-      ({body} = acorn.parse(source, {
+      ({body} = acornLoose.parse(source, {
         ecmaVersion: 'latest',
         sourceType: 'module',
         ranges: true
@@ -410,12 +860,7 @@
       referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
     });
 
-    for (let ref of def.referencedBindings) {
-      ref.referenceBy(def);
-    }
-
-    module.defs.push(def);
-    def.setEvaluationResult(EvaluationResult.unevaluated);
+    module.addDefinition(def);
   }
 
 
@@ -466,8 +911,15 @@ return (${source});
     return pieces.join('');
   }
 
-  loadProject('poli').then(() => {
-    console.log("Project 'poli' loaded");
-  });
+  console.time('bootstrap');
+
+  loadProject('poli')
+    .then(() => {
+      console.log("Project 'poli' loaded");
+    })
+    .finally(() => {
+      console.timeEnd('bootstrap');
+    });
 
 })();
+//# sourceMappingURL=bootstrap.js.map

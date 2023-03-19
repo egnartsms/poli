@@ -3,9 +3,10 @@ export {
 }
 
 
+import {assert} from '$/poli/common.js';
 import {Binding} from './binding.js';
-import {Definition} from './definition.js';
 import {common$} from '$/poli/evaluate.js';
+
 
 
 class Module {
@@ -13,6 +14,7 @@ class Module {
     this.path = path;
     this.bindings = new Map;
     this.defs = [];
+    this.unevaluatedDefs = [];
     this.ns = Object.create(null);
     // This object is passed as '_$' to all definitions of this module. That's
     // how definitions reference non-local identifiers: 'x' becomes '_$.v.x'.
@@ -31,5 +33,16 @@ class Module {
     }
 
     return binding;
+  }
+
+  addDefinition(def) {
+    assert(() => !def.isEvaluated);
+
+    this.defs.push(def);
+    this.recordAsUnevaluated(def);
+  }
+
+  recordAsUnevaluated(def) {
+    this.unevaluatedDefs.push(def);
   }
 }

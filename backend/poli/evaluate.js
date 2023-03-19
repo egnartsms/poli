@@ -4,58 +4,54 @@ export {
 }
 
 
+import {map} from '$/poli/common.js';
 import {Definition} from '$/poli/definition.js';
-import {map, methodFor} from '$/poli/common.js';
-import {EvaluationResult} from '$/poli/eval-result.js';
+import {Result} from '$/poli/eval.js';
 
 
 function ensureAllDefinitionsEvaluated(module) {
-  for (let def of module.defs) {
-    ensureEvaluated(def);
+  for (let def of module.unevaluatedDefs) {
+    evaluate(def);
   }
+
+  module.unevaluatedDefs.length = 0;
 }
 
 
-function ensureEvaluated(def) {
-  if (def.value !== EvaluationResult.unevaluated) {
-    return;
-  }
-
-  let accessedBrokenBinding = null;
+function evaluate(def) {
+  let brokenBinding = null;
   let result;
 
   try {
     result = withNonLocalRefsIntercepted(
       (module, prop) => {
-        if (accessedBrokenBinding) {
-          // This means we had already attempted to stop the evaluation but it
-          // caught our exception and continued on. This is incorrect behavior
-          // that we unfortunately have no means to enforce.
-          throw new StopOnBrokenBinding;
-        }
-
         let binding = module.getBinding(prop);
 
         def.use(binding);
 
-        if (binding.isBroken) {
-          accessedBrokenBinding = binding;
+        return binding.access({
+          normal: value => value,
+          broken: () => {
+            if (brokenBinding === null) {
+              // This means we had already attempted to stop the evaluation but
+              // it caught our exception and continued on. This is incorrect
+              // behavior that we unfortunately have no means to eschew.
+              brokenBinding = binding;
+            }
 
-          throw new StopOnBrokenBinding;
-        }
-        else {
-          return binding.access();
-        }
+            throw new StopOnBrokenBinding;
+          }
+        })
       },
-      () => EvaluationResult.plain(def.factory.call(null, def.module.$))
+      () => Result.plain(def.factory.call(null, def.module.$))
     );
   }
   catch (e) {
     if (e instanceof StopOnBrokenBinding) {
-      result = EvaluationResult.stoppedOnBrokenBinding(accessedBrokenBinding);
+      result = Definition.stoppedOnBrokenBinding(brokenBinding);
     }
     else {
-      result = EvaluationResult.exception(e);
+      result = Result.exception(e);
     }
   }
 

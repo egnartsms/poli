@@ -3,7 +3,7 @@ import fsP from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import mime from 'node:mime-type';
+import mime from 'mime-lite';
 
 import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 
@@ -178,7 +178,7 @@ function run() {
           let proj = projects.get(projName);
 
           if (modulePath) {
-            sendFile(resp, path.join(proj.rootFolder, modulePath));
+            sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
           }
           else {
             sendData(resp, 200, {
@@ -189,7 +189,7 @@ function run() {
         else {
           sendData(resp, 404, {
             result: false,
-            error: `Unknown project '${projName}'`            
+            error: `Unknown project '${projName}'`
           });
         }
 

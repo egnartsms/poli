@@ -1,5 +1,4 @@
-
-export function assert (callback) {
+export function assert(callback) {
   if (!callback()) {
     throw new Error(`Assert failed`);
   }
@@ -16,6 +15,13 @@ export function copyProps(dest, source, props) {
 export function* map(xs, func) {
   for (let x of xs) {
     yield func(x);
+  }
+}
+
+
+export function addAll(container, xs) {
+  for (let x of xs) {
+    container.add(x);
   }
 }
 

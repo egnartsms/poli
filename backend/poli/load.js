@@ -8,14 +8,23 @@ import {parseTopLevel} from '$/poli/parse-top-level.js';
 import {ensureAllDefinitionsEvaluated} from '$/poli/evaluate.js';
 import {Module} from '$/poli/module.js';
 import {Definition} from '$/poli/definition.js';
-import {EvaluationResult} from '$/poli/eval-result.js';
+import {dirtyBindings} from '$/poli/binding.js';
 
 
 async function loadProject(projName) {
   let resp = await fetch(`/proj/${projName}/`);
   let {rootModule} = await resp.json();
 
-  await loadModule(projName, rootModule);
+  let module = await loadModule(projName, rootModule);
+
+  for (let binding of dirtyBindings) {
+    binding.recordValueInNamespace();
+  }
+
+  dirtyBindings.clear();
+
+  console.log(module.ns);
+  console.log(module);
 }
 
 
@@ -52,7 +61,7 @@ function addTopLevelCodeBlock(module, source) {
   let body;
 
   try {
-    ({body} = acorn.parse(source, {
+    ({body} = acornLoose.parse(source, {
       ecmaVersion: 'latest',
       sourceType: 'module',
       ranges: true
@@ -108,12 +117,7 @@ function addTopLevelCodeBlock(module, source) {
     referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
   });
 
-  for (let ref of def.referencedBindings) {
-    ref.referenceBy(def);
-  }
-
-  module.defs.push(def);
-  def.setEvaluationResult(EvaluationResult.unevaluated);
+  module.addDefinition(def);
 }
 
 

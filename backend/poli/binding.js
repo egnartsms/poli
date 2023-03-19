@@ -1,6 +1,14 @@
 export {
-  Binding
+  Binding, dirtyBindings
 }
+
+
+import {
+  Computed, Leaf, VirtualLeaf, registerInvalidationHook, invalidate, derived
+} from '$/poli/reactive.js';
+
+
+let dirtyBindings = new Set;
 
 
 class Binding {
@@ -8,16 +16,45 @@ class Binding {
     this.module = module;
     this.name = name;
     this.defs = new Map;
+    this.defsize = new VirtualLeaf(() => this.defs.size);
     this.refs = new Set;
     this.usages = new Set;
 
-    this.value = {
-      kind: 'unevaluated'
+    this.value = new Computed(() => bindingValue(this));
+
+    this.hook = registerInvalidationHook(this.value, () => {
+      makeDependentDefinitionsUnevaluated(this);
+      dirtyBindings.add(this);
+    });
+  }
+
+  recordValueInNamespace() {
+    Object.defineProperty(this.module.ns, this.name, {
+      configurable: true,
+      enumerable: true,
+      ...makeBindingValueDescriptor(this)
+    });
+  }
+
+  access({normal, broken}) {
+    if (this.value.v.isBroken) {
+      return broken();
+    }
+    else {
+      return normal(this.value.v.value);
     }
   }
 
+  setBrokenBy(def) {
+    let cell = cellForDef(this, def);
+
+    cell.v = Binding.Value.broken;
+  }
+
   setBy(def, value) {
-    this.defs.set(def, value);
+    let cell = cellForDef(this, def);
+
+    cell.v = Binding.Value.plain(value);
   }
 
   referenceBy(def) {
@@ -28,43 +65,78 @@ class Binding {
     this.usages.add(def);
   }
 
-  // get value() {
-  //   if (this.defs.length === 0) {
-  //     return 'unknown';
-  //   }
+  unuseBy(def) {
+    this.usages.delete(def);
+  }
+}
 
-  //   if (this.defs.length > 1) {
-  //     return 'duplicate';
-  //   }
 
-  //   let [entry] = this.defs;
-  // }
+function cellForDef(binding, def) {
+  let cell = binding.defs.get(def);
+
+  if (!cell) {
+    cell = new Leaf;
+    binding.defs.set(def, cell);
+    invalidate(binding.defsize);
+  }
+
+  return cell;
 }
 
 
 function bindingValue(binding) {
-  let {defs} = binding;
-
-  if (defs.size === 0) {
-    return {
-      isDefined: false,
-      reason: 'undefined'
-    }
+  if (derived(() => binding.defsize.v === 0)) {
+    return Binding.Value.undefined;
   }
 
-  if (defs.size > 1) {
-    return {
-      isDefined: false,
-      reason: 'overdefined'
-    }
+  if (derived(() => binding.defsize.v > 1)) {
+    return Binding.Value.duplicated;
   }
 
-  let [def] = defs;
+  let [cell] = binding.defs.values();
 
-  if (def.exc !== null) {
+  return cell.v;
+}
+
+
+function makeDependentDefinitionsUnevaluated(binding) {
+  for (let def of binding.usages) {
+    def.makeUnevaluated();
+  }
+}
+
+
+Binding.Value = {
+  undefined: {
+    isBroken: true,
+  },
+  duplicated: {
+    isBroken: true,
+  },
+  broken: {
+    isBroken: true,
+  },
+  plain(value) {
     return {
-      isDefined: false,
-      reason: 'unset'
+      isBroken: false,
+      value: value
     }
+  }
+};
+
+
+function makeBindingValueDescriptor(binding) {
+  if (binding.value.v.isBroken) {
+    return {
+      get() {
+        throw new Error(`Broken binding access: '${binding.name}'`);
+      }
+    }
+  }
+  else {
+    return {
+      value: binding.value.v.value,
+      writable: false
+    }    
   }
 }

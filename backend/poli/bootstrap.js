@@ -1,6 +1,12 @@
 import {loadProject} from '$/poli/load.js';
 
 
-loadProject('poli').then(() => {
-  console.log("Project 'poli' loaded");
-});
+console.time('bootstrap');
+
+loadProject('poli')
+  .then(() => {
+    console.log("Project 'poli' loaded");
+  })
+  .finally(() => {
+    console.timeEnd('bootstrap');
+  });

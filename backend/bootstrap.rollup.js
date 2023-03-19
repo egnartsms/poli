@@ -7,7 +7,8 @@ export default [
     input: 'poli/bootstrap.js',
     output: {
       file: 'gen/bootstrap.js',
-      format: 'iife'
+      format: 'iife',
+      sourcemap: true
     },
     plugins: [
       nodeResolve(),
