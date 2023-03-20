@@ -4,7 +4,7 @@ export {
 
 
 import {
-  Computed, Leaf, VirtualLeaf, registerInvalidationHook, invalidate, derived
+  Computed, Leaf, VirtualLeaf, invalidate, derived
 } from '$/poli/reactive.js';
 
 
@@ -15,16 +15,23 @@ class Binding {
   constructor(module, name) {
     this.module = module;
     this.name = name;
-    this.defs = new Map;
+    this.defs = new Map;  // def -> Leaf(value-set-by-definition)
     this.defsize = new VirtualLeaf(() => this.defs.size);
     this.refs = new Set;
     this.usages = new Set;
 
     this.value = new Computed(() => bindingValue(this));
 
-    this.hook = registerInvalidationHook(this.value, () => {
-      makeDependentDefinitionsUnevaluated(this);
-      dirtyBindings.add(this);
+    this.value.addHook({
+      // onComputed: () => {
+      //   dirtyBindings.delete(this);
+      // },
+      onInvalidated: () => {
+        for (let def of this.usages) {
+          def.makeUnevaluated();
+        }
+        // dirtyBindings.add(this);
+      }
     });
   }
 

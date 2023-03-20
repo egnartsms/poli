@@ -17,11 +17,11 @@ async function loadProject(projName) {
 
   let module = await loadModule(projName, rootModule);
 
-  for (let binding of dirtyBindings) {
+  for (let binding of module.bindings.values()) {
     binding.recordValueInNamespace();
   }
 
-  dirtyBindings.clear();
+  // dirtyBindings.clear();
 
   console.log(module.ns);
   console.log(module);

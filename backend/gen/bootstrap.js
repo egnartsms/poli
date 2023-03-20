@@ -21,6 +21,61 @@
     }
   }
 
+
+  class MultiMap {
+    bags = new Map;
+
+    add(key, val) {
+      let bag = this.bags.get(key);
+
+      if (bag === undefined) {
+         bag = new Set();
+         this.bags.set(key, bag);
+      }
+
+      bag.add(val);
+    }
+
+    delete(key, val) {
+      let bag = this.bags.get(key);
+
+      if (bag === undefined) {
+         return false;
+      }
+
+      let didDelete = bag.delete(val);
+
+      if (bag.size === 0) {
+         this.bags.delete(key);
+      }
+
+      return didDelete;
+    }
+
+    addToBag(key, vals) {
+      let bag = this.bags.get(key);
+
+      if (bag === undefined) {
+        bag = new Set(vals);
+        this.bags.set(key, bag);
+      }
+      else {
+        addAll(bag, vals);
+      }
+    }
+
+    deleteBag(key) {
+      return this.bags.delete(key);
+    }
+
+    *itemsAt(key) {
+      if (this.bags.has(key)) {
+        yield* this.bags.get(key);
+      }
+    }
+
+  }
+
   const rSingleLineComment = `(?://.*?\n)+`;
   const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.+?)?\n`;
   const rIndentedLine = `[ \t]+\\S.*?\n`;
@@ -323,12 +378,15 @@
 
   class StopOnBrokenBinding extends Error {}
 
+  class LogicError extends Error {}
+
+
   let beingComputed = [];
 
 
   function compute(cell, func) {
     if (beingComputed.includes(cell)) {
-      throw new Error("Circular cell dependency detected");
+      throw new LogicError("Circular cell dependency detected");
     }
 
     beingComputed.push(cell);
@@ -343,20 +401,15 @@
 
 
   function computeWrap(cell, func) {
-    if (beingComputed.includes(cell)) {
-      throw new Error("Circular cell dependency detected");
-    }
-
-    beingComputed.push(cell);
-
     try {
-      return Result.plain(func.call(null));
+      return Result.plain(compute(cell, func));
     }
-    catch (e) {
-      return Result.exception(e);
-    }
-    finally {
-      beingComputed.pop();
+    catch (exc) {
+      if (exc instanceof LogicError) {
+        throw exc;
+      }
+
+      return Result.exception(exc);
     }
   }
 
@@ -487,6 +540,12 @@
 
       if (this.isInvalidated) {
         this.value = computeWrap(this, this.func);
+
+        for (let hook of invalidationHooks.itemsAt(this)) {
+          if (hook.onComputed) {
+            hook.onComputed.call(null);
+          }
+        }
       }
 
       return this.value.access();
@@ -499,9 +558,39 @@
     onInvalidate() {
       this.value = Result.unevaluated;
       unlinkDeps(this);
+
+      for (let hook of invalidationHooks.itemsAt(this)) {
+        if (hook.onInvalidated) {
+          hook.onInvalidated.call(null);
+        }
+      }
+
       return {invalidate: this.revdeps};
     }
+
+    addHook(hook) {
+      invalidationHooks.add(this, hook);
+
+      if (this.isInvalidated && hook.onInvalidated) {
+        hook.onInvalidated.call(null);
+      }
+    }
   }
+
+
+  let invalidationHooks = new MultiMap;
+
+
+  // let invalidationSets = new MultiMap;
+
+
+  // function addToInvalidationSet(cell, set) {
+  //   invalidationSets.add(cell, set);
+
+  //   if (cell.isInvalidated) {
+  //     set.add(cell);
+  //   }
+  // }
 
 
   class Derived {
@@ -551,55 +640,27 @@
     return derived.value;
   }
 
-
-  class InvalidationHook {
-    constructor(cell, hook) {
-      this.cell = cell;
-      this.hook = hook;
-
-      cell.revdeps.add(this);
-
-      if (cell.isInvalidated) {
-        hook.call(null);
-      }
-    }
-
-    onInvalidate() {
-      // Call the hook later but 'cell.revdeps' will still have 'this'.
-      return {
-        doLater: () => {
-          this.hook.call(null);
-        }
-      }
-    }
-
-    unhook() {
-      unlinkRevdep(this.cell, this);
-    }
-  }
-
-
-  function registerInvalidationHook(cell, hook) {
-    return new InvalidationHook(cell, hook);
-  }
-
-  let dirtyBindings = new Set;
-
-
   class Binding {
     constructor(module, name) {
       this.module = module;
       this.name = name;
-      this.defs = new Map;
+      this.defs = new Map;  // def -> Leaf(value-set-by-definition)
       this.defsize = new VirtualLeaf(() => this.defs.size);
       this.refs = new Set;
       this.usages = new Set;
 
       this.value = new Computed(() => bindingValue(this));
 
-      this.hook = registerInvalidationHook(this.value, () => {
-        makeDependentDefinitionsUnevaluated(this);
-        dirtyBindings.add(this);
+      this.value.addHook({
+        // onComputed: () => {
+        //   dirtyBindings.delete(this);
+        // },
+        onInvalidated: () => {
+          for (let def of this.usages) {
+            def.makeUnevaluated();
+          }
+          // dirtyBindings.add(this);
+        }
       });
     }
 
@@ -671,13 +732,6 @@
     let [cell] = binding.defs.values();
 
     return cell.v;
-  }
-
-
-  function makeDependentDefinitionsUnevaluated(binding) {
-    for (let def of binding.usages) {
-      def.makeUnevaluated();
-    }
   }
 
 
@@ -760,11 +814,11 @@
 
     let module = await loadModule(projName, rootModule);
 
-    for (let binding of dirtyBindings) {
+    for (let binding of module.bindings.values()) {
       binding.recordValueInNamespace();
     }
 
-    dirtyBindings.clear();
+    // dirtyBindings.clear();
 
     console.log(module.ns);
     console.log(module);

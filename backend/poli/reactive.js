@@ -1,11 +1,14 @@
 export {
-  Leaf, VirtualLeaf, Computed, derived, registerInvalidationHook, invalidate
+  Leaf, VirtualLeaf, Computed, derived, invalidate
 }
 
 
-import {addAll} from '$/poli/common.js';
+import {addAll, MultiMap} from '$/poli/common.js';
 import {Queue} from '$/poli/queue.js';
 import {Result} from '$/poli/eval.js';
+
+
+class LogicError extends Error {}
 
 
 let beingComputed = [];
@@ -13,7 +16,7 @@ let beingComputed = [];
 
 function compute(cell, func) {
   if (beingComputed.includes(cell)) {
-    throw new Error("Circular cell dependency detected");
+    throw new LogicError("Circular cell dependency detected");
   }
 
   beingComputed.push(cell);
@@ -28,20 +31,15 @@ function compute(cell, func) {
 
 
 function computeWrap(cell, func) {
-  if (beingComputed.includes(cell)) {
-    throw new Error("Circular cell dependency detected");
-  }
-
-  beingComputed.push(cell);
-
   try {
-    return Result.plain(func.call(null));
+    return Result.plain(compute(cell, func));
   }
-  catch (e) {
-    return Result.exception(e);
-  }
-  finally {
-    beingComputed.pop();
+  catch (exc) {
+    if (exc instanceof LogicError) {
+      throw exc;
+    }
+
+    return Result.exception(exc);
   }
 }
 
@@ -174,6 +172,12 @@ class Computed {
 
     if (this.isInvalidated) {
       this.value = computeWrap(this, this.func);
+
+      for (let hook of invalidationHooks.itemsAt(this)) {
+        if (hook.onComputed) {
+          hook.onComputed.call(null);
+        }
+      }
     }
 
     return this.value.access();
@@ -186,9 +190,39 @@ class Computed {
   onInvalidate() {
     this.value = Result.unevaluated;
     unlinkDeps(this);
+
+    for (let hook of invalidationHooks.itemsAt(this)) {
+      if (hook.onInvalidated) {
+        hook.onInvalidated.call(null);
+      }
+    }
+
     return {invalidate: this.revdeps};
   }
+
+  addHook(hook) {
+    invalidationHooks.add(this, hook);
+
+    if (this.isInvalidated && hook.onInvalidated) {
+      hook.onInvalidated.call(null);
+    }
+  }
 }
+
+
+let invalidationHooks = new MultiMap;
+
+
+// let invalidationSets = new MultiMap;
+
+
+// function addToInvalidationSet(cell, set) {
+//   invalidationSets.add(cell, set);
+
+//   if (cell.isInvalidated) {
+//     set.add(cell);
+//   }
+// }
 
 
 class Derived {
@@ -236,36 +270,4 @@ function derived(func) {
   let derived = new Derived(func);
 
   return derived.value;
-}
-
-
-class InvalidationHook {
-  constructor(cell, hook) {
-    this.cell = cell;
-    this.hook = hook;
-
-    cell.revdeps.add(this);
-
-    if (cell.isInvalidated) {
-      hook.call(null);
-    }
-  }
-
-  onInvalidate() {
-    // Call the hook later but 'cell.revdeps' will still have 'this'.
-    return {
-      doLater: () => {
-        this.hook.call(null);
-      }
-    }
-  }
-
-  unhook() {
-    unlinkRevdep(this.cell, this);
-  }
-}
-
-
-function registerInvalidationHook(cell, hook) {
-  return new InvalidationHook(cell, hook);
 }
