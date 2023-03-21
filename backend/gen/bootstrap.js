@@ -8,6 +8,11 @@
   }
 
 
+  function isAllSpaces(str) {
+    return /^\s*$/.test(str);
+  }
+
+
   function* map(xs, func) {
     for (let x of xs) {
       yield func(x);
@@ -77,7 +82,7 @@
   }
 
   const rSingleLineComment = `(?://.*?\n)+`;
-  const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.+?)?\n`;
+  const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.*?)\n`;
   const rIndentedLine = `[ \t]+\\S.*?\n`;
   const rBlankLine = `\\s*?\n`;
   const rZeroLine = `\\S.*?\n`;
@@ -131,12 +136,12 @@
         type = 'single-line-comment';
       }
       else if (mo.groups.multi_line_comment !== undefined) {
-        if (mo.groups.redundant) {
-          type = 'ignored';
-          ignoreReason = 'bad-multi-comment';
+        if (isAllSpaces(mo.groups.redundant)) {
+          type = 'multi-line-comment';
         }
         else {
-          type = 'multi-line-comment';
+          type = 'ignored';
+          ignoreReason = 'bad-multi-comment';        
         }
       }
       else if (mo.groups.shifted !== undefined) {

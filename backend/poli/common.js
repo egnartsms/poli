@@ -5,6 +5,11 @@ export function assert(callback) {
 }
 
 
+export function isAllSpaces(str) {
+  return /^\s*$/.test(str);
+}
+
+
 export function copyProps(dest, source, props) {
   for (let prop of props) {
     dest[prop] = source[prop];

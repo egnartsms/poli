@@ -1,8 +1,11 @@
 export {parseTopLevel};
 
 
+import {isAllSpaces} from '$/poli/common.js';
+
+
 const rSingleLineComment = `(?://.*?\n)+`;
-const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.+?)?\n`;
+const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.*?)\n`;
 const rIndentedLine = `[ \t]+\\S.*?\n`;
 const rBlankLine = `\\s*?\n`;
 const rZeroLine = `\\S.*?\n`;
@@ -58,12 +61,12 @@ function* parseTopLevel(src) {
       type = 'single-line-comment';
     }
     else if (mo.groups.multi_line_comment !== undefined) {
-      if (mo.groups.redundant) {
-        type = 'ignored';
-        ignoreReason = 'bad-multi-comment';
+      if (isAllSpaces(mo.groups.redundant)) {
+        type = 'multi-line-comment';
       }
       else {
-        type = 'multi-line-comment';
+        type = 'ignored';
+        ignoreReason = 'bad-multi-comment';        
       }
     }
     else if (mo.groups.shifted !== undefined) {
