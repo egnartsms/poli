@@ -30,6 +30,10 @@ export class Definition {
     this.setEvaluationResult(Result.unevaluated);
   }
 
+  get position() {
+    return this.module.defs.indexOf(this);
+  }
+
   use(binding) {
     this.usedBindings.add(binding);
     binding.useBy(this);

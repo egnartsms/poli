@@ -29,19 +29,19 @@ function evaluate(def) {
 
         def.use(binding);
 
-        return binding.access({
-          normal: value => value,
-          broken: () => {
-            if (brokenBinding === null) {
-              // This means we had already attempted to stop the evaluation but
-              // it caught our exception and continued on. This is incorrect
-              // behavior that we unfortunately have no means to eschew.
-              brokenBinding = binding;
-            }
-
-            throw new StopOnBrokenBinding;
+        if (binding.isBroken || binding.introDef.position > def.position) {
+          if (brokenBinding === null) {
+            // This means we had already attempted to stop the evaluation but
+            // it caught our exception and continued on. This is incorrect
+            // behavior that we unfortunately have no means to eschew.
+            brokenBinding = binding;
           }
-        })
+
+          throw new StopOnBrokenBinding;          
+        }
+        else {
+          return binding.value;
+        }
       },
       () => Result.plain(def.factory.call(null, def.module.$))
     );

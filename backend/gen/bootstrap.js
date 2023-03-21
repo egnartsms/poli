@@ -234,6 +234,10 @@
       this.setEvaluationResult(Result.unevaluated);
     }
 
+    get position() {
+      return this.module.defs.indexOf(this);
+    }
+
     use(binding) {
       this.usedBindings.add(binding);
       binding.useBy(this);
@@ -306,19 +310,19 @@
 
           def.use(binding);
 
-          return binding.access({
-            normal: value => value,
-            broken: () => {
-              if (brokenBinding === null) {
-                // This means we had already attempted to stop the evaluation but
-                // it caught our exception and continued on. This is incorrect
-                // behavior that we unfortunately have no means to eschew.
-                brokenBinding = binding;
-              }
-
-              throw new StopOnBrokenBinding;
+          if (binding.isBroken || binding.introDef.position > def.position) {
+            if (brokenBinding === null) {
+              // This means we had already attempted to stop the evaluation but
+              // it caught our exception and continued on. This is incorrect
+              // behavior that we unfortunately have no means to eschew.
+              brokenBinding = binding;
             }
-          })
+
+            throw new StopOnBrokenBinding;          
+          }
+          else {
+            return binding.value;
+          }
         },
         () => Result.plain(def.factory.call(null, def.module.$))
       );
@@ -649,9 +653,9 @@
       this.refs = new Set;
       this.usages = new Set;
 
-      this.value = new Computed(() => bindingValue(this));
+      this.cell = new Computed(() => bindingValue(this));
 
-      this.value.addHook({
+      this.cell.addHook({
         // onComputed: () => {
         //   dirtyBindings.delete(this);
         // },
@@ -672,13 +676,17 @@
       });
     }
 
-    access({normal, broken}) {
-      if (this.value.v.isBroken) {
-        return broken();
-      }
-      else {
-        return normal(this.value.v.value);
-      }
+    get isBroken() {
+      return this.cell.v.isBroken;
+    }
+
+    get value() {
+      return this.cell.v.value;
+    }
+
+    get introDef() {
+      let [def] = this.defs.keys();
+      return def;
     }
 
     setBrokenBy(def) {
@@ -704,13 +712,15 @@
     unuseBy(def) {
       this.usages.delete(def);
     }
+
+
   }
 
 
   function cellForDef(binding, def) {
     let cell = binding.defs.get(def);
 
-    if (!cell) {
+    if (cell === undefined) {
       cell = new Leaf;
       binding.defs.set(def, cell);
       invalidate(binding.defsize);
@@ -755,7 +765,7 @@
 
 
   function makeBindingValueDescriptor(binding) {
-    if (binding.value.v.isBroken) {
+    if (binding.isBroken) {
       return {
         get() {
           throw new Error(`Broken binding access: '${binding.name}'`);
@@ -764,7 +774,7 @@
     }
     else {
       return {
-        value: binding.value.v.value,
+        value: binding.value,
         writable: false
       }    
     }

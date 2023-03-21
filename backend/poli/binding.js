@@ -20,9 +20,9 @@ class Binding {
     this.refs = new Set;
     this.usages = new Set;
 
-    this.value = new Computed(() => bindingValue(this));
+    this.cell = new Computed(() => bindingValue(this));
 
-    this.value.addHook({
+    this.cell.addHook({
       // onComputed: () => {
       //   dirtyBindings.delete(this);
       // },
@@ -43,13 +43,17 @@ class Binding {
     });
   }
 
-  access({normal, broken}) {
-    if (this.value.v.isBroken) {
-      return broken();
-    }
-    else {
-      return normal(this.value.v.value);
-    }
+  get isBroken() {
+    return this.cell.v.isBroken;
+  }
+
+  get value() {
+    return this.cell.v.value;
+  }
+
+  get introDef() {
+    let [def] = this.defs.keys();
+    return def;
   }
 
   setBrokenBy(def) {
@@ -75,13 +79,15 @@ class Binding {
   unuseBy(def) {
     this.usages.delete(def);
   }
+
+
 }
 
 
 function cellForDef(binding, def) {
   let cell = binding.defs.get(def);
 
-  if (!cell) {
+  if (cell === undefined) {
     cell = new Leaf;
     binding.defs.set(def, cell);
     invalidate(binding.defsize);
@@ -133,7 +139,7 @@ Binding.Value = {
 
 
 function makeBindingValueDescriptor(binding) {
-  if (binding.value.v.isBroken) {
+  if (binding.isBroken) {
     return {
       get() {
         throw new Error(`Broken binding access: '${binding.name}'`);
@@ -142,7 +148,7 @@ function makeBindingValueDescriptor(binding) {
   }
   else {
     return {
-      value: binding.value.v.value,
+      value: binding.value,
       writable: false
     }    
   }
