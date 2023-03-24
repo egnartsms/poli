@@ -1,14 +1,17 @@
-import {parse} from 'acorn-loose';
+import {getMeANumber} from '/b.js';
 
 
-const SOURCE = `
-let {a = 20;
-`;
+console.log(getMeANumber() + 1);
 
 
-let result = parse(SOURCE, {ecmaVersion: 'latest'});
+// const SOURCE = `
+// let {a = 20;
+// `;
 
-console.log(result.body[0].declarations[0].id.properties[0].value);
+
+// let result = parse(SOURCE, {ecmaVersion: 'latest'});
+
+// console.log(result.body[0].declarations[0].id.properties[0].value);
 
 
 // let classBody = result.body[0].body.body;
