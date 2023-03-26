@@ -2,6 +2,7 @@ export {
   loadProject
 }
 
+import {parse as parseJsLoosely} from 'acorn-loose';
 
 import {map} from '$/poli/common.js';
 import {parseTopLevel} from '$/poli/parse-top-level.js';
@@ -61,7 +62,7 @@ function addTopLevelCodeBlock(module, source) {
   let body;
 
   try {
-    ({body} = acornLoose.parse(source, {
+    ({body} = parseJsLoosely(source, {
       ecmaVersion: 'latest',
       sourceType: 'module',
       ranges: true

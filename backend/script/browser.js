@@ -6,144 +6,107 @@ import { WebSocketServer } from 'ws';
 import mime from 'mime-lite';
 
 import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
+import {npmExports} from './importmap.js';
 
 
-const GEN_ROOT = new URL('../gen/', import.meta.url).pathname;
+class ForwardingWsServer {
+  side;
+  ws = null;
+  server;
+  sink = null;
 
-
-let projects = new Map;
-
-
-async function addProjectRoot(root) {
-  let rootFolder = new URL(root, import.meta.url).pathname;
-  let config = JSON.parse(
-    await fsP.readFile(path.join(rootFolder, 'poli.json'))
-  );
-
-  if (typeof config['project-name'] !== 'string' ||
-      typeof config['root-module'] !== 'string') {
-    throw new Error(`Malformed poli.json config for root folder '${folder}'`);
+  constructor(side) {
+    this.side = side;
+    this.server = new WebSocketServer({ noServer: true })
+      .on('error', this.onError.bind(this))
+      .on('connection', this.onConnection.bind(this));
   }
 
-  if (projects.has(config['project-name'])) {
-    throw new Error(`Double project name: '${config['project-name']}'`);
+  onError(error) {
+    console.error(`${this.side}: websocket server error:`, error);
   }
 
-  projects.set(config['project-name'], {
-    rootFolder: rootFolder,
-    rootModule: config['root-module'],
-  });
+  onConnection(ws) {
+    assert(this.ws === null);
 
-  // TODO: add check for project folder structure overlap ?
+    this.ws = ws;
+    this.prepareWebsocket();
+
+    console.log(`${this.side}: connected`);
+  }
+
+  prepareWebsocket() {
+    this.ws
+      .on('close', (code, reason) => {
+        this.ws = null;
+        console.log(
+          `${this.side} disconnected, code: '${code}', reason: ` +
+          `'${reason.toString()}'`
+        );
+      })
+      .on('error', (error) => {
+        console.error(`${this.side} websocket connection error:`, error);
+      })
+      .on('message', (data) => this.sink.send(data));
+  }
+
+  handleUpgrade(req, socket, head) {
+    if (this.ws !== null) {
+      console.error(`${this.side}: double simultaneous connections attempted`);
+      socket.destroy();
+      return;
+    }
+
+    this.server.handleUpgrade(req, socket, head, (ws, req) => {
+      // No race conditions
+      if (this.ws !== null) {
+        console.error(`${this.side}: double simultaneous connections attempted`);
+        ws.close();
+        return;
+      }
+
+      this.server.emit('connection', ws, req);
+    });
+  }
+
+  send(data) {
+    if (this.ws === null) {
+      console.log(`${this.side}: not connected, message ignored`);
+      return;
+    }
+
+    this.ws.send(data);
+  }
 }
 
 
+function mate(srvA, srvB) {
+  srvA.sink = srvB;
+  srvB.sink = srvA;
+}
+
+
+const BASE_DIR = new URL('../', import.meta.url).pathname;
+const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
+
+
 function run() {
-  let wsBack = null;
-  let wsFront = null;
+  let front = new ForwardingWsServer('front');
+  let back = new ForwardingWsServer('back');
 
-  const prepareFrontendWebsocket = (ws) =>
-    ws
-    .on('close', function(code, reason) {
-      wsFront = null;
-      console.log(
-        "Frontend disconnected. Code:", code, "reason:", reason.toString()
-      );
-    })
-    .on('error', function(error) {
-      console.error("Frontend websocket connection error:", error);
-    })
-    .on('message', (data) => {
-      if (wsBack !== null) {
-        console.log('front -> back');
-        wsBack.send(data);
-      }
-      else {
-        console.log('front -> (no)');
-        // This needs to be kept in-sync with our messaging format, which is
-        // bad
-        // TODO: change this
-        wsFront.send(JSON.stringify({
-          type: 'resp',
-          success: false,
-          error: 'not-connected',
-          info: {
-            message: "The browser is not connected"
-          }
-        }));
-      }
-    });
-
-  let wssFrontend = new WebSocketServer({ noServer: true })
-    .on('error', function (error) {
-      console.error("Frontend websocket server error:", error);
-    })
-    .on('connection', function (ws) {
-      if (wsFront !== null) {
-        console.error(
-          "Double simultaneous connections from frontend attempted"
-        );
-        ws.close();
-
-        return;
-      }
-
-      wsFront = ws;
-      prepareFrontendWebsocket(wsFront);
-
-      console.log("Frontend connected");
-    });
-
-  const prepareBackendWebsocket = (ws) =>
-    ws
-    .on('close', function (code, reason) {
-      wsBack = null;
-      console.log(
-        "Backend disconnected. Code:", code, "reason:", reason.toString()
-      );
-    })
-    .on('error', function(error) {
-      console.error("Backend websocket connection error:", error);
-    })
-    .on('message', (data) => {
-      if (wsFront !== null) {
-        console.log('back -> front');
-        wsFront.send(data);
-      }
-      else {
-        console.log('back -> (no)');
-      }
-    });
-
-  let wssBackend = new WebSocketServer({ noServer: true })
-    .on('error', function(error) {
-      console.error("Backend websocket server error:", error);
-    })
-    .on('connection', function(ws) {
-      if (wsBack !== null) {
-        console.error(
-          "Double simultaneous connections from backend attempted");
-        ws.close();
-        return;
-      }
-
-      wsBack = ws;
-      prepareBackendWebsocket(wsBack);
-
-      console.log("Backend connected");
-    });
+  mate(front, back);
 
   http.createServer()
     .on('upgrade', (req, socket, head) => {
       const url = new URL(req.url);
 
-      let wss;
+      let srv;
 
       if (url.pathname === '/ws/frontend') {
-        wss = wssFrontend;
+        srv = front;
       }
       else if (url.pathname === '/ws/backend') {
-        wss = wssBackend;
+        srv = back;
       }
       else {
         console.error(`Unexpected WS request pathname: ${url.pathname}`);
@@ -151,13 +114,18 @@ function run() {
         return;
       }
 
-      wss.handleUpgrade(req, socket, head, (ws, req) => {
-        wss.emit('connection', ws, req);
-      });
+      srv.handleUpgrade(req, socket, head);
     })
     .on('request', (req, resp) => {
+      console.log(req.url);
+
       if (req.url === '/') {
         sendFile(resp, 'index.html');
+        return;
+      }
+
+      if (req.url === '/importmap') {
+        sendImportmapScript(resp);
         return;
       }
 
@@ -166,7 +134,14 @@ function run() {
       if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
         let [, file] = mo;
 
-        sendFile(resp, path.join(GEN_ROOT, file));
+        sendFile(resp, path.join(BASE_DIR, 'gen', file));
+        return;
+      }
+
+      if ((mo = /^\/3rdparty\/(.*)$/.exec(req.url)) !== null) {
+        let [, file] = mo;
+
+        sendFile(resp, path.join(NODE_MODULES, file));
 
         return;
       }
@@ -225,6 +200,66 @@ function sendData(resp, code, data) {
       'Content-Type': 'application/json'
     })
     .end(JSON.stringify(data));
+}
+
+
+const renderImportmapScript = (importmap) => `
+  (function () {
+    let im = document.createElement('script');
+    im.type = 'importmap';
+    im.textContent = ${JSON.stringify(JSON.stringify(importmap, null, 4))};
+
+    document.currentScript.after(im);
+  })()
+`;
+
+
+async function sendImportmapScript(resp) {
+  let importmap;
+
+  try {
+    importmap = {
+      "imports": await npmExports({
+        baseDir: BASE_DIR,
+        urlPrefix: '/3rdparty'
+      })
+    };
+  }
+  catch (e) {
+    resp.writeHead(404).end();
+    console.error(`Importmap composition failed:`, e);
+    throw e;
+  }
+
+  resp.writeHead(200, {'Content-Type': 'text/javascript'})
+    .end(renderImportmapScript(importmap));
+}
+
+
+let projects = new Map;
+
+
+async function addProjectRoot(root) {
+  let rootFolder = new URL(root, import.meta.url).pathname;
+  let config = JSON.parse(
+    await fsP.readFile(path.join(rootFolder, 'poli.json'))
+  );
+
+  if (typeof config['project-name'] !== 'string' ||
+      typeof config['root-module'] !== 'string') {
+    throw new Error(`Malformed poli.json config for root folder '${folder}'`);
+  }
+
+  if (projects.has(config['project-name'])) {
+    throw new Error(`Double project name: '${config['project-name']}'`);
+  }
+
+  projects.set(config['project-name'], {
+    rootFolder: rootFolder,
+    rootModule: config['root-module'],
+  });
+
+  // TODO: add check for project folder structure overlap ?
 }
 
 
