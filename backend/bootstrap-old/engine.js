@@ -1,10 +1,10 @@
-import {Queue} from './queue';
+import {Queue} from './queue.js';
 import {
    publicGetterDescriptor,
    publicReadonlyPropertyDescriptor,
    wrapWith,
    isWrappedWith
-} from './common';
+} from './common.js';
 
 
 let invq = new Queue;

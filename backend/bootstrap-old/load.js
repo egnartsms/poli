@@ -1,5 +1,5 @@
-import {Registry} from './registry';
-import {digest} from './engine';
+import {Registry} from './registry.js';
+import {digest} from './engine.js';
 
 
 /**

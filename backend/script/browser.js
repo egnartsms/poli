@@ -1,146 +1,234 @@
-const http = require('http');
-const fs = require('fs');
-const WebSocket = require('ws');
-const url = require('url');
+import fs from 'node:fs';
+import fsP from 'node:fs/promises';
+import path from 'node:path';
+import http from 'node:http';
+import { WebSocketServer } from 'ws';
+import mime from 'mime-lite';
+
+import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 
 
-const {SRC_FOLDER, RUN_MODULE, readRawModules} = require('./node-lib');
+const GEN_ROOT = new URL('../gen/', import.meta.url).pathname;
+
+
+let projects = new Map;
+
+
+async function addProjectRoot(root) {
+  let rootFolder = new URL(root, import.meta.url).pathname;
+  let config = JSON.parse(
+    await fsP.readFile(path.join(rootFolder, 'poli.json'))
+  );
+
+  if (typeof config['project-name'] !== 'string' ||
+      typeof config['root-module'] !== 'string') {
+    throw new Error(`Malformed poli.json config for root folder '${folder}'`);
+  }
+
+  if (projects.has(config['project-name'])) {
+    throw new Error(`Double project name: '${config['project-name']}'`);
+  }
+
+  projects.set(config['project-name'], {
+    rootFolder: rootFolder,
+    rootModule: config['root-module'],
+  });
+
+  // TODO: add check for project folder structure overlap ?
+}
 
 
 function run() {
-   let server = http.createServer();
-   let wssBrowser = new WebSocket.Server({ noServer: true });
-   let wssSublime = new WebSocket.Server({ noServer: true });
+  let wsBack = null;
+  let wsFront = null;
 
-   let wsBrowser = null;
-   let wsSublime = null;
+  const prepareFrontendWebsocket = (ws) =>
+    ws
+    .on('close', function(code, reason) {
+      wsFront = null;
+      console.log(
+        "Frontend disconnected. Code:", code, "reason:", reason.toString()
+      );
+    })
+    .on('error', function(error) {
+      console.error("Frontend websocket connection error:", error);
+    })
+    .on('message', (data) => {
+      if (wsBack !== null) {
+        console.log('front -> back');
+        wsBack.send(data);
+      }
+      else {
+        console.log('front -> (no)');
+        // This needs to be kept in-sync with our messaging format, which is
+        // bad
+        // TODO: change this
+        wsFront.send(JSON.stringify({
+          type: 'resp',
+          success: false,
+          error: 'not-connected',
+          info: {
+            message: "The browser is not connected"
+          }
+        }));
+      }
+    });
 
-   wssSublime
-      .on('error', function (error) {
-         console.error("Sublime websocket server error:", error);
-      })
-      .on('connection', function (ws) {
-         if (wsSublime !== null) {
-            console.error("Double simultaneous connections from Sublime attempted");
-            ws.close();
-            return;
-         }
+  let wssFrontend = new WebSocketServer({ noServer: true })
+    .on('error', function (error) {
+      console.error("Frontend websocket server error:", error);
+    })
+    .on('connection', function (ws) {
+      if (wsFront !== null) {
+        console.error(
+          "Double simultaneous connections from frontend attempted"
+        );
+        ws.close();
 
-         wsSublime = ws;
-         wsSublime
-            .on('close', function (code, reason) {
-               wsSublime = null;
-               console.log("Sublime disconnected. Code:", code, "reason:", reason);
-            })
-            .on('error', function (error) {
-               console.error("Sublime websocket connection error:", error);
-            })
-            .on('message', (data) => {
-               if (wsBrowser !== null) {
-                  console.log('sublime -> browser');
-                  wsBrowser.send(data);
-               }
-               else {
-                  console.log('sublime -> 0');
-                  // This needs to be kept in-sync with our messaging format, which is bad
-                  wsSublime.send(JSON.stringify({
-                     type: 'resp',
-                     success: false,
-                     error: 'not-connected',
-                     info: {
-                        message: "The browser is not connected"
-                     }
-                  }));
-               }
-            });
+        return;
+      }
 
-         console.log("Sublime connected");
-      });
+      wsFront = ws;
+      prepareFrontendWebsocket(wsFront);
 
-   wssBrowser
-         .on('error', function (error) {
-            console.error("Browser websocket server error:", error);
-         })
-         .on('connection', function (ws) {
-            if (wsBrowser !== null) {
-               console.error("Double simultaneous connections from Browser attempted");
-               ws.close();
-               return;
-            }
+      console.log("Frontend connected");
+    });
 
-            wsBrowser = ws;
-            wsBrowser
-               .on('close', function (code, reason) {
-                  wsBrowser = null;
-                  console.log("Browser disconnected. Code:", code, "reason:", reason);
-               })
-               .on('error', function (error) {
-                  console.error("Browser websocket connection error:", error);
-               })
-               .on('message', (data) => {
-                  if (wsSublime !== null) {
-                     console.log('browser -> sublime');
-                     wsSublime.send(data);
-                  }
-                  else {
-                     console.log('browser -> 0');
-                  }
-               });
+  const prepareBackendWebsocket = (ws) =>
+    ws
+    .on('close', function (code, reason) {
+      wsBack = null;
+      console.log(
+        "Backend disconnected. Code:", code, "reason:", reason.toString()
+      );
+    })
+    .on('error', function(error) {
+      console.error("Backend websocket connection error:", error);
+    })
+    .on('message', (data) => {
+      if (wsFront !== null) {
+        console.log('back -> front');
+        wsFront.send(data);
+      }
+      else {
+        console.log('back -> (no)');
+      }
+    });
 
-            console.log("Browser connected");
-         });
+  let wssBackend = new WebSocketServer({ noServer: true })
+    .on('error', function(error) {
+      console.error("Backend websocket server error:", error);
+    })
+    .on('connection', function(ws) {
+      if (wsBack !== null) {
+        console.error(
+          "Double simultaneous connections from backend attempted");
+        ws.close();
+        return;
+      }
 
-   server.on('upgrade', (req, socket, head) => {
-      const pathname = url.parse(req.url).pathname;
+      wsBack = ws;
+      prepareBackendWebsocket(wsBack);
+
+      console.log("Backend connected");
+    });
+
+  http.createServer()
+    .on('upgrade', (req, socket, head) => {
+      const url = new URL(req.url);
 
       let wss;
 
-      if (pathname === '/sublime') {
-         wss = wssSublime;
+      if (url.pathname === '/ws/frontend') {
+        wss = wssFrontend;
       }
-      else if (pathname === '/browser') {
-         wss = wssBrowser;
+      else if (url.pathname === '/ws/backend') {
+        wss = wssBackend;
       }
       else {
-         console.error(`Unexpected WS request pathname: ${pathname}`);
-         socket.destroy();
+        console.error(`Unexpected WS request pathname: ${url.pathname}`);
+        socket.destroy();
+        return;
       }
 
       wss.handleUpgrade(req, socket, head, (ws, req) => {
-         wss.emit('connection', ws, req);
+        wss.emit('connection', ws, req);
       });
-   });
-
-   server.on('request', (req, resp) => {
-      const pathname = url.parse(req.url).pathname;
-
-      if (pathname === '/') {
-         resp.writeHead(200, {
-            'content-type': 'text/html'
-         });
-         resp.end(fs.readFileSync('index.html', 'utf8'));
+    })
+    .on('request', (req, resp) => {
+      if (req.url === '/') {
+        sendFile(resp, 'index.html');
+        return;
       }
-      else if (pathname === '/bootloader.js') {
-         let rawModules = readRawModules();
-         let bootloader = fs
-            .readFileSync('./script/bootloader.js', 'utf8')
-            .replace(/\/\*RAW_MODULES\*\//, () => JSON.stringify(rawModules, null, 2));
 
-         resp.writeHead(200, {
-            'content-type': 'text/javascript'
-         });
-         resp.end(bootloader);
+      let mo;
+
+      if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
+        let [, file] = mo;
+
+        sendFile(resp, path.join(GEN_ROOT, file));
+
+        return;
       }
-      else {
-         resp.writeHead(404);
-         resp.end();
+
+      if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
+        let [, projName, modulePath] = mo;
+
+        if (projects.has(projName)) {
+          let proj = projects.get(projName);
+
+          if (modulePath) {
+            sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
+          }
+          else {
+            sendData(resp, 200, {
+              rootModule: proj.rootModule
+            });
+          }
+        }
+        else {
+          sendData(resp, 404, {
+            result: false,
+            error: `Unknown project '${projName}'`
+          });
+        }
+
+        return;
       }
-   });
-   
-   server.listen(8080);
+
+      resp.writeHead(404).end();
+    })
+    .listen(8080);
 }
 
 
-if (require.main === module) {
-   run();
+function sendFile(resp, filePath) {
+  try {
+    fs.accessSync(filePath);
+  }
+  catch (e) {
+    resp.writeHead(404).end();
+    return;
+  }
+
+  resp.writeHead(200, {
+    'Content-Type': mime.getType(filePath)
+  });
+
+  fs.createReadStream(filePath).pipe(resp);
 }
+
+
+function sendData(resp, code, data) {
+  resp
+    .writeHead(code, {
+      'Content-Type': 'application/json'
+    })
+    .end(JSON.stringify(data));
+}
+
+
+addProjectRoot('../poli/');
+
+
+run();

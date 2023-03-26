@@ -1,10 +1,15 @@
 // const loadModules = require('./load-modules');
-import {WORLD_MODULE, RUN_MODULE} from './const';
-import {loadModulesData} from './load';
-import {parseRawModule} from './parse';
+import {WORLD_MODULE, RUN_MODULE} from './const.js';
+import {loadModulesData} from './load.js';
+import {parseRawModule} from './parse.js';
+import {parseModuleSource} from './parse-x.js';
 
 
-function run(rawModules) {
+function load(rawModules) {
+   let module = rawModules.find(({name}) => name === 'engine');
+   parseModuleSource(module.contents);
+   return;
+
    console.time('bootload');
    let modulesData = Array.from(rawModules, parseRawModule);
    let namespaces = loadModulesData(modulesData);
@@ -55,4 +60,4 @@ function makeWebsocket() {
 }
 
 
-run(/*RAW_MODULES*/);
+load(/*RAW_MODULES*/);
