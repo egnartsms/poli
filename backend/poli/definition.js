@@ -17,6 +17,7 @@ export class Definition {
     this.evaluatableSource = props.evaluatableSource;
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
+    this.evaluationOrder = props.evaluationOrder;
 
     this.usedBindings = new Set;
     this.usedBrokenBinding = null;
@@ -28,10 +29,6 @@ export class Definition {
     }
 
     this.setEvaluationResult(Result.unevaluated);
-  }
-
-  get position() {
-    return this.module.defs.indexOf(this);
   }
 
   use(binding) {

@@ -1,12 +1,12 @@
 import {loadProject} from '$/poli/load.js';
 
 
-console.time('bootstrap');
+async function loadPoli() {
+  let rootModule = await loadProject('poli');
 
-loadProject('poli')
-  .then(() => {
-    console.log("Project 'poli' loaded");
-  })
-  .finally(() => {
-    console.timeEnd('bootstrap');
-  });
+  
+}
+
+
+console.time('bootstrap');
+loadPoli().finally(() => console.timeEnd('bootstrap'));

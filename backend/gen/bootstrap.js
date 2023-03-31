@@ -7087,13 +7087,6 @@
     return LooseParser.parse(input, options)
   }
 
-  function assert$1(callback) {
-    if (!callback()) {
-      throw new Error(`Assert failed`);
-    }
-  }
-
-
   function isAllSpaces(str) {
     return /^\s*$/.test(str);
   }
@@ -7198,11 +7191,12 @@
 
 
   function* parseTopLevel(src) {
+    let lastIndex;
+
     reEntry.lastIndex = 0;
-    let index = 0;
 
     for (;;) {
-      reEntry.lastIndex = index;
+      lastIndex = reEntry.lastIndex;
 
       let mo = reEntry.exec(src);
 
@@ -7210,7 +7204,7 @@
         break;
       }
 
-      index = reEntry.lastIndex;
+      // index = reEntry.lastIndex;
 
       let type;
       let ignoreReason = null;
@@ -7250,8 +7244,8 @@
       };
     }
 
-    if (index < src.length) {
-      throw new Error(`Remaining unparsed chunk: '${src.slice(index)}'`);
+    if (lastIndex < src.length) {
+      throw new Error(`Remaining unparsed chunk: '${src.slice(lastIndex)}'`);
     }
   }
 
@@ -7312,6 +7306,7 @@
       this.evaluatableSource = props.evaluatableSource;
       this.factory = props.factory;
       this.referencedBindings = props.referencedBindings;
+      this.evaluationOrder = props.evaluationOrder;
 
       this.usedBindings = new Set;
       this.usedBrokenBinding = null;
@@ -7323,10 +7318,6 @@
       }
 
       this.setEvaluationResult(Result.unevaluated);
-    }
-
-    get position() {
-      return this.module.defs.indexOf(this);
     }
 
     use(binding) {
@@ -7401,7 +7392,8 @@
 
           def.use(binding);
 
-          if (binding.isBroken || binding.introDef.position > def.position) {
+          if (binding.isBroken ||
+              binding.introDef.evaluationOrder > def.evaluationOrder) {
             if (brokenBinding === null) {
               // This means we had already attempted to stop the evaluation but
               // it caught our exception and continued on. This is incorrect
@@ -7739,8 +7731,8 @@
     constructor(module, name) {
       this.module = module;
       this.name = name;
-      this.defs = new Map;  // def -> Leaf(value-set-by-definition)
-      this.defsize = new VirtualLeaf(() => this.defs.size);
+      this.defs = [];  // [[def, Leaf(value-set-by-definition)], ...]
+      this.deftimes = new VirtualLeaf(() => this.defs.length);
       this.refs = new Set;
       this.usages = new Set;
 
@@ -7776,7 +7768,8 @@
     }
 
     get introDef() {
-      let [def] = this.defs.keys();
+      let [[def]] = this.defs;
+
       return def;
     }
 
@@ -7809,12 +7802,12 @@
 
 
   function cellForDef(binding, def) {
-    let cell = binding.defs.get(def);
+    let cell = binding.defs.find(([sdef]) => sdef === def)?.[1];
 
     if (cell === undefined) {
       cell = new Leaf;
-      binding.defs.set(def, cell);
-      invalidate(binding.defsize);
+      binding.defs.push([def, cell]);
+      invalidate(binding.deftimes);
     }
 
     return cell;
@@ -7822,15 +7815,15 @@
 
 
   function bindingValue(binding) {
-    if (derived(() => binding.defsize.v === 0)) {
+    if (derived(() => binding.deftimes.v === 0)) {
       return Binding.Value.undefined;
     }
 
-    if (derived(() => binding.defsize.v > 1)) {
+    if (derived(() => binding.deftimes.v > 1)) {
       return Binding.Value.duplicated;
     }
 
-    let [cell] = binding.defs.values();
+    let [[, cell]] = binding.defs;
 
     return cell.v;
   }
@@ -7897,13 +7890,6 @@
       return binding;
     }
 
-    addDefinition(def) {
-      assert$1(() => !def.isEvaluated);
-
-      this.defs.push(def);
-      this.recordAsUnevaluated(def);
-    }
-
     recordAsUnevaluated(def) {
       this.unevaluatedDefs.push(def);
     }
@@ -7915,14 +7901,7 @@
 
     let module = await loadModule(projName, rootModule);
 
-    for (let binding of module.bindings.values()) {
-      binding.recordValueInNamespace();
-    }
-
-    // dirtyBindings.clear();
-
-    console.log(module.ns);
-    console.log(module);
+    return module;
   }
 
 
@@ -7946,8 +7925,15 @@
 
     ensureAllDefinitionsEvaluated(module);
 
+    for (let binding of module.bindings.values()) {
+      binding.recordValueInNamespace();
+    }
+
     return module;
   }
+
+
+  const EVALUATION_ORDER_INTERVAL = 1 << 14;
 
 
   /**
@@ -8007,15 +7993,21 @@
       throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${instrumentedEvaluatableSource}'`);
     }
 
+    let evaluationOrder =
+      module.defs.length === 0 ? EVALUATION_ORDER_INTERVAL :
+        module.defs.at(-1).evaluationOrder + EVALUATION_ORDER_INTERVAL;
+
     let def = new Definition(module, {
       target: module.getBinding(decl.id.name),
       source: source,
       evaluatableSource: source.slice(...decl.init.range),
       factory: factory,
-      referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
+      referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
+      evaluationOrder: evaluationOrder
     });
 
-    module.addDefinition(def);
+    module.defs.push(def);
+    module.unevaluatedDefs.push(def);
   }
 
 
@@ -8066,15 +8058,15 @@ return (${source});
     return pieces.join('');
   }
 
-  console.time('bootstrap');
+  async function loadPoli() {
+    await loadProject('poli');
 
-  loadProject('poli')
-    .then(() => {
-      console.log("Project 'poli' loaded");
-    })
-    .finally(() => {
-      console.timeEnd('bootstrap');
-    });
+    
+  }
+
+
+  console.time('bootstrap');
+  loadPoli().finally(() => console.timeEnd('bootstrap'));
 
 })();
 //# sourceMappingURL=bootstrap.js.map

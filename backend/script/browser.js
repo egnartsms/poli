@@ -117,7 +117,7 @@ function run() {
       srv.handleUpgrade(req, socket, head);
     })
     .on('request', (req, resp) => {
-      console.log(req.url);
+      console.log(req.method, req.url);
 
       if (req.url === '/') {
         sendFile(resp, 'index.html');
@@ -156,6 +156,7 @@ function run() {
             sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
           }
           else {
+            // Here should go some metadata about the project.
             sendData(resp, 200, {
               rootModule: proj.rootModule
             });
@@ -206,6 +207,7 @@ function sendData(resp, code, data) {
 const renderImportmapScript = (importmap) => `
   (function () {
     let im = document.createElement('script');
+
     im.type = 'importmap';
     im.textContent = ${JSON.stringify(JSON.stringify(importmap, null, 4))};
 

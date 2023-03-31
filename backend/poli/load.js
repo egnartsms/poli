@@ -18,14 +18,7 @@ async function loadProject(projName) {
 
   let module = await loadModule(projName, rootModule);
 
-  for (let binding of module.bindings.values()) {
-    binding.recordValueInNamespace();
-  }
-
-  // dirtyBindings.clear();
-
-  console.log(module.ns);
-  console.log(module);
+  return module;
 }
 
 
@@ -49,8 +42,16 @@ async function loadModule(projName, modulePath) {
 
   ensureAllDefinitionsEvaluated(module);
 
+  for (let binding of module.bindings.values()) {
+    binding.recordValueInNamespace();
+  }
+
   return module;
 }
+
+
+const EVALUATION_ORDER_INTERVAL = 1 << 14;
+const MAX_EVALUATION_ORDER = 1 << 30;
 
 
 /**
@@ -110,15 +111,21 @@ function addTopLevelCodeBlock(module, source) {
     throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${instrumentedEvaluatableSource}'`);
   }
 
+  let evaluationOrder =
+    module.defs.length === 0 ? EVALUATION_ORDER_INTERVAL :
+      module.defs.at(-1).evaluationOrder + EVALUATION_ORDER_INTERVAL;
+
   let def = new Definition(module, {
     target: module.getBinding(decl.id.name),
     source: source,
     evaluatableSource: source.slice(...decl.init.range),
     factory: factory,
-    referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
+    referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
+    evaluationOrder: evaluationOrder
   });
 
-  module.addDefinition(def);
+  module.defs.push(def);
+  module.unevaluatedDefs.push(def);
 }
 
 

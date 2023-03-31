@@ -15,8 +15,8 @@ class Binding {
   constructor(module, name) {
     this.module = module;
     this.name = name;
-    this.defs = new Map;  // def -> Leaf(value-set-by-definition)
-    this.defsize = new VirtualLeaf(() => this.defs.size);
+    this.defs = [];  // [[def, Leaf(value-set-by-definition)], ...]
+    this.deftimes = new VirtualLeaf(() => this.defs.length);
     this.refs = new Set;
     this.usages = new Set;
 
@@ -52,7 +52,8 @@ class Binding {
   }
 
   get introDef() {
-    let [def] = this.defs.keys();
+    let [[def]] = this.defs;
+
     return def;
   }
 
@@ -85,12 +86,12 @@ class Binding {
 
 
 function cellForDef(binding, def) {
-  let cell = binding.defs.get(def);
+  let cell = binding.defs.find(([sdef]) => sdef === def)?.[1];
 
   if (cell === undefined) {
     cell = new Leaf;
-    binding.defs.set(def, cell);
-    invalidate(binding.defsize);
+    binding.defs.push([def, cell]);
+    invalidate(binding.deftimes);
   }
 
   return cell;
@@ -98,15 +99,15 @@ function cellForDef(binding, def) {
 
 
 function bindingValue(binding) {
-  if (derived(() => binding.defsize.v === 0)) {
+  if (derived(() => binding.deftimes.v === 0)) {
     return Binding.Value.undefined;
   }
 
-  if (derived(() => binding.defsize.v > 1)) {
+  if (derived(() => binding.deftimes.v > 1)) {
     return Binding.Value.duplicated;
   }
 
-  let [cell] = binding.defs.values();
+  let [[, cell]] = binding.defs;
 
   return cell.v;
 }

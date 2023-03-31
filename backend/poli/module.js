@@ -35,13 +35,6 @@ class Module {
     return binding;
   }
 
-  addDefinition(def) {
-    assert(() => !def.isEvaluated);
-
-    this.defs.push(def);
-    this.recordAsUnevaluated(def);
-  }
-
   recordAsUnevaluated(def) {
     this.unevaluatedDefs.push(def);
   }

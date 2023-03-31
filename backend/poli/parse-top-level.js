@@ -35,13 +35,12 @@ const reEntry = new RegExp(
 
 
 function* parseTopLevel(src) {
+  let lastIndex;
+
   reEntry.lastIndex = 0;
 
-  let mo;
-  let index = 0;
-
   for (;;) {
-    reEntry.lastIndex = index;
+    lastIndex = reEntry.lastIndex;
 
     let mo = reEntry.exec(src);
 
@@ -49,7 +48,7 @@ function* parseTopLevel(src) {
       break;
     }
 
-    index = reEntry.lastIndex;
+    // index = reEntry.lastIndex;
 
     let type;
     let ignoreReason = null;
@@ -89,7 +88,7 @@ function* parseTopLevel(src) {
     }
   }
 
-  if (index < src.length) {
-    throw new Error(`Remaining unparsed chunk: '${src.slice(index)}'`);
+  if (lastIndex < src.length) {
+    throw new Error(`Remaining unparsed chunk: '${src.slice(lastIndex)}'`);
   }
 }

@@ -29,7 +29,8 @@ function evaluate(def) {
 
         def.use(binding);
 
-        if (binding.isBroken || binding.introDef.position > def.position) {
+        if (binding.isBroken ||
+            binding.introDef.evaluationOrder > def.evaluationOrder) {
           if (brokenBinding === null) {
             // This means we had already attempted to stop the evaluation but
             // it caught our exception and continued on. This is incorrect
