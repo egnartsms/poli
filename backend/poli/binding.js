@@ -1,14 +1,11 @@
 export {
-  Binding, dirtyBindings
+  Binding
 }
 
 
 import {
   Computed, Leaf, VirtualLeaf, invalidate, derived
 } from '$/poli/reactive.js';
-
-
-let dirtyBindings = new Set;
 
 
 class Binding {
@@ -20,18 +17,10 @@ class Binding {
     this.refs = new Set;
     this.usages = new Set;
 
-    this.cell = new Computed(() => bindingValue(this));
+    this.cell = new Computed(bindingValue.bind(null, this));
 
-    this.cell.addHook({
-      // onComputed: () => {
-      //   dirtyBindings.delete(this);
-      // },
-      onInvalidated: () => {
-        for (let def of this.usages) {
-          def.makeUnevaluated();
-        }
-        // dirtyBindings.add(this);
-      }
+    this.cell.addInvalidationHook(() => {
+      this.module.dirtyBindings.add(this);
     });
   }
 
@@ -80,8 +69,6 @@ class Binding {
   unuseBy(def) {
     this.usages.delete(def);
   }
-
-
 }
 
 

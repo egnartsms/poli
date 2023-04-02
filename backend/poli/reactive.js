@@ -1,11 +1,11 @@
 export {
-  Leaf, VirtualLeaf, Computed, derived, invalidate
+  Leaf, VirtualLeaf, Computed, derived, invalidate, mountEffect
 }
 
 
-import {addAll, MultiMap} from '$/poli/common.js';
+import {assert, addAll, MultiMap} from '$/poli/common.js';
 import {Queue} from '$/poli/queue.js';
-import {Result} from '$/poli/eval.js';
+import {Result} from '$/poli/result.js';
 
 
 class LogicError extends Error {}
@@ -22,7 +22,7 @@ function compute(cell, func) {
   beingComputed.push(cell);
 
   try {
-    return func.call(null);
+    return func();
   }
   finally {
     beingComputed.pop();
@@ -61,26 +61,28 @@ function dependOn(Bcell) {
 
 
 function invalidate(cell) {
-  let callbacks = [];
-  let queue = new Set([cell]);
+  let invQueue = new Set;
+  let callbacks = new Queue;
+
+  invQueue.add(cell);
 
   function writeDown(res) {
     let {doLater, invalidate} = res ?? {};
 
     if (doLater) {
-      callbacks.push(doLater);
+      callbacks.enqueue(doLater);
     }
 
     if (invalidate) {
-      addAll(queue, invalidate);
+      addAll(invQueue, invalidate);
     }
   }
 
   for (;;) {
-    while (queue.size > 0) {
-      let [cell] = queue;
+    while (invQueue.size > 0) {
+      let [cell] = invQueue;
 
-      queue.delete(cell);
+      invQueue.delete(cell);
 
       let more;
 
@@ -88,15 +90,15 @@ function invalidate(cell) {
         writeDown(cell.onInvalidate());
       }
       else {
-        addAll(queue, cell.revdeps);
+        addAll(invQueue, cell.revdeps);
       }
     }
 
-    let callback = callbacks.shift();
-
-    if (callback === undefined) {
+    if (callbacks.isEmpty) {
       break;
     }
+
+    let callback = callbacks.dequeue();
 
     writeDown(callback());
   }
@@ -152,14 +154,19 @@ class VirtualLeaf {
 
   get v() {
     dependOn(this);
-    return this.accessor.call(null);
+    return this.accessor();
   }
 }
 
 
+const invalidated = new Object;
+
+const invalidationHooks = new Map;
+
+
 class Computed {
   func;
-  value = Result.unevaluated;
+  value = invalidated;
   deps = new Set;
   revdeps = new Set;
 
@@ -171,46 +178,39 @@ class Computed {
     dependOn(this);
 
     if (this.isInvalidated) {
-      this.value = computeWrap(this, this.func);
-
-      for (let hook of invalidationHooks.itemsAt(this)) {
-        if (hook.onComputed) {
-          hook.onComputed.call(null);
-        }
-      }
+      this.value = compute(this, this.func);
     }
 
-    return this.value.access();
+    return this.value;
   }
 
   get isInvalidated() {
-    return this.value === Result.unevaluated;
+    return this.value === invalidated;
   }
 
   onInvalidate() {
-    this.value = Result.unevaluated;
+    this.value = invalidated;
     unlinkDeps(this);
 
-    for (let hook of invalidationHooks.itemsAt(this)) {
-      if (hook.onInvalidated) {
-        hook.onInvalidated.call(null);
-      }
+    if (invalidationHooks.has(this)) {
+      invalidationHooks.get(this)();
     }
 
     return {invalidate: this.revdeps};
   }
 
-  addHook(hook) {
-    invalidationHooks.add(this, hook);
+  addInvalidationHook(hook) {
+    if (invalidationHooks.has(this)) {
+      throw new Error(`Multiple hooks for a computed cell not supported yet`);
+    }
 
-    if (this.isInvalidated && hook.onInvalidated) {
-      hook.onInvalidated.call(null);
+    invalidationHooks.set(this, hook);
+
+    if (this.isInvalidated) {
+      hook();
     }
   }
 }
-
-
-let invalidationHooks = new MultiMap;
 
 
 // let invalidationSets = new MultiMap;
@@ -227,17 +227,11 @@ let invalidationHooks = new MultiMap;
 
 class Derived {
   func;
-  value = Result.unevaluated;
+  value;
   deps = new Set;
   revdep = null;
 
   constructor(func) {
-    if (beingComputed.length === 0) {
-      throw new Error(
-        `Derived computation can only run within some other computation`
-      );
-    }
-
     this.func = func;
     this.value = compute(this, this.func);
     this.revdep = beingComputed.at(-1);
@@ -251,10 +245,10 @@ class Derived {
   }
 
   onInvalidate() {
+    unlinkDeps(this);
+
     return {
       doLater: () => {
-        unlinkDeps(this);
-
         let newValue = compute(this, this.func);
 
         if (newValue !== this.value) {
@@ -267,7 +261,35 @@ class Derived {
 
 
 function derived(func) {
-  let derived = new Derived(func);
+  if (beingComputed.length === 0) {
+    throw new Error(
+      `Derived computation can only run within some other computation`
+    );
+  }
 
-  return derived.value;
+  return (new Derived(func)).value;
+}
+
+
+class Effect {
+  deps = new Set;
+  undo = null;
+
+  onInvalidate() {
+    unlinkDeps(this);
+    this.undo();
+  }
+}
+
+
+function mountEffect(body) {
+  let effect = new Effect;
+
+  try {
+    effect.undo = compute(effect, body);
+  }
+  catch (e) {
+    unlinkDeps(effect);
+    throw e;
+  }
 }

@@ -1,14 +1,9 @@
-import {Result} from '$/poli/eval.js';
+import {assert} from '$/poli/common.js';
+import {Result} from '$/poli/result.js';
+import {Leaf} from '$/poli/reactive.js';
 
 
 export class Definition {
-  static stoppedOnBrokenBinding(binding) {
-    return {
-      __proto__: protoStoppedOnBrokenBinding,
-      brokenBinding: binding
-    }
-  }
-
   constructor(module, props) {
     this.module = module;
 
@@ -17,9 +12,9 @@ export class Definition {
     this.evaluatableSource = props.evaluatableSource;
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
-    this.evaluationOrder = props.evaluationOrder;
+    this.evaluationOrder = new Leaf(props.evaluationOrder);
 
-    this.usedBindings = new Set;
+    this.usedBindings = null;
     this.usedBrokenBinding = null;
 
     this.result = null;
@@ -28,16 +23,40 @@ export class Definition {
       ref.referenceBy(this);
     }
 
+    this.module.defs.push(this);
+    this.module.unevaluatedDefs.add(this);
+
     this.setEvaluationResult(Result.unevaluated);
   }
 
-  use(binding) {
-    this.usedBindings.add(binding);
-    binding.useBy(this);
+  get isEvaluated() {
+    return this.result !== Result.unevaluated;
+  }
 
-    if (binding.isBroken) {
-      this.usedBrokenBinding = binding;
+  makeEvaluated(result, usedBindings, usedBrokenBinding) {
+    for (let binding of usedBindings) {
+      binding.useBy(this);
     }
+
+    this.usedBindings = usedBindings;
+    this.usedBrokenBinding = usedBrokenBinding;
+
+    this.module.unevaluatedDefs.delete(this);
+    this.setEvaluationResult(result);
+  }
+
+  makeUnevaluated() {
+    assert(() => this.isEvaluated);
+
+    for (let binding of this.usedBindings) {
+      binding.unuseBy(this);
+    }
+
+    this.usedBindings = null;
+    this.usedBrokenBinding = null;
+
+    this.module.unevaluatedDefs.add(this);
+    this.setEvaluationResult(Result.unevaluated);
   }
 
   setEvaluationResult(result) {
@@ -51,24 +70,11 @@ export class Definition {
     }
   }
 
-  makeUnevaluated() {
-    if (this.isUnevaluated) {
-      return;
+  static stoppedOnBrokenBinding(binding) {
+    return {
+      __proto__: protoStoppedOnBrokenBinding,
+      brokenBinding: binding
     }
-
-    for (let binding of this.usedBindings) {
-      binding.unuseBy(this);
-    }
-
-    this.usedBindings.clear();
-    this.usedBrokenBinding = null;
-
-    this.setEvaluationResult(Result.unevaluated);
-    this.module.recordAsUnevaluated(this);
-  }
-
-  get isUnevaluated() {
-    return this.result === Result.unevaluated;
   }
 }
 

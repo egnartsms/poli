@@ -48,8 +48,6 @@ function* parseTopLevel(src) {
       break;
     }
 
-    // index = reEntry.lastIndex;
-
     let type;
     let ignoreReason = null;
 

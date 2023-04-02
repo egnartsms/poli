@@ -30,12 +30,6 @@ class ForwardingWsServer {
     assert(this.ws === null);
 
     this.ws = ws;
-    this.prepareWebsocket();
-
-    console.log(`${this.side}: connected`);
-  }
-
-  prepareWebsocket() {
     this.ws
       .on('close', (code, reason) => {
         this.ws = null;
@@ -48,6 +42,8 @@ class ForwardingWsServer {
         console.error(`${this.side} websocket connection error:`, error);
       })
       .on('message', (data) => this.sink.send(data));
+
+    console.log(`${this.side}: connected`);
   }
 
   handleUpgrade(req, socket, head) {
@@ -86,10 +82,6 @@ function mate(srvA, srvB) {
 }
 
 
-const BASE_DIR = new URL('../', import.meta.url).pathname;
-const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
-
-
 function run() {
   let front = new ForwardingWsServer('front');
   let back = new ForwardingWsServer('back');
@@ -116,65 +108,72 @@ function run() {
 
       srv.handleUpgrade(req, socket, head);
     })
-    .on('request', (req, resp) => {
-      console.log(req.method, req.url);
-
-      if (req.url === '/') {
-        sendFile(resp, 'index.html');
-        return;
-      }
-
-      if (req.url === '/importmap') {
-        sendImportmapScript(resp);
-        return;
-      }
-
-      let mo;
-
-      if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
-        let [, file] = mo;
-
-        sendFile(resp, path.join(BASE_DIR, 'gen', file));
-        return;
-      }
-
-      if ((mo = /^\/3rdparty\/(.*)$/.exec(req.url)) !== null) {
-        let [, file] = mo;
-
-        sendFile(resp, path.join(NODE_MODULES, file));
-
-        return;
-      }
-
-      if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
-        let [, projName, modulePath] = mo;
-
-        if (projects.has(projName)) {
-          let proj = projects.get(projName);
-
-          if (modulePath) {
-            sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
-          }
-          else {
-            // Here should go some metadata about the project.
-            sendData(resp, 200, {
-              rootModule: proj.rootModule
-            });
-          }
-        }
-        else {
-          sendData(resp, 404, {
-            result: false,
-            error: `Unknown project '${projName}'`
-          });
-        }
-
-        return;
-      }
-
-      resp.writeHead(404).end();
-    })
+    .on('request', handleRequest)
     .listen(8080);
+}
+
+
+const BASE_DIR = new URL('../', import.meta.url).pathname;
+const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
+
+
+function handleRequest(req, resp) {
+  console.log(req.method, req.url);
+
+  if (req.url === '/') {
+    sendFile(resp, 'index.html');
+    return;
+  }
+
+  if (req.url === '/importmap') {
+    sendImportmapScript(resp);
+    return;
+  }
+
+  let mo;
+
+  if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
+    let [, file] = mo;
+
+    sendFile(resp, path.join(BASE_DIR, 'gen', file));
+    return;
+  }
+
+  if ((mo = /^\/3rdparty\/(.*)$/.exec(req.url)) !== null) {
+    let [, file] = mo;
+
+    sendFile(resp, path.join(NODE_MODULES, file));
+
+    return;
+  }
+
+  if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
+    let [, projName, modulePath] = mo;
+
+    if (projects.has(projName)) {
+      let proj = projects.get(projName);
+
+      if (modulePath) {
+        sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
+      }
+      else {
+        // Here should go some metadata about the project.
+        sendData(resp, 200, {
+          rootModule: proj.rootModule
+        });
+      }
+    }
+    else {
+      sendData(resp, 404, {
+        result: false,
+        error: `Unknown project '${projName}'`
+      });
+    }
+
+    return;
+  }
+
+  resp.writeHead(404).end();
 }
 
 
@@ -241,11 +240,9 @@ async function sendImportmapScript(resp) {
 let projects = new Map;
 
 
-async function addProjectRoot(root) {
+function addProjectRoot(root) {
   let rootFolder = new URL(root, import.meta.url).pathname;
-  let config = JSON.parse(
-    await fsP.readFile(path.join(rootFolder, 'poli.json'))
-  );
+  let config = JSON.parse(fs.readFileSync(path.join(rootFolder, 'poli.json')));
 
   if (typeof config['project-name'] !== 'string' ||
       typeof config['root-module'] !== 'string') {
@@ -265,7 +262,10 @@ async function addProjectRoot(root) {
 }
 
 
-addProjectRoot('../poli/');
+function main() {
+  addProjectRoot('../poli/');
+  run();
+}
 
 
-run();
+main();

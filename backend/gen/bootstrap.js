@@ -7087,6 +7087,13 @@
     return LooseParser.parse(input, options)
   }
 
+  function assert(callback) {
+    if (!callback()) {
+      throw new Error(`Assert failed`);
+    }
+  }
+
+
   function isAllSpaces(str) {
     return /^\s*$/.test(str);
   }
@@ -7103,61 +7110,6 @@
     for (let x of xs) {
       container.add(x);
     }
-  }
-
-
-  class MultiMap {
-    bags = new Map;
-
-    add(key, val) {
-      let bag = this.bags.get(key);
-
-      if (bag === undefined) {
-         bag = new Set();
-         this.bags.set(key, bag);
-      }
-
-      bag.add(val);
-    }
-
-    delete(key, val) {
-      let bag = this.bags.get(key);
-
-      if (bag === undefined) {
-         return false;
-      }
-
-      let didDelete = bag.delete(val);
-
-      if (bag.size === 0) {
-         this.bags.delete(key);
-      }
-
-      return didDelete;
-    }
-
-    addToBag(key, vals) {
-      let bag = this.bags.get(key);
-
-      if (bag === undefined) {
-        bag = new Set(vals);
-        this.bags.set(key, bag);
-      }
-      else {
-        addAll(bag, vals);
-      }
-    }
-
-    deleteBag(key) {
-      return this.bags.delete(key);
-    }
-
-    *itemsAt(key) {
-      if (this.bags.has(key)) {
-        yield* this.bags.get(key);
-      }
-    }
-
   }
 
   const rSingleLineComment = `(?://.*?\n)+`;
@@ -7203,8 +7155,6 @@
       if (mo === null) {
         break;
       }
-
-      // index = reEntry.lastIndex;
 
       let type;
       let ignoreReason = null;
@@ -7290,180 +7240,41 @@
     }
   };
 
-  class Definition {
-    static stoppedOnBrokenBinding(binding) {
-      return {
-        __proto__: protoStoppedOnBrokenBinding,
-        brokenBinding: binding
-      }
+  class Queue {
+    constructor() {
+      this.front = [];
+      this.rear = [];
     }
 
-    constructor(module, props) {
-      this.module = module;
-
-      this.target = props.target;
-      this.source = props.source;
-      this.evaluatableSource = props.evaluatableSource;
-      this.factory = props.factory;
-      this.referencedBindings = props.referencedBindings;
-      this.evaluationOrder = props.evaluationOrder;
-
-      this.usedBindings = new Set;
-      this.usedBrokenBinding = null;
-
-      this.result = null;
-
-      for (let ref of this.referencedBindings) {
-        ref.referenceBy(this);
-      }
-
-      this.setEvaluationResult(Result.unevaluated);
+    enqueue(item) {
+      this.rear.push(item);
     }
 
-    use(binding) {
-      this.usedBindings.add(binding);
-      binding.useBy(this);
-
-      if (binding.isBroken) {
-        this.usedBrokenBinding = binding;
-      }
+    enqueueFirst(item) {
+      this.front.push(item);
     }
 
-    setEvaluationResult(result) {
-      this.result = result;
+    dequeue() {
+      if (this.front.length === 0) {
+        rearToFront(this);
+      }
 
-      if (result.isNormal) {
-        this.target.setBy(this, result.value);
-      }
-      else {
-        this.target.setBrokenBy(this);
-      }
+      return this.front.pop();
     }
 
-    makeUnevaluated() {
-      if (this.isUnevaluated) {
-        return;
-      }
-
-      for (let binding of this.usedBindings) {
-        binding.unuseBy(this);
-      }
-
-      this.usedBindings.clear();
-      this.usedBrokenBinding = null;
-
-      this.setEvaluationResult(Result.unevaluated);
-      this.module.recordAsUnevaluated(this);
-    }
-
-    get isUnevaluated() {
-      return this.result === Result.unevaluated;
+    get isEmpty() {
+      return this.front.length === 0 && this.rear.length === 0;
     }
   }
 
 
-  const protoStoppedOnBrokenBinding = {
-    isNormal: false,
+  function rearToFront(queue) {
+    let {front, rear} = queue;
 
-    access() {
-      throw new Error(
-        `Definition accessed broken binding: '${this.brokenBinding.name}'`
-      );
-    }
-  };
-
-  function ensureAllDefinitionsEvaluated(module) {
-    for (let def of module.unevaluatedDefs) {
-      evaluate(def);
-    }
-
-    module.unevaluatedDefs.length = 0;
-  }
-
-
-  function evaluate(def) {
-    let brokenBinding = null;
-    let result;
-
-    try {
-      result = withNonLocalRefsIntercepted(
-        (module, prop) => {
-          let binding = module.getBinding(prop);
-
-          def.use(binding);
-
-          if (binding.isBroken ||
-              binding.introDef.evaluationOrder > def.evaluationOrder) {
-            if (brokenBinding === null) {
-              // This means we had already attempted to stop the evaluation but
-              // it caught our exception and continued on. This is incorrect
-              // behavior that we unfortunately have no means to eschew.
-              brokenBinding = binding;
-            }
-
-            throw new StopOnBrokenBinding;          
-          }
-          else {
-            return binding.value;
-          }
-        },
-        () => Result.plain(def.factory.call(null, def.module.$))
-      );
-    }
-    catch (e) {
-      if (e instanceof StopOnBrokenBinding) {
-        result = Definition.stoppedOnBrokenBinding(brokenBinding);
-      }
-      else {
-        result = Result.exception(e);
-      }
-    }
-
-    def.setEvaluationResult(result);
-  }
-
-
-  const common$ = {
-    get v() {
-      return this.module.ns;
-    }
-  };
-
-
-  function withNonLocalRefsIntercepted(handler, callback) {
-    let oldV = Object.getOwnPropertyDescriptor(common$, 'v');
-
-    let module2proxy = new Map;
-
-    Object.defineProperty(common$, 'v', {
-      configurable: true,
-      get: function () {
-        let proxy = module2proxy.get(this.module);
-
-        if (proxy === undefined) {
-          proxy = new Proxy(this.module.ns, {
-            get: (target, prop, receiver) => {
-              return handler(this.module, prop);
-            }
-          });
-
-          module2proxy.set(this.module, proxy);
-        }
-
-        return proxy;
-      }
-    });
-
-    try {
-      return callback();
-    }
-    finally {
-      Object.defineProperty(common$, 'v', oldV);
+    while (rear.length > 0) {
+      front.push(rear.pop());
     }
   }
-
-
-  class StopOnBrokenBinding extends Error {}
 
   class LogicError extends Error {}
 
@@ -7479,24 +7290,10 @@
     beingComputed.push(cell);
 
     try {
-      return func.call(null);
+      return func();
     }
     finally {
       beingComputed.pop();
-    }
-  }
-
-
-  function computeWrap(cell, func) {
-    try {
-      return Result.plain(compute(cell, func));
-    }
-    catch (exc) {
-      if (exc instanceof LogicError) {
-        throw exc;
-      }
-
-      return Result.exception(exc);
     }
   }
 
@@ -7518,40 +7315,42 @@
 
 
   function invalidate(cell) {
-    let callbacks = [];
-    let queue = new Set([cell]);
+    let invQueue = new Set;
+    let callbacks = new Queue;
+
+    invQueue.add(cell);
 
     function writeDown(res) {
       let {doLater, invalidate} = res ?? {};
 
       if (doLater) {
-        callbacks.push(doLater);
+        callbacks.enqueue(doLater);
       }
 
       if (invalidate) {
-        addAll(queue, invalidate);
+        addAll(invQueue, invalidate);
       }
     }
 
     for (;;) {
-      while (queue.size > 0) {
-        let [cell] = queue;
+      while (invQueue.size > 0) {
+        let [cell] = invQueue;
 
-        queue.delete(cell);
+        invQueue.delete(cell);
 
         if (cell.onInvalidate) {
           writeDown(cell.onInvalidate());
         }
         else {
-          addAll(queue, cell.revdeps);
+          addAll(invQueue, cell.revdeps);
         }
       }
 
-      let callback = callbacks.shift();
-
-      if (callback === undefined) {
+      if (callbacks.isEmpty) {
         break;
       }
+
+      let callback = callbacks.dequeue();
 
       writeDown(callback());
     }
@@ -7607,14 +7406,19 @@
 
     get v() {
       dependOn(this);
-      return this.accessor.call(null);
+      return this.accessor();
     }
   }
 
 
+  const invalidated = new Object;
+
+  const invalidationHooks = new Map;
+
+
   class Computed {
     func;
-    value = Result.unevaluated;
+    value = invalidated;
     deps = new Set;
     revdeps = new Set;
 
@@ -7626,46 +7430,39 @@
       dependOn(this);
 
       if (this.isInvalidated) {
-        this.value = computeWrap(this, this.func);
-
-        for (let hook of invalidationHooks.itemsAt(this)) {
-          if (hook.onComputed) {
-            hook.onComputed.call(null);
-          }
-        }
+        this.value = compute(this, this.func);
       }
 
-      return this.value.access();
+      return this.value;
     }
 
     get isInvalidated() {
-      return this.value === Result.unevaluated;
+      return this.value === invalidated;
     }
 
     onInvalidate() {
-      this.value = Result.unevaluated;
+      this.value = invalidated;
       unlinkDeps(this);
 
-      for (let hook of invalidationHooks.itemsAt(this)) {
-        if (hook.onInvalidated) {
-          hook.onInvalidated.call(null);
-        }
+      if (invalidationHooks.has(this)) {
+        invalidationHooks.get(this)();
       }
 
       return {invalidate: this.revdeps};
     }
 
-    addHook(hook) {
-      invalidationHooks.add(this, hook);
+    addInvalidationHook(hook) {
+      if (invalidationHooks.has(this)) {
+        throw new Error(`Multiple hooks for a computed cell not supported yet`);
+      }
 
-      if (this.isInvalidated && hook.onInvalidated) {
-        hook.onInvalidated.call(null);
+      invalidationHooks.set(this, hook);
+
+      if (this.isInvalidated) {
+        hook();
       }
     }
   }
-
-
-  let invalidationHooks = new MultiMap;
 
 
   // let invalidationSets = new MultiMap;
@@ -7682,17 +7479,11 @@
 
   class Derived {
     func;
-    value = Result.unevaluated;
+    value;
     deps = new Set;
     revdep = null;
 
     constructor(func) {
-      if (beingComputed.length === 0) {
-        throw new Error(
-          `Derived computation can only run within some other computation`
-        );
-      }
-
       this.func = func;
       this.value = compute(this, this.func);
       this.revdep = beingComputed.at(-1);
@@ -7706,10 +7497,10 @@
     }
 
     onInvalidate() {
+      unlinkDeps(this);
+
       return {
         doLater: () => {
-          unlinkDeps(this);
-
           let newValue = compute(this, this.func);
 
           if (newValue !== this.value) {
@@ -7722,10 +7513,124 @@
 
 
   function derived(func) {
-    let derived = new Derived(func);
+    if (beingComputed.length === 0) {
+      throw new Error(
+        `Derived computation can only run within some other computation`
+      );
+    }
 
-    return derived.value;
+    return (new Derived(func)).value;
   }
+
+
+  class Effect {
+    deps = new Set;
+    undo = null;
+
+    onInvalidate() {
+      unlinkDeps(this);
+      this.undo();
+    }
+  }
+
+
+  function mountEffect(body) {
+    let effect = new Effect;
+
+    try {
+      effect.undo = compute(effect, body);
+    }
+    catch (e) {
+      unlinkDeps(effect);
+      throw e;
+    }
+  }
+
+  class Definition {
+    constructor(module, props) {
+      this.module = module;
+
+      this.target = props.target;
+      this.source = props.source;
+      this.evaluatableSource = props.evaluatableSource;
+      this.factory = props.factory;
+      this.referencedBindings = props.referencedBindings;
+      this.evaluationOrder = new Leaf(props.evaluationOrder);
+
+      this.usedBindings = null;
+      this.usedBrokenBinding = null;
+
+      this.result = null;
+
+      for (let ref of this.referencedBindings) {
+        ref.referenceBy(this);
+      }
+
+      this.module.defs.push(this);
+      this.module.unevaluatedDefs.add(this);
+
+      this.setEvaluationResult(Result.unevaluated);
+    }
+
+    get isEvaluated() {
+      return this.result !== Result.unevaluated;
+    }
+
+    makeEvaluated(result, usedBindings, usedBrokenBinding) {
+      for (let binding of usedBindings) {
+        binding.useBy(this);
+      }
+
+      this.usedBindings = usedBindings;
+      this.usedBrokenBinding = usedBrokenBinding;
+
+      this.module.unevaluatedDefs.delete(this);
+      this.setEvaluationResult(result);
+    }
+
+    makeUnevaluated() {
+      assert(() => this.isEvaluated);
+
+      for (let binding of this.usedBindings) {
+        binding.unuseBy(this);
+      }
+
+      this.usedBindings = null;
+      this.usedBrokenBinding = null;
+
+      this.module.unevaluatedDefs.add(this);
+      this.setEvaluationResult(Result.unevaluated);
+    }
+
+    setEvaluationResult(result) {
+      this.result = result;
+
+      if (result.isNormal) {
+        this.target.setBy(this, result.value);
+      }
+      else {
+        this.target.setBrokenBy(this);
+      }
+    }
+
+    static stoppedOnBrokenBinding(binding) {
+      return {
+        __proto__: protoStoppedOnBrokenBinding,
+        brokenBinding: binding
+      }
+    }
+  }
+
+
+  const protoStoppedOnBrokenBinding = {
+    isNormal: false,
+
+    access() {
+      throw new Error(
+        `Definition accessed broken binding: '${this.brokenBinding.name}'`
+      );
+    }
+  };
 
   class Binding {
     constructor(module, name) {
@@ -7736,18 +7641,10 @@
       this.refs = new Set;
       this.usages = new Set;
 
-      this.cell = new Computed(() => bindingValue(this));
+      this.cell = new Computed(bindingValue.bind(null, this));
 
-      this.cell.addHook({
-        // onComputed: () => {
-        //   dirtyBindings.delete(this);
-        // },
-        onInvalidated: () => {
-          for (let def of this.usages) {
-            def.makeUnevaluated();
-          }
-          // dirtyBindings.add(this);
-        }
+      this.cell.addInvalidationHook(() => {
+        this.module.dirtyBindings.add(this);
       });
     }
 
@@ -7796,8 +7693,6 @@
     unuseBy(def) {
       this.usages.delete(def);
     }
-
-
   }
 
 
@@ -7864,17 +7759,33 @@
     }
   }
 
+  /**
+   * Common prototype of all the '_$' module-specific objects.
+   * 
+   * This trick is used to easily intercept access of non-local
+   * (module-level) identifiers in all the modules of the system. Those '_$'
+   * objects for each module are expected to have the 'module' property that
+   * points back to respective Module instance. In each module, the 'name'
+   * references to non-local variables become '_$.v.name'.
+   */
+  const proto$ = {
+    get v() {
+      return this.module.ns;
+    }
+  };
+
+
   class Module {
     constructor(path) {
       this.path = path;
       this.bindings = new Map;
+      this.dirtyBindings = new Set;
       this.defs = [];
-      this.unevaluatedDefs = [];
+      this.unevaluatedDefs = new Set;
       this.ns = Object.create(null);
-      // This object is passed as '_$' to all definitions of this module. That's
-      // how definitions reference non-local identifiers: 'x' becomes '_$.v.x'.
+      // This object is passed as '_$' to all definitions of this module.
       this.$ = {
-        __proto__: common$,
+        __proto__: proto$,
         module: this
       };
     }
@@ -7889,9 +7800,92 @@
 
       return binding;
     }
+  }
 
-    recordAsUnevaluated(def) {
-      this.unevaluatedDefs.push(def);
+  function evaluateNeededDefs(module) {
+    for (let def of module.unevaluatedDefs) {
+      evaluate(def);
+    }
+  }
+
+
+  function evaluate(def) {
+    mountEffect(() => {
+      let usedBindings = new Set;
+      let usedBrokenBinding = null;
+      let result;
+
+      try {
+        result = withNonLocalRefsIntercepted(
+          (module, prop) => {
+            let binding = module.getBinding(prop);
+
+            usedBindings.add(binding);
+
+            if (binding.isBroken ||
+                derived(() =>
+                  binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
+              if (usedBrokenBinding === null) {
+                // There may be a case when we had already attempted to stop the
+                // evaluation but it caught our exception and continued on. This
+                // is an incorrect behavior that we have no control over.
+                usedBrokenBinding = binding;
+              }
+
+              throw new StopOnBrokenBinding;
+            }
+
+            return binding.value;
+          },
+          () => Result.plain(def.factory.call(null, def.module.$))
+        );
+      }
+      catch (e) {
+        if (e instanceof StopOnBrokenBinding) {
+          result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
+        }
+        else {
+          result = Result.exception(e);
+        }
+      }
+
+      def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+
+      return () => def.makeUnevaluated()
+    });
+  }
+
+
+  class StopOnBrokenBinding extends Error {}
+
+
+  function withNonLocalRefsIntercepted(handler, body) {
+    let oldV = Object.getOwnPropertyDescriptor(proto$, 'v');
+
+    let module2proxy = new Map;
+
+    Object.defineProperty(proto$, 'v', {
+      configurable: true,
+      get: function () {
+        let proxy = module2proxy.get(this.module);
+
+        if (proxy === undefined) {
+          proxy = new Proxy(this.module.ns, {
+            get: (target, prop, receiver) => handler(this.module, prop)
+          });
+
+          module2proxy.set(this.module, proxy);
+        }
+
+        return proxy;
+      }
+    });
+
+    try {
+      return body();
+    }
+    finally {
+      Object.defineProperty(proto$, 'v', oldV);
     }
   }
 
@@ -7923,11 +7917,15 @@
       addTopLevelCodeBlock(module, block.text);
     }
 
-    ensureAllDefinitionsEvaluated(module);
+    evaluateNeededDefs(module);
 
-    for (let binding of module.bindings.values()) {
+    for (let binding of module.dirtyBindings) {
       binding.recordValueInNamespace();
     }
+
+    module.dirtyBindings.clear();
+
+    console.log(module.ns);
 
     return module;
   }
@@ -7995,9 +7993,9 @@
 
     let evaluationOrder =
       module.defs.length === 0 ? EVALUATION_ORDER_INTERVAL :
-        module.defs.at(-1).evaluationOrder + EVALUATION_ORDER_INTERVAL;
+        module.defs.at(-1).evaluationOrder.v + EVALUATION_ORDER_INTERVAL;
 
-    let def = new Definition(module, {
+    new Definition(module, {
       target: module.getBinding(decl.id.name),
       source: source,
       evaluatableSource: source.slice(...decl.init.range),
@@ -8005,9 +8003,6 @@
       referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
       evaluationOrder: evaluationOrder
     });
-
-    module.defs.push(def);
-    module.unevaluatedDefs.push(def);
   }
 
 

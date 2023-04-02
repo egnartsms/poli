@@ -6,10 +6,9 @@ import {parse as parseJsLoosely} from 'acorn-loose';
 
 import {map} from '$/poli/common.js';
 import {parseTopLevel} from '$/poli/parse-top-level.js';
-import {ensureAllDefinitionsEvaluated} from '$/poli/evaluate.js';
+import {evaluateNeededDefs} from '$/poli/evaluate.js';
 import {Module} from '$/poli/module.js';
 import {Definition} from '$/poli/definition.js';
-import {dirtyBindings} from '$/poli/binding.js';
 
 
 async function loadProject(projName) {
@@ -40,11 +39,15 @@ async function loadModule(projName, modulePath) {
     addTopLevelCodeBlock(module, block.text);
   }
 
-  ensureAllDefinitionsEvaluated(module);
+  evaluateNeededDefs(module);
 
-  for (let binding of module.bindings.values()) {
+  for (let binding of module.dirtyBindings) {
     binding.recordValueInNamespace();
   }
+
+  module.dirtyBindings.clear();
+
+  console.log(module.ns);
 
   return module;
 }
@@ -113,9 +116,9 @@ function addTopLevelCodeBlock(module, source) {
 
   let evaluationOrder =
     module.defs.length === 0 ? EVALUATION_ORDER_INTERVAL :
-      module.defs.at(-1).evaluationOrder + EVALUATION_ORDER_INTERVAL;
+      module.defs.at(-1).evaluationOrder.v + EVALUATION_ORDER_INTERVAL;
 
-  let def = new Definition(module, {
+  new Definition(module, {
     target: module.getBinding(decl.id.name),
     source: source,
     evaluatableSource: source.slice(...decl.init.range),
@@ -123,9 +126,6 @@ function addTopLevelCodeBlock(module, source) {
     referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
     evaluationOrder: evaluationOrder
   });
-
-  module.defs.push(def);
-  module.unevaluatedDefs.push(def);
 }
 
 
