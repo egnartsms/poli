@@ -116,6 +116,17 @@ function run() {
 const BASE_DIR = new URL('../', import.meta.url).pathname;
 const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
 
+/**
+ * All registered projects. Each project is essentially a filesystem subtree.
+ * There may be multiple ones loaded into a webpage at the same time, and all
+ * of them may be manageable through Poli.sys, independently.
+ * 
+ * PROJECT_NAME -> rootDir
+ * 
+ * Project name is a random word used to identify a project. It's used in URLs.
+ */
+const projectRegistry = new Map([['sample', path.resolve('./sample')]]);
+
 
 function handleRequest(req, resp) {
   console.log(req.method, req.url);
@@ -147,27 +158,21 @@ function handleRequest(req, resp) {
     return;
   }
 
-  if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
+  if ((mo = /^\/proj\/(.+?)\/(.*)$/.exec(req.url)) !== null) {
     let [, projName, modulePath] = mo;
 
-    if (projects.has(projName)) {
-      let proj = projects.get(projName);
+    if (!projectRegistry.has(projName)) {
+      sendData(resp, 400, {"message": "Unknown project"});
+      return;
+    }
 
-      if (modulePath) {
-        sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
-      }
-      else {
-        // Here should go some metadata about the project.
-        sendData(resp, 200, {
-          rootModule: proj.rootModule
-        });
-      }
+    let projRoot = projectRegistry.get(projName);
+
+    if (modulePath) {
+      sendFile(resp, path.join(projRoot, modulePath + '.js'));
     }
     else {
-      sendData(resp, 404, {
-        result: false,
-        error: `Unknown project '${projName}'`
-      });
+      sendProjectMetadata(resp, projRoot);
     }
 
     return;
@@ -200,6 +205,33 @@ function sendData(resp, code, data) {
       'Content-Type': 'application/json'
     })
     .end(JSON.stringify(data));
+}
+
+
+function sendProjectMetadata(resp, projRoot) {
+  let rootModule;
+
+  try {
+    let config = JSON.parse(
+      fs.readFileSync(path.join(projRoot, '.poli.json'), 'utf8')
+    );
+    rootModule = config["rootModule"];
+  }
+  catch (e) {
+    sendData(resp, 400, {"message": ".poli.json not operable"})
+    return;
+  }
+
+  console.log(rootModule);
+
+  if (typeof rootModule !== 'string') {
+    sendData(resp, 400, {"message": "Root module not specified"});
+    return;
+  }
+
+  sendData(resp, 200, {
+    "rootModule": rootModule
+  });
 }
 
 
@@ -237,35 +269,4 @@ async function sendImportmapScript(resp) {
 }
 
 
-let projects = new Map;
-
-
-function addProjectRoot(root) {
-  let rootFolder = new URL(root, import.meta.url).pathname;
-  let config = JSON.parse(fs.readFileSync(path.join(rootFolder, 'poli.json')));
-
-  if (typeof config['project-name'] !== 'string' ||
-      typeof config['root-module'] !== 'string') {
-    throw new Error(`Malformed poli.json config for root folder '${folder}'`);
-  }
-
-  if (projects.has(config['project-name'])) {
-    throw new Error(`Double project name: '${config['project-name']}'`);
-  }
-
-  projects.set(config['project-name'], {
-    rootFolder: rootFolder,
-    rootModule: config['root-module'],
-  });
-
-  // TODO: add check for project folder structure overlap ?
-}
-
-
-function main() {
-  addProjectRoot('../poli/');
-  run();
-}
-
-
-main();
+run();

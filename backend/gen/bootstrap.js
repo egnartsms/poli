@@ -8054,7 +8054,7 @@ return (${source});
   }
 
   async function loadPoli() {
-    await loadProject('poli');
+    await loadProject('sample');
 
     
   }

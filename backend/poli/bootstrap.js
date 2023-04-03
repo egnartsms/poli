@@ -2,7 +2,7 @@ import {loadProject} from '$/poli/load.js';
 
 
 async function loadPoli() {
-  let rootModule = await loadProject('poli');
+  let rootModule = await loadProject('sample');
 
   
 }
