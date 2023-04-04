@@ -12,55 +12,53 @@ import {proto$} from '$/poli/module.js';
 
 function evaluateNeededDefs(module) {
   for (let def of module.unevaluatedDefs) {
-    evaluate(def);
+    mountEffect(() => evaluate(def));
   }
 }
 
 
 function evaluate(def) {
-  mountEffect(() => {
-    let usedBindings = new Set;
-    let usedBrokenBinding = null;
-    let result;
+  let usedBindings = new Set;
+  let usedBrokenBinding = null;
+  let result;
 
-    try {
-      result = withNonLocalRefsIntercepted(
-        (module, prop) => {
-          let binding = module.getBinding(prop);
+  try {
+    result = withNonLocalRefsIntercepted(
+      (module, prop) => {
+        let binding = module.getBinding(prop);
 
-          usedBindings.add(binding);
+        usedBindings.add(binding);
 
-          if (binding.isBroken ||
-              derived(() =>
-                binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
-            if (usedBrokenBinding === null) {
-              // There may be a case when we had already attempted to stop the
-              // evaluation but it caught our exception and continued on. This
-              // is an incorrect behavior that we have no control over.
-              usedBrokenBinding = binding;
-            }
-
-            throw new StopOnBrokenBinding;
+        if (binding.isBroken ||
+            derived(() =>
+              binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
+          if (usedBrokenBinding === null) {
+            // There may be a case when we had already attempted to stop the
+            // evaluation but it caught our exception and continued on. This
+            // is an incorrect behavior that we have no control over.
+            usedBrokenBinding = binding;
           }
 
-          return binding.value;
-        },
-        () => Result.plain(def.factory.call(null, def.module.$))
-      );
-    }
-    catch (e) {
-      if (e instanceof StopOnBrokenBinding) {
-        result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
-      }
-      else {
-        result = Result.exception(e);
-      }
-    }
+          throw new StopOnBrokenBinding;
+        }
 
-    def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+        return binding.value;
+      },
+      () => Result.plain(def.factory.call(null, def.module.$))
+    );
+  }
+  catch (e) {
+    if (e instanceof StopOnBrokenBinding) {
+      result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
+    }
+    else {
+      result = Result.exception(e);
+    }
+  }
 
-    return () => def.makeUnevaluated()
-  });
+  def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+
+  return () => def.makeUnevaluated();
 }
 
 

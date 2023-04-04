@@ -3,6 +3,7 @@ export {
 }
 
 
+import {assert} from '$/poli/common.js';
 import {
   Computed, Leaf, VirtualLeaf, invalidate, derived
 } from '$/poli/reactive.js';
@@ -16,20 +17,22 @@ class Binding {
     this.deftimes = new VirtualLeaf(() => this.defs.length);
     this.refs = new Set;
     this.usages = new Set;
-
     this.cell = new Computed(bindingValue.bind(null, this));
 
-    this.cell.addInvalidationHook(() => {
-      this.module.dirtyBindings.add(this);
-    });
+    module.dirtyBindings.add(this);
   }
 
-  recordValueInNamespace() {
+  flush() {
     Object.defineProperty(this.module.ns, this.name, {
       configurable: true,
       enumerable: true,
       ...makeBindingValueDescriptor(this)
     });
+
+    assert(() => !this.cell.isInvalidated);
+
+    this.module.dirtyBindings.delete(this);
+    this.cell.wind(() => this.module.dirtyBindings.add(this));
   }
 
   get isBroken() {

@@ -3,7 +3,7 @@ export {
 }
 
 
-import {assert, addAll, MultiMap} from '$/poli/common.js';
+import {assert, addAll} from '$/poli/common.js';
 import {Queue} from '$/poli/queue.js';
 import {Result} from '$/poli/result.js';
 
@@ -159,9 +159,10 @@ class VirtualLeaf {
 }
 
 
-const invalidated = new Object;
+const woundComputed = new Map;
 
-const invalidationHooks = new Map;
+
+const invalidated = new Object;
 
 
 class Computed {
@@ -199,30 +200,19 @@ class Computed {
     return {invalidate: this.revdeps};
   }
 
-  addInvalidationHook(hook) {
-    if (invalidationHooks.has(this)) {
-      throw new Error(`Multiple hooks for a computed cell not supported yet`);
-    }
-
-    invalidationHooks.set(this, hook);
-
+  wind(hook) {
     if (this.isInvalidated) {
       hook();
+      return;
     }
+
+    if (woundComputed.has(this)) {
+      throw new Error(`Multiple windings for a computed cell not supported`);
+    }
+
+    woundComputed.set(this, hook);
   }
 }
-
-
-// let invalidationSets = new MultiMap;
-
-
-// function addToInvalidationSet(cell, set) {
-//   invalidationSets.add(cell, set);
-
-//   if (cell.isInvalidated) {
-//     set.add(cell);
-//   }
-// }
 
 
 class Derived {

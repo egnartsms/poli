@@ -4,8 +4,8 @@ export {
 
 
 import {assert} from '$/poli/common.js';
+import {MostlySingleMap} from '$/poli/mostly-single-map.js';
 import {Binding} from './binding.js';
-
 
 /**
  * Common prototype of all the '_$' module-specific objects.
@@ -24,11 +24,14 @@ const proto$ = {
 
 
 class Module {
-  constructor(path) {
+  constructor(projName, path) {
+    this.projName = projName;
     this.path = path;
     this.bindings = new Map;
     this.dirtyBindings = new Set;
-    this.defs = [];
+    this.topLevelBlocks = [];
+    this.textToCodeBlock = new MostlySingleMap;
+    this.codeBlockToDef = new Map;
     this.unevaluatedDefs = new Set;
     this.ns = Object.create(null);
     // This object is passed as '_$' to all definitions of this module.
@@ -47,5 +50,11 @@ class Module {
     }
 
     return binding;
+  }
+
+  flushDirtyBindings() {
+    for (let binding of this.dirtyBindings) {
+      binding.flush();
+    }
   }
 }

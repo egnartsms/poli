@@ -7,9 +7,8 @@ export class Definition {
   constructor(module, props) {
     this.module = module;
 
+    this.codeBlock = props.codeBlock;
     this.target = props.target;
-    this.source = props.source;
-    this.evaluatableSource = props.evaluatableSource;
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
     this.evaluationOrder = new Leaf(props.evaluationOrder);
@@ -23,7 +22,6 @@ export class Definition {
       ref.referenceBy(this);
     }
 
-    this.module.defs.push(this);
     this.module.unevaluatedDefs.add(this);
 
     this.setEvaluationResult(Result.unevaluated);

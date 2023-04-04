@@ -2,9 +2,9 @@ export {
   loadProject
 }
 
-import {parse as parseJsLoosely} from 'acorn-loose';
+import * as acorn from 'acorn';
 
-import {map} from '$/poli/common.js';
+import {map, call} from '$/poli/common.js';
 import {parseTopLevel} from '$/poli/parse-top-level.js';
 import {evaluateNeededDefs} from '$/poli/evaluate.js';
 import {Module} from '$/poli/module.js';
@@ -13,6 +13,11 @@ import {Definition} from '$/poli/definition.js';
 
 async function loadProject(projName) {
   let resp = await fetch(`/proj/${projName}/`);
+  
+  if (!resp.ok) {
+    throw new Error(`Could not load project metadata: '${projName}'`);
+  }
+
   let {rootModule} = await resp.json();
 
   let module = await loadModule(projName, rootModule);
@@ -21,31 +26,38 @@ async function loadProject(projName) {
 }
 
 
+const EVALUATION_ORDER_INTERVAL = 1 << 12;
+const MAX_EVALUATION_ORDER = 1 << 30;
+
+
 async function loadModule(projName, modulePath) {
   let resp = await fetch(`/proj/${projName}/${modulePath}`);
+
+  console.time('root module parse');
 
   if (!resp.ok) {
     throw new Error(`Could not load module contents: '${modulePath}'`);
   }
 
   let moduleContents = await resp.text();
-  let module = new Module(modulePath);
+  let module = new Module(projName, modulePath);
 
   for (let block of parseTopLevel(moduleContents)) {
-    if (block.type !== 'code') {
-      continue;
-    }
+    addTopLevel(module, block, call(() => {
+      let evaluationOrder = 0;
 
-    addTopLevelCodeBlock(module, block.text);
+      return () => {
+        evaluationOrder += EVALUATION_ORDER_INTERVAL;
+        return evaluationOrder;
+      };
+    }));
   }
 
   evaluateNeededDefs(module);
 
-  for (let binding of module.dirtyBindings) {
-    binding.recordValueInNamespace();
-  }
+  module.flushDirtyBindings();
 
-  module.dirtyBindings.clear();
+  console.timeEnd('root module parse');
 
   console.log(module.ns);
 
@@ -53,23 +65,42 @@ async function loadModule(projName, modulePath) {
 }
 
 
-const EVALUATION_ORDER_INTERVAL = 1 << 14;
-const MAX_EVALUATION_ORDER = 1 << 30;
+function addTopLevel(module, block, nextEvaluationOrder) {
+  module.topLevelBlocks.push(block);
+
+  if (block.type !== 'code') {
+    return;
+  }
+
+  let decl = parseDeclaration(block.text);
+  let nlIds = nonlocalIdentifiers(decl.init);
+  let instrumented = replaceNonlocals(
+    block.text,
+    map(nlIds, id => [id.start, id.end]),
+    [decl.init.start, decl.init.end]
+  );
+  let factory = compileIntoFactory(instrumented);
+
+  let def = new Definition(module, {
+    codeBlock: block,
+    target: module.getBinding(decl.id.name),
+    factory: factory,
+    referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
+    evaluationOrder: nextEvaluationOrder()
+  });
+
+  module.textToCodeBlock.add(block.text, block);
+  module.codeBlockToDef.set(block, def);
+}
 
 
-/**
- * Add the given code block `source` to `module`.
- * 
- * @return Definition, throws on errors.
- */
-function addTopLevelCodeBlock(module, source) {
+function parseDeclaration(source) {
   let body;
 
   try {
-    ({body} = parseJsLoosely(source, {
+    ({body} = acorn.parse(source, {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      ranges: true
     }));
   }
   catch (e) {
@@ -100,32 +131,17 @@ function addTopLevelCodeBlock(module, source) {
     throw new Error(`Only support single variable declaration`);
   }
 
-  let nlIds = nonlocalIdentifiers(decl.init);
-  let instrumentedEvaluatableSource = replaceNonlocals(
-    source, decl.init.range, map(nlIds, id => id.range)
-  );
+  return decl;
+}
 
-  let factory;
 
+function compileIntoFactory(code) {
   try {
-    factory = Function('_$', factorySource(instrumentedEvaluatableSource));
+    return Function('_$', factorySource(code));
   }
   catch (e) {
-    throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${instrumentedEvaluatableSource}'`);
+    throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${code}'`);
   }
-
-  let evaluationOrder =
-    module.defs.length === 0 ? EVALUATION_ORDER_INTERVAL :
-      module.defs.at(-1).evaluationOrder.v + EVALUATION_ORDER_INTERVAL;
-
-  new Definition(module, {
-    target: module.getBinding(decl.id.name),
-    source: source,
-    evaluatableSource: source.slice(...decl.init.range),
-    factory: factory,
-    referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
-    evaluationOrder: evaluationOrder
-  });
 }
 
 
@@ -160,8 +176,10 @@ function nonlocalIdentifiers(node) {
  * the starting index of the evaluatable part of the definition (e.g. var
  * declaration init expression). Return the modified (instrumented) evaluatable
  * string.
+ * 
+ * TODO: when needed make it a generic replacer
  */
-function replaceNonlocals(source, [start, end], ranges) {
+function replaceNonlocals(source, ranges, [start, end]) {
   let idx = start;
   let pieces = [];
 

@@ -2,11 +2,16 @@ import fs from 'node:fs';
 import fsP from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import assert from 'node:assert';
 import { WebSocketServer } from 'ws';
 import mime from 'mime-lite';
+import * as chokidar from 'chokidar';
 
-import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 import {npmExports} from './importmap.js';
+
+
+const BASE_DIR = new URL('../', import.meta.url).pathname;
+const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
 
 
 class ForwardingWsServer {
@@ -90,18 +95,16 @@ function run() {
 
   http.createServer()
     .on('upgrade', (req, socket, head) => {
-      const url = new URL(req.url);
-
       let srv;
 
-      if (url.pathname === '/ws/frontend') {
+      if (req.url === '/ws/frontend') {
         srv = front;
       }
-      else if (url.pathname === '/ws/backend') {
+      else if (req.url === '/ws/backend') {
         srv = back;
       }
       else {
-        console.error(`Unexpected WS request pathname: ${url.pathname}`);
+        console.error(`Unexpected WS request pathname: ${req.url}`);
         socket.destroy();
         return;
       }
@@ -110,11 +113,14 @@ function run() {
     })
     .on('request', handleRequest)
     .listen(8080);
+
+  chokidar
+    .watch(path.join(BASE_DIR, 'sample'))
+    .on('change', (filepath) => {
+      console.log("File changed:", filepath);
+    });
 }
 
-
-const BASE_DIR = new URL('../', import.meta.url).pathname;
-const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
 
 /**
  * All registered projects. Each project is essentially a filesystem subtree.
@@ -221,8 +227,6 @@ function sendProjectMetadata(resp, projRoot) {
     sendData(resp, 400, {"message": ".poli.json not operable"})
     return;
   }
-
-  console.log(rootModule);
 
   if (typeof rootModule !== 'string') {
     sendData(resp, 400, {"message": "Root module not specified"});
