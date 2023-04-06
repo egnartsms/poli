@@ -1,3 +1,4 @@
 /backend/node_modules/
+/backend/gen/
 __pycache__/
 *.js.map
