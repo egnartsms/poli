@@ -1,6 +1,932 @@
 (function () {
   'use strict';
 
+  function assert(callback) {
+    if (!callback()) {
+      throw new Error(`Assert failed`);
+    }
+  }
+
+
+  function isAllSpaces(str) {
+    return /^\s*$/.test(str);
+  }
+
+
+  function* map(xs, func) {
+    for (let x of xs) {
+      yield func(x);
+    }
+  }
+
+
+  function addAll(container, xs) {
+    for (let x of xs) {
+      container.add(x);
+    }
+  }
+
+
+  function deleteAll(container, xs) {
+    for (let x of xs) {
+      container.delete(x);
+    }
+  }
+
+  const rSingleLineComment = `(?://.*?\n)+`;
+  const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.*?)\n`;
+  const rIndentedLine = `[ \t]+\\S.*?\n`;
+  const rBlankLine = `\\s*?\n`;
+  const rZeroLine = `\\S.*?\n`;
+  const rShifted = `${rIndentedLine}(?:(?:${rBlankLine})*${rIndentedLine})*`;
+  const rCodeTerminatingLine = `[)\\]}\`'"].*?\n`;
+  const rCode = (
+    `${rZeroLine}` + 
+    `(?:(?:${rBlankLine})*${rIndentedLine})*` +
+    `(?:(?:${rBlankLine})*${rCodeTerminatingLine})?`
+  );
+
+
+  const reEntry = new RegExp(
+    (() => {
+      let branches = [
+          `(?<space>(?:${rBlankLine})+)`,
+          `(?<single_line_comment>${rSingleLineComment})`,
+          `(?<multi_line_comment>${rMultiLineComment})`,
+          `(?<shifted>${rShifted})`,
+          `(?<code>${rCode})`
+        ].join('|');
+
+      return `^(?:${branches})`;
+    })(),
+    'gms'
+  );
+
+
+  function* parseTopLevel(src) {
+    let lastIndex;
+
+    reEntry.lastIndex = 0;
+
+    for (;;) {
+      lastIndex = reEntry.lastIndex;
+
+      let mo = reEntry.exec(src);
+
+      if (mo === null) {
+        break;
+      }
+
+      let type;
+
+      if (mo.groups.space !== undefined) {
+        type = 'space';
+      }
+      else if (mo.groups.single_line_comment !== undefined) {
+        type = 'single-line-comment';
+      }
+      else if (mo.groups.multi_line_comment !== undefined) {
+        type = isAllSpaces(mo.groups.redundant) ?
+          'multi-line-comment' : 'malformed-multi-line-comment';
+      }
+      else if (mo.groups.shifted !== undefined) {
+        type = 'shifted';
+      }
+      else if (mo.groups.code !== undefined) {
+        type = 'code';
+      }
+      else {
+        throw new Error(`Module parse internal error`);
+      }
+
+      yield {
+        type,
+        text: mo[0],
+        start: mo.index,
+        end: mo.index + mo[0].length,
+      };
+    }
+
+    if (lastIndex < src.length) {
+      throw new Error(`Remaining unparsed chunk: '${src.slice(lastIndex)}'`);
+    }
+  }
+
+  const Result = {
+    unevaluated: {
+      isNormal: false,
+      access() {
+        throw new Error(`Accessed unevaluated computation result`);
+      }
+    },
+
+    plain(value) {
+      return {
+        __proto__: protoPlain,
+        value: value
+      }
+    },
+
+    exception(exc) {
+      return {
+        __proto__: protoException,
+        exc: exc
+      }
+    }
+  };
+
+
+  const protoPlain = {
+    isNormal: true,
+
+    access() {
+      return this.value;
+    }
+  };
+
+
+  const protoException = {
+    isNormal: false,
+
+    access() {
+      throw this.exc;
+    }
+  };
+
+  class Queue {
+    constructor() {
+      this.front = [];
+      this.rear = [];
+    }
+
+    enqueue(item) {
+      this.rear.push(item);
+    }
+
+    enqueueFirst(item) {
+      this.front.push(item);
+    }
+
+    dequeue() {
+      if (this.front.length === 0) {
+        rearToFront(this);
+      }
+
+      return this.front.pop();
+    }
+
+    get isEmpty() {
+      return this.front.length === 0 && this.rear.length === 0;
+    }
+  }
+
+
+  function rearToFront(queue) {
+    let {front, rear} = queue;
+
+    while (rear.length > 0) {
+      front.push(rear.pop());
+    }
+  }
+
+  class LogicError extends Error {}
+
+
+  let beingComputed = [];
+
+
+  function compute(cell, func) {
+    if (beingComputed.includes(cell)) {
+      throw new LogicError("Circular cell dependency detected");
+    }
+
+    beingComputed.push(cell);
+
+    try {
+      return func();
+    }
+    finally {
+      beingComputed.pop();
+    }
+  }
+
+
+  function dependOn(Bcell) {
+    if (beingComputed.length === 0) {
+      return;
+    }
+
+    let Acell = beingComputed.at(-1);
+
+    if (Acell.deps.has(Bcell)) {
+      return;
+    }
+
+    Acell.deps.add(Bcell);
+    Bcell.revdeps.add(Acell);
+  }
+
+
+  function invalidate(cell) {
+    let invQueue = new Set;
+    let callbacks = new Queue;
+
+    invQueue.add(cell);
+
+    function writeDown(res) {
+      let {doLater, more} = res ?? {};
+
+      if (doLater) {
+        callbacks.enqueue(doLater);
+      }
+
+      if (more) {
+        addAll(invQueue, more);
+      }
+    }
+
+    for (;;) {
+      while (invQueue.size > 0) {
+        let [cell] = invQueue;
+
+        invQueue.delete(cell);
+
+        if (cell.onInvalidate) {
+          writeDown(cell.onInvalidate());
+        }
+        else {
+          addAll(invQueue, cell.revdeps);
+        }
+      }
+
+      if (callbacks.isEmpty) {
+        break;
+      }
+
+      let callback = callbacks.dequeue();
+
+      writeDown(callback());
+    }
+  }
+
+
+  function unlinkDeps(cell) {
+    for (let dep of cell.deps) {
+      unlinkRevdep(dep, cell);
+    }
+
+    cell.deps.clear();
+  }
+
+
+  function unlinkRevdep(cell, revdep) {
+    if (cell.unlinkRevdep) {
+      cell.unlinkRevdep(revdep);
+    }
+    else {
+      cell.revdeps.delete(revdep);
+    }
+  }
+
+
+  class Leaf {
+    value;
+    revdeps = new Set;
+
+    constructor(value) {
+      this.value = value;
+    }
+
+    get v() {
+      dependOn(this);
+      return this.value;
+    }
+
+    set v(value) {
+      if (this.revdeps.size > 0) {
+        invalidate(this);
+      }
+
+      this.value = value;
+    }
+  }
+
+
+  class VirtualLeaf {
+    accessor;
+    revdeps = new Set;
+
+    constructor(accessor) {
+      this.accessor = accessor;
+    }
+
+    get v() {
+      dependOn(this);
+      return this.accessor();
+    }
+
+    invalidate() {
+      if (this.revdeps.size > 0) {
+        invalidate(this);
+      }
+    }
+  }
+
+
+  const woundComputed = new Map;
+
+
+  const invalidated = new Object;
+
+
+  class Computed {
+    func;
+    value = invalidated;
+    deps = new Set;
+    revdeps = new Set;
+
+    constructor(func) {
+      this.func = func;
+    }
+
+    get v() {
+      dependOn(this);
+
+      if (this.isInvalidated) {
+        this.value = compute(this, this.func);
+      }
+
+      return this.value;
+    }
+
+    get isInvalidated() {
+      return this.value === invalidated;
+    }
+
+    onInvalidate() {
+      this.value = invalidated;
+      unlinkDeps(this);
+
+      if (woundComputed.has(this)) {
+        let callback = woundComputed.get(this);
+
+        woundComputed.delete(this);
+
+        callback();
+      }
+
+      return {more: this.revdeps};
+    }
+
+    wind(hook) {
+      if (this.isInvalidated) {
+        hook();
+        return;
+      }
+
+      if (woundComputed.has(this)) {
+        throw new Error(`Multiple windings for a computed cell not supported`);
+      }
+
+      woundComputed.set(this, hook);
+    }
+  }
+
+
+  class Derived {
+    func;
+    value;
+    deps = new Set;
+    revdep = null;
+
+    constructor(func, parent) {
+      this.func = func;
+      this.value = compute(this, this.func);
+
+      parent.deps.add(this);
+      this.revdep = parent;
+    }
+
+    unlinkRevdep(revdep) {
+      assert(() => revdep === this.revdep);
+
+      this.revdep = null;
+      unlinkDeps(this);
+    }
+
+    onInvalidate() {
+      unlinkDeps(this);
+
+      return {
+        doLater: () => {
+          let newValue = compute(this, this.func);
+
+          if (newValue !== this.value) {
+            return {more: [this.revdep]};
+          }
+        }
+      }
+    }
+  }
+
+
+  function derived(func) {
+    if (beingComputed.length === 0) {
+      throw new Error(
+        `Derived computation can only run within some other computation`
+      );
+    }
+
+    return (new Derived(func, beingComputed.at(-1))).value;
+  }
+
+
+  class Effect {
+    deps = new Set;
+    undo = null;
+
+    onInvalidate() {
+      unlinkDeps(this);
+      this.undo();
+    }
+  }
+
+
+  function mountEffect(body) {
+    let effect = new Effect;
+
+    try {
+      effect.undo = compute(effect, body);
+    }
+    catch (e) {
+      unlinkDeps(effect);
+      throw e;
+    }
+  }
+
+  const EvaluationOrder = {
+    UNDEFINED: -1,
+    INFIMUM: 0,
+    NORMAL_START: 1.0,
+    MULT_DOWN: 1 - Number.EPSILON * 2 ** 40,
+    MULT_UP: 1 + Number.EPSILON * 2 ** 40,
+  };
+
+
+  class Definition {
+    constructor(module, props) {
+      this.module = module;
+      this.codeBlock = null;
+
+      this.target = props.target;
+      this.factory = props.factory;
+      this.referencedBindings = props.referencedBindings;
+
+      this.evaluationOrder = new Leaf(EvaluationOrder.UNDEFINED);
+      this.usedBindings = null;
+      this.usedBrokenBinding = null;
+      this.result = null;
+
+      for (let ref of this.referencedBindings) {
+        ref.referenceBy(this);
+      }
+
+      this.module.defs.add(this);
+      this.module.unevaluatedDefs.add(this);
+
+      this.setEvaluationResult(Result.unevaluated);
+    }
+
+    get isEvaluated() {
+      return this.result !== Result.unevaluated;
+    }
+
+    makeEvaluated(result, usedBindings, usedBrokenBinding) {
+      for (let binding of usedBindings) {
+        binding.useBy(this);
+      }
+
+      this.usedBindings = usedBindings;
+      this.usedBrokenBinding = usedBrokenBinding;
+
+      this.module.unevaluatedDefs.delete(this);
+      this.setEvaluationResult(result);
+    }
+
+    makeUnevaluated() {
+      assert(() => this.isEvaluated);
+
+      for (let binding of this.usedBindings) {
+        binding.unuseBy(this);
+      }
+
+      this.usedBindings = null;
+      this.usedBrokenBinding = null;
+
+      this.module.unevaluatedDefs.add(this);
+      this.setEvaluationResult(Result.unevaluated);
+    }
+
+    setEvaluationResult(result) {
+      this.result = result;
+
+      if (result.isNormal) {
+        this.target.setBy(this, result.value);
+      }
+      else {
+        this.target.setBrokenBy(this);
+      }
+    }
+
+    /**
+     * Remove from its module.
+     */
+    unlink() {
+      this.target.unsetBy(this);
+
+      this.module.unevaluatedDefs.delete(this);
+      this.module.defs.delete(this);
+
+      for (let ref of this.referencedBindings) {
+        ref.unreferenceBy(this);
+      }
+
+      this.referencedBindings.clear();
+    }
+
+    static stoppedOnBrokenBinding(binding) {
+      return {
+        __proto__: protoStoppedOnBrokenBinding,
+        brokenBinding: binding
+      }
+    }
+  }
+
+
+  const protoStoppedOnBrokenBinding = {
+    isNormal: false,
+
+    access() {
+      throw new Error(
+        `Definition accessed broken binding: '${this.brokenBinding.name}'`
+      );
+    }
+  };
+
+  class MostlySingleMap {
+    single = new Map;
+    multi = new Map;
+
+    add(key, val) {
+      if (this.multi.has(key)) {
+        this.multi.get(key).add(val);
+      }
+      else if (this.single.has(key)) {
+        let bag = new Set;
+
+        bag.add(this.single.get(key));
+        bag.add(val);
+
+        this.multi.set(key, bag);
+        this.single.delete(key);
+      }
+      else {
+        this.single.set(key, val);
+      }
+    }
+
+    popAt(key) {
+      if (this.single.has(key)) {
+        let val = this.single.get(key);
+
+        this.single.delete(key);
+
+        return val;
+      }
+      
+      if (this.multi.has(key)) {
+        throw new Error(`Not impl`);
+      }
+      
+      return undefined;
+    }
+  }
+
+  class Binding {
+    constructor(module, name) {
+      this.module = module;
+      this.name = name;
+      this.defs = [];  // [[def, Leaf(value-set-by-definition)], ...]
+      this.deftimes = new VirtualLeaf(() => this.defs.length);
+      this.refs = new Set;
+      this.usages = new Set;
+      this.cell = new Computed(bindingValue.bind(null, this));
+
+      module.dirtyBindings.add(this);
+    }
+
+    flush() {
+      Object.defineProperty(this.module.ns, this.name, {
+        configurable: true,
+        enumerable: true,
+        ...makeBindingValueDescriptor(this)
+      });
+
+      // Previous code should have accessed 'this.cell' so it must be computed
+      assert(() => !this.cell.isInvalidated);
+
+      this.module.dirtyBindings.delete(this);
+      this.cell.wind(() => this.module.dirtyBindings.add(this));
+    }
+
+    get isBroken() {
+      return this.cell.v.isBroken;
+    }
+
+    get value() {
+      return this.cell.v.value;
+    }
+
+    get introDef() {
+      let [[def]] = this.defs;
+
+      return def;
+    }
+
+    setBrokenBy(def) {
+      let cell = cellForDef(this, def);
+
+      cell.v = Binding.Value.broken;
+    }
+
+    setBy(def, value) {
+      let cell = cellForDef(this, def);
+
+      cell.v = Binding.Value.plain(value);
+    }
+
+    unsetBy(def) {
+      let i = this.defs.findIndex(([defx]) => defx === def);
+
+      if (i === -1) {
+        throw new Error(`Logic error`);
+      }
+
+      this.defs.splice(i, 1);
+      this.deftimes.invalidate();
+    }
+
+    referenceBy(def) {
+      this.refs.add(def);
+    }
+
+    unreferenceBy(def) {
+      this.refs.delete(def);
+    }
+
+    useBy(def) {
+      this.usages.add(def);
+    }
+
+    unuseBy(def) {
+      this.usages.delete(def);
+    }
+  }
+
+
+  function cellForDef(binding, def) {
+    let cell = binding.defs.find(([defx]) => defx === def)?.[1];
+
+    if (cell === undefined) {
+      cell = new Leaf;
+      binding.defs.push([def, cell]);
+      binding.deftimes.invalidate();
+    }
+
+    return cell;
+  }
+
+
+  function bindingValue(binding) {
+    if (derived(() => binding.deftimes.v === 0)) {
+      return Binding.Value.undefined;
+    }
+
+    if (derived(() => binding.deftimes.v > 1)) {
+      return Binding.Value.duplicated;
+    }
+
+    let [[, cell]] = binding.defs;
+
+    return cell.v;
+  }
+
+
+  Binding.Value = {
+    undefined: {
+      isBroken: true,
+    },
+    duplicated: {
+      isBroken: true,
+    },
+    broken: {
+      isBroken: true,
+    },
+    plain(value) {
+      return {
+        isBroken: false,
+        value: value
+      }
+    }
+  };
+
+
+  function makeBindingValueDescriptor(binding) {
+    if (binding.isBroken) {
+      return {
+        get() {
+          throw new Error(`Broken binding access: '${binding.name}'`);
+        }
+      }
+    }
+    else {
+      return {
+        value: binding.value,
+        writable: false
+      }    
+    }
+  }
+
+  /**
+   * Common prototype of all the '_$' module-specific objects.
+   * 
+   * This trick is used to easily intercept access of non-local
+   * (module-level) identifiers in all the modules of the system. Those '_$'
+   * objects for each module are expected to have the 'module' property that
+   * points back to respective Module instance. In each module, the 'name'
+   * references to non-local variables become '_$.v.name'.
+   */
+  const proto$ = {
+    get v() {
+      return this.module.ns;
+    }
+  };
+
+
+  class Module {
+    constructor(projName, path) {
+      this.projName = projName;
+      this.path = path;
+      this.bindings = new Map;
+      this.dirtyBindings = new Set;
+      this.topLevelBlocks = [];
+      this.textToCodeBlock = new MostlySingleMap;
+      this.codeBlockToDef = new Map;
+      this.defs = new Set;
+      this.unevaluatedDefs = new Set;
+      this.ns = Object.create(null);
+      // This object is passed as '_$' to all definitions of this module.
+      this.$ = {
+        __proto__: proto$,
+        module: this
+      };
+    }
+
+    getBinding(name) {
+      let binding = this.bindings.get(name);
+
+      if (binding === undefined) {
+        binding = new Binding(this, name);
+        this.bindings.set(name, binding);
+      }
+
+      return binding;
+    }
+
+    flushDirtyBindings() {
+      for (let binding of this.dirtyBindings) {
+        binding.flush();
+      }
+    }
+
+    clearBlocks() {
+      this.topLevelBlocks = [];
+      this.textToCodeBlock = new MostlySingleMap;
+      this.codeBlockToDef = new Map;
+    }
+
+    appendBlock(block) {
+      this.topLevelBlocks.push(block);
+
+      if (block.type === 'code') {
+        this.textToCodeBlock.add(block.text, block);
+      }
+    }
+
+    attachDefToBlock(def, block) {
+      assert(() => def.module === this);
+      assert(() => block.type === 'code');
+
+      def.codeBlock = block;
+      this.codeBlockToDef.set(block, def);
+    }
+
+    removeDeadDefinitions() {
+      let defs = new Set(this.defs);
+
+      deleteAll(defs, this.codeBlockToDef.values());
+
+      for (let def of defs) {
+        def.unlink();
+      }
+    }
+  }
+
+  function evaluateNeededDefs(module) {
+    for (let def of module.unevaluatedDefs) {
+      mountEffect(() => evaluate(def));
+    }
+  }
+
+
+  function evaluate(def) {
+    let usedBindings = new Set;
+    let usedBrokenBinding = null;
+    let result;
+
+    try {
+      result = withNonLocalRefsIntercepted(
+        (module, prop) => {
+          let binding = module.getBinding(prop);
+
+          usedBindings.add(binding);
+
+          if (binding.isBroken ||
+              derived(() =>
+                binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
+            if (usedBrokenBinding === null) {
+              // There may be a case when we had already attempted to stop the
+              // evaluation but it caught our exception and continued on. This
+              // is an incorrect behavior that we have no control over.
+              usedBrokenBinding = binding;
+            }
+
+            throw new StopOnBrokenBinding;
+          }
+
+          return binding.value;
+        },
+        () => Result.plain(def.factory.call(null, def.module.$))
+      );
+    }
+    catch (e) {
+      if (e instanceof StopOnBrokenBinding) {
+        result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
+      }
+      else {
+        result = Result.exception(e);
+      }
+    }
+
+    def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+
+    return () => def.makeUnevaluated();
+  }
+
+
+  class StopOnBrokenBinding extends Error {}
+
+
+  function withNonLocalRefsIntercepted(handler, body) {
+    let oldV = Object.getOwnPropertyDescriptor(proto$, 'v');
+
+    let module2proxy = new Map;
+
+    Object.defineProperty(proto$, 'v', {
+      configurable: true,
+      get: function () {
+        let proxy = module2proxy.get(this.module);
+
+        if (proxy === undefined) {
+          proxy = new Proxy(this.module.ns, {
+            get: (target, prop, receiver) => handler(this.module, prop)
+          });
+
+          module2proxy.set(this.module, proxy);
+        }
+
+        return proxy;
+      }
+    });
+
+    try {
+      return body();
+    }
+    finally {
+      Object.defineProperty(proto$, 'v', oldV);
+    }
+  }
+
   // This file was generated. Do not modify manually!
   var astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 370, 1, 81, 2, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 193, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 84, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 406, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 330, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 9, 5351, 0, 7, 14, 13835, 9, 87, 9, 39, 4, 60, 6, 26, 9, 1014, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4706, 45, 3, 22, 543, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 1418, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 983, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
 
@@ -5564,887 +6490,8 @@
     return Parser.parse(input, options)
   }
 
-  function assert(callback) {
-    if (!callback()) {
-      throw new Error(`Assert failed`);
-    }
-  }
-
-
-  /**
-   * This is just to make IIFE look a bit nicer.
-   */
-  function call(fn) {
-    return fn();
-  }
-
-
-  function isAllSpaces(str) {
-    return /^\s*$/.test(str);
-  }
-
-
-  function* map(xs, func) {
-    for (let x of xs) {
-      yield func(x);
-    }
-  }
-
-
-  function addAll(container, xs) {
-    for (let x of xs) {
-      container.add(x);
-    }
-  }
-
-  const rSingleLineComment = `(?://.*?\n)+`;
-  const rMultiLineComment = `/\\*.*?\\*/(?<redundant>.*?)\n`;
-  const rIndentedLine = `[ \t]+\\S.*?\n`;
-  const rBlankLine = `\\s*?\n`;
-  const rZeroLine = `\\S.*?\n`;
-  const rShifted = `${rIndentedLine}(?:(?:${rBlankLine})*${rIndentedLine})*`;
-  const rCodeTerminatingLine = `[)\\]}\`'"].*?\n`;
-  const rCode = (
-    `${rZeroLine}` + 
-    `(?:(?:${rBlankLine})*${rIndentedLine})*` +
-    `(?:(?:${rBlankLine})*${rCodeTerminatingLine})?`
-  );
-
-
-  const reEntry = new RegExp(
-    (() => {
-      let branches = [
-          `(?<space>(?:${rBlankLine})+)`,
-          `(?<single_line_comment>${rSingleLineComment})`,
-          `(?<multi_line_comment>${rMultiLineComment})`,
-          `(?<shifted>${rShifted})`,
-          `(?<code>${rCode})`
-        ].join('|');
-
-      return `^(?:${branches})`;
-    })(),
-    'gms'
-  );
-
-
-  function* parseTopLevel(src) {
-    let lastIndex;
-
-    reEntry.lastIndex = 0;
-
-    for (;;) {
-      lastIndex = reEntry.lastIndex;
-
-      let mo = reEntry.exec(src);
-
-      if (mo === null) {
-        break;
-      }
-
-      let type;
-
-      if (mo.groups.space !== undefined) {
-        type = 'space';
-      }
-      else if (mo.groups.single_line_comment !== undefined) {
-        type = 'single-line-comment';
-      }
-      else if (mo.groups.multi_line_comment !== undefined) {
-        type = isAllSpaces(mo.groups.redundant) ?
-          'multi-line-comment' : 'malformed-multi-line-comment';
-      }
-      else if (mo.groups.shifted !== undefined) {
-        type = 'shifted';
-      }
-      else if (mo.groups.code !== undefined) {
-        type = 'code';
-      }
-      else {
-        throw new Error(`Module parse internal error`);
-      }
-
-      yield {
-        type,
-        text: mo[0],
-        start: mo.index,
-        end: mo.index + mo[0].length,
-      };
-    }
-
-    if (lastIndex < src.length) {
-      throw new Error(`Remaining unparsed chunk: '${src.slice(lastIndex)}'`);
-    }
-  }
-
-  const Result = {
-    unevaluated: {
-      isNormal: false,
-      access() {
-        throw new Error(`Accessed unevaluated computation result`);
-      }
-    },
-
-    plain(value) {
-      return {
-        __proto__: protoPlain,
-        value: value
-      }
-    },
-
-    exception(exc) {
-      return {
-        __proto__: protoException,
-        exc: exc
-      }
-    }
-  };
-
-
-  const protoPlain = {
-    isNormal: true,
-
-    access() {
-      return this.value;
-    }
-  };
-
-
-  const protoException = {
-    isNormal: false,
-
-    access() {
-      throw this.exc;
-    }
-  };
-
-  class Queue {
-    constructor() {
-      this.front = [];
-      this.rear = [];
-    }
-
-    enqueue(item) {
-      this.rear.push(item);
-    }
-
-    enqueueFirst(item) {
-      this.front.push(item);
-    }
-
-    dequeue() {
-      if (this.front.length === 0) {
-        rearToFront(this);
-      }
-
-      return this.front.pop();
-    }
-
-    get isEmpty() {
-      return this.front.length === 0 && this.rear.length === 0;
-    }
-  }
-
-
-  function rearToFront(queue) {
-    let {front, rear} = queue;
-
-    while (rear.length > 0) {
-      front.push(rear.pop());
-    }
-  }
-
-  class LogicError extends Error {}
-
-
-  let beingComputed = [];
-
-
-  function compute(cell, func) {
-    if (beingComputed.includes(cell)) {
-      throw new LogicError("Circular cell dependency detected");
-    }
-
-    beingComputed.push(cell);
-
-    try {
-      return func();
-    }
-    finally {
-      beingComputed.pop();
-    }
-  }
-
-
-  function dependOn(Bcell) {
-    if (beingComputed.length === 0) {
-      return;
-    }
-
-    let Acell = beingComputed.at(-1);
-
-    if (Acell.deps.has(Bcell)) {
-      return;
-    }
-
-    Acell.deps.add(Bcell);
-    Bcell.revdeps.add(Acell);
-  }
-
-
-  function invalidate(cell) {
-    let invQueue = new Set;
-    let callbacks = new Queue;
-
-    invQueue.add(cell);
-
-    function writeDown(res) {
-      let {doLater, invalidate} = res ?? {};
-
-      if (doLater) {
-        callbacks.enqueue(doLater);
-      }
-
-      if (invalidate) {
-        addAll(invQueue, invalidate);
-      }
-    }
-
-    for (;;) {
-      while (invQueue.size > 0) {
-        let [cell] = invQueue;
-
-        invQueue.delete(cell);
-
-        if (cell.onInvalidate) {
-          writeDown(cell.onInvalidate());
-        }
-        else {
-          addAll(invQueue, cell.revdeps);
-        }
-      }
-
-      if (callbacks.isEmpty) {
-        break;
-      }
-
-      let callback = callbacks.dequeue();
-
-      writeDown(callback());
-    }
-  }
-
-
-  function unlinkDeps(cell) {
-    for (let dep of cell.deps) {
-      unlinkRevdep(dep, cell);
-    }
-
-    cell.deps.clear();
-  }
-
-
-  function unlinkRevdep(cell, revdep) {
-    if (cell.unlinkRevdep) {
-      cell.unlinkRevdep(revdep);
-    }
-    else {
-      cell.revdeps.delete(revdep);
-    }
-  }
-
-
-  class Leaf {
-    value;
-    revdeps = new Set;
-
-    constructor(value) {
-      this.value = value;
-    }
-
-    get v() {
-      dependOn(this);
-      return this.value;
-    }
-
-    set v(value) {
-      invalidate(this);
-      this.value = value;
-    }
-  }
-
-
-  class VirtualLeaf {
-    accessor;
-    revdeps = new Set;
-
-    constructor(accessor) {
-      this.accessor = accessor;
-    }
-
-    get v() {
-      dependOn(this);
-      return this.accessor();
-    }
-  }
-
-
-  const woundComputed = new Map;
-
-
-  const invalidated = new Object;
-
-
-  class Computed {
-    func;
-    value = invalidated;
-    deps = new Set;
-    revdeps = new Set;
-
-    constructor(func) {
-      this.func = func;
-    }
-
-    get v() {
-      dependOn(this);
-
-      if (this.isInvalidated) {
-        this.value = compute(this, this.func);
-      }
-
-      return this.value;
-    }
-
-    get isInvalidated() {
-      return this.value === invalidated;
-    }
-
-    onInvalidate() {
-      this.value = invalidated;
-      unlinkDeps(this);
-
-      if (invalidationHooks.has(this)) {
-        invalidationHooks.get(this)();
-      }
-
-      return {invalidate: this.revdeps};
-    }
-
-    wind(hook) {
-      if (this.isInvalidated) {
-        hook();
-        return;
-      }
-
-      if (woundComputed.has(this)) {
-        throw new Error(`Multiple windings for a computed cell not supported`);
-      }
-
-      woundComputed.set(this, hook);
-    }
-  }
-
-
-  class Derived {
-    func;
-    value;
-    deps = new Set;
-    revdep = null;
-
-    constructor(func) {
-      this.func = func;
-      this.value = compute(this, this.func);
-      this.revdep = beingComputed.at(-1);
-    }
-
-    unlinkRevdep(revdep) {
-      assert(() => revdep === this.revdep);
-
-      this.revdep = null;
-      unlinkDeps(this);
-    }
-
-    onInvalidate() {
-      unlinkDeps(this);
-
-      return {
-        doLater: () => {
-          let newValue = compute(this, this.func);
-
-          if (newValue !== this.value) {
-            return {invalidate: [this.revdep]};
-          }
-        }
-      }
-    }
-  }
-
-
-  function derived(func) {
-    if (beingComputed.length === 0) {
-      throw new Error(
-        `Derived computation can only run within some other computation`
-      );
-    }
-
-    return (new Derived(func)).value;
-  }
-
-
-  class Effect {
-    deps = new Set;
-    undo = null;
-
-    onInvalidate() {
-      unlinkDeps(this);
-      this.undo();
-    }
-  }
-
-
-  function mountEffect(body) {
-    let effect = new Effect;
-
-    try {
-      effect.undo = compute(effect, body);
-    }
-    catch (e) {
-      unlinkDeps(effect);
-      throw e;
-    }
-  }
-
-  class Definition {
-    constructor(module, props) {
-      this.module = module;
-
-      this.codeBlock = props.codeBlock;
-      this.target = props.target;
-      this.factory = props.factory;
-      this.referencedBindings = props.referencedBindings;
-      this.evaluationOrder = new Leaf(props.evaluationOrder);
-
-      this.usedBindings = null;
-      this.usedBrokenBinding = null;
-
-      this.result = null;
-
-      for (let ref of this.referencedBindings) {
-        ref.referenceBy(this);
-      }
-
-      this.module.unevaluatedDefs.add(this);
-
-      this.setEvaluationResult(Result.unevaluated);
-    }
-
-    get isEvaluated() {
-      return this.result !== Result.unevaluated;
-    }
-
-    makeEvaluated(result, usedBindings, usedBrokenBinding) {
-      for (let binding of usedBindings) {
-        binding.useBy(this);
-      }
-
-      this.usedBindings = usedBindings;
-      this.usedBrokenBinding = usedBrokenBinding;
-
-      this.module.unevaluatedDefs.delete(this);
-      this.setEvaluationResult(result);
-    }
-
-    makeUnevaluated() {
-      assert(() => this.isEvaluated);
-
-      for (let binding of this.usedBindings) {
-        binding.unuseBy(this);
-      }
-
-      this.usedBindings = null;
-      this.usedBrokenBinding = null;
-
-      this.module.unevaluatedDefs.add(this);
-      this.setEvaluationResult(Result.unevaluated);
-    }
-
-    setEvaluationResult(result) {
-      this.result = result;
-
-      if (result.isNormal) {
-        this.target.setBy(this, result.value);
-      }
-      else {
-        this.target.setBrokenBy(this);
-      }
-    }
-
-    static stoppedOnBrokenBinding(binding) {
-      return {
-        __proto__: protoStoppedOnBrokenBinding,
-        brokenBinding: binding
-      }
-    }
-  }
-
-
-  const protoStoppedOnBrokenBinding = {
-    isNormal: false,
-
-    access() {
-      throw new Error(
-        `Definition accessed broken binding: '${this.brokenBinding.name}'`
-      );
-    }
-  };
-
-  class MostlySingleMap {
-    single = new Map;
-    multi = new Map;
-
-    add(key, val) {
-      if (this.multi.has(key)) {
-        this.multi.get(key).add(val);
-      }
-      else if (this.single.has(key)) {
-        let bag = new Set;
-
-        bag.add(this.single.get(key));
-        bag.add(val);
-
-        this.multi.set(key, bag);
-        this.single.delete(key);
-      }
-      else {
-        this.single.set(key, val);
-      }
-    }
-  }
-
-  class Binding {
-    constructor(module, name) {
-      this.module = module;
-      this.name = name;
-      this.defs = [];  // [[def, Leaf(value-set-by-definition)], ...]
-      this.deftimes = new VirtualLeaf(() => this.defs.length);
-      this.refs = new Set;
-      this.usages = new Set;
-      this.cell = new Computed(bindingValue.bind(null, this));
-
-      module.dirtyBindings.add(this);
-    }
-
-    flush() {
-      Object.defineProperty(this.module.ns, this.name, {
-        configurable: true,
-        enumerable: true,
-        ...makeBindingValueDescriptor(this)
-      });
-
-      assert(() => !this.cell.isInvalidated);
-
-      this.module.dirtyBindings.delete(this);
-      this.cell.wind(() => this.module.dirtyBindings.add(this));
-    }
-
-    get isBroken() {
-      return this.cell.v.isBroken;
-    }
-
-    get value() {
-      return this.cell.v.value;
-    }
-
-    get introDef() {
-      let [[def]] = this.defs;
-
-      return def;
-    }
-
-    setBrokenBy(def) {
-      let cell = cellForDef(this, def);
-
-      cell.v = Binding.Value.broken;
-    }
-
-    setBy(def, value) {
-      let cell = cellForDef(this, def);
-
-      cell.v = Binding.Value.plain(value);
-    }
-
-    referenceBy(def) {
-      this.refs.add(def);
-    }
-
-    useBy(def) {
-      this.usages.add(def);
-    }
-
-    unuseBy(def) {
-      this.usages.delete(def);
-    }
-  }
-
-
-  function cellForDef(binding, def) {
-    let cell = binding.defs.find(([sdef]) => sdef === def)?.[1];
-
-    if (cell === undefined) {
-      cell = new Leaf;
-      binding.defs.push([def, cell]);
-      invalidate(binding.deftimes);
-    }
-
-    return cell;
-  }
-
-
-  function bindingValue(binding) {
-    if (derived(() => binding.deftimes.v === 0)) {
-      return Binding.Value.undefined;
-    }
-
-    if (derived(() => binding.deftimes.v > 1)) {
-      return Binding.Value.duplicated;
-    }
-
-    let [[, cell]] = binding.defs;
-
-    return cell.v;
-  }
-
-
-  Binding.Value = {
-    undefined: {
-      isBroken: true,
-    },
-    duplicated: {
-      isBroken: true,
-    },
-    broken: {
-      isBroken: true,
-    },
-    plain(value) {
-      return {
-        isBroken: false,
-        value: value
-      }
-    }
-  };
-
-
-  function makeBindingValueDescriptor(binding) {
-    if (binding.isBroken) {
-      return {
-        get() {
-          throw new Error(`Broken binding access: '${binding.name}'`);
-        }
-      }
-    }
-    else {
-      return {
-        value: binding.value,
-        writable: false
-      }    
-    }
-  }
-
-  /**
-   * Common prototype of all the '_$' module-specific objects.
-   * 
-   * This trick is used to easily intercept access of non-local
-   * (module-level) identifiers in all the modules of the system. Those '_$'
-   * objects for each module are expected to have the 'module' property that
-   * points back to respective Module instance. In each module, the 'name'
-   * references to non-local variables become '_$.v.name'.
-   */
-  const proto$ = {
-    get v() {
-      return this.module.ns;
-    }
-  };
-
-
-  class Module {
-    constructor(projName, path) {
-      this.projName = projName;
-      this.path = path;
-      this.bindings = new Map;
-      this.dirtyBindings = new Set;
-      this.topLevelBlocks = [];
-      this.textToCodeBlock = new MostlySingleMap;
-      this.codeBlockToDef = new Map;
-      this.unevaluatedDefs = new Set;
-      this.ns = Object.create(null);
-      // This object is passed as '_$' to all definitions of this module.
-      this.$ = {
-        __proto__: proto$,
-        module: this
-      };
-    }
-
-    getBinding(name) {
-      let binding = this.bindings.get(name);
-
-      if (binding === undefined) {
-        binding = new Binding(this, name);
-        this.bindings.set(name, binding);
-      }
-
-      return binding;
-    }
-
-    flushDirtyBindings() {
-      for (let binding of this.dirtyBindings) {
-        binding.flush();
-      }
-    }
-  }
-
-  function evaluateNeededDefs(module) {
-    for (let def of module.unevaluatedDefs) {
-      mountEffect(() => evaluate(def));
-    }
-  }
-
-
-  function evaluate(def) {
-    let usedBindings = new Set;
-    let usedBrokenBinding = null;
-    let result;
-
-    try {
-      result = withNonLocalRefsIntercepted(
-        (module, prop) => {
-          let binding = module.getBinding(prop);
-
-          usedBindings.add(binding);
-
-          if (binding.isBroken ||
-              derived(() =>
-                binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
-            if (usedBrokenBinding === null) {
-              // There may be a case when we had already attempted to stop the
-              // evaluation but it caught our exception and continued on. This
-              // is an incorrect behavior that we have no control over.
-              usedBrokenBinding = binding;
-            }
-
-            throw new StopOnBrokenBinding;
-          }
-
-          return binding.value;
-        },
-        () => Result.plain(def.factory.call(null, def.module.$))
-      );
-    }
-    catch (e) {
-      if (e instanceof StopOnBrokenBinding) {
-        result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
-      }
-      else {
-        result = Result.exception(e);
-      }
-    }
-
-    def.makeEvaluated(result, usedBindings, usedBrokenBinding);
-
-    return () => def.makeUnevaluated();
-  }
-
-
-  class StopOnBrokenBinding extends Error {}
-
-
-  function withNonLocalRefsIntercepted(handler, body) {
-    let oldV = Object.getOwnPropertyDescriptor(proto$, 'v');
-
-    let module2proxy = new Map;
-
-    Object.defineProperty(proto$, 'v', {
-      configurable: true,
-      get: function () {
-        let proxy = module2proxy.get(this.module);
-
-        if (proxy === undefined) {
-          proxy = new Proxy(this.module.ns, {
-            get: (target, prop, receiver) => handler(this.module, prop)
-          });
-
-          module2proxy.set(this.module, proxy);
-        }
-
-        return proxy;
-      }
-    });
-
-    try {
-      return body();
-    }
-    finally {
-      Object.defineProperty(proto$, 'v', oldV);
-    }
-  }
-
-  async function loadProject(projName) {
-    let resp = await fetch(`/proj/${projName}/`);
-    
-    if (!resp.ok) {
-      throw new Error(`Could not load project metadata: '${projName}'`);
-    }
-
-    let {rootModule} = await resp.json();
-
-    let module = await loadModule(projName, rootModule);
-
-    return module;
-  }
-
-
-  const EVALUATION_ORDER_INTERVAL = 1 << 12;
-
-
-  async function loadModule(projName, modulePath) {
-    let resp = await fetch(`/proj/${projName}/${modulePath}`);
-
-    console.time('root module parse');
-
-    if (!resp.ok) {
-      throw new Error(`Could not load module contents: '${modulePath}'`);
-    }
-
-    let moduleContents = await resp.text();
-    let module = new Module(projName, modulePath);
-
-    for (let block of parseTopLevel(moduleContents)) {
-      addTopLevel(module, block, call(() => {
-        let evaluationOrder = 0;
-
-        return () => {
-          evaluationOrder += EVALUATION_ORDER_INTERVAL;
-          return evaluationOrder;
-        };
-      }));
-    }
-
-    evaluateNeededDefs(module);
-
-    module.flushDirtyBindings();
-
-    console.timeEnd('root module parse');
-
-    console.log(module.ns);
-
-    return module;
-  }
-
-
-  function addTopLevel(module, block, nextEvaluationOrder) {
-    module.topLevelBlocks.push(block);
-
-    if (block.type !== 'code') {
-      return;
-    }
+  function compileCodeBlock(module, block) {
+    assert(() => block.type === 'code');
 
     let decl = parseDeclaration(block.text);
     let nlIds = nonlocalIdentifiers(decl.init);
@@ -6455,16 +6502,11 @@
     );
     let factory = compileIntoFactory(instrumented);
 
-    let def = new Definition(module, {
-      codeBlock: block,
+    return new Definition(module, {
       target: module.getBinding(decl.id.name),
       factory: factory,
-      referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name))),
-      evaluationOrder: nextEvaluationOrder()
+      referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
     });
-
-    module.textToCodeBlock.add(block.text, block);
-    module.codeBlockToDef.set(block, def);
   }
 
 
@@ -6568,12 +6610,177 @@ return (${source});
     return pieces.join('');
   }
 
+  async function loadProject(projName) {
+    let resp = await fetch(`/proj/${projName}/`);
+    let {rootModule} = await resp.json();
+
+    return await loadModule(projName, rootModule);
+  }
+
+
+  async function loadModule(projName, modulePath) {
+    let resp = await fetch(`/proj/${projName}/${modulePath}`);
+
+    console.time('root module parse');
+
+    if (!resp.ok) {
+      throw new Error(`Could not load module contents: '${modulePath}'`);
+    }
+
+    let contents = await resp.text();
+    let module = new Module(projName, modulePath);
+
+    reconciliateModuleContents(module, contents);
+
+    console.timeEnd('root module parse');
+
+    console.log(module.ns);
+
+    return module;
+  }
+
+
+  async function refreshModule(module) {
+    let resp = await fetch(`/proj/${module.projName}/${module.path}`);
+    let contents = await resp.text();
+
+    reconciliateModuleContents(module, contents);
+    console.log(module.ns);
+  }
+
+
+  function reconciliateModuleContents(module, newContents) {
+    let {textToCodeBlock, codeBlockToDef} = module;
+
+    module.clearBlocks();
+
+    let orderer = new Orderer;
+
+    for (let block of parseTopLevel(newContents)) {
+      module.appendBlock(block);
+
+      if (block.type !== 'code') {
+        continue;
+      }
+
+      // Try to re-use an old definition
+      let def;
+      let exBlock = textToCodeBlock.popAt(block.text);
+
+      if (exBlock) {
+        def = codeBlockToDef.get(exBlock);
+        // TODO: flesh out whether and when this case is really possible.
+        if (!def) {
+          continue;
+        }
+      }
+      else {
+        def = compileCodeBlock(module, block);
+      }
+
+      module.attachDefToBlock(def, block);
+      orderer.push(def);
+    }
+
+    orderer.end();
+    module.removeDeadDefinitions();
+
+    evaluateNeededDefs(module);
+    module.flushDirtyBindings();
+  }
+
+
+  class Orderer {
+    pending = [];
+    lower = EvaluationOrder.INFIMUM;  // last established evaluation order
+
+    get isLowBound() {
+      return this.lower > EvaluationOrder.INFIMUM;
+    }
+
+    push(def) {
+      if (def.evaluationOrder.v < this.lower) {
+        this.pending.push(def);
+        return;
+      }
+
+      if (this.pending.length === 0) {
+        this.lower = def.evaluationOrder.v;
+        return;
+      }
+
+      if (this.isLowBound) {
+        reassignBetween(this.pending, this.lower, def.evaluationOrder.v);
+      }
+      else {
+        reassignDown(this.pending, def.evaluationOrder.v);
+      }
+
+      this.lower = def.evaluationOrder.v;
+      this.pending.length = 0;
+    }
+
+    end() {
+      if (this.pending.length === 0) {
+        return;
+      }
+
+      if (this.isLowBound) {
+        reassignUp(this.pending, this.lower);
+      }
+      else {
+        reassignAfresh(this.pending);
+      }
+
+      this.pending.length = 0;
+      this.lower = EvaluationOrder.INFIMUM;
+    }
+  }
+
+
+  function reassignDown(defs, upper) {
+    let evOrder = upper;
+
+    for (let i = defs.length; i > 0;) {
+      i -= 1;
+      evOrder *= EvaluationOrder.MULT_DOWN;
+
+      defs[i].evaluationOrder.v = evOrder;
+    }
+  }
+
+
+  function reassignBetween(defs, lower, upper) {
+    let dd = (upper - lower) / (defs.length + 1);
+    let evOrder = lower;
+
+    for (let def of defs) {
+      evOrder += dd;
+      def.evaluationOrder.v = evOrder;
+    }
+  }
+
+
+  function reassignUp(defs, lower) {
+    let evOrder = lower;
+
+    for (let def of defs) {
+      evOrder *= EvaluationOrder.MULT_UP;
+      def.evaluationOrder.v = evOrder;
+    }  
+  }
+
+
+  function reassignAfresh(defs) {
+    reassignUp(defs, EvaluationOrder.NORMAL_START * EvaluationOrder.MULT_DOWN);
+  }
+
   async function loadSample() {
     let rootModule = await loadProject('sample');
     let ws = makeWebsocket();
 
     ws.addEventListener('message', ev => {
-      console.log("Module refresh!");
+      console.log("Module refresh!", ev);
       refreshModule(rootModule);
     });
   }

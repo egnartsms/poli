@@ -19,4 +19,20 @@ export class MostlySingleMap {
       this.single.set(key, val);
     }
   }
+
+  popAt(key) {
+    if (this.single.has(key)) {
+      let val = this.single.get(key);
+
+      this.single.delete(key);
+
+      return val;
+    }
+    
+    if (this.multi.has(key)) {
+      throw new Error(`Not impl`);
+    }
+    
+    return undefined;
+  }
 }

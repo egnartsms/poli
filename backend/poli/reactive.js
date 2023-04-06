@@ -67,14 +67,14 @@ function invalidate(cell) {
   invQueue.add(cell);
 
   function writeDown(res) {
-    let {doLater, invalidate} = res ?? {};
+    let {doLater, more} = res ?? {};
 
     if (doLater) {
       callbacks.enqueue(doLater);
     }
 
-    if (invalidate) {
-      addAll(invQueue, invalidate);
+    if (more) {
+      addAll(invQueue, more);
     }
   }
 
@@ -138,7 +138,10 @@ class Leaf {
   }
 
   set v(value) {
-    invalidate(this);
+    if (this.revdeps.size > 0) {
+      invalidate(this);
+    }
+
     this.value = value;
   }
 }
@@ -155,6 +158,12 @@ class VirtualLeaf {
   get v() {
     dependOn(this);
     return this.accessor();
+  }
+
+  invalidate() {
+    if (this.revdeps.size > 0) {
+      invalidate(this);
+    }
   }
 }
 
@@ -193,11 +202,15 @@ class Computed {
     this.value = invalidated;
     unlinkDeps(this);
 
-    if (invalidationHooks.has(this)) {
-      invalidationHooks.get(this)();
+    if (woundComputed.has(this)) {
+      let callback = woundComputed.get(this);
+
+      woundComputed.delete(this);
+
+      callback();
     }
 
-    return {invalidate: this.revdeps};
+    return {more: this.revdeps};
   }
 
   wind(hook) {
@@ -221,10 +234,12 @@ class Derived {
   deps = new Set;
   revdep = null;
 
-  constructor(func) {
+  constructor(func, parent) {
     this.func = func;
     this.value = compute(this, this.func);
-    this.revdep = beingComputed.at(-1);
+
+    parent.deps.add(this);
+    this.revdep = parent;
   }
 
   unlinkRevdep(revdep) {
@@ -242,7 +257,7 @@ class Derived {
         let newValue = compute(this, this.func);
 
         if (newValue !== this.value) {
-          return {invalidate: [this.revdep]};
+          return {more: [this.revdep]};
         }
       }
     }
@@ -257,7 +272,7 @@ function derived(func) {
     );
   }
 
-  return (new Derived(func)).value;
+  return (new Derived(func, beingComputed.at(-1))).value;
 }
 
 

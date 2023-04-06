@@ -1,4 +1,4 @@
-import {loadProject} from '$/poli/load.js';
+import {loadProject, refreshModule} from '$/poli/load.js';
 
 
 async function loadSample() {
@@ -6,7 +6,7 @@ async function loadSample() {
   let ws = makeWebsocket();
 
   ws.addEventListener('message', ev => {
-    console.log("Module refresh!");
+    console.log("Module refresh!", ev);
     refreshModule(rootModule);
   });
 }

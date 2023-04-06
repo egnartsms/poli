@@ -1,10 +1,10 @@
-const offset = 5;
+const rinkLength = 30;
 
 
-const rinkWidth = 30;
+const rinkWidth = 61;
 
 
 /* This should be a comment that does not influence anything
   */
 
-const rinkLength = rinkWidth * 2 + offset + 10;
+const rinkArea = rinkWidth * rinkLength;

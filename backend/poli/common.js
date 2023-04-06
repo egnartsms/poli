@@ -39,6 +39,13 @@ export function addAll(container, xs) {
 }
 
 
+export function deleteAll(container, xs) {
+  for (let x of xs) {
+    container.delete(x);
+  }
+}
+
+
 export function methodFor(klass, method) {
   if (Object.hasOwn(klass.prototype, method.name)) {
     throw new Error(`Duplicate method '${method.name}' for '${klass.name}'`);

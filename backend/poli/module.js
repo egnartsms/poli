@@ -3,7 +3,7 @@ export {
 }
 
 
-import {assert} from '$/poli/common.js';
+import {assert, deleteAll} from '$/poli/common.js';
 import {MostlySingleMap} from '$/poli/mostly-single-map.js';
 import {Binding} from './binding.js';
 
@@ -32,6 +32,7 @@ class Module {
     this.topLevelBlocks = [];
     this.textToCodeBlock = new MostlySingleMap;
     this.codeBlockToDef = new Map;
+    this.defs = new Set;
     this.unevaluatedDefs = new Set;
     this.ns = Object.create(null);
     // This object is passed as '_$' to all definitions of this module.
@@ -55,6 +56,38 @@ class Module {
   flushDirtyBindings() {
     for (let binding of this.dirtyBindings) {
       binding.flush();
+    }
+  }
+
+  clearBlocks() {
+    this.topLevelBlocks = [];
+    this.textToCodeBlock = new MostlySingleMap;
+    this.codeBlockToDef = new Map;
+  }
+
+  appendBlock(block) {
+    this.topLevelBlocks.push(block);
+
+    if (block.type === 'code') {
+      this.textToCodeBlock.add(block.text, block);
+    }
+  }
+
+  attachDefToBlock(def, block) {
+    assert(() => def.module === this);
+    assert(() => block.type === 'code');
+
+    def.codeBlock = block;
+    this.codeBlockToDef.set(block, def);
+  }
+
+  removeDeadDefinitions() {
+    let defs = new Set(this.defs);
+
+    deleteAll(defs, this.codeBlockToDef.values());
+
+    for (let def of defs) {
+      def.unlink();
     }
   }
 }

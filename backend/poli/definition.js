@@ -1,27 +1,40 @@
-import {assert} from '$/poli/common.js';
+export {
+  Definition, EvaluationOrder
+};
+
+import {assert, call} from '$/poli/common.js';
 import {Result} from '$/poli/result.js';
 import {Leaf} from '$/poli/reactive.js';
 
 
-export class Definition {
+const EvaluationOrder = {
+  UNDEFINED: -1,
+  INFIMUM: 0,
+  NORMAL_START: 1.0,
+  MULT_DOWN: 1 - Number.EPSILON * 2 ** 40,
+  MULT_UP: 1 + Number.EPSILON * 2 ** 40,
+};
+
+
+class Definition {
   constructor(module, props) {
     this.module = module;
+    this.codeBlock = null;
 
-    this.codeBlock = props.codeBlock;
     this.target = props.target;
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
-    this.evaluationOrder = new Leaf(props.evaluationOrder);
 
+    this.evaluationOrder = new Leaf(EvaluationOrder.UNDEFINED);
     this.usedBindings = null;
     this.usedBrokenBinding = null;
-
     this.result = null;
 
     for (let ref of this.referencedBindings) {
       ref.referenceBy(this);
     }
 
+    this.module.defs.add(this);
     this.module.unevaluatedDefs.add(this);
 
     this.setEvaluationResult(Result.unevaluated);
@@ -66,6 +79,22 @@ export class Definition {
     else {
       this.target.setBrokenBy(this);
     }
+  }
+
+  /**
+   * Remove from its module.
+   */
+  unlink() {
+    this.target.unsetBy(this);
+
+    this.module.unevaluatedDefs.delete(this);
+    this.module.defs.delete(this);
+
+    for (let ref of this.referencedBindings) {
+      ref.unreferenceBy(this);
+    }
+
+    this.referencedBindings.clear();
   }
 
   static stoppedOnBrokenBinding(binding) {

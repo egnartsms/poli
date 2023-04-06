@@ -4,9 +4,7 @@ export {
 
 
 import {assert} from '$/poli/common.js';
-import {
-  Computed, Leaf, VirtualLeaf, invalidate, derived
-} from '$/poli/reactive.js';
+import {Computed, Leaf, VirtualLeaf, derived} from '$/poli/reactive.js';
 
 
 class Binding {
@@ -29,6 +27,7 @@ class Binding {
       ...makeBindingValueDescriptor(this)
     });
 
+    // Previous code should have accessed 'this.cell' so it must be computed
     assert(() => !this.cell.isInvalidated);
 
     this.module.dirtyBindings.delete(this);
@@ -61,8 +60,23 @@ class Binding {
     cell.v = Binding.Value.plain(value);
   }
 
+  unsetBy(def) {
+    let i = this.defs.findIndex(([defx]) => defx === def);
+
+    if (i === -1) {
+      throw new Error(`Logic error`);
+    }
+
+    this.defs.splice(i, 1);
+    this.deftimes.invalidate();
+  }
+
   referenceBy(def) {
     this.refs.add(def);
+  }
+
+  unreferenceBy(def) {
+    this.refs.delete(def);
   }
 
   useBy(def) {
@@ -76,12 +90,12 @@ class Binding {
 
 
 function cellForDef(binding, def) {
-  let cell = binding.defs.find(([sdef]) => sdef === def)?.[1];
+  let cell = binding.defs.find(([defx]) => defx === def)?.[1];
 
   if (cell === undefined) {
     cell = new Leaf;
     binding.defs.push([def, cell]);
-    invalidate(binding.deftimes);
+    binding.deftimes.invalidate();
   }
 
   return cell;
