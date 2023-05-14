@@ -21,8 +21,6 @@ async function loadProject(projName) {
 async function loadModule(projName, modulePath) {
   let resp = await fetch(`/proj/${projName}/${modulePath}`);
 
-  console.time('root module parse');
-
   if (!resp.ok) {
     throw new Error(`Could not load module contents: '${modulePath}'`);
   }
@@ -30,9 +28,9 @@ async function loadModule(projName, modulePath) {
   let contents = await resp.text();
   let module = new Module(projName, modulePath);
 
+  console.time('reconciliate');
   reconciliateModuleContents(module, contents);
-
-  console.timeEnd('root module parse');
+  console.timeEnd('reconciliate');
 
   console.log(module.ns);
 
@@ -44,7 +42,10 @@ async function refreshModule(module) {
   let resp = await fetch(`/proj/${module.projName}/${module.path}`);
   let contents = await resp.text();
 
+  console.time('reconciliate');
   reconciliateModuleContents(module, contents);
+  console.timeEnd('reconciliate');
+
   console.log(module.ns);
 }
 
@@ -86,6 +87,7 @@ function reconciliateModuleContents(module, newContents) {
   module.removeDeadDefinitions();
 
   evaluateNeededDefs(module);
+
   module.flushDirtyBindings();
 }
 

@@ -4,7 +4,7 @@ export {
 
 import {assert, call} from '$/poli/common.js';
 import {Result} from '$/poli/result.js';
-import {Leaf} from '$/poli/reactive.js';
+import {Root} from '$/poli/reactive';
 
 
 const EvaluationOrder = {
@@ -25,9 +25,10 @@ class Definition {
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
 
-    this.evaluationOrder = new Leaf(EvaluationOrder.UNDEFINED);
+    this.evaluationOrder = new Root(EvaluationOrder.UNDEFINED);
     this.usedBindings = null;
     this.usedBrokenBinding = null;
+    this.evaluationEffect = null;
     this.result = null;
 
     for (let ref of this.referencedBindings) {
@@ -44,7 +45,7 @@ class Definition {
     return this.result !== Result.unevaluated;
   }
 
-  makeEvaluated(result, usedBindings, usedBrokenBinding) {
+  makeEvaluated(result, usedBindings, usedBrokenBinding, effect) {
     for (let binding of usedBindings) {
       binding.useBy(this);
     }
@@ -53,6 +54,7 @@ class Definition {
     this.usedBrokenBinding = usedBrokenBinding;
 
     this.module.unevaluatedDefs.delete(this);
+    this.evaluationEffect = effect;
     this.setEvaluationResult(result);
   }
 
@@ -67,6 +69,7 @@ class Definition {
     this.usedBrokenBinding = null;
 
     this.module.unevaluatedDefs.add(this);
+    this.evaluationEffect = null;
     this.setEvaluationResult(Result.unevaluated);
   }
 
@@ -85,16 +88,30 @@ class Definition {
    * Remove from its module.
    */
   unlink() {
+    if (this.evaluationEffect !== null) {
+      this.evaluationEffect.cancel();
+      this.evaluationEffect = null;
+    }
+
     this.target.unsetBy(this);
 
-    this.module.unevaluatedDefs.delete(this);
-    this.module.defs.delete(this);
+    if (this.usedBindings !== null) {
+      for (let binding of this.usedBindings) {
+        binding.unuseBy(this);
+      }
+    }
 
-    for (let ref of this.referencedBindings) {
-      ref.unreferenceBy(this);
+    this.usedBindings = null;
+    this.usedBrokenBinding = null;
+
+    for (let binding of this.referencedBindings) {
+      binding.unreferenceBy(this);
     }
 
     this.referencedBindings.clear();
+
+    this.module.unevaluatedDefs.delete(this);
+    this.module.defs.delete(this);
   }
 
   static stoppedOnBrokenBinding(binding) {

@@ -6,18 +6,18 @@ export {
 import {map} from '$/poli/common.js';
 import {Definition} from '$/poli/definition.js';
 import {Result} from '$/poli/result.js';
-import {derived, mountEffect} from '$/poli/reactive.js';
+import {submemo, mountEffect} from '$/poli/reactive';
 import {proto$} from '$/poli/module.js';
 
 
 function evaluateNeededDefs(module) {
   for (let def of module.unevaluatedDefs) {
-    mountEffect(() => evaluate(def));
+    mountEffect((effect) => evaluate(def, effect));
   }
 }
 
 
-function evaluate(def) {
+function evaluate(def, effect) {
   let usedBindings = new Set;
   let usedBrokenBinding = null;
   let result;
@@ -30,7 +30,7 @@ function evaluate(def) {
         usedBindings.add(binding);
 
         if (binding.isBroken ||
-            derived(() =>
+            submemo(() =>
               binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
           if (usedBrokenBinding === null) {
             // There may be a case when we had already attempted to stop the
@@ -42,7 +42,7 @@ function evaluate(def) {
           throw new StopOnBrokenBinding;
         }
 
-        return binding.value;
+        return binding.value.value;
       },
       () => Result.plain(def.factory.call(null, def.module.$))
     );
@@ -56,7 +56,7 @@ function evaluate(def) {
     }
   }
 
-  def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+  def.makeEvaluated(result, usedBindings, usedBrokenBinding, effect);
 
   return () => def.makeUnevaluated();
 }

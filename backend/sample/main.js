@@ -1,10 +1,9 @@
-const rinkLength = 30;
-
-
-const rinkWidth = 61;
+// const fearNot = nonExistingVariable;
 
 
 /* This should be a comment that does not influence anything
   */
 
-const rinkArea = rinkWidth * rinkLength;
+const x0 = 0;
+const x1 = x0 + 1;
+// const x0 = 0;

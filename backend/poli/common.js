@@ -46,10 +46,28 @@ export function deleteAll(container, xs) {
 }
 
 
-export function methodFor(klass, method) {
-  if (Object.hasOwn(klass.prototype, method.name)) {
-    throw new Error(`Duplicate method '${method.name}' for '${klass.name}'`);
+export function popSetItem(set) {
+  if (set.size === 0) {
+    return undefined;
   }
 
-  klass.prototype[method.name] = method;
+  let [item] = set;
+
+  set.delete(item);
+
+  return item;
+}
+
+
+export function arrayify(object) {
+  return object instanceof Array ? object : [object];
+}
+
+
+export function* emptying(set) {
+  while (set.size > 0) {
+    let [item] = set;
+    set.delete(item);
+    yield item;
+  }
 }

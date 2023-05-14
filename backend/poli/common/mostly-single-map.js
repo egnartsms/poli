@@ -30,7 +30,16 @@ export class MostlySingleMap {
     }
     
     if (this.multi.has(key)) {
-      throw new Error(`Not impl`);
+      let bag = this.multi.get(key);
+      let [val] = bag;
+
+      bag.delete(val);
+
+      if (bag.size === 0) {
+        this.multi.delete(key);
+      }
+
+      return val;
     }
     
     return undefined;

@@ -4,8 +4,8 @@ export {
 
 
 import {assert, deleteAll} from '$/poli/common.js';
-import {MostlySingleMap} from '$/poli/mostly-single-map.js';
-import {Binding} from './binding.js';
+import {MostlySingleMap} from '$/poli/common/mostly-single-map.js';
+import {Binding, touchedBindings, abandonedBindings} from './binding.js';
 
 /**
  * Common prototype of all the '_$' module-specific objects.
@@ -28,7 +28,6 @@ class Module {
     this.projName = projName;
     this.path = path;
     this.bindings = new Map;
-    this.dirtyBindings = new Set;
     this.topLevelBlocks = [];
     this.textToCodeBlock = new MostlySingleMap;
     this.codeBlockToDef = new Map;
@@ -53,10 +52,24 @@ class Module {
     return binding;
   }
 
+  unlinkBinding(binding) {
+    this.bindings.delete(binding.name);
+  }
+
   flushDirtyBindings() {
-    for (let binding of this.dirtyBindings) {
+    // TODO: for now we just have 1 module. In future, this flushing process
+    // should start from 'touchedBindings' grouping into modules.
+    abandonedBindings.ensureUpToDate();
+
+    for (let binding of abandonedBindings.value) {
+      binding.unlink();
+    }
+
+    for (let binding of touchedBindings.dirty) {
       binding.flush();
     }
+
+    touchedBindings.reset();
   }
 
   clearBlocks() {
