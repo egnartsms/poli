@@ -28,7 +28,6 @@ class Definition {
     this.evaluationOrder = new Root(EvaluationOrder.UNDEFINED);
     this.usedBindings = null;
     this.usedBrokenBinding = null;
-    this.evaluationEffect = null;
     this.result = null;
 
     for (let ref of this.referencedBindings) {
@@ -45,7 +44,7 @@ class Definition {
     return this.result !== Result.unevaluated;
   }
 
-  makeEvaluated(result, usedBindings, usedBrokenBinding, effect) {
+  makeEvaluated(result, usedBindings, usedBrokenBinding) {
     for (let binding of usedBindings) {
       binding.useBy(this);
     }
@@ -54,7 +53,6 @@ class Definition {
     this.usedBrokenBinding = usedBrokenBinding;
 
     this.module.unevaluatedDefs.delete(this);
-    this.evaluationEffect = effect;
     this.setEvaluationResult(result);
   }
 
@@ -69,7 +67,6 @@ class Definition {
     this.usedBrokenBinding = null;
 
     this.module.unevaluatedDefs.add(this);
-    this.evaluationEffect = null;
     this.setEvaluationResult(Result.unevaluated);
   }
 
@@ -88,11 +85,6 @@ class Definition {
    * Remove from its module.
    */
   unlink() {
-    if (this.evaluationEffect !== null) {
-      this.evaluationEffect.cancel();
-      this.evaluationEffect = null;
-    }
-
     this.target.unsetBy(this);
 
     if (this.usedBindings !== null) {

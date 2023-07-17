@@ -1,6 +1,7 @@
 export {
   beingTracked, trackingDepsOf, notTrackingDeps, dependOn, invalidate,
-  unlinkFromDeps, onDepInvalidated, free
+  unlinkFromDeps, onDepInvalidated, free, externallyDepends,
+  unlinkFromExternalDeps
 };
 
 
@@ -67,7 +68,7 @@ let beingUsed = new Set;
 
 function isAlive(cell) {
   return (
-    cell.isPersistentCell || revdeps.hasAt(cell) || beingUsed.has(cell)
+    cell.isPersistentCell === true || revdeps.hasAt(cell) || beingUsed.has(cell)
   );
 }
 
@@ -143,4 +144,22 @@ function invalidate(cell) {
       }
     }
   }
+}
+
+
+const externalDeps = new MultiMap;
+
+
+function externallyDepends(cell, dep) {
+  externalDeps.add(cell, dep);
+  revdeps.add(dep, cell);
+}
+
+
+function unlinkFromExternalDeps(cell) {
+  for (let dep of externalDeps.valuesAt(cell)) {
+    revdeps.remove(dep, cell);
+  }
+
+  externalDeps.removeAt(cell);
 }

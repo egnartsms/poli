@@ -22,7 +22,7 @@ function mountEffect(fnBody) {
   let effect = new Effect;
 
   try {
-    effect.undo = trackingDepsOf(effect, () => fnBody(effect));
+    effect.undo = trackingDepsOf(effect, fnBody;
   }
   catch (e) {
     unlinkFromDeps(effect);

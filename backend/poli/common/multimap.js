@@ -43,6 +43,10 @@ class MultiMap {
     }
   }
 
+  removeAt(key) {
+    this.map.delete(key);
+  }
+
   has(key, val) {
     return this.map.has(key) && this.map.get(key).has(val);
   }

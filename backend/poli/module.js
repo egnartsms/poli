@@ -52,8 +52,8 @@ class Module {
     return binding;
   }
 
-  unlinkBinding(binding) {
-    this.bindings.delete(binding.name);
+  forgetBindingName(name) {
+    this.bindings.delete(name);
   }
 
   flushDirtyBindings() {

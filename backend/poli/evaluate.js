@@ -12,12 +12,14 @@ import {proto$} from '$/poli/module.js';
 
 function evaluateNeededDefs(module) {
   for (let def of module.unevaluatedDefs) {
-    mountEffect((effect) => evaluate(def, effect));
+    let effect = mountEffect(() => evaluate(def));
+
+    externallyDepends(def, effect);
   }
 }
 
 
-function evaluate(def, effect) {
+function evaluate(def) {
   let usedBindings = new Set;
   let usedBrokenBinding = null;
   let result;
@@ -56,7 +58,7 @@ function evaluate(def, effect) {
     }
   }
 
-  def.makeEvaluated(result, usedBindings, usedBrokenBinding, effect);
+  def.makeEvaluated(result, usedBindings, usedBrokenBinding);
 
   return () => def.makeUnevaluated();
 }

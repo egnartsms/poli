@@ -5,7 +5,7 @@ export {
 
 
 import {specialize} from '$/poli/common/generic.js';
-import {free, dependOn, trackingDepsOf, unlinkFromDeps} from './mechanics.js';
+import {free, onDepInvalidated, dependOn, trackingDepsOf, unlinkFromDeps, revdeps} from './mechanics.js';
 
 
 let holders = new Map;
@@ -56,7 +56,7 @@ function releaseReactivePropertyHolder(holder) {
 
   for (let cell of Object.values(bag)) {
     if (cell !== null) {
-      unkeep(cell);
+      revdeps.remove(cell, bag);
     }
   }
 
@@ -68,13 +68,17 @@ function Cell(bag, propKey, func) {
   this.bag = bag;
   this.propKey = propKey;
   this.deps = new Set;
-  this.value = null;
-
   this.value = trackingDepsOf(this, func);
+
+  revdeps.add(this, bag);
 }
 
 
-specialize(free, Cell, function (cell) {
+specialize(onDepInvalidated, Cell, function (cell) {
   unlinkFromDeps(cell);
+
+  revdeps.remove(cell, cell.bag);
   cell.bag[cell.propKey] = null;
+
+  return true;
 });

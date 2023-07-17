@@ -189,7 +189,8 @@ let touchedBindings = new StabilityTracker(
 
 
 methodFor(Binding, function unlink() {
-  allBindings.remove(this);
-  this.module.unlinkBinding(this);
+  this.module.forgetBindingName(this.name);
   delete this.module.ns[this.name];
+  releaseReactivePropertyHolder(this);
+  allBindings.remove(this);
 });

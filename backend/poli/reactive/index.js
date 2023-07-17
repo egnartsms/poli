@@ -7,3 +7,4 @@ export {ReactiveSet} from './reactive-set.js';
 export {
   reactivePropertyFor, releaseReactivePropertyHolder
 } from './property.js';
+export * from './mechanics';
