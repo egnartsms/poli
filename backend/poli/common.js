@@ -5,6 +5,14 @@ export function assert(callback) {
 }
 
 
+/**
+ * This is just to make IIFE look a bit nicer.
+ */
+export function call(fn) {
+  return fn();
+}
+
+
 export function isAllSpaces(str) {
   return /^\s*$/.test(str);
 }
@@ -31,65 +39,35 @@ export function addAll(container, xs) {
 }
 
 
-export function methodFor(klass, method) {
-  if (Object.hasOwn(klass.prototype, method.name)) {
-    throw new Error(`Duplicate method '${method.name}' for '${klass.name}'`);
+export function deleteAll(container, xs) {
+  for (let x of xs) {
+    container.delete(x);
   }
-
-  klass.prototype[method.name] = method;
 }
 
 
-export class MultiMap {
-  bags = new Map;
-
-  add(key, val) {
-    let bag = this.bags.get(key);
-
-    if (bag === undefined) {
-       bag = new Set();
-       this.bags.set(key, bag);
-    }
-
-    bag.add(val);
+export function popSetItem(set) {
+  if (set.size === 0) {
+    return undefined;
   }
 
-  delete(key, val) {
-    let bag = this.bags.get(key);
+  let [item] = set;
 
-    if (bag === undefined) {
-       return false;
-    }
+  set.delete(item);
 
-    let didDelete = bag.delete(val);
+  return item;
+}
 
-    if (bag.size === 0) {
-       this.bags.delete(key);
-    }
 
-    return didDelete;
+export function arrayify(object) {
+  return object instanceof Array ? object : [object];
+}
+
+
+export function* emptying(set) {
+  while (set.size > 0) {
+    let [item] = set;
+    set.delete(item);
+    yield item;
   }
-
-  addToBag(key, vals) {
-    let bag = this.bags.get(key);
-
-    if (bag === undefined) {
-      bag = new Set(vals);
-      this.bags.set(key, bag);
-    }
-    else {
-      addAll(bag, vals);
-    }
-  }
-
-  deleteBag(key) {
-    return this.bags.delete(key);
-  }
-
-  *itemsAt(key) {
-    if (this.bags.has(key)) {
-      yield* this.bags.get(key);
-    }
-  }
-
 }

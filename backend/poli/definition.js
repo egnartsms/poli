@@ -1,46 +1,73 @@
-import {Result} from '$/poli/eval.js';
+export {
+  Definition, EvaluationOrder
+};
+
+import {assert, call} from '$/poli/common.js';
+import {Result} from '$/poli/result.js';
+import {Root} from '$/poli/reactive';
 
 
-export class Definition {
-  static stoppedOnBrokenBinding(binding) {
-    return {
-      __proto__: protoStoppedOnBrokenBinding,
-      brokenBinding: binding
-    }
-  }
+const EvaluationOrder = {
+  UNDEFINED: -1,
+  INFIMUM: 0,
+  NORMAL_START: 1.0,
+  MULT_DOWN: 1 - Number.EPSILON * 2 ** 40,
+  MULT_UP: 1 + Number.EPSILON * 2 ** 40,
+};
 
+
+class Definition {
   constructor(module, props) {
     this.module = module;
+    this.codeBlock = null;
 
     this.target = props.target;
-    this.source = props.source;
-    this.evaluatableSource = props.evaluatableSource;
     this.factory = props.factory;
     this.referencedBindings = props.referencedBindings;
 
-    this.usedBindings = new Set;
+    this.evaluationOrder = new Root(EvaluationOrder.UNDEFINED);
+    this.usedBindings = null;
     this.usedBrokenBinding = null;
-
     this.result = null;
 
     for (let ref of this.referencedBindings) {
       ref.referenceBy(this);
     }
 
+    this.module.defs.add(this);
+    this.module.unevaluatedDefs.add(this);
+
     this.setEvaluationResult(Result.unevaluated);
   }
 
-  get position() {
-    return this.module.defs.indexOf(this);
+  get isEvaluated() {
+    return this.result !== Result.unevaluated;
   }
 
-  use(binding) {
-    this.usedBindings.add(binding);
-    binding.useBy(this);
-
-    if (binding.isBroken) {
-      this.usedBrokenBinding = binding;
+  makeEvaluated(result, usedBindings, usedBrokenBinding) {
+    for (let binding of usedBindings) {
+      binding.useBy(this);
     }
+
+    this.usedBindings = usedBindings;
+    this.usedBrokenBinding = usedBrokenBinding;
+
+    this.module.unevaluatedDefs.delete(this);
+    this.setEvaluationResult(result);
+  }
+
+  makeUnevaluated() {
+    assert(() => this.isEvaluated);
+
+    for (let binding of this.usedBindings) {
+      binding.unuseBy(this);
+    }
+
+    this.usedBindings = null;
+    this.usedBrokenBinding = null;
+
+    this.module.unevaluatedDefs.add(this);
+    this.setEvaluationResult(Result.unevaluated);
   }
 
   setEvaluationResult(result) {
@@ -54,24 +81,36 @@ export class Definition {
     }
   }
 
-  makeUnevaluated() {
-    if (this.isUnevaluated) {
-      return;
+  /**
+   * Remove from its module.
+   */
+  unlink() {
+    this.target.unsetBy(this);
+
+    if (this.usedBindings !== null) {
+      for (let binding of this.usedBindings) {
+        binding.unuseBy(this);
+      }
     }
 
-    for (let binding of this.usedBindings) {
-      binding.unuseBy(this);
-    }
-
-    this.usedBindings.clear();
+    this.usedBindings = null;
     this.usedBrokenBinding = null;
 
-    this.setEvaluationResult(Result.unevaluated);
-    this.module.recordAsUnevaluated(this);
+    for (let binding of this.referencedBindings) {
+      binding.unreferenceBy(this);
+    }
+
+    this.referencedBindings.clear();
+
+    this.module.unevaluatedDefs.delete(this);
+    this.module.defs.delete(this);
   }
 
-  get isUnevaluated() {
-    return this.result === Result.unevaluated;
+  static stoppedOnBrokenBinding(binding) {
+    return {
+      __proto__: protoStoppedOnBrokenBinding,
+      brokenBinding: binding
+    }
   }
 }
 

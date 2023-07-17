@@ -1,25 +1,27 @@
 export {
-  common$,
-  ensureAllDefinitionsEvaluated
+  evaluateNeededDefs
 }
 
 
 import {map} from '$/poli/common.js';
 import {Definition} from '$/poli/definition.js';
-import {Result} from '$/poli/eval.js';
+import {Result} from '$/poli/result.js';
+import {submemo, mountEffect} from '$/poli/reactive';
+import {proto$} from '$/poli/module.js';
 
 
-function ensureAllDefinitionsEvaluated(module) {
+function evaluateNeededDefs(module) {
   for (let def of module.unevaluatedDefs) {
-    evaluate(def);
-  }
+    let effect = mountEffect(() => evaluate(def));
 
-  module.unevaluatedDefs.length = 0;
+    externallyDepends(def, effect);
+  }
 }
 
 
 function evaluate(def) {
-  let brokenBinding = null;
+  let usedBindings = new Set;
+  let usedBrokenBinding = null;
   let result;
 
   try {
@@ -27,60 +29,57 @@ function evaluate(def) {
       (module, prop) => {
         let binding = module.getBinding(prop);
 
-        def.use(binding);
+        usedBindings.add(binding);
 
-        if (binding.isBroken || binding.introDef.position > def.position) {
-          if (brokenBinding === null) {
-            // This means we had already attempted to stop the evaluation but
-            // it caught our exception and continued on. This is incorrect
-            // behavior that we unfortunately have no means to eschew.
-            brokenBinding = binding;
+        if (binding.isBroken ||
+            submemo(() =>
+              binding.introDef.evaluationOrder.v > def.evaluationOrder.v)) {
+          if (usedBrokenBinding === null) {
+            // There may be a case when we had already attempted to stop the
+            // evaluation but it caught our exception and continued on. This
+            // is an incorrect behavior that we have no control over.
+            usedBrokenBinding = binding;
           }
 
-          throw new StopOnBrokenBinding;          
+          throw new StopOnBrokenBinding;
         }
-        else {
-          return binding.value;
-        }
+
+        return binding.value.value;
       },
       () => Result.plain(def.factory.call(null, def.module.$))
     );
   }
   catch (e) {
     if (e instanceof StopOnBrokenBinding) {
-      result = Definition.stoppedOnBrokenBinding(brokenBinding);
+      result = Definition.stoppedOnBrokenBinding(usedBrokenBinding);
     }
     else {
       result = Result.exception(e);
     }
   }
 
-  def.setEvaluationResult(result);
+  def.makeEvaluated(result, usedBindings, usedBrokenBinding);
+
+  return () => def.makeUnevaluated();
 }
 
 
-const common$ = {
-  get v() {
-    return this.module.ns;
-  }
-};
+class StopOnBrokenBinding extends Error {}
 
 
-function withNonLocalRefsIntercepted(handler, callback) {
-  let oldV = Object.getOwnPropertyDescriptor(common$, 'v');
+function withNonLocalRefsIntercepted(handler, body) {
+  let oldV = Object.getOwnPropertyDescriptor(proto$, 'v');
 
   let module2proxy = new Map;
 
-  Object.defineProperty(common$, 'v', {
+  Object.defineProperty(proto$, 'v', {
     configurable: true,
     get: function () {
       let proxy = module2proxy.get(this.module);
 
       if (proxy === undefined) {
         proxy = new Proxy(this.module.ns, {
-          get: (target, prop, receiver) => {
-            return handler(this.module, prop);
-          }
+          get: (target, prop, receiver) => handler(this.module, prop)
         });
 
         module2proxy.set(this.module, proxy);
@@ -91,12 +90,9 @@ function withNonLocalRefsIntercepted(handler, callback) {
   });
 
   try {
-    return callback();
+    return body();
   }
   finally {
-    Object.defineProperty(common$, 'v', oldV);
+    Object.defineProperty(proto$, 'v', oldV);
   }
 }
-
-
-class StopOnBrokenBinding extends Error {}

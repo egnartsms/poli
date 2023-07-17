@@ -27,7 +27,9 @@ export class Queue {
 
 
 function rearToFront(queue) {
-  while (queue.rear.length > 0) {
-    queue.front.push(queue.rear.pop());
+  let {front, rear} = queue;
+
+  while (rear.length > 0) {
+    front.push(rear.pop());
   }
 }

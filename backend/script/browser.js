@@ -2,11 +2,16 @@ import fs from 'node:fs';
 import fsP from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import assert from 'node:assert';
 import { WebSocketServer } from 'ws';
 import mime from 'mime-lite';
+import * as chokidar from 'chokidar';
 
-import { SRC_FOLDER, RUN_MODULE } from '$/poli/const.js';
 import {npmExports} from './importmap.js';
+
+
+const BASE_DIR = new URL('../', import.meta.url).pathname;
+const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
 
 
 class ForwardingWsServer {
@@ -30,12 +35,6 @@ class ForwardingWsServer {
     assert(this.ws === null);
 
     this.ws = ws;
-    this.prepareWebsocket();
-
-    console.log(`${this.side}: connected`);
-  }
-
-  prepareWebsocket() {
     this.ws
       .on('close', (code, reason) => {
         this.ws = null;
@@ -48,6 +47,8 @@ class ForwardingWsServer {
         console.error(`${this.side} websocket connection error:`, error);
       })
       .on('message', (data) => this.sink.send(data));
+
+    console.log(`${this.side}: connected`);
   }
 
   handleUpgrade(req, socket, head) {
@@ -86,10 +87,6 @@ function mate(srvA, srvB) {
 }
 
 
-const BASE_DIR = new URL('../', import.meta.url).pathname;
-const NODE_MODULES = path.join(BASE_DIR, 'node_modules');
-
-
 function run() {
   let front = new ForwardingWsServer('front');
   let back = new ForwardingWsServer('back');
@@ -98,82 +95,97 @@ function run() {
 
   http.createServer()
     .on('upgrade', (req, socket, head) => {
-      const url = new URL(req.url);
-
       let srv;
 
-      if (url.pathname === '/ws/frontend') {
+      if (req.url === '/ws/frontend') {
         srv = front;
       }
-      else if (url.pathname === '/ws/backend') {
+      else if (req.url === '/ws/backend') {
         srv = back;
       }
       else {
-        console.error(`Unexpected WS request pathname: ${url.pathname}`);
+        console.error(`Unexpected WS request pathname: ${req.url}`);
         socket.destroy();
         return;
       }
 
       srv.handleUpgrade(req, socket, head);
     })
-    .on('request', (req, resp) => {
-      console.log(req.url);
-
-      if (req.url === '/') {
-        sendFile(resp, 'index.html');
-        return;
-      }
-
-      if (req.url === '/importmap') {
-        sendImportmapScript(resp);
-        return;
-      }
-
-      let mo;
-
-      if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
-        let [, file] = mo;
-
-        sendFile(resp, path.join(BASE_DIR, 'gen', file));
-        return;
-      }
-
-      if ((mo = /^\/3rdparty\/(.*)$/.exec(req.url)) !== null) {
-        let [, file] = mo;
-
-        sendFile(resp, path.join(NODE_MODULES, file));
-
-        return;
-      }
-
-      if ((mo = /^\/proj\/([^/]+)\/(.*)$/.exec(req.url)) !== null) {
-        let [, projName, modulePath] = mo;
-
-        if (projects.has(projName)) {
-          let proj = projects.get(projName);
-
-          if (modulePath) {
-            sendFile(resp, path.join(proj.rootFolder, modulePath + '.js'));
-          }
-          else {
-            sendData(resp, 200, {
-              rootModule: proj.rootModule
-            });
-          }
-        }
-        else {
-          sendData(resp, 404, {
-            result: false,
-            error: `Unknown project '${projName}'`
-          });
-        }
-
-        return;
-      }
-
-      resp.writeHead(404).end();
-    })
+    .on('request', handleRequest)
     .listen(8080);
+
+  chokidar
+    .watch(path.join(BASE_DIR, 'sample'))
+    .on('change', (filepath) => {
+      console.log("File changed:", filepath);
+      back.send("changed");
+    });
+}
+
+
+/**
+ * All registered projects. Each project is essentially a filesystem subtree.
+ * There may be multiple ones loaded into a webpage at the same time, and all
+ * of them may be manageable through Poli.sys, independently.
+ * 
+ * PROJECT_NAME -> rootDir
+ * 
+ * Project name is a random word used to identify a project. It's used in URLs.
+ */
+const projectRegistry = new Map([['sample', path.resolve('./sample')]]);
+
+
+function handleRequest(req, resp) {
+  console.log(req.method, req.url);
+
+  if (req.url === '/') {
+    sendFile(resp, 'index.html');
+    return;
+  }
+
+  if (req.url === '/importmap') {
+    sendImportmapScript(resp);
+    return;
+  }
+
+  let mo;
+
+  if ((mo = /^\/gen\/(.*)$/.exec(req.url)) !== null) {
+    let [, file] = mo;
+
+    sendFile(resp, path.join(BASE_DIR, 'gen', file));
+    return;
+  }
+
+  if ((mo = /^\/3rdparty\/(.*)$/.exec(req.url)) !== null) {
+    let [, file] = mo;
+
+    sendFile(resp, path.join(NODE_MODULES, file));
+
+    return;
+  }
+
+  if ((mo = /^\/proj\/(.+?)\/(.*)$/.exec(req.url)) !== null) {
+    let [, projName, modulePath] = mo;
+
+    if (!projectRegistry.has(projName)) {
+      sendData(resp, 400, {"message": "Unknown project"});
+      return;
+    }
+
+    let projRoot = projectRegistry.get(projName);
+
+    if (modulePath) {
+      sendFile(resp, path.join(projRoot, modulePath + '.js'));
+    }
+    else {
+      sendProjectMetadata(resp, projRoot);
+    }
+
+    return;
+  }
+
+  resp.writeHead(404).end();
 }
 
 
@@ -203,9 +215,35 @@ function sendData(resp, code, data) {
 }
 
 
+function sendProjectMetadata(resp, projRoot) {
+  let rootModule;
+
+  try {
+    let config = JSON.parse(
+      fs.readFileSync(path.join(projRoot, '.poli.json'), 'utf8')
+    );
+    rootModule = config["rootModule"];
+  }
+  catch (e) {
+    sendData(resp, 400, {"message": ".poli.json not operable"})
+    return;
+  }
+
+  if (typeof rootModule !== 'string') {
+    sendData(resp, 400, {"message": "Root module not specified"});
+    return;
+  }
+
+  sendData(resp, 200, {
+    "rootModule": rootModule
+  });
+}
+
+
 const renderImportmapScript = (importmap) => `
   (function () {
     let im = document.createElement('script');
+
     im.type = 'importmap';
     im.textContent = ${JSON.stringify(JSON.stringify(importmap, null, 4))};
 
@@ -234,36 +272,6 @@ async function sendImportmapScript(resp) {
   resp.writeHead(200, {'Content-Type': 'text/javascript'})
     .end(renderImportmapScript(importmap));
 }
-
-
-let projects = new Map;
-
-
-async function addProjectRoot(root) {
-  let rootFolder = new URL(root, import.meta.url).pathname;
-  let config = JSON.parse(
-    await fsP.readFile(path.join(rootFolder, 'poli.json'))
-  );
-
-  if (typeof config['project-name'] !== 'string' ||
-      typeof config['root-module'] !== 'string') {
-    throw new Error(`Malformed poli.json config for root folder '${folder}'`);
-  }
-
-  if (projects.has(config['project-name'])) {
-    throw new Error(`Double project name: '${config['project-name']}'`);
-  }
-
-  projects.set(config['project-name'], {
-    rootFolder: rootFolder,
-    rootModule: config['root-module'],
-  });
-
-  // TODO: add check for project folder structure overlap ?
-}
-
-
-addProjectRoot('../poli/');
 
 
 run();

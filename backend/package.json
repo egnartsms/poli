@@ -28,14 +28,15 @@
   "dependencies": {
     "acorn": "^8.8.2",
     "acorn-loose": "^8.3.0",
+    "chokidar": "^3.5.3",
     "mime-lite": "^1.0.3",
-    "rollup": "^3.10.1",
-    "rollup-plugin-commonjs": "^10.1.0",
-    "rollup-plugin-node-resolve": "^5.2.0",
     "ws": "^8.12.0"
   },
   "devDependencies": {
     "basetag": "^2.1.0",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "rollup": "^3.10.1",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0"
   }
 }

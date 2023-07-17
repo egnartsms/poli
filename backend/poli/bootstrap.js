@@ -1,12 +1,28 @@
-import {loadProject} from '$/poli/load.js';
+import {loadProject, refreshModule} from '$/poli/load.js';
 
 
-console.time('bootstrap');
+async function loadSample() {
+  let rootModule = await loadProject('sample');
+  let ws = makeWebsocket();
 
-loadProject('poli')
-  .then(() => {
-    console.log("Project 'poli' loaded");
-  })
-  .finally(() => {
-    console.timeEnd('bootstrap');
+  ws.addEventListener('message', ev => {
+    console.log("Module refresh!", ev);
+    refreshModule(rootModule);
   });
+}
+
+
+function makeWebsocket() {
+  let url = new URL('/ws/backend', window.location.href);
+  url.protocol = 'ws';
+  return new WebSocket(url);
+}
+
+
+function initialLoad() {
+  console.time('sample');
+  loadSample().finally(() => console.timeEnd('sample'));
+}
+
+
+initialLoad();

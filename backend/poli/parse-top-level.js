@@ -35,13 +35,12 @@ const reEntry = new RegExp(
 
 
 function* parseTopLevel(src) {
+  let lastIndex;
+
   reEntry.lastIndex = 0;
 
-  let mo;
-  let index = 0;
-
   for (;;) {
-    reEntry.lastIndex = index;
+    lastIndex = reEntry.lastIndex;
 
     let mo = reEntry.exec(src);
 
@@ -49,10 +48,7 @@ function* parseTopLevel(src) {
       break;
     }
 
-    index = reEntry.lastIndex;
-
     let type;
-    let ignoreReason = null;
 
     if (mo.groups.space !== undefined) {
       type = 'space';
@@ -61,17 +57,11 @@ function* parseTopLevel(src) {
       type = 'single-line-comment';
     }
     else if (mo.groups.multi_line_comment !== undefined) {
-      if (isAllSpaces(mo.groups.redundant)) {
-        type = 'multi-line-comment';
-      }
-      else {
-        type = 'ignored';
-        ignoreReason = 'bad-multi-comment';        
-      }
+      type = isAllSpaces(mo.groups.redundant) ?
+        'multi-line-comment' : 'malformed-multi-line-comment';
     }
     else if (mo.groups.shifted !== undefined) {
-      type = 'ignored';
-      ignoreReason = 'shifted';
+      type = 'shifted';
     }
     else if (mo.groups.code !== undefined) {
       type = 'code';
@@ -82,14 +72,13 @@ function* parseTopLevel(src) {
 
     yield {
       type,
-      ignoreReason,
       text: mo[0],
       start: mo.index,
       end: mo.index + mo[0].length,
     }
   }
 
-  if (index < src.length) {
-    throw new Error(`Remaining unparsed chunk: '${src.slice(index)}'`);
+  if (lastIndex < src.length) {
+    throw new Error(`Remaining unparsed chunk: '${src.slice(lastIndex)}'`);
   }
 }

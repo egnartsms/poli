@@ -1,31 +1,20 @@
 export {
-  loadProject
+  loadProject, refreshModule
 }
 
-import {parse as parseJsLoosely} from 'acorn-loose';
-
-import {map} from '$/poli/common.js';
+import {map, call} from '$/poli/common.js';
 import {parseTopLevel} from '$/poli/parse-top-level.js';
-import {ensureAllDefinitionsEvaluated} from '$/poli/evaluate.js';
+import {evaluateNeededDefs} from '$/poli/evaluate.js';
 import {Module} from '$/poli/module.js';
-import {Definition} from '$/poli/definition.js';
-import {dirtyBindings} from '$/poli/binding.js';
+import {Definition, EvaluationOrder} from '$/poli/definition.js';
+import {compileCodeBlock} from '$/poli/compile.js';
 
 
 async function loadProject(projName) {
   let resp = await fetch(`/proj/${projName}/`);
   let {rootModule} = await resp.json();
 
-  let module = await loadModule(projName, rootModule);
-
-  for (let binding of module.bindings.values()) {
-    binding.recordValueInNamespace();
-  }
-
-  // dirtyBindings.clear();
-
-  console.log(module.ns);
-  console.log(module);
+  return await loadModule(projName, rootModule);
 }
 
 
@@ -36,135 +25,154 @@ async function loadModule(projName, modulePath) {
     throw new Error(`Could not load module contents: '${modulePath}'`);
   }
 
-  let moduleContents = await resp.text();
-  let module = new Module(modulePath);
+  let contents = await resp.text();
+  let module = new Module(projName, modulePath);
 
-  for (let block of parseTopLevel(moduleContents)) {
-    if (block.type !== 'code') {
-      continue;
-    }
+  console.time('reconciliate');
+  reconciliateModuleContents(module, contents);
+  console.timeEnd('reconciliate');
 
-    addTopLevelCodeBlock(module, block.text);
-  }
-
-  ensureAllDefinitionsEvaluated(module);
+  console.log(module.ns);
 
   return module;
 }
 
 
-/**
- * Add the given code block `source` to `module`.
- * 
- * @return Definition, throws on errors.
- */
-function addTopLevelCodeBlock(module, source) {
-  let body;
+async function refreshModule(module) {
+  let resp = await fetch(`/proj/${module.projName}/${module.path}`);
+  let contents = await resp.text();
 
-  try {
-    ({body} = parseJsLoosely(source, {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      ranges: true
-    }));
-  }
-  catch (e) {
-    throw new Error(`Not handling syntactically incorrect definitions yet`);
-  }
+  console.time('reconciliate');
+  reconciliateModuleContents(module, contents);
+  console.timeEnd('reconciliate');
 
-  if (body.length !== 1) {
-    throw new Error(`Expected exactly 1 expression/declaration in a block`);
-  }
-
-  let [item] = body;
-
-  if (item.type !== 'VariableDeclaration') {
-    throw new Error(`Not supported TL member: '${item.type}'`);
-  }
-
-  if (item.kind !== 'const') {
-    throw new Error(`Not supporting anything except 'const' declarations`);
-  }
-
-  if (item.declarations.length !== 1) {
-    throw new Error(`Not supporting multiple const declarations`);
-  }
-
-  let [decl] = item.declarations;
-
-  if (decl.id.type !== 'Identifier') {
-    throw new Error(`Only support single variable declaration`);
-  }
-
-  let nlIds = nonlocalIdentifiers(decl.init);
-  let instrumentedEvaluatableSource = replaceNonlocals(
-    source, decl.init.range, map(nlIds, id => id.range)
-  );
-
-  let factory;
-
-  try {
-    factory = Function('_$', factorySource(instrumentedEvaluatableSource));
-  }
-  catch (e) {
-    throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${instrumentedEvaluatableSource}'`);
-  }
-
-  let def = new Definition(module, {
-    target: module.getBinding(decl.id.name),
-    source: source,
-    evaluatableSource: source.slice(...decl.init.range),
-    factory: factory,
-    referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
-  });
-
-  module.addDefinition(def);
+  console.log(module.ns);
 }
 
 
-const factorySource = (source) => `
-"use strict";
-return (${source});
-`;
+function reconciliateModuleContents(module, newContents) {
+  let {textToCodeBlock, codeBlockToDef} = module;
 
+  module.clearBlocks();
 
-function nonlocalIdentifiers(node) {
-  function* refs(node) {
-    if (node.type === 'Literal')
-      ;
-    else if (node.type === 'Identifier') {
-      yield node;
+  let orderer = new Orderer;
+
+  for (let block of parseTopLevel(newContents)) {
+    module.appendBlock(block);
+
+    if (block.type !== 'code') {
+      continue;
     }
-    else if (node.type === 'UnaryExpression') {
-      yield* refs(node.argument);
+
+    // Try to re-use an old definition
+    let def;
+    let exBlock = textToCodeBlock.popAt(block.text);
+
+    if (exBlock) {
+      def = codeBlockToDef.get(exBlock);
+      // TODO: flesh out whether and when this case is really possible.
+      if (!def) {
+        continue;
+      }
     }
-    else if (node.type === 'BinaryExpression') {
-      yield* refs(node.left);
-      yield* refs(node.right);
+    else {
+      def = compileCodeBlock(module, block);
     }
+
+    module.attachDefToBlock(def, block);
+    orderer.push(def);
   }
 
-  return Array.from(refs(node));
+  orderer.end();
+  module.removeDeadDefinitions();
+
+  evaluateNeededDefs(module);
+
+  module.flushDirtyBindings();
 }
 
 
-/**
- * Replace non-local identifiers found at `ranges` with "_$.v.ID". `idxStart` is
- * the starting index of the evaluatable part of the definition (e.g. var
- * declaration init expression). Return the modified (instrumented) evaluatable
- * string.
- */
-function replaceNonlocals(source, [start, end], ranges) {
-  let idx = start;
-  let pieces = [];
+class Orderer {
+  pending = [];
+  lower = EvaluationOrder.INFIMUM;  // last established evaluation order
 
-  for (let [from, to] of ranges) {
-    pieces.push(source.slice(idx, from));
-    pieces.push(`_$.v.${source.slice(from, to)}`);
-    idx = to;
+  get isLowBound() {
+    return this.lower > EvaluationOrder.INFIMUM;
   }
 
-  pieces.push(source.slice(idx, end));
+  push(def) {
+    if (def.evaluationOrder.v < this.lower) {
+      this.pending.push(def);
+      return;
+    }
 
-  return pieces.join('');
+    if (this.pending.length === 0) {
+      this.lower = def.evaluationOrder.v;
+      return;
+    }
+
+    if (this.isLowBound) {
+      reassignBetween(this.pending, this.lower, def.evaluationOrder.v);
+    }
+    else {
+      reassignDown(this.pending, def.evaluationOrder.v);
+    }
+
+    this.lower = def.evaluationOrder.v;
+    this.pending.length = 0;
+  }
+
+  end() {
+    if (this.pending.length === 0) {
+      return;
+    }
+
+    if (this.isLowBound) {
+      reassignUp(this.pending, this.lower);
+    }
+    else {
+      reassignAfresh(this.pending);
+    }
+
+    this.pending.length = 0;
+    this.lower = EvaluationOrder.INFIMUM;
+  }
+}
+
+
+function reassignDown(defs, upper) {
+  let evOrder = upper;
+
+  for (let i = defs.length; i > 0;) {
+    i -= 1;
+    evOrder *= EvaluationOrder.MULT_DOWN;
+
+    defs[i].evaluationOrder.v = evOrder;
+  }
+}
+
+
+function reassignBetween(defs, lower, upper) {
+  let dd = (upper - lower) / (defs.length + 1);
+  let evOrder = lower;
+
+  for (let def of defs) {
+    evOrder += dd;
+    def.evaluationOrder.v = evOrder;
+  }
+}
+
+
+function reassignUp(defs, lower) {
+  let evOrder = lower;
+
+  for (let def of defs) {
+    evOrder *= EvaluationOrder.MULT_UP;
+    def.evaluationOrder.v = evOrder;
+  }  
+}
+
+
+function reassignAfresh(defs) {
+  reassignUp(defs, EvaluationOrder.NORMAL_START * EvaluationOrder.MULT_DOWN);
 }
