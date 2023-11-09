@@ -114,6 +114,7 @@ function run() {
     .on('request', handleRequest)
     .listen(8080);
 
+  // TODO: this is just a temp hack to provide for interactivity.
   chokidar
     .watch(path.join(BASE_DIR, 'sample'))
     .on('change', (filepath) => {

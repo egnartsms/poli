@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "node": "node script/node.js",
-    "browser": "node script/browser.js"
+    "browser": "node script/browser.js",
+    "build": "rollup -wc bootstrap.rollup.js"
   },
   "repository": {
     "type": "git",

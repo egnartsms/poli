@@ -7,6 +7,7 @@ import {assert, deleteAll} from '$/poli/common.js';
 import {MostlySingleMap} from '$/poli/common/mostly-single-map.js';
 import {Binding, touchedBindings, abandonedBindings} from './binding.js';
 
+
 /**
  * Common prototype of all the '_$' module-specific objects.
  * 
