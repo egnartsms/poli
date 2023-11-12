@@ -4,14 +4,30 @@ import {procedure, entity, runToFixpoint} from '$/reactive';
 let student = entity();
 
 
-procedure("Initialize the student", () => {
-   student.name = "Joe";
-   student.age = 22;
+procedure("Report the student", () => {
+   console.log("Attempt");
+   console.log(`Student ${student.name} is a ${student.role}`);
 });
 
 
-procedure("Report the student", () => {
-   console.log(`Student ${student.name} is ${student.age} years old`);
+procedure("Initialize the student", () => {
+   student.name = "Joe";
+   student.age = 24;
+});
+
+
+procedure("Set the role", () => {
+   if (student.sex === 'male') {
+      student.role = student.age >= 25 ? 'man' : 'boy';
+   }
+   else if (student.sex === 'female') {
+      student.role = student.age >= 22 ? 'woman' : 'girl';
+   }
+});
+
+
+procedure("Set sex", () => {
+   student.sex = 'male';
 });
 
 

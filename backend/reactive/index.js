@@ -22,4 +22,5 @@
  * the virtual machine, you got to re-build it and re-run the Smalltalk.
  */
 
-export * from './mechanics.js';
+export {entity} from './entity.js';
+export {procedure, runToFixpoint} from './node.js';
