@@ -24,3 +24,4 @@
 
 export {entity} from './entity.js';
 export {procedure, runToFixpoint} from './node.js';
+export {addEventListener} from './event-listener.js';

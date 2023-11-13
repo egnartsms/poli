@@ -5,7 +5,8 @@ export {
    procedure,
    runToFixpoint,
    runningNode,
-   nodeSetAttrs
+   nodeSetAttrs,
+   callAsMounting
 };
 
 
@@ -27,6 +28,7 @@ function Node(proc) {
    this.exc = null;
    this.defAttrs = new Set;
    this.useAttrs = new Set;
+   this.undo = [];
 }
 
 
@@ -69,14 +71,18 @@ function runToFixpoint() {
 }
 
 
-function mountNode(node) {
+function callAsMounting(node, body) {
+   check(runningNode === null);
+
    let setAttrs = new Map;
 
    runningNode = node;
    nodeSetAttrs = setAttrs;
 
+   let retVal;
+
    try {
-      node.proc();
+      retVal = body();
       node.exc = null;
    }
    catch (e) {
@@ -110,6 +116,12 @@ function mountNode(node) {
       attr.value = value;
    }
 
+   return retVal;
+}
+
+
+function mountNode(node) {
+   callAsMounting(node, node.proc.bind(node));
    unmountedNodes.delete(node);
 }
 
@@ -135,8 +147,14 @@ function unmountNode(node) {
    for (let attr of node.defAttrs) {
       attrGhosts.set(attr, attr.ghostify());
    }
-
    node.defAttrs.clear();
+
+   node.undo.reverse();
+   for (let undo of node.undo) {
+      console.log("Calling undo:", undo);
+      undo();
+   }
+   node.undo.length = 0;
 
    unmountedNodes.add(node);
 }
