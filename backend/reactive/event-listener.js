@@ -1,21 +1,10 @@
 import { check } from '$/common/util.js';
-import { runningNode, callAsMounting, runToFixpoint } from './node.js';
+import { runningNode } from './node.js';
 
-export { addEventListener };
+export { externalEventHandler };
 
 
-function addEventListener(object, event, handler) {
-   let capturedNode = runningNode;
-
-   let wrappedHandler = (...args) => {
-      let ret = callAsMounting(capturedNode, () => handler(...args));
-
-      runToFixpoint();
-
-      return ret;
-   };
-
-   object.addEventListener(event, wrappedHandler);
-
-   runningNode.undo.push(() => object.removeEventListener(event, wrappedHandler));
+function externalEventHandler(object, event, listener) {
+   object.addEventListener(event, listener);
+   runningNode.undo.push(() => object.removeEventListener(event, listener));
 }

@@ -5,8 +5,7 @@ export {
    procedure,
    runToFixpoint,
    runningNode,
-   nodeSetAttrs,
-   callAsMounting
+   nodeSetAttrs
 };
 
 
@@ -38,18 +37,12 @@ methodFor(Node, function useAttr(attr) {
 });
 
 
+/**
+ * 'attr' is assumed not to be defined by any other node.
+ */
 methodFor(Node, function defAttr(attr) {
    this.defAttrs.add(attr);
    attr.definedBy = this;
-});
-
-
-methodFor(Node, function unuseAllAttrs() {
-   for (let attr of this.useAttrs) {
-      attr.usedBy.delete(this);
-   }
-
-   this.useAttrs.clear();
 });
 
 
@@ -58,10 +51,11 @@ function runToFixpoint() {
       while (unmountedNodes.size > 0) {
          let [node] = unmountedNodes;
 
-         mountNode(node);
+         node.mount();
       }
 
-      // All the ghosts that are still here were abandoned => kill them
+      // All the ghosts that are still here were abandoned => kill them and unmount all nodes that
+      // depend on them.
       for (let [attr, ghost] of attrGhosts) {
          unmountNodeSet(ghost.usedBy);
       }
@@ -71,22 +65,20 @@ function runToFixpoint() {
 }
 
 
-function callAsMounting(node, body) {
+methodFor(Node, function mount() {
    check(runningNode === null);
 
    let setAttrs = new Map;
 
-   runningNode = node;
+   runningNode = this;
    nodeSetAttrs = setAttrs;
 
-   let retVal;
-
    try {
-      retVal = body();
-      node.exc = null;
+      this.proc();
+      this.exc = null;
    }
-   catch (e) {
-      node.exc = e;
+   catch (exc) {
+      this.exc = exc;
    }
    finally {
       runningNode = null;
@@ -116,14 +108,36 @@ function callAsMounting(node, body) {
       attr.value = value;
    }
 
-   return retVal;
-}
+   unmountedNodes.delete(this);
+});
 
 
-function mountNode(node) {
-   callAsMounting(node, node.proc.bind(node));
-   unmountedNodes.delete(node);
-}
+methodFor(Node, function augment(body) {
+   check(runningNode === null);
+
+   let setAttrs = new Map;
+
+   runningNode = this;
+   nodeSetAttrs = setAttrs;
+
+   try {
+      return body();
+   }
+   finally {
+      runningNode = null;
+      nodeSetAttrs = null;
+
+      for (let [attr, value] of setAttrs) {
+         if (value !== attr.value) {
+            unmountNodeSet(attr.usedBy);
+         }
+
+         attr.value = value;
+      }
+
+      runToFixpoint();
+   }
+});
 
 
 function unmountNodeSet(nodeSet) {
@@ -132,29 +146,47 @@ function unmountNodeSet(nodeSet) {
    }
 
    for (let node of nodeSet) {
-      unmountNode(node);
+      node.unmount();
    }
 
    nodeSet.clear();
 }
 
 
-function unmountNode(node) {
-   check(!unmountedNodes.has(node));
+methodFor(Node, function unmount() {
+   check(!unmountedNodes.has(this));
 
-   node.unuseAllAttrs();
+   this.unuseAllAttrs();
+   this.undefAllAttrs();
 
-   for (let attr of node.defAttrs) {
+   if (this.undo.length > 0) {
+      this.undo.reverse();
+
+      for (let undo of this.undo) {
+         console.log("Calling undo:", undo);
+         undo();
+      }
+
+      this.undo.length = 0;
+   }
+
+   unmountedNodes.add(this);
+});
+
+
+methodFor(Node, function unuseAllAttrs() {
+   for (let attr of this.useAttrs) {
+      attr.usedBy.delete(this);
+   }
+
+   this.useAttrs.clear();
+});
+
+
+methodFor(Node, function undefAllAttrs() {
+   for (let attr of this.defAttrs) {
       attrGhosts.set(attr, attr.ghostify());
    }
-   node.defAttrs.clear();
 
-   node.undo.reverse();
-   for (let undo of node.undo) {
-      console.log("Calling undo:", undo);
-      undo();
-   }
-   node.undo.length = 0;
-
-   unmountedNodes.add(node);
-}
+   this.defAttrs.clear();
+});

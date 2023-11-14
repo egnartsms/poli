@@ -22,6 +22,6 @@
  * the virtual machine, you got to re-build it and re-run the Smalltalk.
  */
 
-export {entity} from './entity.js';
-export {procedure, runToFixpoint} from './node.js';
-export {addEventListener} from './event-listener.js';
+export { entity } from './entity.js';
+export { procedure, runToFixpoint } from './node.js';
+export { externalEventHandler } from './event-listener.js';

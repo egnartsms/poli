@@ -6,4 +6,4 @@
 
 const x0 = 0;
 const x1 = x0 + 20;
-// const x0 = 0;
+const sum = (x0 + x1) * 2;

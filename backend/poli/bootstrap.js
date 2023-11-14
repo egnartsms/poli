@@ -1,4 +1,4 @@
-import {procedure, entity, runToFixpoint, addEventListener} from '$/reactive';
+import { procedure, entity, runToFixpoint, externalEventHandler } from '$/reactive';
 
 
 // let student = entity();
@@ -48,26 +48,41 @@ function makeWebsocket() {
 
 let ws = makeWebsocket();
 
+
 export let sampleModule = entity();
 
 
-procedure("Subscribe to sample module contents changes", () => {
-   addEventListener(ws, 'message', (event) => {
-      sampleModule.textContents = event.data;
+procedure("Initial load", function () {
+   loadModuleContents('sample', 'main').then((textContents) => {
+      this.augment(() => {
+         sampleModule.textContents = textContents;
+      });
    });
 
-   console.log("Stub=", sampleModule.stub);
+   externalEventHandler(ws, 'message', async (event) => {
+      let textContents = await loadModuleContents('sample', 'main');
+
+      this.augment(() => {
+         sampleModule.textContents = textContents;
+      });
+   });
 });
 
 
-procedure("Set stub", () => {
-   sampleModule.stub = 0;
-});
-
-
-procedure("Report sample module contents length, in chars", () => {
+procedure("Report sample module contents length, in chars", function () {
    console.log("Sample module contents length=", sampleModule.textContents.length);
 });
+
+
+export async function loadModuleContents(projName, modulePath) {
+  let resp = await fetch(`/proj/${projName}/${modulePath}`);
+
+  if (!resp.ok) {
+    throw new Error(`Could not load module contents: '${modulePath}'`);
+  }
+
+  return await resp.text();
+}
 
 
 runToFixpoint();
