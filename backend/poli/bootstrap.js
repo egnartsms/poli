@@ -1,4 +1,5 @@
 import { procedure, entity, runToFixpoint, externalEventHandler } from '$/reactive';
+import { parseTopLevel } from './parse-top-level.js';
 
 
 // let student = entity();
@@ -53,24 +54,27 @@ export let sampleModule = entity();
 
 
 procedure("Initial load", function () {
-   loadModuleContents('sample', 'main').then((textContents) => {
-      this.augment(() => {
-         sampleModule.textContents = textContents;
+   let refresh = () => {
+      loadModuleContents('sample', 'main').then((textContents) => {
+         this.augment(() => {
+            sampleModule.textContents = textContents;
+         });
       });
-   });
+   };
 
-   externalEventHandler(ws, 'message', async (event) => {
-      let textContents = await loadModuleContents('sample', 'main');
+   externalEventHandler(ws, 'message', refresh);
 
-      this.augment(() => {
-         sampleModule.textContents = textContents;
-      });
-   });
+   refresh();
 });
 
 
-procedure("Report sample module contents length, in chars", function () {
-   console.log("Sample module contents length=", sampleModule.textContents.length);
+procedure("Parse module into top-level blocks", function () {
+   sampleModule.topLevelBlocks = parseTopLevel(sampleModule.textContents);
+});
+
+
+procedure("Report the top-level blocks", function () {
+   console.log("Have top-level blocks:", sampleModule.topLevelBlocks);
 });
 
 

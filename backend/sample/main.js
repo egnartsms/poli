@@ -1,9 +1,19 @@
 // const fearNot = nonExistingVariable;
 
+const x0 = 0;
 
-/* This should be a comment that does not influence anything
+// Slightly bigger than 'x0'
+const x1 = x0 + 20;
+/**
+ * Here follows a multiline docstring comment.
+ */
+const sum = (x0 + x1) * 2;
+
+/* Backing
+  facking
+  style
   */
 
-const x0 = 0;
-const x1 = x0 + 20;
-const sum = (x0 + x1) * 2;
+function sample() {
+   return [x0, x1];
+}
