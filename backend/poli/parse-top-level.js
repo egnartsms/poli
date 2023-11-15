@@ -2,17 +2,17 @@ export {parseTopLevel};
 
 
 const rBlankLine = `\\s*?\n`;
-const rIndentedLine = `[ \t]+\\S.*\n`;
 const rZeroLine = `(?!(?://|/\\*))\\S.*\n`;
+const rIndentedLine = `[ \t]+\\S.*\n`;
 const rCodeTerminatingLine = `[)\\]}\`'"].*\n`;
-const rCode = (
+const rBlock = (
    `^${rZeroLine}` + 
    `(?:(?:${rBlankLine})*${rIndentedLine})*` +
    `(?:(?:${rBlankLine})*${rCodeTerminatingLine})?`
 );
 
 
-const reBlock = new RegExp(rCode, 'gm');
+const reBlock = new RegExp(rBlock, 'gm');
 
 
 function parseTopLevel(src) {

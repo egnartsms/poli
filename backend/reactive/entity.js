@@ -1,7 +1,8 @@
-import {methodFor} from '$/common/generic.js';
-import {runningNode, nodeSetAttrs} from './node.js';
+import * as util from '$/common/util.js';
+import { methodFor } from '$/common/generic.js';
+import { runningNode, affectedAttrs } from './node.js';
 
-export {entity};
+export { entity, AttrNotDefined };
 
 
 const ENTITY = Symbol.for('poli.entity');
@@ -28,11 +29,8 @@ const entityProxyHandler = {
    get(store, prop, rcvr) {
       let attr = entityAttr(store, prop);
 
-      if (runningNode === attr.definedBy) {
-         if (nodeSetAttrs.has(attr)) {
-            return nodeSetAttrs.get(attr);
-         }
-      }
+      if (attr.definedBy !== null && attr.definedBy.isAncestorOf(runningNode))
+         ;
       else {
          runningNode.useAttr(attr);
       }
@@ -46,13 +44,17 @@ const entityProxyHandler = {
       if (attr.definedBy === null) {
          runningNode.defAttr(attr);
       }
-      else if (attr.definedBy === runningNode)
+      else if (attr.definedBy.isAncestorOf(runningNode))
          ;
       else {
          throw new AttrDuplicated(attr);
       }
 
-      nodeSetAttrs.set(attr, value);
+      if (!affectedAttrs.has(attr)) {
+         affectedAttrs.set(attr, attr.value);
+      }
+
+      attr.value = value;
 
       return true;
    }
@@ -73,15 +75,15 @@ function Attr(store, name) {
    this.name = name;
    this.definedBy = null;
    this.usedBy = new Set;
-   this.value = NOT_DEFINED;
+   this.value = NON_DEFINED;
 }
 
 
-const NOT_DEFINED = Symbol('NOT_DEFINED');
+const NON_DEFINED = Symbol('NON_DEFINED');
 
 
 methodFor(Attr, function access() {
-   if (this.value === NOT_DEFINED) {
+   if (this.value === NON_DEFINED) {
       throw new AttrNotDefined(this);
    }
 
@@ -102,9 +104,17 @@ methodFor(Attr, function ghostify() {
 
    this.definedBy = null;
    this.usedBy = new Set;
-   this.value = NOT_DEFINED;
+   this.value = NON_DEFINED;
 
    return ghost;
+});
+
+
+methodFor(Attr, function undefine() {
+   util.check(this.usedBy.size === 0);
+
+   this.definedBy = null;
+   this.value = NON_DEFINED;
 });
 
 

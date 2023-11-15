@@ -1,17 +1,17 @@
-import {methodFor} from '$/common/generic.js';
-import {check} from '$/common/util.js';
+import { methodFor } from '$/common/generic.js';
+import { check } from '$/common/util.js';
+import { AttrNotDefined } from './entity.js';
 
 export {
    procedure,
    runToFixpoint,
    runningNode,
-   nodeSetAttrs
+   affectedAttrs
 };
 
 
-function procedure(name, body) {
-   let node = new Node(body);
-   unmountedNodes.add(node);
+function procedure(name, proc) {
+   new Node(runningNode, proc);
 }
 
 
@@ -19,15 +19,23 @@ let unmountedNodes = new Set;
 let attrGhosts = new Map;
 
 let runningNode = null;
-let nodeSetAttrs = null;
+let affectedAttrs = new Map;
 
 
-function Node(proc) {
+function Node(parent, proc) {
+   this.parent = parent;
    this.proc = proc;
    this.exc = null;
    this.defAttrs = new Set;
    this.useAttrs = new Set;
    this.undo = [];
+   this.children = new Set;
+
+   if (parent !== null) {
+      parent.children.add(this);
+   }
+
+   unmountedNodes.add(this);
 }
 
 
@@ -43,6 +51,15 @@ methodFor(Node, function useAttr(attr) {
 methodFor(Node, function defAttr(attr) {
    this.defAttrs.add(attr);
    attr.definedBy = this;
+});
+
+
+methodFor(Node, function isAncestorOf(node) {
+   while (node !== null && node !== this) {
+      node = node.parent;
+   }
+
+   return node === this;
 });
 
 
@@ -68,10 +85,7 @@ function runToFixpoint() {
 methodFor(Node, function mount() {
    check(runningNode === null);
 
-   let setAttrs = new Map;
-
    runningNode = this;
-   nodeSetAttrs = setAttrs;
 
    try {
       this.proc();
@@ -79,21 +93,27 @@ methodFor(Node, function mount() {
    }
    catch (exc) {
       this.exc = exc;
-   }
-   finally {
-      runningNode = null;
-      nodeSetAttrs = null;
+      if (!(exc instanceof AttrNotDefined)) {
+         console.warn("Node exception:", exc);
+      }
    }
 
-   for (let [attr, value] of setAttrs) {
-      if (value !== attr.value) {
+   runningNode = null;
+
+   for (let [attr, oldValue] of affectedAttrs) {
+      if (oldValue !== attr.value) {
+         // if we are here then the node either:
+         //   - set an attribute that it used to define before and which is currently a ghost.
+         //     Someone may have referred to this attr while it was a ghost, so need to unmount all
+         //     such nodes.
+         //   - set an attribute defined by its parent to a different value.
          unmountNodeSet(attr.usedBy);
       }
 
       let ghost = attrGhosts.get(attr);
 
       if (ghost !== undefined) {
-         if (value === ghost.value) {
+         if (attr.value === ghost.value) {
             // Revive the ghost
             attr.usedBy = ghost.usedBy;
          }
@@ -104,10 +124,9 @@ methodFor(Node, function mount() {
 
          attrGhosts.delete(attr);
       }
-
-      attr.value = value;
    }
 
+   affectedAttrs.clear();
    unmountedNodes.delete(this);
 });
 
@@ -115,25 +134,21 @@ methodFor(Node, function mount() {
 methodFor(Node, function augment(body) {
    check(runningNode === null);
 
-   let setAttrs = new Map;
-
    runningNode = this;
-   nodeSetAttrs = setAttrs;
 
    try {
       return body();
    }
    finally {
       runningNode = null;
-      nodeSetAttrs = null;
 
-      for (let [attr, value] of setAttrs) {
-         if (value !== attr.value) {
+      for (let [attr, oldValue] of affectedAttrs) {
+         if (oldValue !== attr.value) {
             unmountNodeSet(attr.usedBy);
          }
-
-         attr.value = value;
       }
+
+      affectedAttrs.clear();
 
       runToFixpoint();
    }
@@ -156,22 +171,57 @@ function unmountNodeSet(nodeSet) {
 methodFor(Node, function unmount() {
    check(!unmountedNodes.has(this));
 
-   this.unuseAllAttrs();
-   this.undefAllAttrs();
+   strip(this, false);
+   unmountedNodes.add(this);
+});
 
-   if (this.undo.length > 0) {
-      this.undo.reverse();
 
-      for (let undo of this.undo) {
+methodFor(Node, function kill() {
+   if (unmountedNodes.has(this)) {
+      // The node may have already been unmounted. In this case, it is already stripped, so just
+      // forget about it. If some of its defined attrs have been ghostified, it's not a problem:
+      // they will be handled normally.
+      unmountedNodes.delete(this);
+      return;
+   }
+
+   strip(this, true);
+
+   if (this.parent !== null) {
+      this.parent.children.delete(this);
+   }
+});
+
+
+function strip(node, isKilling) {
+   node.unuseAllAttrs();
+
+   if (isKilling) {
+      node.undefineAllAttrs();
+   }
+   else {
+      node.ghostifyAllDefinedAttrs();
+   }
+
+   if (node.undo.length > 0) {
+      node.undo.reverse();
+
+      for (let undo of node.undo) {
          console.log("Calling undo:", undo);
          undo();
       }
 
-      this.undo.length = 0;
+      node.undo.length = 0;
    }
 
-   unmountedNodes.add(this);
-});
+   if (node.children.size > 0) {
+      for (let child of node.children) {
+         child.kill();
+      }
+
+      node.children.clear();
+   }
+}
 
 
 methodFor(Node, function unuseAllAttrs() {
@@ -183,7 +233,17 @@ methodFor(Node, function unuseAllAttrs() {
 });
 
 
-methodFor(Node, function undefAllAttrs() {
+methodFor(Node, function undefineAllAttrs() {
+   for (let attr of this.defAttrs) {
+      unmountNodeSet(attr.usedBy);
+      attr.undefine();
+   }
+
+   this.defAttrs.clear();
+});
+
+
+methodFor(Node, function ghostifyAllDefinedAttrs() {
    for (let attr of this.defAttrs) {
       attrGhosts.set(attr, attr.ghostify());
    }

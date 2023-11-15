@@ -2,42 +2,15 @@ import { procedure, entity, runToFixpoint, externalEventHandler } from '$/reacti
 import { parseTopLevel } from './parse-top-level.js';
 
 
-// let student = entity();
+export async function loadModuleContents(projName, modulePath) {
+  let resp = await fetch(`/proj/${projName}/${modulePath}`);
 
+  if (!resp.ok) {
+    throw new Error(`Could not load module contents: '${modulePath}'`);
+  }
 
-// procedure("Report the student", () => {
-//    console.log("Attempt");
-//    console.log(`Student ${student.name} is a ${student.role}`);
-// });
-
-
-// procedure("Initialize the student", () => {
-//    student.name = "Joe";
-//    student.age = 24;
-// });
-
-
-// procedure("Set the role", () => {
-//    if (student.sex === 'male') {
-//       student.role = student.age >= 25 ? 'man' : 'boy';
-//    }
-//    else if (student.sex === 'female') {
-//       student.role = student.age >= 22 ? 'woman' : 'girl';
-//    }
-// });
-
-
-// procedure("Set sex", () => {
-//    student.sex = 'male';
-// });
-
-
-// runToFixpoint();
-
-
-
-// import {loadModuleContents} from '$/poli/project.js';
-// import {makeEntity, runToFixPoint} from '$/reactive';
+  return await resp.text();
+}
 
 
 function makeWebsocket() {
@@ -53,7 +26,7 @@ let ws = makeWebsocket();
 export let sampleModule = entity();
 
 
-procedure("Initial load", function () {
+procedure("Initial load & subscribe to change notifications", function () {
    let refresh = () => {
       loadModuleContents('sample', 'main').then((textContents) => {
          this.augment(() => {
@@ -73,20 +46,43 @@ procedure("Parse module into top-level blocks", function () {
 });
 
 
-procedure("Report the top-level blocks", function () {
-   console.log("Have top-level blocks:", sampleModule.topLevelBlocks);
+procedure("Create entries", function () {
+   sampleModule.textToEntry = new Map;
+   sampleModule.entries = new Set;
+
+   console.log("Outer");
+
+   procedure("Reconciliate new top-level blocks with existing info", function () {
+      console.log("Reconciliation");
+
+      let oldTextToEntry = new Map(sampleModule.textToEntry);
+      let newTextToEntry = new Map;
+
+      for (let block of sampleModule.topLevelBlocks) {
+         let entry = oldTextToEntry.get(block.text);
+
+         if (entry) {
+            oldTextToEntry.delete(block.text);
+         }
+         else {
+            entry = entity();
+            sampleModule.entries.add(entry);
+            console.log("Added entry:", block.text);
+         }
+
+         entry.source = block.text;
+
+         newTextToEntry.set(block.text, entry);
+      }
+
+      for (let [text, entry] of oldTextToEntry) {
+         sampleModule.entries.delete(entry);
+         console.log("Deleted entry:", text);
+      }
+
+      sampleModule.textToEntry = newTextToEntry;
+   });
 });
-
-
-export async function loadModuleContents(projName, modulePath) {
-  let resp = await fetch(`/proj/${projName}/${modulePath}`);
-
-  if (!resp.ok) {
-    throw new Error(`Could not load module contents: '${modulePath}'`);
-  }
-
-  return await resp.text();
-}
 
 
 runToFixpoint();
