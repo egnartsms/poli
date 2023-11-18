@@ -42,7 +42,8 @@ const entityProxyHandler = {
       let attr = entityAttr(store, prop);
 
       if (attr.definedBy === null) {
-         runningNode.defAttr(attr);
+         // TODO: works for max 1 nesting only
+         (runningNode.parent ?? runningNode).defAttr(attr);
       }
       else if (attr.definedBy.isAncestorOf(runningNode))
          ;
