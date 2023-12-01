@@ -1,10 +1,11 @@
-import { procedure, entity, runToFixpoint, externalEventHandler } from '$/reactive';
+import * as rv from '$/reactive';
+
 
 export { makeEntry };
 
 
 function makeEntry(source) {
-   let entry = entity();
+   let entry = rv.makeEntity();
 
    entry.source = source;
 

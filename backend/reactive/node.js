@@ -1,158 +1,192 @@
 import { methodFor } from '$/common/generic.js';
-import { check } from '$/common/util.js';
-import { AttrNotDefined } from './entity.js';
+import * as util from '$/common/util.js';
+import { Queue } from '$/common/queue.js';
+// import { AttrNotDefined } from './entity.js';
 
 export {
    procedure,
+   repeatable,
    runToFixpoint,
-   runningNode,
-   affectedAttrs
+   toRemount,
+   unmountNodeSet,
+   mountingContext,
+   registerMountingMiddleware
 };
 
 
 function procedure(name, proc) {
-   new Node(runningNode, proc);
+   let node = new Procedure(proc);
+
+   toRemount.enqueue(node);
 }
 
 
-let unmountedNodes = new Set;
-let attrGhosts = new Map;
+function Procedure(proc) {
+   this.proc = proc;
+   this.exc = null;
+   this.effects = [];
+   this.deps = new Set;
+}
 
-let runningNode = null;
-let affectedAttrs = new Map;
+
+Procedure.prototype.parent = null;
 
 
-function Node(parent, proc) {
+function repeatable(name, proc) {
+   util.check(mountingContext !== null);
+
+   let node = new Repeatable(proc, mountingContext.originator);
+
+   toRemount.enqueue(node);
+}
+
+
+function Repeatable(proc, parent) {
    this.parent = parent;
    this.proc = proc;
    this.exc = null;
-   this.defAttrs = new Set;
-   this.useAttrs = new Set;
-   this.undo = [];
-   this.children = new Set;
-
-   if (parent !== null) {
-      parent.children.add(this);
-   }
-
-   unmountedNodes.add(this);
+   this.deps = new Set;
 }
 
 
-methodFor(Node, function useAttr(attr) {
-   this.useAttrs.add(attr);
-   attr.usedBy.add(this);
-});
-
-
-/**
- * 'attr' is assumed not to be defined by any other node.
- */
-methodFor(Node, function defAttr(attr) {
-   this.defAttrs.add(attr);
-   attr.definedBy = this;
-});
-
-
-methodFor(Node, function isAncestorOf(node) {
-   while (node !== null && node !== this) {
-      node = node.parent;
-   }
-
-   return node === this;
-});
+let toRemount = new Queue;
 
 
 function runToFixpoint() {
-   while (unmountedNodes.size > 0 || attrGhosts.size > 0) {
-      while (unmountedNodes.size > 0) {
-         let [node] = unmountedNodes;
+   while (!toRemount.isEmpty) {
+      let item = toRemount.dequeue();
 
-         node.mount();
-      }
-
-      // All the ghosts that are still here were abandoned => kill them and unmount all nodes that
-      // depend on them.
-      for (let [attr, ghost] of attrGhosts) {
-         unmountNodeSet(ghost.usedBy);
-      }
-
-      attrGhosts.clear();
+      item.remount();
    }
 }
 
 
-methodFor(Node, function mount() {
-   check(runningNode === null);
-
-   runningNode = this;
-
-   try {
-      this.proc();
-      this.exc = null;
-   }
-   catch (exc) {
-      this.exc = exc;
-      if (!(exc instanceof AttrNotDefined)) {
-         console.warn("Node exception:", exc);
-      }
-   }
-
-   runningNode = null;
-
-   for (let [attr, oldValue] of affectedAttrs) {
-      if (oldValue !== attr.value) {
-         // if we are here then the node either:
-         //   - set an attribute that it used to define before and which is currently a ghost.
-         //     Someone may have referred to this attr while it was a ghost, so need to unmount all
-         //     such nodes.
-         //   - set an attribute defined by its parent to a different value.
-         unmountNodeSet(attr.usedBy);
-      }
-
-      let ghost = attrGhosts.get(attr);
-
-      if (ghost !== undefined) {
-         if (attr.value === ghost.value) {
-            // Revive the ghost
-            attr.usedBy = ghost.usedBy;
-         }
-         else {
-            // Kill the ghost
-            unmountNodeSet(ghost.usedBy);
-         }
-
-         attrGhosts.delete(attr);
-      }
-   }
-
-   affectedAttrs.clear();
-   unmountedNodes.delete(this);
+methodFor([Procedure, Repeatable], function dependOn(dep) {
+   this.deps.add(dep);
+   dep.usedBy.add(this);
 });
 
 
-methodFor(Node, function augment(body) {
-   check(runningNode === null);
+methodFor(Procedure, function addEffect(effect) {
+   this.effects.push(effect);
+});
 
-   runningNode = this;
+// methodFor(Procedure)
 
-   try {
-      return body();
+// methodFor(Procedure, function isSameOriginator(node) {
+//    return this === node;
+// });
+
+
+// methodFor(Repeatable, function isSameOriginator(node) {
+//    return this.parent === node;
+// });
+
+
+let topMountingMiddleware = null;
+
+
+function registerMountingMiddleware(wrapper) {
+   topMountingMiddleware = {
+      wrapper: wrapper,
+      next: topMountingMiddleware
    }
-   finally {
-      runningNode = null;
+}
 
-      for (let [attr, oldValue] of affectedAttrs) {
-         if (oldValue !== attr.value) {
-            unmountNodeSet(attr.usedBy);
-         }
+
+function callThruMountingMiddlewares(context, body) {
+   util.check(mountingContext === null);
+
+   function call(middleware) {
+      if (middleware === null) {
+         mountingContext = context;
+         body();
+         mountingContext = null;
       }
+      else {
+         middleware.wrapper.call(null, context, () => call(middleware.next));
+      }
+   }
 
-      affectedAttrs.clear();
+   call(topMountingMiddleware);
+}
 
-      runToFixpoint();
+
+let mountingContext = null;
+
+
+methodFor(Procedure, function mountingContext() {
+   return {
+      originator: this,
+      executor: this
    }
 });
+
+
+methodFor(Repeatable, function mountingContext() {
+   return {
+      originator: this.parent,
+      executor: this
+   }
+});
+
+
+methodFor([Procedure, Repeatable], function remount() {
+   callThruMountingMiddlewares(this.mountingContext(), () => {
+      try {
+         this.proc.call(mountingContext.originator);
+         this.exc = null;
+      }
+      catch (exc) {
+         this.exc = exc;
+         // if (!(exc instanceof AttrNotDefined)) {
+         //    console.warn("Node exception:", exc);
+         // }
+      }
+   });
+});
+
+
+methodFor(Procedure, function augment(body) {
+   callThruMountingMiddlewares(this.mountingContext(), () => {
+      try {
+         body();
+      }
+      catch (e) {
+         console.warn(`Error in node augmentation:`, e);
+      }
+   });
+
+   runToFixpoint();
+});
+
+
+methodFor(Procedure, function unmount() {
+   this.exc = null;
+   disconnectFromDeps(this);
+
+   toRemount.enqueue(this);
+
+   while (this.effects.length > 0) {
+      this.effects.pop().undo();
+   }
+});
+
+
+methodFor(Repeatable, function unmount() {
+   this.exc = null;
+   disconnectFromDeps(this);
+   toRemount.enqueue(this);
+});
+
+
+function disconnectFromDeps(node) {
+   for (let dep of node.deps) {
+      dep.usedBy.delete(node);
+   }
+
+   node.deps.clear();
+}
 
 
 function unmountNodeSet(nodeSet) {
@@ -168,85 +202,85 @@ function unmountNodeSet(nodeSet) {
 }
 
 
-methodFor(Node, function unmount() {
-   check(!unmountedNodes.has(this));
-
-   strip(this, false);
-   unmountedNodes.add(this);
-});
-
-
-methodFor(Node, function kill() {
-   if (unmountedNodes.has(this)) {
-      // The node may have already been unmounted. In this case, it is already stripped, so just
-      // forget about it. If some of its defined attrs have been ghostified, it's not a problem:
-      // they will be handled normally.
-      unmountedNodes.delete(this);
-      return;
-   }
-
-   strip(this, true);
-
-   if (this.parent !== null) {
-      this.parent.children.delete(this);
-   }
-});
+// /**
+//  * A nested Node can be regarded as an effect.
+//  */
+// methodFor(Node, function undo() {
+   
+// });
 
 
-function strip(node, isKilling) {
-   node.unuseAllAttrs();
+// methodFor(Node, function kill() {
+//    if (toRemount.has(this)) {
+//       // The node may have already been unmounted. In this case, it is already stripped, so just
+//       // forget about it. If some of its defined attrs have been ghostified, it's not a problem:
+//       // they will be handled normally.
+//       toRemount.delete(this);
+//       return;
+//    }
 
-   if (isKilling) {
-      node.undefineAllAttrs();
-   }
-   else {
-      node.ghostifyAllDefinedAttrs();
-   }
+//    strip(this, true);
 
-   if (node.undo.length > 0) {
-      node.undo.reverse();
-
-      for (let undo of node.undo) {
-         console.log("Calling undo:", undo);
-         undo();
-      }
-
-      node.undo.length = 0;
-   }
-
-   if (node.children.size > 0) {
-      for (let child of node.children) {
-         child.kill();
-      }
-
-      node.children.clear();
-   }
-}
+//    if (this.parent !== null) {
+//       this.parent.children.delete(this);
+//    }
+// });
 
 
-methodFor(Node, function unuseAllAttrs() {
-   for (let attr of this.useAttrs) {
-      attr.usedBy.delete(this);
-   }
+// function strip(node, isKilling) {
+//    node.unuseAllAttrs();
 
-   this.useAttrs.clear();
-});
+//    if (isKilling) {
+//       node.undefineAllAttrs();
+//    }
+//    else {
+//       node.ghostifyAllDefinedAttrs();
+//    }
+
+//    if (node.undo.length > 0) {
+//       node.undo.reverse();
+
+//       for (let undo of node.undo) {
+//          console.log("Calling undo:", undo);
+//          undo();
+//       }
+
+//       node.undo.length = 0;
+//    }
+
+//    if (node.children.size > 0) {
+//       for (let child of node.children) {
+//          child.kill();
+//       }
+
+//       node.children.clear();
+//    }
+// }
 
 
-methodFor(Node, function undefineAllAttrs() {
-   for (let attr of this.defAttrs) {
-      unmountNodeSet(attr.usedBy);
-      attr.undefine();
-   }
+// methodFor(Node, function unuseAllAttrs() {
+//    for (let attr of this.useAttrs) {
+//       attr.usedBy.delete(this);
+//    }
 
-   this.defAttrs.clear();
-});
+//    this.useAttrs.clear();
+// });
 
 
-methodFor(Node, function ghostifyAllDefinedAttrs() {
-   for (let attr of this.defAttrs) {
-      attrGhosts.set(attr, attr.ghostify());
-   }
+// methodFor(Node, function undefineAllAttrs() {
+//    for (let attr of this.defAttrs) {
+//       unmountNodeSet(attr.usedBy);
+//       attr.undefine();
+//    }
 
-   this.defAttrs.clear();
-});
+//    this.defAttrs.clear();
+// });
+
+
+// methodFor(Node, function ghostifyAllDefinedAttrs() {
+//    for (let attr of this.defAttrs) {
+//       attrGhosts.set(attr, attr.ghostify());
+//    }
+
+//    this.defAttrs.clear();
+// });

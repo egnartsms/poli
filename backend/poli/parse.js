@@ -1,18 +1,18 @@
-import { procedure } from '$/reactive';
+import * as rv from '$/reactive';
 import { theModule } from './sample-module.js';
 import { makeEntry } from './entry.js';
 
 
-procedure("Parse module into top-level blocks", function () {
+rv.procedure("Parse module into top-level blocks", function () {
    theModule.topLevelBlocks = parseTopLevel(theModule.textContents);
 });
 
 
-procedure("Create entries", function () {
+rv.procedure("Create entries", function () {
    theModule.textToEntry = new Map;
    theModule.entries = new Set;
 
-   procedure("Reconciliate new top-level blocks with existing info", function () {
+   rv.repeatable("Reconciliate new top-level blocks with existing info", () => {
       console.log("Reconciliation");
 
       let oldTextToEntry = new Map(theModule.textToEntry);

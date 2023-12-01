@@ -1,4 +1,4 @@
-import { procedure, entity, runToFixpoint, externalEventHandler } from '$/reactive';
+import { procedure, runToFixpoint, externalEventHandler } from '$/reactive';
 
 import { theModule } from './sample-module.js';
 import './parse.js';
@@ -6,13 +6,13 @@ import './compile.js';
 
 
 export async function loadModuleContents(projName, modulePath) {
-  let resp = await fetch(`/proj/${projName}/${modulePath}`);
+   let resp = await fetch(`/proj/${projName}/${modulePath}`);
 
-  if (!resp.ok) {
-    throw new Error(`Could not load module contents: '${modulePath}'`);
-  }
+   if (!resp.ok) {
+      throw new Error(`Could not load module contents: '${modulePath}'`);
+   }
 
-  return await resp.text();
+   return await resp.text();
 }
 
 
@@ -42,6 +42,3 @@ procedure("Initial load & subscribe to change notifications", function () {
 
 
 runToFixpoint();
-
-
-// loadSample().finally(() => console.log("Sample loaded"));

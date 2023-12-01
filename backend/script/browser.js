@@ -119,7 +119,8 @@ function run() {
       .watch(path.join(BASE_DIR, 'sample'))
       .on('change', (filepath) => {
          console.log("File changed:", filepath);
-         back.send(fs.readFileSync(filepath, 'utf8'));
+         // back.send(fs.readFileSync(filepath, 'utf8'));
+         back.send();
       });
 }
 

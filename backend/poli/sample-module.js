@@ -1,6 +1,6 @@
-import { entity } from '$/reactive';
+import { makeEntity } from '$/reactive';
 
 export { theModule };
 
 
-const theModule = entity();
+const theModule = makeEntity();
