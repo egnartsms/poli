@@ -1,6 +1,6 @@
 import * as util from '$/common/util.js';
 import { methodFor } from '$/common/generic.js';
-import { registerMountingMiddleware, unmountNodeSet, mountingContext, toRemount } from './node.js';
+import { registerMountingMiddleware, addPostFixpointCallback, unmountNodeSet, mountingContext, toRemount } from './node.js';
 
 export { makeEntity, AttrNotDefined };
 
@@ -11,11 +11,18 @@ let entityToStore = new WeakMap;
 const ENTITY = Symbol.for('poli.entity');
 
 
-function makeEntity() {
+function makeEntity(fixedProps) {
    let store = {
       __proto__: null,
       [ENTITY]: null
    };
+
+   if (fixedProps) {
+      for (let [prop, value] of Object.entries(fixedProps)) {
+         store[prop] = {isFixed: true, value: value};
+      }
+   }
+
    let entity = new Proxy(store, entityProxyHandler);
 
    store[ENTITY] = entity;
@@ -28,6 +35,11 @@ function makeEntity() {
 const entityProxyHandler = {
    get(store, prop, rcvr) {
       let attr = entityAttr(store, prop);
+      
+      if (attr.isFixed) {
+         return attr.value;
+      }
+
       let {executor, originator} = mountingContext;
 
       if (attr.definedBy === null) {
@@ -46,6 +58,11 @@ const entityProxyHandler = {
 
    set(store, prop, value, rcvr) {
       let attr = entityAttr(store, prop);
+      
+      if (attr.isFixed) {
+         throw new AttrFixed(prop);
+      }
+
       let {originator, setAttrs} = mountingContext;
 
       if (attr.definedBy === null) {
@@ -65,8 +82,21 @@ const entityProxyHandler = {
       attr.value = value;
 
       return true;
-   }
+   },
 };
+
+
+registerMountingMiddleware((context, next) => {
+   context.setAttrs = new Map;
+
+   next();
+
+   for (let [attr, oldValue] of context.setAttrs) {
+      if (oldValue !== attr.value) {
+         unmountNodeSet(attr.usedBy);
+      }
+   }
+});
 
 
 function entityAttr(store, name) {
@@ -90,6 +120,9 @@ function Attr(store, name) {
 const NON_DEFINED = Symbol('NON_DEFINED');
 
 
+Attr.prototype.isFixed = false;
+
+
 // methodFor(Attr, function access() {
 //    if (this.value === NON_DEFINED) {
 //       throw new AttrNotDefined(this);
@@ -99,12 +132,35 @@ const NON_DEFINED = Symbol('NON_DEFINED');
 // });
 
 
+methodFor(Attr, function useBy(node) {
+   this.usedBy.add(node);
+});
+
+
+methodFor(Attr, function unuseBy(node) {
+   this.usedBy.delete(node);
+
+   if (isAbandoned(this)) {
+      potentialGarbage.add(this);
+   }
+});
+
+
+function isAbandoned(attr) {
+   return (attr.usedBy.size === 0) && (attr.definedBy === null);
+}
+
+
 methodFor(Attr, function undo() {
    toRemount.enqueue(new AttrCheck(this));
 
    this.definedBy = null;
    this.usedBy = new Set;
    this.value = NON_DEFINED;
+
+   if (this.usedBy.size === 0) {
+      potentialGarbage.add(this);
+   }
 });
 
 
@@ -126,30 +182,69 @@ methodFor(AttrCheck, function remount() {
 });
 
 
-class AttrNotDefined extends Error {
-   constructor(attr) {
-      super(`Attribute not defined: '${attr.name}'`);
-      this.attr = attr;
-   }
-}
+let potentialGarbage = new Set;
 
 
-class AttrDuplicated extends Error {
-   constructor(attr) {
-      super(`Attribute defined in multiple nodes: '${attr.name}'`);
-      this.attr = attr;
-   }
-}
-
-
-registerMountingMiddleware((context, next) => {
-   context.setAttrs = new Map;
-
-   next();
-
-   for (let [attr, oldValue] of context.setAttrs) {
-      if (oldValue !== attr.value) {
-         unmountNodeSet(attr.usedBy);
+addPostFixpointCallback(() => {
+   for (let attr of potentialGarbage) {
+      if (isAbandoned(attr)) {
+         unlink(attr);
       }
    }
+
+   potentialGarbage.clear();
 });
+
+
+function unlink(attr) {
+   console.log(`Unlinking attr:`, attr.name);
+   delete attr.store[attr.name];
+}
+
+
+class AttrError extends Error {
+   constructor(message, attr) {
+      super(message);
+      this.attr = attr;
+   }
+}
+
+
+class AttrNotDefined extends AttrError {
+   constructor(attr) {
+      super(`Attribute not defined: '${attr.name}'`, attr);
+   }
+}
+
+
+class AttrDuplicated extends AttrError {
+   constructor(attr) {
+      super(`Attribute already defined elsewhere: '${attr.name}'`, attr);
+   }
+}
+
+
+class AttrNotOwned extends AttrError {
+   constructor(attr) {
+      super(
+         `Attribute is not defined by the current node (or not defined at all): '${attr.name}'`,
+         attr
+      );
+   }
+}
+
+
+class AttrFixed extends AttrError {
+   constructor(name) {
+      super(`Attribute is fixed but attempted to set: '${name}'`, null);
+      this.name = name;
+   }
+}
+
+
+class AttrNotExists extends AttrError {
+   constructor(name) {
+      super(`Attribute does not yet exist: '${name}'`, null);
+      this.name = name;
+   }
+}

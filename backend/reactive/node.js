@@ -1,6 +1,6 @@
 import { methodFor } from '$/common/generic.js';
-import * as util from '$/common/util.js';
 import { Queue } from '$/common/queue.js';
+import * as util from '$/common/util.js';
 // import { AttrNotDefined } from './entity.js';
 
 export {
@@ -10,42 +10,34 @@ export {
    toRemount,
    unmountNodeSet,
    mountingContext,
-   registerMountingMiddleware
+   registerMountingMiddleware,
+   addPostFixpointCallback
 };
 
 
 function procedure(name, proc) {
-   let node = new Procedure(proc);
+   let node = new Node(name, proc);
 
    toRemount.enqueue(node);
 }
-
-
-function Procedure(proc) {
-   this.proc = proc;
-   this.exc = null;
-   this.effects = [];
-   this.deps = new Set;
-}
-
-
-Procedure.prototype.parent = null;
 
 
 function repeatable(name, proc) {
    util.check(mountingContext !== null);
 
-   let node = new Repeatable(proc, mountingContext.originator);
+   let node = new Node(name, proc, mountingContext.originator);
 
    toRemount.enqueue(node);
 }
 
 
-function Repeatable(proc, parent) {
-   this.parent = parent;
+function Node(name, proc, originator=null) {
+   this.name = name;
    this.proc = proc;
    this.exc = null;
+   this.effects = originator === null ? [] : null;
    this.deps = new Set;
+   this.originator = originator ?? this;
 }
 
 
@@ -58,18 +50,23 @@ function runToFixpoint() {
 
       item.remount();
    }
+
+   for (let callback of postFixpointCallbacks) {
+      callback();
+   }
 }
 
 
-methodFor([Procedure, Repeatable], function dependOn(dep) {
+methodFor(Node, function dependOn(dep) {
    this.deps.add(dep);
-   dep.usedBy.add(this);
+   dep.useBy(this);
 });
 
 
-methodFor(Procedure, function addEffect(effect) {
+methodFor(Node, function addEffect(effect) {
    this.effects.push(effect);
 });
+
 
 // methodFor(Procedure)
 
@@ -90,7 +87,7 @@ function registerMountingMiddleware(wrapper) {
    topMountingMiddleware = {
       wrapper: wrapper,
       next: topMountingMiddleware
-   }
+   };
 }
 
 
@@ -104,7 +101,9 @@ function callThruMountingMiddlewares(context, body) {
          mountingContext = null;
       }
       else {
-         middleware.wrapper.call(null, context, () => call(middleware.next));
+         let {wrapper, next} = middleware;
+
+         wrapper.call(null, context, () => call(next));
       }
    }
 
@@ -112,29 +111,29 @@ function callThruMountingMiddlewares(context, body) {
 }
 
 
+const postFixpointCallbacks = [];
+
+
+function addPostFixpointCallback(callback) {
+   postFixpointCallbacks.push(callback);
+}
+
+
 let mountingContext = null;
 
 
-methodFor(Procedure, function mountingContext() {
+function mountingContextFor(node) {
    return {
-      originator: this,
-      executor: this
+      originator: node.originator,
+      executor: node,
    }
-});
+}
 
 
-methodFor(Repeatable, function mountingContext() {
-   return {
-      originator: this.parent,
-      executor: this
-   }
-});
-
-
-methodFor([Procedure, Repeatable], function remount() {
-   callThruMountingMiddlewares(this.mountingContext(), () => {
+methodFor(Node, function remount() {
+   callThruMountingMiddlewares(mountingContextFor(this), () => {
       try {
-         this.proc.call(mountingContext.originator);
+         this.proc.call(this.originator);
          this.exc = null;
       }
       catch (exc) {
@@ -147,8 +146,8 @@ methodFor([Procedure, Repeatable], function remount() {
 });
 
 
-methodFor(Procedure, function augment(body) {
-   callThruMountingMiddlewares(this.mountingContext(), () => {
+methodFor(Node, function augment(body) {
+   callThruMountingMiddlewares(mountingContextFor(this), () => {
       try {
          body();
       }
@@ -161,32 +160,22 @@ methodFor(Procedure, function augment(body) {
 });
 
 
-methodFor(Procedure, function unmount() {
+methodFor(Node, function unmount() {
    this.exc = null;
-   disconnectFromDeps(this);
+   
+   for (let dep of this.deps) {
+      dep.unuseBy(this);
+   }
+   this.deps.clear();
 
    toRemount.enqueue(this);
 
-   while (this.effects.length > 0) {
-      this.effects.pop().undo();
+   if (this.effects !== null) {
+      while (this.effects.length > 0) {
+         this.effects.pop().undo();
+      }
    }
 });
-
-
-methodFor(Repeatable, function unmount() {
-   this.exc = null;
-   disconnectFromDeps(this);
-   toRemount.enqueue(this);
-});
-
-
-function disconnectFromDeps(node) {
-   for (let dep of node.deps) {
-      dep.usedBy.delete(node);
-   }
-
-   node.deps.clear();
-}
 
 
 function unmountNodeSet(nodeSet) {

@@ -1,6 +1,5 @@
 import * as rv from '$/reactive';
 import { theModule } from './sample-module.js';
-import { makeEntry } from './entry.js';
 
 
 rv.procedure("Parse module into top-level blocks", function () {
@@ -25,7 +24,7 @@ rv.procedure("Create entries", function () {
             oldTextToEntry.delete(block.text);
          }
          else {
-            entry = makeEntry(block.text);
+            entry = rv.makeEntity({source: block.text});
             theModule.entries.add(entry);
             console.log("Added entry:", entry.source);
          }

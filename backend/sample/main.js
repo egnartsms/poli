@@ -11,12 +11,14 @@ const x1 = x0 + 20;
 
 // const sum = (x0 + x1) * 2;
 
+let x = fuck - 1;
+
 function defme() {
    console.log("Hey!");
 }
 
-let x = fuck - 1;
 let y = x ** 2;
+
 
 const sum = (x0 + x1) * 2;
 
@@ -28,3 +30,4 @@ const sum = (x0 + x1) * 2;
 // function sample() {
 //    return [x0, x1];
 // }
+    
