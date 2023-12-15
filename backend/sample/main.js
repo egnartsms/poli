@@ -12,6 +12,7 @@ const x1 = x0 + 20;
 // const sum = (x0 + x1) * 2;
 
 let x = fuck - 1;
+let y = fuck - 1;
 
 function defme() {
    console.log("Hey!");
@@ -27,7 +28,8 @@ const sum = (x0 + x1) * 2;
   style
   */
 
-// function sample() {
-//    return [x0, x1];
-// }
-    
+function sample() {
+   return [x0, x1, 0];
+}
+
+// const r = 0;

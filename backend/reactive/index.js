@@ -23,5 +23,6 @@
  */
 
 export { makeEntity } from './entity.js';
-export { procedure, repeatable, runToFixpoint } from './node.js';
+export { procedure, repeatable } from './procedure.js';
+export { fulfillToFixpoint } from './fulfillment.js';
 export { externalEventHandler } from './event-listener.js';

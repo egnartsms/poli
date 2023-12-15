@@ -2,28 +2,40 @@ import {arrayify} from './data.js';
 
 
 /**
- * methodFor(klasses, method)
- * methodFor(klasses, name, method)
+ * Usage syntax:
+ *
+ * methodFor(klass, method)
+ * methodFor(klass, name, method)
+ * methodFor(klass, methodsObject)
  */
-export function methodFor(klasses) {
-   let method, name;
+export function methodFor(klass) {
+   let methods;
 
    if (arguments.length === 3) {
-      name = arguments[1];
-      method = arguments[2];
+      let [, name, method] = arguments;
+      
+      methods = [[name, method]];
    }
    else if (arguments.length === 2) {
-      method = arguments[1];
-      name = method.name;
+      let arg = arguments[1];
+
+      if (typeof arg === 'function') {
+         methods = [[arg.name, arg]];
+      }
+      else {
+         methods = Object.entries(arg);
+      }
    }
    else
-      throw new Error();
+      throw new Error;
 
-   for (let klass of arrayify(klasses)) {
+   for (let [name] of methods) {
       if (Object.hasOwn(klass.prototype, name)) {
          throw new Error(`Duplicate method '${name}' for '${klass.name}'`);
       }
+   }
 
+   for (let [name, method] of methods) {
       klass.prototype[name] = method;
    }
 }

@@ -1,4 +1,4 @@
-import { procedure, runToFixpoint, externalEventHandler } from '$/reactive';
+import { procedure, fulfillToFixpoint, externalEventHandler } from '$/reactive';
 
 import { theModule } from './sample-module.js';
 import './parse.js';
@@ -41,4 +41,4 @@ procedure("Initial load & subscribe to change notifications", function () {
 });
 
 
-runToFixpoint();
+fulfillToFixpoint();

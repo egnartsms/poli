@@ -4,16 +4,6 @@ import { procedure } from '$/reactive';
 import { theModule } from './sample-module.js';
 
 
-procedure("Try garbage collection", function () {
-   if (theModule.textContents.length % 2 === 0) {
-      theModule.lenEven = true;
-   }
-   else {
-      theModule.lenOdd = true;
-   }
-});
-
-
 procedure("Compile all entries of the sample module", function () {
    theModule.entries.forEach(entry => {
       entry.refBindings = [];

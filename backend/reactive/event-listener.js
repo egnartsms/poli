@@ -1,4 +1,4 @@
-import { mountingContext } from './node.js';
+import { activeContext } from './mount.js';
 
 export { externalEventHandler };
 
@@ -6,7 +6,7 @@ export { externalEventHandler };
 function externalEventHandler(object, event, listener) {
    object.addEventListener(event, listener);
 
-   mountingContext.originator.addEffect({
+   activeContext().originator.addEffect({
       undo: () => object.removeEventListener(event, listener)
    });
 }

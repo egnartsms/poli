@@ -1,35 +1,39 @@
 export class Queue {
-  constructor() {
-    this.front = [];
-    this.rear = [];
-  }
+   constructor() {
+      this.front = [];
+      this.rear = [];
+   }
 
-  enqueue(item) {
-    this.rear.push(item);
-  }
+   enqueue(item) {
+      this.rear.push(item);
+   }
 
-  enqueueFirst(item) {
-    this.front.push(item);
-  }
+   enqueueAll(items) {
+      for (let item of items) {
+         this.enqueue(item);
+      }
+   }
 
-  dequeue() {
-    if (this.front.length === 0) {
-      rearToFront(this);
-    }
+   // enqueueFirst(item) {
+   //    this.front.push(item);
+   // }
 
-    return this.front.pop();
-  }
+   dequeue() {
+      if (this.front.length === 0) {
+         stackRepump(this.rear, this.front);
+      }
 
-  get isEmpty() {
-    return this.front.length === 0 && this.rear.length === 0;
-  }
+      return this.front.pop();
+   }
+
+   get isEmpty() {
+      return this.front.length === 0 && this.rear.length === 0;
+   }
 }
 
 
-function rearToFront(queue) {
-  let {front, rear} = queue;
-
-  while (rear.length > 0) {
-    front.push(rear.pop());
-  }
+function stackRepump(from, to) {
+   while (from.length > 0) {
+      to.push(from.pop());
+   }
 }
