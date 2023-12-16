@@ -26,3 +26,4 @@ export { makeEntity } from './entity.js';
 export { procedure, repeatable } from './procedure.js';
 export { fulfillToFixpoint } from './fulfillment.js';
 export { externalEventHandler } from './event-listener.js';
+export { RvSet } from './rvset.js';

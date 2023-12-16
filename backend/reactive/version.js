@@ -1,3 +1,6 @@
+export { Version };
+
+
 class Version {
    added = new Set;
    removed = new Set;

@@ -1,4 +1,10 @@
 import * as util from '$/common/util.js';
+import { activeContext } from './mount.js';
+import { toFulfill } from './fulfillment.js';
+import { Iteration } from './iteration.js';
+import { Version } from './version.js';
+
+export { RvSet };
 
 
 /**
@@ -23,13 +29,11 @@ class RvSet {
 
    forEach(proc) {
       let iteration = new Iteration(this, proc);
-      this.iterations.push(iteration);
-      toRemount.enqueuePrio(iteration);
-   }
 
-   refBy(iter) {
+      this.iterations.add(iteration);
       this.nrefs += 1;
-      this.iterations.add(iter);
+
+      toFulfill.enqueue(iteration);
    }
 
    unrefBy(iter) {
@@ -85,7 +89,7 @@ class RvSet {
          `RvSet modified not by its original creator`
       );
 
-      this.items.remove(item);      
+      this.items.delete(item);      
 
       if (this.ver !== null) {
          this.ver.remove(item);

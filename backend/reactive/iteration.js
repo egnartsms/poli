@@ -1,5 +1,9 @@
 import { methodFor } from '$/common/generic.js';
 import * as typ from './typical-node.js';
+import { doMounting } from './mount.js';
+import { warnOnError } from './common.js';
+
+export { Iteration };
 
 
 function Iteration(coll, proc) {
@@ -11,8 +15,6 @@ function Iteration(coll, proc) {
    for (let item of coll) {
       iterate(this, item);
    }
-
-   coll.refBy(this);
 
    this.ver = coll.currentVersion();
 }

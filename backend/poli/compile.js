@@ -6,7 +6,8 @@ import { theModule } from './sample-module.js';
 
 procedure("Compile all entries of the sample module", function () {
    theModule.entries.forEach(entry => {
-      entry.refBindings = [];
+      entry.sourceLen = entry.source.length;
+      console.log("entry.sourceLen = ", entry.sourceLen);
    });
 });
 

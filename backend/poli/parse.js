@@ -1,4 +1,5 @@
 import * as rv from '$/reactive';
+import { RvSet } from '$/reactive';
 import { theModule } from './sample-module.js';
 
 
@@ -9,7 +10,7 @@ rv.procedure("Parse module into top-level blocks", function () {
 
 rv.procedure("Create entries", function () {
    theModule.textToEntry = new Map;
-   theModule.entries = new Set;
+   theModule.entries = new RvSet;
 
    rv.repeatable("Reconciliate new top-level blocks with existing info", () => {
       console.log("Reconciliation");
@@ -33,7 +34,7 @@ rv.procedure("Create entries", function () {
       }
 
       for (let [text, entry] of oldTextToEntry) {
-         theModule.entries.delete(entry);
+         theModule.entries.remove(entry);
          console.log("Deleted entry:", entry.source);
       }
 

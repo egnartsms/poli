@@ -29,7 +29,7 @@ const sum = (x0 + x1) * 2;
   */
 
 function sample() {
-   return [x0, x1, 0];
+   return [x0, x1];
 }
 
 // const r = 0;
