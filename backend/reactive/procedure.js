@@ -1,11 +1,11 @@
 import { methodFor } from '$/common/generic.js';
 import { Queue } from '$/common/queue.js';
 import * as util from '$/common/util.js';
+import * as Nod from './node.js';
 import { warnOnError } from './common.js';
 import { excReactiveNormal } from './entity.js';
 import { toFulfill, fulfillToFixpoint } from './fulfillment.js';
 import { activeContext, doMounting } from './mount.js';
-import * as typ from './typical-node.js';
 
 
 export {
@@ -27,19 +27,19 @@ function repeatable(name, proc) {
 function Procedure(name, proc) {
    this.name = name;
    this.proc = proc;
+   this.id = Nod.getNextId();
    this.exc = null;
    this.deps = new Set;
    this.effects = [];
 }
 
 
-methodFor(Procedure, typ.dependOn);
-methodFor(Procedure, typ.addEffect);
-
-
 methodFor(Procedure, {
+   dependOn: Nod.dependOn,
+   addEffect: Nod.addEffect,
+
    fulfill() {
-      doMounting(typ.mountingContextFor(this), () => {
+      doMounting(Nod.mountingContextFor(this), () => {
          try {
             this.proc.call(this);
          }
@@ -59,14 +59,13 @@ methodFor(Procedure, {
    unmount() {
       this.exc = null;
       toFulfill.enqueue(this);
-      typ.dismantle(this, true);
+      Nod.dismantle(this, true);
    }
-
 });
 
 
 methodFor(Procedure, function augment(body) {
-   doMounting(typ.mountingContextFor(this), warnOnError(body));
+   doMounting(Nod.mountingContextFor(this), warnOnError(body));
    fulfillToFixpoint();
 });
 
@@ -80,18 +79,9 @@ function Repeatable(name, proc, parent) {
 }
 
 
-methodFor(Repeatable, typ.dependOn);
-
-
-methodFor(Repeatable, function mountingContext() {
-   return {
-      executor: this,
-      originator: this.parent,
-   };
-});
-
-
 methodFor(Repeatable, {
+   dependOn: Nod.dependOn,
+
    fulfill() {
       doMounting(
          {
@@ -119,6 +109,6 @@ methodFor(Repeatable, {
    unmount() {
       this.exc = null;
       toFulfill.enqueue(this);
-      typ.clearDeps(this);
+      Nod.clearDeps(this);
    }
 });

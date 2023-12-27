@@ -1,6 +1,7 @@
-import { makeEntity } from '$/reactive';
+import * as rv from '$/reactive';
+import * as Module from './module.js';
 
 export { theModule };
 
 
-const theModule = makeEntity();
+const theModule = rv.makeEntity();

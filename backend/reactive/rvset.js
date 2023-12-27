@@ -21,19 +21,17 @@ class RvSet {
    constructor(iterable) {
       let context = activeContext();
 
-      util.check(context != null, `An RvSet created outside a reactive procedure`);
+      util.check(context != null, `An RvSet created outside reactive context`);
 
       this.originator = context.originator;
       this.items = new Set(iterable);
    }
 
    forEach(proc) {
-      let iteration = new Iteration(this, proc);
+      let iteration = new Iteration(this, proc);   // new Iteration() does sync traversal
 
       this.iterations.add(iteration);
       this.nrefs += 1;
-
-      toFulfill.enqueue(iteration);
    }
 
    unrefBy(iter) {

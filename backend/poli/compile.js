@@ -1,92 +1,68 @@
-import * as acorn from 'acorn';
+import * as Acorn from 'acorn';
 
 import { procedure } from '$/reactive';
+import { map } from '$/common/util.js';
 import { theModule } from './sample-module.js';
+import * as Module from './module.js';
 
 
 procedure("Compile all entries of the sample module", function () {
    theModule.entries.forEach(entry => {
-      entry.sourceLen = entry.source.length;
-      console.log("entry.sourceLen = ", entry.sourceLen);
+      let body;
+
+      try {
+         ({body} = Acorn.parse(entry.source, {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            ranges: true
+         }));
+      }
+      catch (exc) {
+         entry.syntaxError = exc;
+         return;
+      }
+
+      if (body.length !== 1) {
+         entry.malformed = `More than 1 expression/declaration in a block`;
+         return;
+      }
+
+      let [item] = body;
+
+      if (item.type !== 'VariableDeclaration') {
+         entry.malformed = `Not supported syntax`;
+         return;
+      }
+
+      if (item.kind !== 'const') {
+         entry.malformed = `Not supported entry`;
+         return;
+      }
+
+      if (item.declarations.length !== 1) {
+         entry.malformed = `Not supporting multiple const declarations`;
+         return;
+      }
+
+      let [decl] = item.declarations;
+
+      if (decl.id.type !== 'Identifier') {
+         entry.malformed = `Only support single variable declaration`;
+         return;
+      }
+
+      entry.target = Module.getBinding(theModule, decl.id.name);
+
+      let nonlocals = nonlocalIdentifiers(decl.init);
+      let instrumented = replaceNonlocals(
+         entry.source, decl.init.range, map(nonlocals, node => node.range)
+      );
+
+      entry.instrumented = instrumented;
+
+      console.log("entry target id:", entry.target.id);
    });
 });
-
-
-function compileCodeBlock(module, block) {
-   assert(() => block.type === 'code');
-
-   let decl = parseDeclaration(block.text);
-   let nlIds = nonlocalIdentifiers(decl.init);
-   let instrumented = replaceNonlocals(
-      block.text,
-      map(nlIds, id => [id.start, id.end]),
-      [decl.init.start, decl.init.end]
-   );
-   let factory = compileIntoFactory(instrumented);
-
-   return new Definition(module, {
-      target: module.getBinding(decl.id.name),
-      factory: factory,
-      referencedBindings: new Set(map(nlIds, id => module.getBinding(id.name)))
-   });
-}
-
-
-function parseDeclaration(source) {
-   let body;
-
-   try {
-      ({body} = acorn.parse(source, {
-         ecmaVersion: 'latest',
-         sourceType: 'module',
-      }));
-   }
-   catch (e) {
-      throw new Error(`Not handling syntactically incorrect definitions yet`);
-   }
-
-   if (body.length !== 1) {
-      throw new Error(`Expected exactly 1 expression/declaration in a block`);
-   }
-
-   let [item] = body;
-
-   if (item.type !== 'VariableDeclaration') {
-      throw new Error(`Not supported TL member: '${item.type}'`);
-   }
-
-   if (item.kind !== 'const') {
-      throw new Error(`Not supporting anything except 'const' declarations`);
-   }
-
-   if (item.declarations.length !== 1) {
-      throw new Error(`Not supporting multiple const declarations`);
-   }
-
-   let [decl] = item.declarations;
-
-   if (decl.id.type !== 'Identifier') {
-      throw new Error(`Only support single variable declaration`);
-   }
-
-   return decl;
-}
-
-
-function compileIntoFactory(code) {
-   try {
-      return Function('_$', factorySource(code));
-   }
-   catch (e) {
-      throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${code}'`);
-   }
-}
-
-
-const factorySource = (source) => `
-"use strict";
-return (${source});
-`;
 
 
 function nonlocalIdentifiers(node) {
@@ -94,7 +70,12 @@ function nonlocalIdentifiers(node) {
       if (node.type === 'Literal')
          ;
       else if (node.type === 'Identifier') {
-         yield node;
+         if (Object.hasOwn(window, node.name)) {
+            // Global identifier, don't yield
+         }
+         else {
+            yield node;
+         }
       }
       else if (node.type === 'UnaryExpression') {
          yield* refs(node.argument);
@@ -117,7 +98,7 @@ function nonlocalIdentifiers(node) {
  * 
  * TODO: when needed make it a generic replacer
  */
-function replaceNonlocals(source, ranges, [start, end]) {
+function replaceNonlocals(source, [start, end], ranges) {
    let idx = start;
    let pieces = [];
 
@@ -131,3 +112,19 @@ function replaceNonlocals(source, ranges, [start, end]) {
 
    return pieces.join('');
 }
+
+
+// function compileIntoFactory(code) {
+//    try {
+//       return Function('_$', factorySource(code));
+//    }
+//    catch (e) {
+//       throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${code}'`);
+//    }
+// }
+
+
+// const factorySource = (source) => `
+// "use strict";
+// return (${source});
+// `;

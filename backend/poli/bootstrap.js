@@ -1,6 +1,8 @@
 import { procedure, fulfillToFixpoint, externalEventHandler } from '$/reactive';
 
 import { theModule } from './sample-module.js';
+import * as Module from './module.js';
+
 import './parse.js';
 import './compile.js';
 
@@ -27,6 +29,8 @@ let ws = makeWebsocket();
 
 
 procedure("Initial load & subscribe to change notifications", function () {
+   Module.init(theModule);
+
    let refresh = () => {
       loadModuleContents('sample', 'main').then((textContents) => {
          this.augment(() => {

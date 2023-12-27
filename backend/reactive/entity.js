@@ -1,9 +1,8 @@
 import * as util from '$/common/util.js';
 import { methodFor } from '$/common/generic.js';
-import { mergeSetsIntoBigger } from '$/common/data.js';
-import { registerMountingMiddleware, activeContext } from './mount.js';
+import { activeContext, registerMountingMiddleware } from './mount.js';
 import { toFulfill, registerPostFixpointCallback } from './fulfillment.js';
-import { unmountNodeSet } from './typical-node.js';
+import { unmountNodeSet } from './node.js';
 
 export { makeEntity, excReactiveNormal };
 
@@ -11,25 +10,25 @@ export { makeEntity, excReactiveNormal };
 let entityToStore = new WeakMap;
 
 
-const ENTITY = Symbol.for('poli.entity');
+const symEntity = Symbol.for('poli.entity');
+const symCreatorId = Symbol.for('poli.creatorId');
 
 
-function makeEntity(fixedProps) {
+function makeEntity(setAttrs) {
+   let context = activeContext();
+
    let store = {
       __proto__: null,
-      [ENTITY]: null
+      [symEntity]: null,
+      [symCreatorId]: context?.originator.id ?? 0,
    };
-
-   if (fixedProps) {
-      for (let [prop, value] of Object.entries(fixedProps)) {
-         store[prop] = {isFixed: true, value: value};
-      }
-   }
 
    let entity = new Proxy(store, entityProxyHandler);
 
-   store[ENTITY] = entity;
+   store[symEntity] = entity;
    entityToStore.set(entity, store);
+
+   Object.assign(entity, setAttrs);
 
    return entity;
 }
@@ -38,51 +37,43 @@ function makeEntity(fixedProps) {
 const entityProxyHandler = {
    get(store, prop, rcvr) {
       let attr = entityAttr(store, prop);
-
-      if (attr.isFixed) {
-         return attr.value;
-      }
-
       let {executor, originator} = activeContext();
 
-      if (attr.definedBy === null) {
+      if (attr.definedByNodeId !== originator.id) {
          executor.dependOn(attr);
+      }
+
+      if (attr.definedByNodeId === 0) {
          throw new AttrNotDefined(attr);
       }
 
-      if (attr.definedBy === originator)
-         ;
-      else {
-         executor.dependOn(attr);
-      }
-
-      return attr.setting.value;
+      return attr.value;
    },
 
    set(store, prop, value, rcvr) {
       let attr = entityAttr(store, prop);
-
-      if (attr.isFixed) {
-         throw new AttrFixed(prop);
-      }
-
       let {originator, setAttrs} = activeContext();
 
-      if (attr.definedBy === null) {
-         attr.definedBy = originator;
-         originator.addEffect(attr);
+      if (attr.definedByNodeId === 0) {
+         attr.definedByNodeId = originator.id;
+
+         // If the same node that created this entity is setting an attribute on it, don't record it
+         // as effect. So the attribute won't be unset when the node is unmounted.
+         if (store[symCreatorId] !== originator.id) {
+            originator.addEffect(attr);
+         }
       }
-      else if (attr.definedBy === originator)
+      else if (attr.definedByNodeId === originator.id)
          ;
       else {
          throw new AttrDuplicated(attr);
       }
 
       if (!setAttrs.has(attr)) {
-         setAttrs.set(attr, attr.setting.value);
+         setAttrs.set(attr, attr.value);
       }
 
-      attr.setting.value = value;
+      attr.value = value;
 
       return true;
    },
@@ -101,68 +92,63 @@ function entityAttr(store, name) {
 function Attr(store, name) {
    this.store = store;
    this.name = name;
-   this.definedBy = null;
-   this.setting = freshAttrSetting(null);
+   this.definedByNodeId = 0;
+   this.value = NON_DEFINED;
+   this.usedBy = new Set;
+   this.prevValue = NON_DEFINED;
+   this.prevUsedBy = null;
 }
-
-
-Attr.prototype.isFixed = false;
 
 
 methodFor(Attr, {
    useBy(node) {
-      this.setting.usedBy.add(node);
+      this.usedBy.add(node);
    },
 
    unuseBy(node) {
-      this.setting.usedBy.delete(node);
+      this.usedBy.delete(node);
       potentialGarbage.add(this);
    },
 
    undo(reversibly) {
-      util.check(this.definedBy !== null);
+      util.check(this.definedByNodeId !== 0);
 
-      this.definedBy = null;
+      this.definedByNodeId = 0;
 
-      if (reversibly) {
-         this.setting = freshAttrSetting(this.setting);
+      if (reversibly && this.prevUsedBy === null) {
+         this.prevValue = this.value;
+         this.prevUsedBy = this.usedBy;
+         this.value = NON_DEFINED;
+         this.usedBy = new Set;
+
          toFulfill.enqueue(this);
       }
       else {
-         this.setting.value = NON_DEFINED;
-         unmountNodeSet(this.setting.usedBy);
+         this.value = NON_DEFINED;
+         unmountNodeSet(this.usedBy);
       }
 
       potentialGarbage.add(this);
    },
 
    fulfill() {
-      let usedBy = this.setting.usedBy;
-      let valueNow = this.setting.value;
+      util.check(this.prevUsedBy !== null);
 
-      // In 99.9% cases there will be only 1 iteration of this loop
-      for (let setg = this.setting.prev; setg !== null; setg = setg.prev) {
-         if (setg.value === valueNow) {
-            usedBy = mergeSetsIntoBigger(setg.usedBy, usedBy);
-         }
-         else {
-            unmountNodeSet(setg.usedBy);
-         }
+      if (this.value === this.prevValue) {
+         // Same value restored => retain all the previous usages
+         util.addAll(this.prevUsedBy, this.usedBy);
+
+         this.usedBy = this.prevUsedBy;
+      }
+      else {
+         // Value changed => unmount previous usages
+         unmountNodeSet(this.prevUsedBy);
       }
 
-      this.setting.usedBy = usedBy;
-      this.setting.prev = null;
+      this.prevUsedBy = null;
+      this.prevValue = NON_DEFINED;
    }
 });
-
-
-function freshAttrSetting(prev) {
-   return {
-      value: NON_DEFINED,
-      usedBy: new Set,
-      prev: prev
-   };
-}
 
 
 const NON_DEFINED = Symbol('NON_DEFINED');
@@ -174,8 +160,8 @@ registerMountingMiddleware((context, next) => {
    next();
 
    for (let [attr, oldValue] of context.setAttrs) {
-      if (oldValue !== attr.setting.value) {
-         unmountNodeSet(attr.setting.usedBy);
+      if (oldValue !== attr.value) {
+         unmountNodeSet(attr.usedBy);
       }
    }
 });
@@ -197,7 +183,7 @@ registerPostFixpointCallback(() => {
 
 
 function isAbandoned(attr) {
-   return (attr.setting.usedBy.size === 0) && (attr.definedBy === null);
+   return (attr.usedBy.size === 0) && (attr.definedByNodeId === 0);
 }
 
 
@@ -227,27 +213,9 @@ class AttrDuplicated extends AttrError {
 }
 
 
-class AttrNotOwned extends AttrError {
-   constructor(attr) {
-      super(
-         `Attribute is not defined by the current node (or not defined at all): '${attr.name}'`,
-         attr
-      );
-   }
-}
-
-
 class AttrFixed extends AttrError {
    constructor(name) {
       super(`Attribute is fixed but attempted to set: '${name}'`, null);
-      this.name = name;
-   }
-}
-
-
-class AttrNotExists extends AttrError {
-   constructor(name) {
-      super(`Attribute does not yet exist: '${name}'`, null);
       this.name = name;
    }
 }

@@ -14,10 +14,6 @@ export class Queue {
       }
    }
 
-   // enqueueFirst(item) {
-   //    this.front.push(item);
-   // }
-
    dequeue() {
       if (this.front.length === 0) {
          stackRepump(this.rear, this.front);

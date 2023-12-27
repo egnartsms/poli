@@ -1,6 +1,3 @@
-import {arrayify} from './data.js';
-
-
 /**
  * Usage syntax:
  *

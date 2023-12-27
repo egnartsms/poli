@@ -27,8 +27,8 @@
   },
   "homepage": "https://github.com/egnartsms/poli#readme",
   "dependencies": {
-    "acorn": "^8.8.2",
-    "acorn-loose": "^8.3.0",
+    "acorn": "^8.11.2",
+    "acorn-loose": "^8.4.0",
     "chokidar": "^3.5.3",
     "mime-lite": "^1.0.3",
     "ws": "^8.12.0"

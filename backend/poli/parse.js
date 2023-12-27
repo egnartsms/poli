@@ -8,6 +8,11 @@ rv.procedure("Parse module into top-level blocks", function () {
 });
 
 
+const reg = new FinalizationRegistry((held) => {
+   console.log("Finalized", held);
+});
+
+
 rv.procedure("Create entries", function () {
    theModule.textToEntry = new Map;
    theModule.entries = new RvSet;
@@ -26,16 +31,20 @@ rv.procedure("Create entries", function () {
          }
          else {
             entry = rv.makeEntity({source: block.text});
+            reg.register(entry, "entry");
             theModule.entries.add(entry);
             console.log("Added entry:", entry.source);
          }
 
+         entry.start = block.start;
+         entry.end = block.end;
+
          newTextToEntry.set(block.text, entry);
       }
 
-      for (let [text, entry] of oldTextToEntry) {
-         theModule.entries.remove(entry);
+      for (let entry of oldTextToEntry.values()) {
          console.log("Deleted entry:", entry.source);
+         theModule.entries.remove(entry);
       }
 
       theModule.textToEntry = newTextToEntry;

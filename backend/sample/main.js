@@ -1,35 +1,22 @@
-// const fearNot = nonExistingVariable;
+// Source value
+const x = 0;
 
-// Slightly bigger than 'x0'
-const x0 = 0;
-const x1 = x0 + 20;
+// Dependent value
+const y = x + 1;
 
+// const z = y + 1;
 
-/**
- * Here follows a multiline docstring comment.
- */
+// // Dependent value
+// const z = y - 1;
 
-// const sum = (x0 + x1) * 2;
+// // Dependent value
+// const t = z + 2;
 
-let x = fuck - 1;
-let y = fuck - 1;
+// // Dependent value
+// const u = t * 2;
 
-function defme() {
-   console.log("Hey!");
-}
+// // Dependent value
+// const v = u * 3;
 
-let y = x ** 2;
-
-
-const sum = (x0 + x1) * 2;
-
-/* Backing
-  facking
-  style
-  */
-
-function sample() {
-   return [x0, x1];
-}
-
-// const r = 0;
+// // Dependent value
+// const w = v + 4;

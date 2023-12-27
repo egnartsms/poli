@@ -1,5 +1,5 @@
 import { methodFor } from '$/common/generic.js';
-import * as typ from './typical-node.js';
+import * as Nod from './node.js';
 import { doMounting } from './mount.js';
 import { warnOnError } from './common.js';
 
@@ -34,7 +34,7 @@ function iterate(iter, item) {
 methodFor(Iteration, {
    undo(reversibly) {
       for (let node of this.itemToNode.values()) {
-         typ.dismantle(node, reversibly);
+         Nod.dismantle(node, reversibly);
       }
 
       this.itemToNode.clear();
@@ -55,7 +55,7 @@ methodFor(Iteration, {
          if (this.itemToNode.has(item)) {
             let node = this.itemToNode.get(item);
             this.itemToNode.delete(item);
-            typ.dismantle(node, false);
+            Nod.dismantle(node, false);
          }
       }
 
@@ -75,13 +75,14 @@ methodFor(Iteration, {
 function Node(iter, item) {
    this.iter = iter;
    this.item = item;
+   this.id = Nod.getNextId();
    this.deps = new Set;
    this.effects = [];
 }
 
 
-methodFor(Node, typ.dependOn);
-methodFor(Node, typ.addEffect);
+methodFor(Node, Nod.dependOn);
+methodFor(Node, Nod.addEffect);
 
 
 function lazyMountingContext(iter, item) {
@@ -111,11 +112,11 @@ function lazyMountingContext(iter, item) {
 
 methodFor(Node, {
    fulfill() {
-      doMounting(typ.mountingContextFor(this), warnOnError(this.iter.proc.bind(null, this.item)));
+      doMounting(Nod.mountingContextFor(this), warnOnError(this.iter.proc.bind(null, this.item)));
    },
 
    unmount() {
       toFulfill.enqueue(this);
-      typ.dismantle(this, true);
+      Nod.dismantle(this, true);
    }
 });

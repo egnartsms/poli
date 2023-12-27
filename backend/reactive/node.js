@@ -1,5 +1,6 @@
 export {
-   dependOn, addEffect, clearDeps, undoEffects, dismantle, unmountNodeSet, mountingContextFor
+   dependOn, addEffect, clearDeps, undoEffects, dismantle, unmountNodeSet, mountingContextFor,
+   getNextId
 };
 
 
@@ -60,4 +61,12 @@ function unmountNodeSet(nodeSet) {
    }
 
    nodeSet.clear();
+}
+
+
+let nextNodeId = 1;
+
+
+function getNextId() {
+   return nextNodeId++;
 }
