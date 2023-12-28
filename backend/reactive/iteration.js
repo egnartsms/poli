@@ -1,5 +1,5 @@
 import { methodFor } from '$/common/generic.js';
-import * as Nod from './node.js';
+import * as Nd from './node.js';
 import { doMounting } from './mount.js';
 import { warnOnError } from './common.js';
 
@@ -10,23 +10,10 @@ function Iteration(coll, proc) {
    this.coll = coll;
    this.proc = proc;
    this.itemToNode = new Map;
-   this.ver = null;
+   this.ver = coll.currentVersion();
 
    for (let item of coll) {
-      iterate(this, item);
-   }
-
-   this.ver = coll.currentVersion();
-}
-
-
-function iterate(iter, item) {
-   let context = lazyMountingContext(iter, item);
-
-   doMounting(context, warnOnError(iter.proc.bind(null, item)));
-
-   if (context.node !== null) {
-      iter.itemToNode.set(item, context.node);
+      this.runFor(item);
    }
 }
 
@@ -34,7 +21,7 @@ function iterate(iter, item) {
 methodFor(Iteration, {
    undo(reversibly) {
       for (let node of this.itemToNode.values()) {
-         Nod.dismantle(node, reversibly);
+         Nd.dismantle(node, reversibly);
       }
 
       this.itemToNode.clear();
@@ -55,16 +42,27 @@ methodFor(Iteration, {
          if (this.itemToNode.has(item)) {
             let node = this.itemToNode.get(item);
             this.itemToNode.delete(item);
-            Nod.dismantle(node, false);
+            Nd.dismantle(node, false);
          }
       }
 
       for (let item of this.ver.added) {
-         iterate(this, item);
+         this.runFor(item);
       }
 
       this.ver = this.coll.currentVersion();
       this.coll.iterationFulfilled(this);
+   }
+});
+
+
+methodFor(Iteration, function runFor(item) {
+   let context = lazyMountingContext(this, item);
+
+   doMounting(context, warnOnError(this.proc.bind(null, item)));
+
+   if (context.node !== null) {
+      this.itemToNode.set(item, context.node);
    }
 });
 
@@ -75,14 +73,10 @@ methodFor(Iteration, {
 function Node(iter, item) {
    this.iter = iter;
    this.item = item;
-   this.id = Nod.getNextId();
+   this.id = Nd.getNextId();
    this.deps = new Set;
    this.effects = [];
 }
-
-
-methodFor(Node, Nod.dependOn);
-methodFor(Node, Nod.addEffect);
 
 
 function lazyMountingContext(iter, item) {
@@ -111,12 +105,15 @@ function lazyMountingContext(iter, item) {
 
 
 methodFor(Node, {
+   dependOn: Nd.dependOn,
+   addEffect: Nd.addEffect,
+
    fulfill() {
-      doMounting(Nod.mountingContextFor(this), warnOnError(this.iter.proc.bind(null, this.item)));
+      doMounting(Nd.mountingContextFor(this), warnOnError(this.iter.proc.bind(null, this.item)));
    },
 
    unmount() {
       toFulfill.enqueue(this);
-      Nod.dismantle(this, true);
+      Nd.dismantle(this, true);
    }
 });

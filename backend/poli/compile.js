@@ -1,12 +1,13 @@
 import * as Acorn from 'acorn';
 
-import { procedure } from '$/reactive';
+import * as rv from '$/reactive';
 import { map } from '$/common/util.js';
+
 import { theModule } from './sample-module.js';
 import * as Module from './module.js';
 
 
-procedure("Compile all entries of the sample module", function () {
+rv.procedure("Compile all entries of the sample module", function () {
    theModule.entries.forEach(entry => {
       let body;
 

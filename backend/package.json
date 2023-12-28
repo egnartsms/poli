@@ -29,6 +29,7 @@
   "dependencies": {
     "acorn": "^8.11.2",
     "acorn-loose": "^8.4.0",
+    "acorn-walk": "^8.3.1",
     "chokidar": "^3.5.3",
     "mime-lite": "^1.0.3",
     "ws": "^8.12.0"

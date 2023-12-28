@@ -1,8 +1,7 @@
-import { procedure, fulfillToFixpoint, externalEventHandler } from '$/reactive';
+import * as rv from '$/reactive';
 
+import * as M from './module.js';
 import { theModule } from './sample-module.js';
-import * as Module from './module.js';
-
 import './parse.js';
 import './compile.js';
 
@@ -28,8 +27,8 @@ function makeWebsocket() {
 let ws = makeWebsocket();
 
 
-procedure("Initial load & subscribe to change notifications", function () {
-   Module.init(theModule);
+rv.procedure("Initial load & subscribe to change notifications", function () {
+   M.init(theModule);
 
    let refresh = () => {
       loadModuleContents('sample', 'main').then((textContents) => {
@@ -39,10 +38,10 @@ procedure("Initial load & subscribe to change notifications", function () {
       });
    };
 
-   externalEventHandler(ws, 'message', refresh);
+   rv.externalEventHandler(ws, 'message', refresh);
 
    refresh();
 });
 
 
-fulfillToFixpoint();
+rv.fulfillToFixpoint();

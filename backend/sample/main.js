@@ -2,7 +2,7 @@
 const x = 0;
 
 // Dependent value
-const y = x + 1;
+const y = x + 2;
 
 // const z = y + 1;
 

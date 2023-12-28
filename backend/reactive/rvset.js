@@ -28,7 +28,7 @@ class RvSet {
    }
 
    forEach(proc) {
-      let iteration = new Iteration(this, proc);   // new Iteration() does sync traversal
+      let iteration = new Iteration(this, proc);
 
       this.iterations.add(iteration);
       this.nrefs += 1;
