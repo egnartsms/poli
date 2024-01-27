@@ -1,21 +1,15 @@
-export {
-   dependOn, addEffect, clearDeps, undoEffects, dismantle, unmountNodeSet, mountingContextFor,
-   getNextId
-};
-
-
-function dependOn(dep) {
+export function dependOn(dep) {
    this.deps.add(dep);
    dep.useBy(this);
 }
 
 
-function addEffect(effect) {
+export function addEffect(effect) {
    this.effects.push(effect);
 }
 
 
-function clearDeps(node) {
+export function clearDeps(node) {
    for (let dep of node.deps) {
       dep.unuseBy(node);
    }
@@ -23,7 +17,7 @@ function clearDeps(node) {
 }
 
 
-function undoEffects(node, reversibly) {
+export function undoEffects(node, reversibly) {
    for (let effect of node.effects) {
       effect.undo(reversibly);
    }
@@ -32,13 +26,13 @@ function undoEffects(node, reversibly) {
 }
 
 
-function dismantle(node, reversibly) {
+export function dismantle(node, reversibly) {
    clearDeps(node);
    undoEffects(node, reversibly);
 }
 
 
-function mountingContextFor(node) {
+export function mountingContextFor(node) {
    return {
       executor: node,
       originator: node,
@@ -51,7 +45,7 @@ function isClean(node) {
 }
 
 
-function unmountNodeSet(nodeSet) {
+export function unmountNodeSet(nodeSet) {
    if (nodeSet.size === 0) {
       return;
    }
@@ -67,6 +61,6 @@ function unmountNodeSet(nodeSet) {
 let nextNodeId = 1;
 
 
-function getNextId() {
+export function getNextId() {
    return nextNodeId++;
 }

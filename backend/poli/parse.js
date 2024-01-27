@@ -8,11 +8,6 @@ rv.procedure("Parse module into top-level blocks", function () {
 });
 
 
-const reg = new FinalizationRegistry((held) => {
-   console.log("Finalized", held);
-});
-
-
 rv.procedure("Create entries", function () {
    theModule.textToEntry = new Map;
    theModule.entries = new RvSet;
@@ -31,7 +26,6 @@ rv.procedure("Create entries", function () {
          }
          else {
             entry = rv.makeEntity({source: block.text});
-            reg.register(entry, "entry");
             theModule.entries.add(entry);
             console.log("Added entry:", entry.source);
          }

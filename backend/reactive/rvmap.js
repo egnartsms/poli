@@ -5,23 +5,21 @@ import { toFulfill } from './fulfillment.js';
 import { Iteration } from './iteration.js';
 import { Version } from './version.js';
 
-export { RvSet };
+export { RvMap };
 
 
 /**
- * Reactive set. Does not support reactive checking for membership.
- * 
- * 'add()', 'remove()' do not record themselves as effects;
- * 'eAddUnique()' does.
+ * Reactive map. Does not support reactive checking for membership.
+ *
  */
-class RvSet {
+class RvMap {
    items;
    nrefs = 0;
    ver = null;
    iterations = new Set;
 
    constructor(iterable) {
-      this.items = new Set(iterable);
+      this.items = new Map(iterable);
    }
 
    forEach(proc) {
@@ -51,7 +49,8 @@ class RvSet {
       else if (this.ver.isClean())
          ;
       else {
-         this.ver = this.ver.next = new Version;
+         this.ver.next = new Version;
+         this.ver = this.ver.next;
       }
 
       return this.ver;
@@ -109,3 +108,16 @@ class RvSet {
       });
    }
 }
+
+
+function SetMembership(set, item) {
+   this.set = set;
+   this.item = item;
+}
+
+
+methodFor(SetMembership, {
+   undo(reversibly) {
+      this.set.remove(this.item);
+   }
+});

@@ -3,7 +3,6 @@ import { Queue } from '$/common/queue.js';
 import * as util from '$/common/util.js';
 import * as Nod from './node.js';
 import { warnOnError } from './common.js';
-import { excReactiveNormal } from './entity.js';
 import { toFulfill, fulfillToFixpoint } from './fulfillment.js';
 import { activeContext, doMounting } from './mount.js';
 
@@ -39,18 +38,10 @@ methodFor(Procedure, {
    addEffect: Nod.addEffect,
 
    fulfill() {
-      doMounting(Nod.mountingContextFor(this), () => {
-         try {
-            this.proc.call(this);
-         }
-         catch (exc) {
-            this.exc = exc;
-            
-            if (!(excReactiveNormal in exc)) {
-               console.warn("A procedure threw an unhandled exception: ", exc);
-            }
-         }
-      });
+      doMounting(
+         Nod.mountingContextFor(this),
+         warnOnError(this.proc.bind(this), (exc) => this.exc = exc)
+      );
    },
 
    /**
@@ -83,24 +74,12 @@ methodFor(Repeatable, {
    dependOn: Nod.dependOn,
 
    fulfill() {
-      doMounting(
-         {
-            executor: this,
-            originator: this.parent,
-         },
-         () => {
-            try {
-               this.proc.call(this.parent);
-            }
-            catch (exc) {
-               this.exc = exc;
+      let context = {
+         executor: this,
+         originator: this.parent,
+      };
 
-               if (!(excReactiveNormal in exc)) {
-                  console.warn("A repeatable threw an unhandled exception: ", exc);
-               }
-            }
-         }
-      );
+      doMounting(context, warnOnError(this.proc.bind(this.parent), (exc) => this.exc = exc));
    },
 
    /**

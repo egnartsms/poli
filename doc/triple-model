@@ -1,0 +1,40 @@
+# Indices
+
+A: e -> val
+    val -> [e] OR
+    val -> e (unique index)
+
+
+## Modules & entries
+
+- `entry.module` should definitely exist. We want to pass around `entry`s
+  themselves without accompanying `module` references that designate where
+  those come from.
+
+- to have `module.entries`, we need a way to find entries. Then we can
+  automatically group entries by module.
+
+- what if we make the `entry.module` not just a by-name attribute but a special
+  one?
+
+```js
+
+let attr = new rv.Attr();
+
+// This uses `attr.toString()` which returns a unique symbol. Is it possible?
+attr.set(theEntry, theModule);
+
+
+
+```
+
+Clearly what we've run into has to do with binary predicates. In fact, we have a
+single ternary predicate: (e, a, v) that completely describes our world. We
+might want to group also by "v", the value, as well as by "e" and "a".
+
+This is why you're feeling difficulties on this territory of indices, 1-to-N,
+N-to-N etc. Because your attribute approach doesn't cut in. It's not quite enough here.
+
+So if we fix the "a" dimention -- the attribute -- then we get a binary
+predicate (e, v). Here, we can build 2 indices: e -> [v] and v -> [e]. There
+might be 1 to 1, 1 to N, N to 1, N to N -- all combinations.

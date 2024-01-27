@@ -45,3 +45,13 @@ rv.procedure("Initial load & subscribe to change notifications", function () {
 
 
 rv.fulfillToFixpoint();
+
+
+(() => {
+   window.fuck = [];
+   for (let i = 0; i < 10_000; i += 1) {
+      let s = new Set;
+      s.add(i);
+      window.fuck.push(s);
+   }
+})();

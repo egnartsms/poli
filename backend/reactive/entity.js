@@ -1,10 +1,11 @@
 import * as util from '$/common/util.js';
 import { methodFor } from '$/common/generic.js';
+import { symExcNormal } from './common.js';
 import { activeContext, registerMountingMiddleware } from './mount.js';
 import { toFulfill, registerPostFixpointCallback } from './fulfillment.js';
 import { unmountNodeSet } from './node.js';
 
-export { makeEntity, excReactiveNormal };
+export { makeEntity };
 
 
 let entityToStore = new WeakMap;
@@ -201,9 +202,8 @@ class AttrNotDefined extends AttrError {
    }
 }
 
-const excReactiveNormal = Symbol.for('poli.exc-reactive-normal');
 
-AttrNotDefined.prototype[excReactiveNormal] = true;
+AttrNotDefined.prototype[symExcNormal] = true;
 
 
 class AttrDuplicated extends AttrError {

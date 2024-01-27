@@ -1,0 +1,6 @@
+- theModule.entries = new RvSet;
+  theModule.textToEntry = new MultiMap;  // built by 'theModule.entries' only
+
+- RvMap with respective Iteration and Version.
+  Used for:
+    * module.bindings

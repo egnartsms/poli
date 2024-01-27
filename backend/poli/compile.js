@@ -4,7 +4,7 @@ import * as rv from '$/reactive';
 import { map } from '$/common/util.js';
 
 import { theModule } from './sample-module.js';
-import * as Module from './module.js';
+import * as Mdl from './module.js';
 
 
 rv.procedure("Compile all entries of the sample module", function () {
@@ -15,7 +15,6 @@ rv.procedure("Compile all entries of the sample module", function () {
          ({body} = Acorn.parse(entry.source, {
             ecmaVersion: 'latest',
             sourceType: 'module',
-            ranges: true
          }));
       }
       catch (exc) {
@@ -52,31 +51,55 @@ rv.procedure("Compile all entries of the sample module", function () {
          return;
       }
 
-      entry.target = Module.getBinding(theModule, decl.id.name);
+      entry.target = Mdl.getBinding(theModule, decl.id.name);
 
-      let nonlocals = nonlocalIdentifiers(decl.init);
-      let instrumented = replaceNonlocals(
-         entry.source, decl.init.range, map(nonlocals, node => node.range)
+      let nonlocalIds = nonlocalIdentifiers(decl.init);
+
+      entry.referencedBindings = new Set(
+         map(nonlocalIds, id => Mdl.getBinding(theModule, id.name))
+      );
+      entry.instrumentedInitSource = instrumentNonlocalReferences(
+         entry.source,
+         [decl.init.start, decl.init.end],
+         map(nonlocalIds, id => [id.start, id.end])
       );
 
-      entry.instrumented = instrumented;
+      let factorySource = `"use strict";\nreturn (${entry.instrumentedInitSource});`;
 
-      console.log("entry target id:", entry.target.id);
+      try {
+         entry.initFactory = Function('_$', factorySource);
+      }
+      catch (exc) {
+         entry.initFactoryError = exc;
+         // throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${code}'`);
+      }
    });
 });
 
 
+rv.procedure("Collect 'binding.referencedIn'", function () {
+   theModule.bindings.forEach(([name, binding]) => {
+      binding.referencedIn = new RvSet;
+   });
+
+   theModule.entries.forEach(entry => {
+      for (let binding of entry.referencedBindings) {
+         binding.referencedIn.eAddUnique(entry);
+      }
+   });
+});
+
+
+/**
+ * @return an array of non-local (module-level) identifiers.
+ * So far we only support some limited set of expressions, not full JS.
+ */
 function nonlocalIdentifiers(node) {
    function* refs(node) {
       if (node.type === 'Literal')
          ;
       else if (node.type === 'Identifier') {
-         if (Object.hasOwn(window, node.name)) {
-            // Global identifier, don't yield
-         }
-         else {
-            yield node;
-         }
+         yield node;
       }
       else if (node.type === 'UnaryExpression') {
          yield* refs(node.argument);
@@ -85,6 +108,9 @@ function nonlocalIdentifiers(node) {
          yield* refs(node.left);
          yield* refs(node.right);
       }
+      else {
+         throw new Error(`Too complex an expression`);
+      }
    }
 
    return Array.from(refs(node));
@@ -92,14 +118,14 @@ function nonlocalIdentifiers(node) {
 
 
 /**
- * Replace non-local identifiers found at `ranges` with "_$.v.ID". `idxStart` is
- * the starting index of the evaluatable part of the definition (e.g. var
- * declaration init expression). Return the modified (instrumented) evaluatable
- * string.
- * 
- * TODO: when needed make it a generic replacer
+ * Replace non-local identifiers found at `ranges`: ID => _$.v.ID. Do it only in the portion of the
+ * `source` from `start` to `end`.
+ *
+ * @param `idxStart` - the starting index of the evaluatable part of the definition (e.g. var
+ *    declaration init expression).
+ * @return instrumented source portion, from `start` to `end`.
  */
-function replaceNonlocals(source, [start, end], ranges) {
+function instrumentNonlocalReferences(source, [start, end], ranges) {
    let idx = start;
    let pieces = [];
 
@@ -113,19 +139,3 @@ function replaceNonlocals(source, [start, end], ranges) {
 
    return pieces.join('');
 }
-
-
-// function compileIntoFactory(code) {
-//    try {
-//       return Function('_$', factorySource(code));
-//    }
-//    catch (e) {
-//       throw new Error(`Factory function threw an exc: '${e.toString()}', source is: '${code}'`);
-//    }
-// }
-
-
-// const factorySource = (source) => `
-// "use strict";
-// return (${source});
-// `;
